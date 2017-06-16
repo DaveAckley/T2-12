@@ -10,7 +10,7 @@ install:	$(DTB_FILES)
 
 $(FIRMWARE_FILES_DIR)/%.dtb:	%.dts
 	cp $^ $(FIRMWARE_FILES_DIR) || (echo Must be root ; exit 2)
-	cd $(FIRMWARE_BUILD_DIR) ; make DTC=/usr/bin/dtc clean ; make DTC=/usr/bin/dtc install
+	cd $(FIRMWARE_BUILD_DIR) ; make DTC=/usr/bin/dtc install
 
 
 clean:	FORCE
