@@ -1,11 +1,16 @@
+FIRMWARE_BUILD_DIR:=/opt/source/dtb-4.4-ti
+FIRMWARE_FILES_DIR:=$(FIRMWARE_BUILD_DIR)/src/arm
 DTS_FILES:=$(wildcard *dts)
-DTB_FILES:=$(patsubst %.dts,%.dtb,$(DTS_FILES))
+DTB_FILES:=$(patsubst %.dts,$(FIRMWARE_FILES_DIR)/%.dtb,$(DTS_FILES))
 
-all:	$(DTB_FILES) 
+all:
 	@echo $(DTS_FILES) / $(DTB_FILES)
 
-%.dtb:	%.dts
-	dtc $^
+install:	$(DTB_FILES) 
+
+$(FIRMWARE_FILES_DIR)/%.dtb:	%.dts
+	cp $^ $(FIRMWARE_FILES_DIR) || (echo Must be root ; exit 2)
+	cd $(FIRMWARE_BUILD_DIR) ; make DTC=/usr/bin/dtc clean ; make DTC=/usr/bin/dtc install
 
 
 clean:	FORCE
@@ -13,11 +18,6 @@ clean:	FORCE
 
 realclean:	clean
 	rm *.dtb
-
-install:	$(SUBDIRS)
-
-$(SUBDIRS):	FORCE
-	$(MAKE) -C $@ $(MAKECMDGOALS)
 
 .PHONY:	all clean realclean install FORCE
 
