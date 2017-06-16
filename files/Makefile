@@ -1,4 +1,4 @@
-SUBDIRS:=firmware
+SUBDIRS:=firmware boot
 
 all:	$(SUBDIRS)
 
