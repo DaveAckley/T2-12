@@ -2,7 +2,8 @@ SUBDIRS:=files apps
 HOSTNAME:=$(shell uname -n)
 HOSTMACH:=$(shell uname -m)
 ON_TILE:=
-ifeq ($(HOSTNAME),T2-12)
+#ifeq ($(HOSTNAME),T2-12)
+ifeq ($(HOSTNAME),beaglebone)
 ifeq ($(HOSTMACH),armv7l)
 ON_TILE:=true
 endif
