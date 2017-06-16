@@ -57,6 +57,7 @@
 * Pin Muxing
 ****************************************/
 &am33xx_pinmux {
+#if 0
 	 // From ebb chp13 overlay sample dts
          pru_pru_pins: pinmux_pru_pru_pins {   // The PRU pin modes
             pinctrl-single,pins = <
@@ -64,32 +65,35 @@
                0x19c 0x26  // P9_28 pr1_pru0_pru_r31_3, MODE6 | INPUT | PRU
             >;
          };
+#endif
 
-
-      /* OUTPUT  GPIO(mode7) 0x07 pulldown, 0x17 pullup, 0x?f no pullup/down */
-      /* INPUT   GPIO(mode7) 0x27 pulldown, 0x37 pullup, 0x?f no pullup/down */
-
-	 // SPI0 PINS AS GPIOS FOR TESTING, WITH D0 AS OUTPUT
-         linux_bitbang_spi_pins: pinmux_linux_bitbang_spi_pins {   // GPIO pins for linux
+	 // SPI DISPLAY SUPPORT VIA SPI0 HARDWARE
+         spi_display_default_pins: pinmux_spi_display_default_pins {   
             pinctrl-single,pins = <
-	       0x074 0x0f  // P9_13  PINS=29 OUTPUT  MODE7 no pullup/down GPIO=31  T2=IO_OCDR
-	       0x040 0x0f  // P9_15  PINS=16 OUTPUT  MODE7 no pullup/down GPIO=48  T2=IO_MODE
-	       0x15c 0x0f  // P9_17  PINS=87 OUTPUT  MODE7 no pullup/down GPIO=5   T2=SPI0_CS0
-	       0x158 0x27  // P9_18  PINS=86 INPUT   MODE7 pulldown       GPIO=4   T2=SPI0_D1
-	       0x154 0x0f  // P9_21  PINS=85 OUTPUT  MODE7 no pullup/down GPIO=3   T2=SPI0_D0
-	       0x150 0x0f  // P9_22  PINS=84 OUTPUT  MODE7 no pullup/down GPIO=2   T2=SPI0_SCLK
+	       0x070 (PIN_OUTPUT | MUX_MODE7)        // P9_11  PINS=28  GPIO=30  T2=DSP_PWRON
+	       0x074 (PIN_OUTPUT | MUX_MODE7)        // P9_13  PINS=29  GPIO=31  T2=DSP_RESET
+	       0x040 (PIN_OUTPUT | MUX_MODE7)        // P9_15  PINS=16  GPIO=48  T2=DSP_DC
+	       0x17c (PIN_INPUT_PULLUP | MUX_MODE7)  // P9_19  PINS=95  GPIO=13  T2=TP_IRQ
+	       0x178 (PIN_OUTPUT | MUX_MODE7)        // P9_20  PINS=94  GPIO=12  T2=TP_CS
+	       0x15c (PIN_OUTPUT | MUX_MODE0)        // P9_17  PINS=87  GPIO=5   T2=SPI0_CS
+	       0x158 (PIN_INPUT_PULLUP | MUX_MODE0)  // P9_18  PINS=86  GPIO=4   T2=SPI0_D1
+	       0x154 (PIN_OUTPUT | MUX_MODE0)        // P9_21  PINS=85  GPIO=3   T2=SPI0_D0
+	       0x150 (PIN_OUTPUT | MUX_MODE0)        // P9_22  PINS=84  GPIO=2   T2=SPI0_SCLK
             >;
          };
 
-	 // SPI0 PINS AS GPIOS FOR TESTING, WITH D0 AS INPUT
-         linux_bitbang_spidin_pins: pinmux_linux_bitbang_spidin_pins {   // GPIO pins for linux
+	 // SPI DISPLAY SUPPORT ALL GPIOS FOR DEBUGGING
+	 spi_display_all_gpio_pins: pinmux_spi_display_all_gpio_pins {   // GPIO pins for linux
             pinctrl-single,pins = <
-	       0x074 0x0f  // P9_13  PINS=29 OUTPUT  MODE7 no pullup/down GPIO=31  T2=IO_OCDR
-	       0x040 0x0f  // P9_15  PINS=16 OUTPUT  MODE7 no pullup/down GPIO=48  T2=IO_MODE
-	       0x15c 0x0f  // P9_17  PINS=87 OUTPUT  MODE7 no pullup/down GPIO=5   T2=SPI0_CS0
-	       0x158 0x27  // P9_18  PINS=86 INPUT   MODE7 pulldown       GPIO=4   T2=SPI0_D1
-	       0x154 0x27  // P9_21  PINS=85 INPUT   MODE7 pulldown       GPIO=3   T2=SPI0_D0
-	       0x150 0x0f  // P9_22  PINS=84 OUTPUT  MODE7 no pullup/down GPIO=2   T2=SPI0_SCLK
+	       0x070 (PIN_OUTPUT | MUX_MODE7)        // P9_11  PINS=28  GPIO=30  T2=DSP_PWRON
+	       0x074 (PIN_OUTPUT | MUX_MODE7)        // P9_13  PINS=29  GPIO=31  T2=DSP_RESET
+	       0x040 (PIN_OUTPUT | MUX_MODE7)        // P9_15  PINS=16  GPIO=48  T2=DSP_DC
+	       0x17c (PIN_INPUT_PULLUP | MUX_MODE7)  // P9_19  PINS=95  GPIO=13  T2=TP_IRQ
+	       0x178 (PIN_OUTPUT | MUX_MODE7)        // P9_20  PINS=94  GPIO=12  T2=TP_CS
+	       0x15c (PIN_OUTPUT | MUX_MODE7)        // P9_17  PINS=87  GPIO=5   T2=SPI0_CS as gpio
+	       0x158 (PIN_INPUT_PULLUP | MUX_MODE7)  // P9_18  PINS=86  GPIO=4   T2=SPI0_D1 as gpio
+	       0x154 (PIN_OUTPUT | MUX_MODE7)        // P9_21  PINS=85  GPIO=3   T2=SPI0_D0 as gpio
+	       0x150 (PIN_OUTPUT | MUX_MODE7)        // P9_22  PINS=84  GPIO=2   T2=SPI0_SCLK as gpio
             >;
          };
 
@@ -106,8 +110,8 @@
 	 // ET_ITC default pins (split PRU/Linux gpio)
          ET_ITC_default_pins: pinmux_ET_ITC_default_pins {
             pinctrl-single,pins = <
-               0x19c (PIN_OUTPUT | MUX_MODE5)  // P9_28 PINS=103  GPIO=113 T2=ET_TXRDY pr1_pru0_pru_r30_3
-               0x19a (PIN_OUTPUT | MUX_MODE5)  // P9_42B PINS=??  GPIO=114 T2=ET_TXDAT pr1_pru0_pru_r30_4
+               0x19c (PIN_OUTPUT | MUX_MODE5)  // P9_28  PINS=103 GPIO=113 T2=ET_TXRDY pr1_pru0_pru_r30_3
+               0x1a0 (PIN_OUTPUT | MUX_MODE5)  // P9_42B PINS=104 GPIO=114 T2=ET_TXDAT pr1_pru0_pru_r30_4
                0x164 (PIN_INPUT  | MUX_MODE7)  // P9_42A PINS=89  GPIO=7   T2=RSRVINP2 (conflicts with ET_TXDAT, must be input)
                0x190 (PIN_INPUT  | MUX_MODE6)  // P9_31  PINS=100 GPIO=110 T2=ET_RXRDY pr1_pru0_pru_r31_0
                0x194 (PIN_INPUT  | MUX_MODE6)  // P9_29  PINS=101 GPIO=111 T2=ET_RXDAT pr1_pru0_pru_r31_1
@@ -121,8 +125,8 @@
 	 // ET_ITC all gpio pins (Linux gpio)
          ET_ITC_all_gpio_pins: pinmux_ET_ITC_all_gpio_pins {
             pinctrl-single,pins = <
-               0x19c (PIN_OUTPUT | MUX_MODE7)  // P9_28 PINS=103  GPIO=113 T2=ET_TXRDY as gpio
-               0x19a (PIN_OUTPUT | MUX_MODE7)  // P9_42B PINS=??  GPIO=114 T2=ET_TXDAT as gpio
+               0x19c (PIN_OUTPUT | MUX_MODE7)  // P9_28  PINS=103 GPIO=113 T2=ET_TXRDY as gpio
+               0x1a0 (PIN_OUTPUT | MUX_MODE7)  // P9_42B PINS=104 GPIO=114 T2=ET_TXDAT as gpio
                0x164 (PIN_INPUT  | MUX_MODE7)  // P9_42A PINS=89  GPIO=7   T2=RSRVINP2 (shares pin with ET_TXDAT, must be input)
                0x190 (PIN_INPUT  | MUX_MODE7)  // P9_31  PINS=100 GPIO=110 T2=ET_RXRDY as gpio
                0x194 (PIN_INPUT  | MUX_MODE7)  // P9_29  PINS=101 GPIO=111 T2=ET_RXDAT as gpio
@@ -349,10 +353,12 @@
 };
 
 &ocp {
+#if 0  /* Now handled via the ITC groups? */
       pruss {
          pinctrl-names = "default";
          pinctrl-0 = <&pru_pru_pins>;
       };
+#endif
 
       /****************************************
        * activates the pinmux helper list of pin modes
@@ -366,15 +372,15 @@
 		status = "okay";
        };
 */
-        test_helper: helper {
+        SPI_DISPLAY_helper: helperSPI {
 		compatible = "bone-pinmux-helper";
-		pinctrl-names = "default", "spidin";
-		pinctrl-0 = <&linux_bitbang_spi_pins>;
-		pinctrl-1 = <&linux_bitbang_spidin_pins>;
+		pinctrl-names = "default", "gpio";
+		pinctrl-0 = <&spi_display_default_pins>;
+		pinctrl-1 = <&spi_display_all_gpio_pins>;
 		status = "okay";
        };
 
-       ET_ITC_helper: helper {
+       ET_ITC_helper: helperET {
 		compatible = "bone-pinmux-helper";
 		pinctrl-names = "default", "gpio";
 		pinctrl-0 = <&ET_ITC_default_pins>;
@@ -382,7 +388,7 @@
 		status = "okay";
        };
 
-       SE_ITC_helper: helper {
+       SE_ITC_helper: helperSE {
 		compatible = "bone-pinmux-helper";
 		pinctrl-names = "default", "gpio";
 		pinctrl-0 = <&SE_ITC_default_pins>;
@@ -390,7 +396,7 @@
 		status = "okay";
        };
 
-       SW_ITC_helper: helper {
+       SW_ITC_helper: helperSW {
 		compatible = "bone-pinmux-helper";
 		pinctrl-names = "default", "gpio";
 		pinctrl-0 = <&SW_ITC_default_pins>;
@@ -398,7 +404,7 @@
 		status = "okay";
        };
 
-       WT_ITC_helper: helper {
+       WT_ITC_helper: helperWT {
 		compatible = "bone-pinmux-helper";
 		pinctrl-names = "default", "gpio";
 		pinctrl-0 = <&WT_ITC_default_pins>;
@@ -406,7 +412,7 @@
 		status = "okay";
        };
 
-       NW_ITC_helper: helper {
+       NW_ITC_helper: helperNW {
 		compatible = "bone-pinmux-helper";
 		pinctrl-names = "default", "gpio";
 		pinctrl-0 = <&NW_ITC_default_pins>;
@@ -414,7 +420,7 @@
 		status = "okay";
        };
 
-       NE_ITC_helper: helper {
+       NE_ITC_helper: helperNE {
 		compatible = "bone-pinmux-helper";
 		pinctrl-names = "default", "gpio";
 		pinctrl-0 = <&NE_ITC_default_pins>;
