@@ -4,8 +4,7 @@ $(CMDS):	FORCE
 build:
 
 install: 
-	@echo install target not implemented
-	@exit 2
+	@echo '(install target not yet implemented)'
 
 clean:	
 	rm -f *~
