@@ -8,6 +8,7 @@ clean:
 	@rm -f *~
 
 realclean:	clean
+	touch $(INPUT)   # Don't want to remove $(OUTPUT), so fake-update $(INPUT)
 
 install:	$(OUTPUT)
 
