@@ -1,4 +1,4 @@
-APPS:=$(shell find . -type d -a ! -name ".*")
+APPS:=$(shell find . -type d -a ! -name ".*" -a ! -path "*/*/*")
 
 CMDS:=build install clean
 
