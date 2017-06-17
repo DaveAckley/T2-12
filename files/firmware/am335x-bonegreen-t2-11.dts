@@ -141,8 +141,8 @@
 	 // SE_ITC default pins (split PRU/Linux gpio)
          SE_ITC_default_pins: pinmux_SE_ITC_default_pins {
             pinctrl-single,pins = <
-               0x1a4 (PIN_OUTPUT | MUX_MODE5)  // P9_27  PINS=106 GPIO=115 T2=SE_TXRDY pr1_pru0_pru_r30_5
-               0x1a8 (PIN_OUTPUT | MUX_MODE5)  // P9_41B PINS=?   GPIO=116 T2=SE_TXDAT pr1_pru0_pru_r30_6
+               0x1a4 (PIN_OUTPUT | MUX_MODE5)  // P9_27  PINS=105 GPIO=115 T2=SE_TXRDY pr1_pru0_pru_r30_5
+               0x1a8 (PIN_OUTPUT | MUX_MODE5)  // P9_41B PINS=106 GPIO=116 T2=SE_TXDAT pr1_pru0_pru_r30_6
                0x1b4 (PIN_INPUT  | MUX_MODE7)  // P9_41A PINS=109 GPIO=20  T2=RSRVINP1 (shares pin with SE_TXDAT, must be input)
                0x198 (PIN_INPUT  | MUX_MODE6)  // P9_30  PINS=102 GPIO=112 T2=SE_RXRDY pr1_pru0_pru_r31_2
                0x038 (PIN_INPUT  | MUX_MODE6)  // P8_16  PINS=43  GPIO=14  T2=SE_RXDAT pr1_pru0_pru_r31_14
@@ -156,8 +156,8 @@
 	 // SE_ITC all gpio pins (Linux gpio)
          SE_ITC_all_gpio_pins: pinmux_SE_ITC_all_gpio_pins {
             pinctrl-single,pins = <
-               0x1a4 (PIN_OUTPUT | MUX_MODE7)  // P9_27  PINS=106 GPIO=115 T2=SE_TXRDY as gpio
-               0x1a8 (PIN_OUTPUT | MUX_MODE7)  // P9_41B PINS=?   GPIO=116 T2=SE_TXDAT as gpio
+               0x1a4 (PIN_OUTPUT | MUX_MODE7)  // P9_27  PINS=105 GPIO=115 T2=SE_TXRDY as gpio
+               0x1a8 (PIN_OUTPUT | MUX_MODE7)  // P9_41B PINS=106 GPIO=116 T2=SE_TXDAT as gpio
                0x1b4 (PIN_INPUT  | MUX_MODE7)  // P9_41A PINS=109 GPIO=20  T2=RSRVINP1 (shares pin with SE_TXDAT, must be input)
                0x198 (PIN_INPUT  | MUX_MODE7)  // P9_30  PINS=102 GPIO=112 T2=SE_RXRDY as gpio
                0x038 (PIN_INPUT  | MUX_MODE7)  // P8_16  PINS=43  GPIO=14  T2=SE_RXDAT as gpio
@@ -174,9 +174,9 @@
                0x1ac (PIN_OUTPUT | MUX_MODE5)  // P9_25  PINS=107 GPIO=117 T2=SW_TXRDY pr1_pru0_pru_r30_7
                0x030 (PIN_OUTPUT | MUX_MODE5)  // P8_12  PINS=12  GPIO=44  T2=SW_TXDAT pr1_pru0_pru_r30_14
                0x03c (PIN_INPUT  | MUX_MODE6)  // P8_15  PINS=15  GPIO=47  T2=SW_RXRDY pr1_pru0_pru_r31_15
-               0x184 (PIN_INPUT  | MUX_MODE6)  // P9_24  PINS=96  GPIO=15  T2=SW_RXDAT pr1_pru0_pru_r31_16
+               0x184 (PIN_INPUT  | MUX_MODE6)  // P9_24  PINS=97  GPIO=15  T2=SW_RXDAT pr1_pru0_pru_r31_16
                0x08c (PIN_OUTPUT | MUX_MODE7)  // P8_18  PINS=35  GPIO=65  T2=SW_ORQLK
-               0x024 (PIN_OUTPUT | MUX_MODE7)  // P8_19  PINS=8   GPIO=22  T2=SW_OGRLK
+               0x020 (PIN_OUTPUT | MUX_MODE7)  // P8_19  PINS=8   GPIO=22  T2=SW_OGRLK
                0x07c (PIN_INPUT  | MUX_MODE7)  // P8_26  PINS=31  GPIO=61  T2=SW_IRQLK
                0x0d8 (PIN_INPUT  | MUX_MODE7)  // P8_31  PINS=54  GPIO=10  T2=SW_IGRLK
             >;
@@ -188,9 +188,9 @@
                0x1ac (PIN_OUTPUT | MUX_MODE7)  // P9_25  PINS=107 GPIO=117 T2=SW_TXRDY as gpio
                0x030 (PIN_OUTPUT | MUX_MODE7)  // P8_12  PINS=12  GPIO=44  T2=SW_TXDAT as gpio
                0x03c (PIN_INPUT  | MUX_MODE7)  // P8_15  PINS=15  GPIO=47  T2=SW_RXRDY as gpio
-               0x184 (PIN_INPUT  | MUX_MODE7)  // P9_24  PINS=96  GPIO=15  T2=SW_RXDAT as gpio
+               0x184 (PIN_INPUT  | MUX_MODE7)  // P9_24  PINS=97  GPIO=15  T2=SW_RXDAT as gpio
                0x08c (PIN_OUTPUT | MUX_MODE7)  // P8_18  PINS=35  GPIO=65  T2=SW_ORQLK
-               0x024 (PIN_OUTPUT | MUX_MODE7)  // P8_19  PINS=8   GPIO=22  T2=SW_OGRLK
+               0x020 (PIN_OUTPUT | MUX_MODE7)  // P8_19  PINS=8   GPIO=22  T2=SW_OGRLK
                0x07c (PIN_INPUT  | MUX_MODE7)  // P8_26  PINS=31  GPIO=61  T2=SW_IRQLK
                0x0d8 (PIN_INPUT  | MUX_MODE7)  // P8_31  PINS=54  GPIO=10  T2=SW_IGRLK
             >;
