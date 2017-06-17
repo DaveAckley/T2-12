@@ -18,12 +18,19 @@ realclean:	clean $(SUBDIRS)
 ifeq ($(ON_TILE),)
 install:	
 	$(error Must be on tile to install))
+
+test:	FORCE
+	$(error Must be on tile to test))
 else
 install:	$(SUBDIRS)
+
+test:	FORCE
+	$(MAKE) -C tests
 endif
 
 $(SUBDIRS):	FORCE
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
-.PHONY:	all clean realclean install FORCE HOSTCHECK
+
+.PHONY:	all clean realclean install test FORCE HOSTCHECK
 
