@@ -230,7 +230,7 @@
                0x0e0 (PIN_OUTPUT | MUX_MODE5)  // P8_27  PINS=56  GPIO=86  T2=NW_TXRDY pr1_pru1_pru_r30_8
                0x0e4 (PIN_OUTPUT | MUX_MODE5)  // P8_39  PINS=57  GPIO=87  T2=NW_TXDAT pr1_pru1_pru_r30_9
                0x0a8 (PIN_INPUT  | MUX_MODE6)  // P8_43  PINS=42  GPIO=72  T2=NW_RXRDY pr1_pru1_pru_r31_2
-               0x1ac (PIN_INPUT  | MUX_MODE6)  // P8_44  PINS=43  GPIO=73  T2=NW_RXDAT pr1_pru1_pru_r31_3
+               0x0ac (PIN_INPUT  | MUX_MODE6)  // P8_44  PINS=43  GPIO=73  T2=NW_RXDAT pr1_pru1_pru_r31_3
                0x0c8 (PIN_OUTPUT | MUX_MODE7)  // P8_36  PINS=50  GPIO=80  T2=NW_ORQLK
                0x0c0 (PIN_OUTPUT | MUX_MODE7)  // P8_37  PINS=48  GPIO=78  T2=NW_OGRLK
                0x0c4 (PIN_INPUT  | MUX_MODE7)  // P8_38  PINS=49  GPIO=79  T2=NW_IRQLK
@@ -244,7 +244,7 @@
                0x0e0 (PIN_OUTPUT | MUX_MODE7)  // P8_27  PINS=56  GPIO=86  T2=NW_TXRDY as gpio
                0x0e4 (PIN_OUTPUT | MUX_MODE7)  // P8_39  PINS=57  GPIO=87  T2=NW_TXDAT as gpio
                0x0a8 (PIN_INPUT  | MUX_MODE7)  // P8_43  PINS=42  GPIO=72  T2=NW_RXRDY as gpio
-               0x1ac (PIN_INPUT  | MUX_MODE7)  // P8_44  PINS=43  GPIO=73  T2=NW_RXDAT as gpio
+               0x0ac (PIN_INPUT  | MUX_MODE7)  // P8_44  PINS=43  GPIO=73  T2=NW_RXDAT as gpio
                0x0c8 (PIN_OUTPUT | MUX_MODE7)  // P8_36  PINS=50  GPIO=80  T2=NW_ORQLK
                0x0c0 (PIN_OUTPUT | MUX_MODE7)  // P8_37  PINS=48  GPIO=78  T2=NW_OGRLK
                0x0c4 (PIN_INPUT  | MUX_MODE7)  // P8_38  PINS=49  GPIO=79  T2=NW_IRQLK
