@@ -54,7 +54,8 @@ sub tryExport {
     if (close(EXPORTER)) {
 	tryUnexport($pin,$group);
     } else {
-	push @exportNO, $pin
+	die "close export $group $pin: $!" if $! ne "Device or resource busy";
+	push @exportNO, $pin;
     }
 }
 
