@@ -14,7 +14,8 @@
 /dts-v1/;
 
 #include "am33xx.dtsi"
-#include "am335x-bone-common.dtsi"
+/* AHAX: 2017-06-17 We need the i2c2 pins, so no capemgr.. */
+#include "am335x-bone-common-no-capemgr.dtsi"
 
 /* AHAX: 2017-05-19 PRUSS option: For now we are going with UIO.. */
 #include "am33xx-pruss-uio.dtsi"
