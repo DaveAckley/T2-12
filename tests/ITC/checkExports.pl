@@ -3,14 +3,16 @@
 use FindBin;
 use lib $FindBin::Bin;
 
-use T2tils qw(getGPIONumFromPINNum getGroupStems getPINsInGroup);
+use T2tils;
+
+my $t2 = T2tils::new();
 
 my @exportOK;
 my @exportNO;
 
 sub tryUnexport {
     my ($linuxpin,$group) = @_;
-    my $gpio = getGPIONumFromPINNum($linuxpin);
+    my $gpio = $t2->getGPIONumFromPINNum($linuxpin);
     open(E,">","/sys/class/gpio/unexport") or die "open unexport $group $linuxpin [$gpio]: $!";
     print E "$gpio\n";
     if (close(E)) {
@@ -22,7 +24,7 @@ sub tryUnexport {
 
 sub tryExport {
     my ($linuxpin,$group) = @_;
-    my $gpio = getGPIONumFromPINNum($linuxpin);
+    my $gpio = $t2->getGPIONumFromPINNum($linuxpin);
     open(EXPORTER,">","/sys/class/gpio/export") or die "open export $group $linuxpin [$gpio]: $!";
     print EXPORTER "$gpio\n";
     if (close(EXPORTER)) {
@@ -35,7 +37,7 @@ sub tryExport {
 
 sub checkGroup {
     my $name = shift;
-    my @pins = getPINsInGroup($name);
+    my @pins = $t2->getPINsInGroup($name);
     die unless @pins;
     foreach my $pin (@pins) {
 	tryExport($pin,$name);
@@ -44,7 +46,7 @@ sub checkGroup {
 
 sub assessOurPins {
     
-    foreach my $n (getGroupStems()) {
+    foreach my $n ($t2->getGroupStems()) {
 	checkGroup("pinmux_${n}_default_pins");
 	checkGroup("pinmux_${n}_all_gpio_pins");
     }
