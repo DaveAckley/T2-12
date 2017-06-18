@@ -15,6 +15,17 @@ my %ITCDirs = (
     NE => 5
     );
 
+my %ITCPins = (
+    TR => [0, "out"],
+    TD => [1, "out"],
+    RR => [2, "in"],
+    RD => [3, "in"],
+    OQ => [4, "out"],
+    OG => [5, "out"],
+    IQ => [6, "in"],
+    IG => [7, "in"],
+    );
+
 my @groupStems = (
     "ET_ITC", "SE_ITC", "SW_ITC", "WT_ITC", "NW_ITC", "NE_ITC", 
     "spi_display"
@@ -117,6 +128,22 @@ sub getITCAbbrs {
     return @ITCpinAbbr;
 }
 
+sub getIODirFromAbbr {
+    my ($self,$pn) = @_;
+    my $pinf = $ITCPins{$pn};
+    die "Not an ITC pin abbr '$pn'" unless defined $pinf;
+    return $pinf->[1];
+}
+
+sub getPINFromITCAbbr {
+    my ($self,$dir,$pn) = @_;
+    my $pinf = $ITCPins{$pn};
+    die "Not an ITC pin abbr '$pn'" unless defined $pinf;
+    my $pidx = $pinf->[0];
+    my @pins = $self->getITCPins("${dir}_ITC");
+    die "bad dir '$dir'" unless scalar(@pins);
+    return $pins[$pidx];
+}
 
 sub getITCPins {
     my ($self, $ITC_stem) = @_;  # eg "ET_ITC"
@@ -218,13 +245,47 @@ sub unexportPINIfNeeded {
 
 sub getPINValue {
     my ($self,$linux) = @_;
+    return $self->readPINItem($linux,"value");
+}
+
+sub readPINItem {
+    my ($self,$linux,$item) = @_;
     $self->exportPINIfNeeded($linux);
     my $gpio = $self->getGPIONumFromPINNum($linux);
-    open(READER,"<","/sys/class/gpio/gpio$gpio/value") or die "open value $linux [$gpio]: $!";
+    my $path = "/sys/class/gpio/gpio$gpio/$item";
+    open(READER,"<",$path) or die "open value $linux [$path]: $!";
     my $val = <READER>;
     close(READER) or die "$!";
     chomp $val;
     return $val;
+}
+
+sub getPINInfo {
+    my ($self,$linux) = @_;
+    my $dir = $self->readPINItem($linux,"direction");
+    my $val = $self->readPINItem($linux,"value");
+    my $edge = $self->readPINItem($linux,"edge");
+    my $active_low = $self->readPINItem($linux,"active_low");
+    return "$dir/$val/$edge/$active_low";
+}
+
+
+sub setPINValue {
+    my ($self,$linux,$val) = @_;
+    $self->exportPINIfNeeded($linux);
+    my $gpio = $self->getGPIONumFromPINNum($linux);
+    open(READER,">","/sys/class/gpio/gpio$gpio/value") or die "open value $linux [$gpio]: $!";
+    print READER $val;
+    close(READER) or die "set value $val to /sys/class/gpio/gpio$gpio/value: $!";
+}
+
+sub setPINDirection {
+    my ($self,$linux,$dir) = @_; # $dir: in, out, high, low
+    $self->exportPINIfNeeded($linux);
+    my $gpio = $self->getGPIONumFromPINNum($linux);
+    open(READER,">","/sys/class/gpio/gpio$gpio/direction") or die "open direction $linux [$gpio]: $!";
+    print READER $dir;
+    close(READER) or die "set direction $dir to /sys/class/gpio/gpio$gpio/direction: $!";
 }
 
 1;
