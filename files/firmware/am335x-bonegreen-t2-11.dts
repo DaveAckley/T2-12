@@ -113,13 +113,13 @@
             pinctrl-single,pins = <
                0x19c (PIN_OUTPUT | MUX_MODE5)  // P9_28  PINS=103 GPIO=113 T2=ET_TXRDY pr1_pru0_pru_r30_3
                0x1a0 (PIN_OUTPUT | MUX_MODE5)  // P9_42B PINS=104 GPIO=114 T2=ET_TXDAT pr1_pru0_pru_r30_4
-               0x164 (PIN_INPUT  | MUX_MODE7)  // P9_42A PINS=89  GPIO=7   T2=RSRVINP2 (conflicts with ET_TXDAT, must be input)
                0x190 (PIN_INPUT  | MUX_MODE6)  // P9_31  PINS=100 GPIO=110 T2=ET_RXRDY pr1_pru0_pru_r31_0
                0x194 (PIN_INPUT  | MUX_MODE6)  // P9_29  PINS=101 GPIO=111 T2=ET_RXDAT pr1_pru0_pru_r31_1
                0x090 (PIN_OUTPUT | MUX_MODE7)  // P8_07  PINS=36  GPIO=66  T2=ET_ORQLK
                0x094 (PIN_OUTPUT | MUX_MODE7)  // P8_08  PINS=37  GPIO=67  T2=ET_OGRLK
                0x09c (PIN_INPUT  | MUX_MODE7)  // P8_09  PINS=39  GPIO=69  T2=ET_IRQLK
                0x098 (PIN_INPUT  | MUX_MODE7)  // P8_10  PINS=38  GPIO=68  T2=ET_IGRLK
+               0x164 (PIN_INPUT  | MUX_MODE7)  // P9_42A PINS=89  GPIO=7   T2=RSRVINP2 (shares pin with ET_TXDAT, must be input)
             >;
          };
 
@@ -128,13 +128,13 @@
             pinctrl-single,pins = <
                0x19c (PIN_OUTPUT | MUX_MODE7)  // P9_28  PINS=103 GPIO=113 T2=ET_TXRDY as gpio
                0x1a0 (PIN_OUTPUT | MUX_MODE7)  // P9_42B PINS=104 GPIO=114 T2=ET_TXDAT as gpio
-               0x164 (PIN_INPUT  | MUX_MODE7)  // P9_42A PINS=89  GPIO=7   T2=RSRVINP2 (shares pin with ET_TXDAT, must be input)
                0x190 (PIN_INPUT  | MUX_MODE7)  // P9_31  PINS=100 GPIO=110 T2=ET_RXRDY as gpio
                0x194 (PIN_INPUT  | MUX_MODE7)  // P9_29  PINS=101 GPIO=111 T2=ET_RXDAT as gpio
                0x090 (PIN_OUTPUT | MUX_MODE7)  // P8_07  PINS=36  GPIO=66  T2=ET_ORQLK
                0x094 (PIN_OUTPUT | MUX_MODE7)  // P8_08  PINS=37  GPIO=67  T2=ET_OGRLK
                0x09c (PIN_INPUT  | MUX_MODE7)  // P8_09  PINS=39  GPIO=69  T2=ET_IRQLK
                0x098 (PIN_INPUT  | MUX_MODE7)  // P8_10  PINS=38  GPIO=68  T2=ET_IGRLK
+               0x164 (PIN_INPUT  | MUX_MODE7)  // P9_42A PINS=89  GPIO=7   T2=RSRVINP2 (shares pin with ET_TXDAT, must be input)
             >;
          };
 
@@ -144,13 +144,13 @@
             pinctrl-single,pins = <
                0x1a4 (PIN_OUTPUT | MUX_MODE5)  // P9_27  PINS=105 GPIO=115 T2=SE_TXRDY pr1_pru0_pru_r30_5
                0x1a8 (PIN_OUTPUT | MUX_MODE5)  // P9_41B PINS=106 GPIO=116 T2=SE_TXDAT pr1_pru0_pru_r30_6
-               0x1b4 (PIN_INPUT  | MUX_MODE7)  // P9_41A PINS=109 GPIO=20  T2=RSRVINP1 (shares pin with SE_TXDAT, must be input)
                0x198 (PIN_INPUT  | MUX_MODE6)  // P9_30  PINS=102 GPIO=112 T2=SE_RXRDY pr1_pru0_pru_r31_2
                0x038 (PIN_INPUT  | MUX_MODE6)  // P8_16  PINS=43  GPIO=14  T2=SE_RXDAT pr1_pru0_pru_r31_14
                0x034 (PIN_OUTPUT | MUX_MODE7)  // P8_11  PINS=13  GPIO=45  T2=SE_ORQLK
                0x024 (PIN_OUTPUT | MUX_MODE7)  // P8_13  PINS=9   GPIO=23  T2=SE_OGRLK
                0x028 (PIN_INPUT  | MUX_MODE7)  // P8_14  PINS=10  GPIO=26  T2=SE_IRQLK
                0x02c (PIN_INPUT  | MUX_MODE7)  // P8_17  PINS=11  GPIO=27  T2=SE_IGRLK
+               0x1b4 (PIN_INPUT  | MUX_MODE7)  // P9_41A PINS=109 GPIO=20  T2=RSRVINP1 (shares pin with SE_TXDAT, must be input)
             >;
          };
 
@@ -159,13 +159,13 @@
             pinctrl-single,pins = <
                0x1a4 (PIN_OUTPUT | MUX_MODE7)  // P9_27  PINS=105 GPIO=115 T2=SE_TXRDY as gpio
                0x1a8 (PIN_OUTPUT | MUX_MODE7)  // P9_41B PINS=106 GPIO=116 T2=SE_TXDAT as gpio
-               0x1b4 (PIN_INPUT  | MUX_MODE7)  // P9_41A PINS=109 GPIO=20  T2=RSRVINP1 (shares pin with SE_TXDAT, must be input)
                0x198 (PIN_INPUT  | MUX_MODE7)  // P9_30  PINS=102 GPIO=112 T2=SE_RXRDY as gpio
                0x038 (PIN_INPUT  | MUX_MODE7)  // P8_16  PINS=43  GPIO=14  T2=SE_RXDAT as gpio
                0x034 (PIN_OUTPUT | MUX_MODE7)  // P8_11  PINS=13  GPIO=45  T2=SE_ORQLK
                0x024 (PIN_OUTPUT | MUX_MODE7)  // P8_13  PINS=9   GPIO=23  T2=SE_OGRLK
                0x028 (PIN_INPUT  | MUX_MODE7)  // P8_14  PINS=10  GPIO=26  T2=SE_IRQLK
                0x02c (PIN_INPUT  | MUX_MODE7)  // P8_17  PINS=11  GPIO=27  T2=SE_IGRLK
+               0x1b4 (PIN_INPUT  | MUX_MODE7)  // P9_41A PINS=109 GPIO=20  T2=RSRVINP1 (shares pin with SE_TXDAT, must be input)
             >;
          };
 
