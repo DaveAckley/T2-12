@@ -12,7 +12,7 @@ sub reportITC {
     die "No such ITC dir '$dir'"
 	unless defined $t2->getITCDirIndex($dir);
     my $itc = "${dir}_ITC";
-    my @etpins = $t2->getITCPins($itc);
+    my @etpins = $t2->getITCPINs($itc);
     print "$dir  ";
     foreach my $etp (@etpins) {
 	my $v = $t2->getPINValue($etp);

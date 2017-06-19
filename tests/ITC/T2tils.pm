@@ -15,6 +15,8 @@ my %ITCDirs = (
     NE => 5
     );
 
+my @ITCDirsByIndex = sort { $ITCDirs{$a} <=> $ITCDirs{$b} } keys %ITCDirs;
+
 my %ITCPins = (
     TR => [0, "out"],
     TD => [1, "out"],
@@ -25,6 +27,8 @@ my %ITCPins = (
     IQ => [6, "in"],
     IG => [7, "in"],
     );
+
+my @ITCPinsByIndex = sort { $ITCPins{$a}->[0] <=> $ITCPins{$b}->[0] } keys %ITCPins;
 
 my @groupStems = (
     "ET_ITC", "SE_ITC", "SW_ITC", "WT_ITC", "NW_ITC", "NE_ITC", 
@@ -120,6 +124,20 @@ sub getITCDirIndex {
     return $ITCDirs{$dir};
 }
 
+sub getITCDirFromIndex {
+    my ($self, $idx) = @_;
+    my $dir = $ITCDirsByIndex[$idx];
+    defined $dir or die "Bad ITC dir index '$idx'";
+    return $dir;
+}
+
+sub getOppositeITCDir {
+    my ($self, $dir) = @_;
+    my $idx = $self->getITCDirIndex($dir);
+    die unless defined $idx;
+    return $self->getITCDirFromIndex(($idx+3)%6);
+}
+
 sub getITCNames {
     return @ITCpinNames;
 }
@@ -140,12 +158,12 @@ sub getPINFromITCAbbr {
     my $pinf = $ITCPins{$pn};
     die "Not an ITC pin abbr '$pn'" unless defined $pinf;
     my $pidx = $pinf->[0];
-    my @pins = $self->getITCPins("${dir}_ITC");
+    my @pins = $self->getITCPINs("${dir}_ITC");
     die "bad dir '$dir'" unless scalar(@pins);
     return $pins[$pidx];
 }
 
-sub getITCPins {
+sub getITCPINs {
     my ($self, $ITC_stem) = @_;  # eg "ET_ITC"
     my $group = "pinmux_${ITC_stem}_all_gpio_pins";
     my @pins = $self->getPINsInGroup($group);
