@@ -306,4 +306,23 @@ sub setPINDirection {
     close(READER) or die "set direction $dir to /sys/class/gpio/gpio$gpio/direction: $!";
 }
 
+sub setITCMode {
+    my ($self,$itc,$mode) = @_;
+    die "Unrecognized mode '$mode'" unless $mode eq "default" or $mode eq "gpio";
+    die "Unrecognized itc '$itc'" unless defined $self->getITCDirIndex($itc);
+    open(HDL,">","/sys/devices/platform/ocp/ocp:helper$itc/state") or die "open set mode $itc: $!";
+    print HDL $mode;
+    close(HDL) or die "set mode '$mode' on /sys/devices/platform/ocp/ocp:helper$itc/state: $!";
+}
+
+sub getITCMode {
+    my ($self,$itc) = @_;
+    die "Unrecognized itc '$itc'" unless defined $self->getITCDirIndex($itc);
+    open(HDL,"<","/sys/devices/platform/ocp/ocp:helper$itc/state") or die "open read mode $itc: $!";
+    my $mode = <HDL>;
+    chomp $mode;
+    close(HDL) or die "read mode on /sys/devices/platform/ocp/ocp:helper$itc/state: $!";
+    return $mode;
+}
+
 1;

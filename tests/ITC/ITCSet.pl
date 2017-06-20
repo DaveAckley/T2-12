@@ -39,14 +39,64 @@ sub reportPinValue {
 	my $PIN = $t2->getPINFromITCAbbr($itcdir,$p);
 	die unless defined $PIN;
 	my $val = $t2->getPINValue($PIN);
-	print "${itcdir}_$p=$val\n";
+	print "${itcdir}_$p ($PIN)=$val\n";
     }
 }
 
 
+sub setITCOutput {
+    my ($itc, $fourbits) = @_;
+    my @abbrs = $t2->getITCAbbrs();
+    foreach my $abbr (@abbrs) {
+	if ($t2->getIODirFromAbbr($abbr) eq "out") {
+	    my $PIN = $t2->getPINFromITCAbbr($itc,$abbr);
+	    my $val = $fourbits&1;
+	    $fourbits >>= 1;
+#	    print "out $itc $abbr ($PIN)=$val\n";
+	    $t2->setPINValue($PIN,$val);
+	}
+    }
+}
+
+sub readITCInput {
+    my ($itc) = @_;
+    my $fourbits = 0;
+    my $count = 0;
+    my @abbrs = $t2->getITCAbbrs();
+    foreach my $abbr (@abbrs) {
+	if ($t2->getIODirFromAbbr($abbr) eq "in") {
+	    my $PIN = $t2->getPINFromITCAbbr($itc,$abbr);
+	    my $val = $t2->getPINValue($PIN);
+#	    print "in $itc $abbr ($PIN)=$val\n";
+	    if ($val) { $fourbits |= 1<<$count; }
+	    ++$count;
+	}
+    }
+    return $fourbits;
+}
+
 sub testSingleITCPair {
     my ($itc1,$itc2) = @_;
-    die "finish me ($itc1,$itc2)";
+    my ($oldmode1,$oldmode2) = ($t2->getITCMode($itc1),$t2->getITCMode($itc2));
+    $t2->setITCMode($itc1,"gpio") unless $oldmode1 eq "gpio";
+    $t2->setITCMode($itc2,"gpio") unless $oldmode2 eq "gpio";
+    my $failures = 0;
+    my $count = 0;
+    for (my $i = 0; $i <= 0xf; ++$i) {
+	my $j = 0xf - $i;
+	setITCOutput($itc1,$i);
+	++$count;
+	setITCOutput($itc2,$j);
+	++$count;
+	++$failures if readITCInput($itc2) != $i;
+	++$failures if readITCInput($itc1) != $j;
+    }
+    if ($failures > 0) {
+	print "$failures/$count failure between $itc1 and $itc2\n";
+    }
+    $t2->setITCMode($itc1,$oldmode1) unless $oldmode1 eq "gpio";
+    $t2->setITCMode($itc2,$oldmode2) unless $oldmode2 eq "gpio";
+    return $failures;
 }
 
 sub testConnectedITCs {
@@ -63,10 +113,11 @@ sub testConnectedITCs {
     }
 
     foreach my $i1 (@itc1s) {
-	if ($itc2 eq "") {
-	    $itc2 = $t2->getOppositeITCDir($i1);
+	my $i2 = $itc2;
+	if ($i2 eq "") {
+	    $i2 = $t2->getOppositeITCDir($i1);
 	}
-	testSingleITCPair($i1,$itc2);
+	testSingleITCPair($i1,$i2);
     }
 }
 
@@ -110,7 +161,7 @@ sub setPinValue {
     die unless defined $PIN;
     $t2->setPINValue($PIN,$val);
     my $v = $t2->getPINValue($PIN);
-    print "${itcdir}_$pn:$val\n";
+    print "${itcdir}_$pn ($PIN):$val\n";
 }
 
 sub setPinDirection {
