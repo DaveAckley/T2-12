@@ -69,6 +69,16 @@
 #endif
 
 	 // SPI DISPLAY SUPPORT VIA SPI0 HARDWARE
+         spi_display_hardware_pins: pinmux_spi_display_hardware_pins {   
+            pinctrl-single,pins = <
+	       0x150 (PIN_OUTPUT_PULLUP | MUX_MODE0) // P9_22  PINS=84  GPIO=2   T2=SPI0_SCLK
+	       0x154 (PIN_OUTPUT_PULLUP | MUX_MODE0) // P9_21  PINS=85  GPIO=3   T2=SPI0_D0
+	       0x158 (PIN_INPUT_PULLUP | MUX_MODE0)  // P9_18  PINS=86  GPIO=4   T2=SPI0_D1
+	       0x15c (PIN_OUTPUT_PULLUP | MUX_MODE0) // P9_17  PINS=87  GPIO=5   T2=SPI0_CS
+            >;
+         };
+
+	 // SPI DISPLAY SUPPORT VIA SPI0 HARDWARE
          spi_display_default_pins: pinmux_spi_display_default_pins {   
             pinctrl-single,pins = <
 	       0x070 (PIN_OUTPUT | MUX_MODE7)        // P9_11  PINS=28  GPIO=30  T2=DSP_PWRON
@@ -76,10 +86,10 @@
 	       0x040 (PIN_OUTPUT | MUX_MODE7)        // P9_15  PINS=16  GPIO=48  T2=DSP_DC
 	       0x17c (PIN_INPUT_PULLUP | MUX_MODE7)  // P9_19  PINS=95  GPIO=13  T2=TP_IRQ
 	       0x178 (PIN_OUTPUT | MUX_MODE7)        // P9_20  PINS=94  GPIO=12  T2=TP_CS
-	       0x15c (PIN_OUTPUT | MUX_MODE0)        // P9_17  PINS=87  GPIO=5   T2=SPI0_CS
-	       0x158 (PIN_INPUT_PULLUP | MUX_MODE0)  // P9_18  PINS=86  GPIO=4   T2=SPI0_D1
-	       0x154 (PIN_OUTPUT_PULLUP | MUX_MODE0) // P9_21  PINS=85  GPIO=3   T2=SPI0_D0
-	       0x150 (PIN_OUTPUT_PULLUP | MUX_MODE0) // P9_22  PINS=84  GPIO=2   T2=SPI0_SCLK
+	   //    0x15c (PIN_OUTPUT | MUX_MODE0)        // P9_17  PINS=87  GPIO=5   T2=SPI0_CS
+	   //    0x158 (PIN_INPUT_PULLUP | MUX_MODE0)  // P9_18  PINS=86  GPIO=4   T2=SPI0_D1
+	   //    0x154 (PIN_OUTPUT_PULLUP | MUX_MODE0) // P9_21  PINS=85  GPIO=3   T2=SPI0_D0
+	   //    0x150 (PIN_OUTPUT_PULLUP | MUX_MODE0) // P9_22  PINS=84  GPIO=2   T2=SPI0_SCLK
             >;
          };
 
@@ -362,8 +372,19 @@
 #endif
 
       /* ACKLEYHAX: Can I just 'overlay' on stuff defined in the dtsi?
-	 See /opt/source/dtb-4.4-ti/src/arm/am33xx.dtsi:601 */
+	 See /opt/source/dtb-4.4-ti/src/arm/am33xx.dtsi:601
+
+	 (Supposedly yes absolutely I can: See
+	 https://events.linuxfoundation.org/sites/events/files/slides/petazzoni-device-tree-dummies.pdf
+	 slide 17)
+      */
+
       spi0: spi@48030000 {
+
+        ti,pindir-d0-out-d1-in = <1>;  // We guessed wrong on D0/D1 so need to reverse meanings..
+	ti,spi-num-cs = <1>;           // We sort of have a second but are just trying to get things working
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi_display_hardware_pins>;
 	status = "okay";
 
 	spidev@0 {
@@ -386,6 +407,7 @@
 		status = "okay";
        };
 */
+/* Trying for actual SPI0 functioning..
         SPI_DISPLAY_helper: helperSPI {
 		compatible = "bone-pinmux-helper";
 		pinctrl-names = "default", "gpio";
@@ -393,7 +415,7 @@
 		pinctrl-1 = <&spi_display_all_gpio_pins>;
 		status = "okay";
        };
-
+*/
        ET_ITC_helper: helperET {
 		compatible = "bone-pinmux-helper";
 		pinctrl-names = "default", "gpio";
