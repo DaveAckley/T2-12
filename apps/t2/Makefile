@@ -1,4 +1,4 @@
-CMDS:=build install clean
+CMDS:=build install clean realclean
 $(CMDS):	FORCE
 
 build:
@@ -8,6 +8,8 @@ install:
 
 clean:	
 	rm -f *~
+
+realclean:	clean
 
 .PHONY:	FORCE
 
