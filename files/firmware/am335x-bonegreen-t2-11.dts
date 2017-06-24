@@ -78,8 +78,8 @@
 	       0x178 (PIN_OUTPUT | MUX_MODE7)        // P9_20  PINS=94  GPIO=12  T2=TP_CS
 	       0x15c (PIN_OUTPUT | MUX_MODE0)        // P9_17  PINS=87  GPIO=5   T2=SPI0_CS
 	       0x158 (PIN_INPUT_PULLUP | MUX_MODE0)  // P9_18  PINS=86  GPIO=4   T2=SPI0_D1
-	       0x154 (PIN_OUTPUT | MUX_MODE0)        // P9_21  PINS=85  GPIO=3   T2=SPI0_D0
-	       0x150 (PIN_OUTPUT | MUX_MODE0)        // P9_22  PINS=84  GPIO=2   T2=SPI0_SCLK
+	       0x154 (PIN_OUTPUT_PULLUP | MUX_MODE0) // P9_21  PINS=85  GPIO=3   T2=SPI0_D0
+	       0x150 (PIN_OUTPUT_PULLUP | MUX_MODE0) // P9_22  PINS=84  GPIO=2   T2=SPI0_SCLK
             >;
          };
 
@@ -360,6 +360,19 @@
          pinctrl-0 = <&pru_pru_pins>;
       };
 #endif
+
+      /* ACKLEYHAX: Can I just 'overlay' on stuff defined in the dtsi?
+	 See /opt/source/dtb-4.4-ti/src/arm/am33xx.dtsi:601 */
+      spi0: spi@48030000 {
+	status = "okay";
+
+	spidev@0 {
+	   spi-max-frequency = <24000000>;
+	   reg = <0>;
+	   compatible = "linux,spidev";
+        };
+      };
+
 
       /****************************************
        * activates the pinmux helper list of pin modes
