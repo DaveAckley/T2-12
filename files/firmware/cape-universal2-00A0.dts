@@ -2320,6 +2320,9 @@
             #address-cells = <1>;
             #size-cells = <0>;
 
+	    /* AHAX: We're d0ing 0utput on D0 and 1nput on D1 */
+            ti,pindir-d0-out-d1-in = <1>;
+
             status = "okay";
             pinctrl-names = "default";
             pinctrl-0 = <>; 
@@ -2327,6 +2330,7 @@
             spi0channel@0 {
                 #address-cells = <1>;
                 #size-cells = <0>;
+
 
                 compatible = "spidev";
 
