@@ -1,6 +1,8 @@
-SUBDIRS:=firmware boot etc
+SUBDIRS:=firmware boot etc opt
 
 all:	$(SUBDIRS)
+
+touch:	$(SUBDIRS)
 
 clean:	$(SUBDIRS)
 
@@ -11,5 +13,5 @@ install:	$(SUBDIRS)
 $(SUBDIRS):	FORCE
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
-.PHONY:	all clean realclean install FORCE
+.PHONY:	all touch clean realclean install FORCE
 

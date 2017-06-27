@@ -1,0 +1,5 @@
+# Configure SPI for the display
+P9_17 spi
+P9_18 spi
+P9_21 spi
+P9_22 spi
