@@ -11,6 +11,8 @@ endif
 
 all:	$(SUBDIRS) 
 
+touch:	$(SUBDIRS) 
+
 clean:	$(SUBDIRS)
 
 realclean:	clean $(SUBDIRS)
