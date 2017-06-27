@@ -1,7 +1,10 @@
-CMDS:=build install clean realclean
+CMDS:=build touch install clean realclean
 $(CMDS):	FORCE
 
 build:
+
+touch:
+	@echo '(touch target not yet implemented)'
 
 install: 
 	@echo '(install target not yet implemented)'
