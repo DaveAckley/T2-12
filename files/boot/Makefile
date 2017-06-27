@@ -1,16 +1,20 @@
 INPUT:=uEnv.txt
 OUTPUT:=/boot/uEnv.txt
 
-all:
+all:	FORCE
 	@ls -l $(INPUT)
 
-clean:
+touch:	FORCE
+	touch $(INPUT)
+
+clean:	FORCE
 	@rm -f *~
 
-realclean:	clean
-	touch $(INPUT)   # Don't want to remove $(OUTPUT), so fake-update $(INPUT)
+realclean:	clean touch
 
 install:	$(OUTPUT)
 
 $(OUTPUT):	$(INPUT)
 	cp $< $@  || (echo Must be root ; exit 2)
+
+.PHONY:	FORCE
