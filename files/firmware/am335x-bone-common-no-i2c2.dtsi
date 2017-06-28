@@ -242,7 +242,11 @@
 	};
 };
 
-/* T2: Leave i2c2 alive but with no pins..  what happens? */
+/* T2: Leave i2c2 alive but with no pins..  what happens?
+   Well, apparently:
+   (1) We get timeouts but not failures on each physical cape slot probe
+   (2) Otherwise things sort of work.  No more kernel oopses lately anyway
+ */
 &i2c2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c2_pins>;
@@ -290,6 +294,13 @@
 		};
 	};
 };
+
+&spi0 {
+        ti,pindir-d0-out-d1-in = <1>;  // We guessed wrong on D0/D1 so need to reverse meanings..
+//	ti,spi-num-cs = <1>;           // We sort of have a second but are just trying to get things working
+	status = "okay";
+      };
+
 
 /include/ "tps65217.dtsi"
 
