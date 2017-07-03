@@ -3,3 +3,19 @@ P9_17 spi
 P9_18 spi
 P9_21 spi
 P9_22 spi
+
+# DSP_RESET (gpio 31) output
+P9_13 high
+
+# DSP_DC (gpio 48) output
+P9_15 high
+
+# DSP_IRQ (gpio 13) input (config-pin thinks this is still i2c2_scl; won't configure it)
+# P9_19 in+
+# echo 13 > /sys/class/gpio/export 
+# echo in > /sys/class/gpio/gpio13/direction 
+
+# TP_CS (gpio 12) output (config-pin thinks this is still i2c2_sda; won't configure it)
+# P9_20 high
+# echo 12 > /sys/class/gpio/export
+# echo high > /sys/class/gpio/gpio12/direction

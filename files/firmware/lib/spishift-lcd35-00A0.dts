@@ -20,15 +20,16 @@
 
 	/* state the resources this cape uses */
 	exclusive-use =
-		/* the pin header uses */
-		"P9.22",	/* spi0_sclk */
-		"P9.18",	/* spi0_d1 MISO note we are using ti,pindir-d0-out-d1-in = <1> in spi0 */
-		"P9.21",	/* spi0_d0 MOSI note we are using ti,pindir-d0-out-d1-in = <1> in spi0 */
-		"P9.17",	/* spi0_cs0 */
-		"P9.20",	/* gpio0_12 (12) second cs for touch */
-		"P9.13",	/* gpio0_31 (31) display reset */
-		"P9.15",	/* gpio1_16 (48) display dc data/command */
-		"P9.19",	/* gpio0_13 (13) touch irq */
+  	        // The display does use all these things, but we let cape-universal2 own them
+		// /* the pin header uses */
+		// "P9.22",	/* spi0_sclk */
+		// "P9.18",	/* spi0_d1 MISO note we are using ti,pindir-d0-out-d1-in = <1> in spi0 */
+		// "P9.21",	/* spi0_d0 MOSI note we are using ti,pindir-d0-out-d1-in = <1> in spi0 */
+		// "P9.17",	/* spi0_cs0 */
+		// "P9.20",	/* gpio0_12 (12) second cs for touch */
+		// "P9.13",	/* gpio0_31 (31) display reset */
+		// "P9.15",	/* gpio1_16 (48) display dc data/command */
+		// "P9.19",	/* gpio0_13 (13) touch irq */
 		/* the hardware IP uses */
 		"gpio0_12",
 		"gpio0_13",
@@ -69,7 +70,7 @@
 			#size-cells = <0>;
 
 			lcd@0{
-				compatible = "flexfb,custom";
+				compatible = "flexfb,custom", "flexfb";
 				reg = <0>;
 
 				pinctrl-names = "default";
