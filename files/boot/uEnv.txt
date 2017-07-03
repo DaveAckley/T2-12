@@ -68,4 +68,3 @@ cmdline=coherent_pool=1M net.ifnames=0 cape_universal=enable
 ##enable Generic eMMC Flasher:
 ##make sure, these tools are installed: dosfstools rsync
 #cmdline=init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh
-
