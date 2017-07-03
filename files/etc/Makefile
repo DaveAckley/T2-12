@@ -1,24 +1,27 @@
-INPUT:=pruss-blacklist.conf
-OUTPUT:=/etc/modprobe.d/pruss-blacklist.conf
-INPUT2:=rc.local
-OUTPUT2:=/etc
+CONF_INPUTS:=pruss-blacklist.conf fbtft.conf
+CONF_OUTPUT_DIR:=/etc/modprobe.d
+CONF_OUTPUTS:=$(patsubst %,$(CONF_OUTPUT_DIR)/%,$(CONF_INPUTS))
+
+ETC_INPUTS:=rc.local
+ETC_DIR:=/etc
+ETC_OUTPUTS:=$(patsubst %,$(ETC_DIR)/%,$(ETC_INPUTS))
 
 
 all:
-	@ls -l $(INPUT) $(INPUT2)
+	@echo $(CONF_INPUTS) - $(CONF_OUTPUTS) // $(ETC_INPUTS) - $(ETC_OUTPUTS)
 
 touch:
-	touch $(INPUT) $(INPUT2)
+	touch  $(CONF_INPUTS) $(ETC_INPUTS)
 
 clean:
 	@rm -f *~
 
 realclean:	clean touch
 
-install:	$(OUTPUT) $(OUTPUT2)
+install:	$(CONF_OUTPUTS) $(ETC_OUTPUTS)
 
-$(OUTPUT):	$(INPUT)
-	cp $< $@  || (echo Must be root ; exit 2)
+$(CONF_OUTPUTS):	$(CONF_INPUTS)
+	cp $^ $(CONF_OUTPUT_DIR)  || (echo Must be root ; exit 2)
 
-$(OUTPUT2):	$(INPUT2)
-	cp $< $@  || (echo Must be root ; exit 2)
+$(ETC_OUTPUTS):	$(ETC_INPUTS)
+	cp $^ $(ETC_DIR)  || (echo Must be root ; exit 2)
