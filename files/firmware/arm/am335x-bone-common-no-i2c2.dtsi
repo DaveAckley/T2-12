@@ -298,6 +298,7 @@
 &spi0 {
         ti,pindir-d0-out-d1-in = <1>;  // We guessed wrong on D0/D1 so need to reverse meanings..
 //	ti,spi-num-cs = <1>;           // We sort of have a second but are just trying to get things working
+	cs-gpios = <0>, <&gpio0 12 0>;  // First chip select is native, second is gpio0_12
 	status = "okay";
       };
 
