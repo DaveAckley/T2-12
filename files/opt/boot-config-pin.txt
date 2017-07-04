@@ -1,14 +1,18 @@
+## Nothing actually left to do here at present, since all the
+## non-gpios are finally being set up by the DT, but keeping this in
+## place anyway, for the past and the future.
+
 # Configure SPI for the display
-P9_17 spi
-P9_18 spi
-P9_21 spi
-P9_22 spi
+# P9_17 spi
+# P9_18 spi
+# P9_21 spi
+# P9_22 spi
 
 # DSP_RESET (gpio 31) output
-P9_13 high
+# P9_13 high
 
 # DSP_DC (gpio 48) output
-P9_15 high
+# P9_15 high
 
 # DSP_IRQ (gpio 13) input (config-pin thinks this is still i2c2_scl; won't configure it)
 # P9_19 in+

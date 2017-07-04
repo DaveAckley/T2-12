@@ -50,6 +50,7 @@
 					0x040 0x17	/* P9.15 DSP_DC gpio1_16 gpio48 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
 					0x074 0x17	/* P9.13 DSP_RESET gpio0_31 gpio31 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
 					0x17c 0x37	/* P9.19 TP_IRQ gpio0_13 gpio13 (PIN_INPUT_PULLUP  | MUX_MODE7) */
+					0x178 0x17      /* P9.20 TP_CS gpio0_12 gpio12 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
 				>;
 			};
 		};
@@ -62,6 +63,7 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 
+			ti,pindir-d0-out-d1-in = <1>;
 			waveshare35b: waveshare35b@0 {
 				compatible = "ilitek,ili9486";
 				reg = <0>;
@@ -100,7 +102,7 @@
 				reg = <1>;
 
 				spi-max-frequency = <2000000>;
-				interrupts = <17 2>; /* high-to-low edge triggered */
+				interrupts = <13 2>; /* high-to-low edge triggered */
 				interrupt-parent = <&gpio0>;
 				pendown-gpio = <&gpio0 13 0>;
 				ti,x-plate-ohms = /bits/ 16 <60>;
