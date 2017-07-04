@@ -63,6 +63,16 @@
 };
 
 &am33xx_pinmux {
+	spi0_pins: spi0_pins {
+		pinctrl-single,pins = <
+		        0x150 0x10      /* P9.22 spi0_sclk (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+			0x158 0x30      /* P9.18 spi0_d1 (input) (PIN_INPUT_PULLUP | MUX_MODE0) */
+			0x154 0x10      /* P9.21 spi0_d0 (output) (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+			0x15c 0x10      /* P9.17 spi0_cs0 (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+			0x178 0x17      /* P9.20 TP_CS gpio0_12 gpio12 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
+		>;
+	};
+
 	user_leds_default: user_leds_default {
 		pinctrl-single,pins = <
 			AM33XX_IOPAD(0x854, PIN_OUTPUT_PULLDOWN | MUX_MODE7)	/* gpmc_a5.gpio1_21 */
@@ -264,6 +274,7 @@
 		};
 	};
 
+/* T2: What if we ditch most or all of these cape_eeprom decls?  Speed up boot?
 	cape_eeprom1: cape_eeprom1@55 {
 		compatible = "at,24c256";
 		reg = <0x55>;
@@ -293,9 +304,13 @@
 			reg = <0 0x100>;
 		};
 	};
+*/
 };
 
 &spi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_pins>;
+
         ti,pindir-d0-out-d1-in = <1>;  // We guessed wrong on D0/D1 so need to reverse meanings..
 	ti,spi-num-cs = <2>;           // But the second one is a gpio...?
 	cs-gpios = <0>, <&gpio0 12 0>;  // First chip select is native, second is gpio0_12
@@ -430,9 +445,11 @@
 		compatible = "ti,bone-capemgr";
 		status = "okay";
 
-		nvmem-cells = <&baseboard_data &cape0_data &cape1_data &cape2_data &cape3_data>;
-		nvmem-cell-names = "baseboard", "slot0", "slot1", "slot2", "slot3";
-		#slots = <4>;
+//T2 HAX		nvmem-cells = <&baseboard_data &cape0_data &cape1_data &cape2_data &cape3_data>;
+//T2 HAX		nvmem-cell-names = "baseboard", "slot0", "slot1", "slot2", "slot3";
+		nvmem-cells = <&baseboard_data &cape0_data>;
+		nvmem-cell-names = "baseboard", "slot0";
+		#slots = <1>;
 
 		/* map board revisions to compatible definitions */
 		baseboardmaps {
