@@ -95,8 +95,8 @@
         "P9.16",
 /* T2 configuring SPI0 separately        "P9.17", */
 /* T2 configuring SPI0 separately        "P9.18", */
-        "P9.19",    /* Yes, T2 needs even this: I2C     */
-        "P9.20",    /* Yes, T2 needs even this: I2C     */
+/* T2 configuring TP_IRQ separately      "P9.19",     Yes, T2 needs even this: I2C     */
+/* T2 configuring TP_CS separately       "P9.20",    Yes, T2 needs even this: I2C     */
 /* T2 configuring SPI0 separately        "P9.21", */
 /* T2 configuring SPI0 separately        "P9.22", */
         "P9.23",
@@ -1563,25 +1563,27 @@
             // };
 
             // I2C Pins reclaimed for T2
-            P9_19_pinmux {
-                compatible = "bone-pinmux-helper";
-                status = "okay";
-                pinctrl-names = "default", "gpio", "gpio_pu", "gpio_pd";
-                pinctrl-0 = <&P9_19_default_pin>;
-                pinctrl-1 = <&P9_19_gpio_pin>;
-                pinctrl-2 = <&P9_19_gpio_pu_pin>;
-                pinctrl-3 = <&P9_19_gpio_pd_pin>;
-            };
+	    // but T2 configuring them separately
+            // P9_19_pinmux {
+            //     compatible = "bone-pinmux-helper";
+            //     status = "okay";
+            //     pinctrl-names = "default", "gpio", "gpio_pu", "gpio_pd";
+            //     pinctrl-0 = <&P9_19_default_pin>;
+            //     pinctrl-1 = <&P9_19_gpio_pin>;
+            //     pinctrl-2 = <&P9_19_gpio_pu_pin>;
+            //     pinctrl-3 = <&P9_19_gpio_pd_pin>;
+            // };
 
-            P9_20_pinmux {
-                compatible = "bone-pinmux-helper";
-                status = "okay";
-                pinctrl-names = "default", "gpio", "gpio_pu", "gpio_pd";
-                pinctrl-0 = <&P9_20_default_pin>;
-                pinctrl-1 = <&P9_20_gpio_pin>;
-                pinctrl-2 = <&P9_20_gpio_pu_pin>;
-                pinctrl-3 = <&P9_20_gpio_pd_pin>;
-            };
+	    // but T2 configuring them separately
+            // P9_20_pinmux {
+            //     compatible = "bone-pinmux-helper";
+            //     status = "okay";
+            //     pinctrl-names = "default", "gpio", "gpio_pu", "gpio_pd";
+            //     pinctrl-0 = <&P9_20_default_pin>;
+            //     pinctrl-1 = <&P9_20_gpio_pin>;
+            //     pinctrl-2 = <&P9_20_gpio_pu_pin>;
+            //     pinctrl-3 = <&P9_20_gpio_pd_pin>;
+            // };
 
 	    // T2 configuring spi0 separately
             // P9_21_pinmux {
@@ -2064,20 +2066,20 @@
                 // };
 
 		// No longer an i2c2 pin
-                P9_19 {
-                    gpio-name = "P9_19";
-                    gpio = <&gpio0 13 0>;
-                    input;
-                    dir-changeable;
-                };
+                // P9_19 {
+                //     gpio-name = "P9_19";
+                //     gpio = <&gpio0 13 0>;
+                //     input;
+                //     dir-changeable;
+                // };
 
 		// No longer an i2c2 pin	
-                P9_20 {
-                    gpio-name = "P9_20";
-                    gpio = <&gpio0 12 0>;
-                    input;
-                    dir-changeable;
-                };
+                // P9_20 {
+                //     gpio-name = "P9_20";
+                //     gpio = <&gpio0 12 0>;
+                //     input;
+                //     dir-changeable;
+                // };
 		// T2
                 // P9_21 {
                 //     gpio-name = "P9_21";
