@@ -2022,42 +2022,46 @@
                     input;
                     dir-changeable;
                 };
-                P9_13 {
-                    gpio-name = "P9_13";
-                    gpio = <&gpio0 31 0>;
-                    input;
-                    dir-changeable;
-                };
+		// T2
+                // P9_13 {
+                //     gpio-name = "P9_13";
+                //     gpio = <&gpio0 31 0>;
+                //     input;
+                //     dir-changeable;
+                // };
                 P9_14 {
                     gpio-name = "P9_14";
                     gpio = <&gpio1 18 0>;
                     input;
                     dir-changeable;
                 };
-                P9_15 {
-                    gpio-name = "P9_15";
-                    gpio = <&gpio1 16 0>;
-                    input;
-                    dir-changeable;
-                };
+		// T2
+                // P9_15 {
+                //     gpio-name = "P9_15";
+                //     gpio = <&gpio1 16 0>;
+                //     input;
+                //     dir-changeable;
+                // };
                 P9_16 {
                     gpio-name = "P9_16";
                     gpio = <&gpio1 19 0>;
                     input;
                     dir-changeable;
                 };
-                P9_17 {
-                    gpio-name = "P9_17";
-                    gpio = <&gpio0 5 0>;
-                    input;
-                    dir-changeable;
-                };
-                P9_18 {
-                    gpio-name = "P9_18";
-                    gpio = <&gpio0 4 0>;
-                    input;
-                    dir-changeable;
-                };
+		// T2
+                // P9_17 {
+                //     gpio-name = "P9_17";
+                //     gpio = <&gpio0 5 0>;
+                //     input;
+                //     dir-changeable;
+                // };
+		// T2
+                // P9_18 {
+                //     gpio-name = "P9_18";
+                //     gpio = <&gpio0 4 0>;
+                //     input;
+                //     dir-changeable;
+                // };
 
 		// No longer an i2c2 pin
                 P9_19 {
@@ -2074,19 +2078,20 @@
                     input;
                     dir-changeable;
                 };
-
-                P9_21 {
-                    gpio-name = "P9_21";
-                    gpio = <&gpio0 3 0>;
-                    input;
-                    dir-changeable;
-                };
-                P9_22 {
-                    gpio-name = "P9_22";
-                    gpio = <&gpio0 2 0>;
-                    input;
-                    dir-changeable;
-                };
+		// T2
+                // P9_21 {
+                //     gpio-name = "P9_21";
+                //     gpio = <&gpio0 3 0>;
+                //     input;
+                //     dir-changeable;
+                // };
+		// T2
+                // P9_22 {
+                //     gpio-name = "P9_22";
+                //     gpio = <&gpio0 2 0>;
+                //     input;
+                //     dir-changeable;
+                // };
                 P9_23 {
                     gpio-name = "P9_23";
                     gpio = <&gpio1 17 0>;
