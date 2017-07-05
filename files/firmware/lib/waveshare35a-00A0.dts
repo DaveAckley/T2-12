@@ -72,11 +72,11 @@
 				compatible = "ilitek,ili9486";
 				reg = <0>;
 
-				spi-max-frequency = <15000000>;
+				spi-max-frequency = <32000000>;
 				txbuflen = <32768>;
 				rotate = <90>;
 				bgr = <0>;
-				fps = <20>;
+				fps = <24>;
 				buswidth = <8>;
 				regwidth = <16>;
 				reset-gpios = <&gpio0 31 0>;

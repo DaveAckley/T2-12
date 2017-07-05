@@ -72,7 +72,7 @@
 				compatible = "ilitek,ili9486";
 				reg = <0>;
 
-				spi-max-frequency = <8000000>;
+				spi-max-frequency = <32000000>;
 				txbuflen = <32768>;
 				rotate = <90>;
 				bgr = <0>;
