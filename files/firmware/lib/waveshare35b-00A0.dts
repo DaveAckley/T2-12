@@ -36,15 +36,15 @@
 	fragment@1 {
 		target = <&am33xx_pinmux>;
 		__overlay__ {
-			// waveshare35b_pins: waveshare35b_pins {
-			// 	pinctrl-single,pins = <
-			// 	        0x150 0x10      /* P9.22 spi0_sclk (PIN_OUTPUT_PULLUP | MUX_MODE0) */
-			// 		0x158 0x30      /* P9.18 spi0_d1 (input) (PIN_INPUT_PULLUP | MUX_MODE0) */
-			// 		0x154 0x10      /* P9.21 spi0_d0 (output) (PIN_OUTPUT_PULLUP | MUX_MODE0) */
-			// 		0x15c 0x10      /* P9.17 spi0_cs0 (PIN_OUTPUT_PULLUP | MUX_MODE0) */
-			//		0x178 0x17      /* P9.20 TP_CS gpio0_12 gpio12 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
-			// 	>;
-			// };
+			waveshare35b_pins: waveshare35b_pins {
+				pinctrl-single,pins = <
+				        0x150 0x10      /* P9.22 spi0_sclk (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+					0x158 0x30      /* P9.18 spi0_d1 (input) (PIN_INPUT_PULLUP | MUX_MODE0) */
+					0x154 0x10      /* P9.21 spi0_d0 (output) (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+					0x15c 0x10      /* P9.17 spi0_cs0 (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+					0x178 0x17      /* P9.20 TP_CS gpio0_12 gpio12 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
+				>;
+			};
 
 			lcd_ctrl_pins: lcd_ctrl_pins {
 				pinctrl-single,pins = <
@@ -66,17 +66,17 @@
 			ti,pindir-d0-out-d1-in = <1>;
 
 			pinctrl-names = "default";
-			pinctrl-0 = <&lcd_ctrl_pins>;
+			pinctrl-0 = <&waveshare35b_pins &lcd_ctrl_pins>;
 
 			waveshare35b: waveshare35b@0 {
 				compatible = "ilitek,ili9486";
 				reg = <0>;
 
-				spi-max-frequency = <15000000>;
+				spi-max-frequency = <8000000>;
 				txbuflen = <32768>;
 				rotate = <90>;
 				bgr = <0>;
-				fps = <30>;
+				fps = <20>;
 				buswidth = <8>;
 				regwidth = <16>;
 				reset-gpios = <&gpio0 31 0>;
