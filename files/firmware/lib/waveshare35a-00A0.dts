@@ -38,19 +38,19 @@
 		__overlay__ {
 			waveshare35a_pins: waveshare35a_pins {
 				pinctrl-single,pins = <
-				        0x150 0x10      /* P9.22 spi0_sclk (PIN_OUTPUT_PULLUP | MUX_MODE0) */
-					0x158 0x30      /* P9.18 spi0_d1 (input) (PIN_INPUT_PULLUP | MUX_MODE0) */
-					0x154 0x10      /* P9.21 spi0_d0 (output) (PIN_OUTPUT_PULLUP | MUX_MODE0) */
-					0x15c 0x10      /* P9.17 spi0_cs0 (PIN_OUTPUT_PULLUP | MUX_MODE0) */
-					0x178 0x17      /* P9.20 TP_CS gpio0_12 gpio12 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
+//				        0x150 0x10      /* P9.22 spi0_sclk (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+//					0x158 0x30      /* P9.18 spi0_d1 (input) (PIN_INPUT_PULLUP | MUX_MODE0) */
+//					0x154 0x10      /* P9.21 spi0_d0 (output) (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+//					0x15c 0x10      /* P9.17 spi0_cs0 (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+//					0x178 0x17      /* P9.20 TP_CS gpio0_12 gpio12 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
 				>;
 			};
 
 			lcd_ctrl_pins: lcd_ctrl_pins {
 				pinctrl-single,pins = <
-					0x040 0x17	/* P9.15 DSP_DC gpio1_16 gpio48 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
-					0x074 0x17	/* P9.13 DSP_RESET gpio0_31 gpio31 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
-					0x17c 0x37	/* P9.19 TP_IRQ gpio0_13 gpio13 (PIN_INPUT_PULLUP  | MUX_MODE7) */
+//					0x040 0x17	/* P9.15 DSP_DC gpio1_16 gpio48 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
+//					0x074 0x17	/* P9.13 DSP_RESET gpio0_31 gpio31 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
+//					0x17c 0x37	/* P9.19 TP_IRQ gpio0_13 gpio13 (PIN_INPUT_PULLUP  | MUX_MODE7) */
 				>;
 			};
 		};
@@ -65,18 +65,18 @@
 
 			ti,pindir-d0-out-d1-in = <1>; /* T2 uses d0 as out and d1 as in */
 
-			pinctrl-names = "default";
-			pinctrl-0 = <&waveshare35a_pins &lcd_ctrl_pins>;
+//			pinctrl-names = "default";
+//			pinctrl-0 = <&waveshare35a_pins &lcd_ctrl_pins>;
 
 			waveshare35a: waveshare35a@0 {
 				compatible = "ilitek,ili9486";
 				reg = <0>;
 
-				spi-max-frequency = <32000000>;
+				spi-max-frequency = <32320000>;
 				txbuflen = <32768>;
 				rotate = <90>;
 				bgr = <0>;
-				fps = <24>;
+				fps = <15>;
 				buswidth = <8>;
 				regwidth = <16>;
 				reset-gpios = <&gpio0 31 0>;
