@@ -1,3 +1,7 @@
+##########
+##########
+## SPI Display section
+## 
 ## Nothing actually left to do here at present, since all the
 ## non-gpios are finally being set up by the DT, but keeping this in
 ## place anyway, for the past and the future.
@@ -23,3 +27,11 @@
 # P9_20 high
 # echo 12 > /sys/class/gpio/export
 # echo high > /sys/class/gpio/gpio12/direction
+
+##########
+##########
+## ITC section
+## 
+## Setting up PRU pins and GPIOs for the intertile connectors
+
+P9_28 pruout
