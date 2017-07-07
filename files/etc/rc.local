@@ -24,6 +24,8 @@ config-pin -f /opt/scripts/t2/boot-config-pin.txt
 # test -d /sys/class/gpio/gpio12 || echo 12 > /sys/class/gpio/export
 # echo high > /sys/class/gpio/gpio12/direction
 
+echo waveshare35a > /sys/devices/platform/bone_capemgr/slots
+sleep 2
 logger T2 FINAL BOOT CONFIG FINISHED
 
 exit 0
