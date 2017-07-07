@@ -1,4 +1,4 @@
-SUBDIRS:=firmware boot etc opt
+SUBDIRS:=firmware boot etc opt usr
 
 all:	$(SUBDIRS)
 
