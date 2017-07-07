@@ -65,7 +65,46 @@
 &am33xx_pinmux {
 	spi0_pins: spi0_pins {
 		pinctrl-single,pins = <
-		        0x150 0x10      /* P9.22 spi0_sclk (PIN_OUTPUT_PULLUP | MUX_MODE0) */
+
+		        /* 201707070350 ACKLEYHAX.  Now, you may be wondering, in the following line
+  		           (the one after this comment, the one beginning with 0x150 0x30): Why on
+  		           earth should a SPI _master_ define its SPI clock to be an _input_?
+
+			   Why oh why oh why?  The very definition of a SPI _master_ is: IT'S THE THING
+  		           THAT OUTPUTS THE CLOCK!  Of course the SPI master clock must be an output.
+
+			   But oh no.  It's not that simple.  No no no no no.  So I get to have lost
+			   easily a day, if not two, learning how things are just so deliciously
+			   'different' in the amazing land of TI's McSPI module.  So 'special'!
+
+			   What is the key?  How would one know to make the SPI _master_ clock pin be
+			   an _input_?  Why, it's on Page 4885 of the reference manual (spruh73p.pdf),
+			   of course.
+
+			   What, you didn't read that?  Go look at that page now!  OK, you _still_
+			   don't see it?  Well, don't you see the FOOTNOTE to Table 24-4?  Yes, the
+			   footnote attached to the SPIx_SCLK pin description, that says:
+ 
+                                 (1) This output signal is also used as a re-timing input. The
+                                    associated CONF_<module>_<pin>_RXACTIVE bit for the output clock
+                                    must be set to 1 to enable the clock input back to the module.
+
+                           Get it?  No?  Then congratulations!  You are as stupid as me!
+
+			   What that footnote means is: IF YOU SET THE SPI MASTER SCLK TO BE AN OUTPUT
+			   -- YOU BLIND FOOL! -- THEN EVERYTHING WILL WORK ABSOLUTELY BEAUTIFULLY ON
+			   TRANSMIT, BUT ON RECEIVE YOU WILL SILENTLY GET ALL 0's FOREVER AND EVER NO
+			   MATTER WHAT THE HELL YOU TRY UNTIL YOU HAVE NO HAIR AMEN.
+
+			   The clue that allowed me to save a little bit of hair was at:
+			   https://groups.google.com/forum/?_escaped_fragment_=topic/beagleboard/xytp7UXXRAM#!topic/beagleboard/xytp7UXXRAM
+			   in a discussion called 'Re: MCSPI TX works fine, but RX all zeros'
+
+			   Thanks to ksuzuk...@gmail.com.    
+
+			   My god.  Don't you just love hardware.
+			*/
+		        0x150 0x30      /* P9.22 spi0_sclk (PIN_INPUT_PULLUP | MUX_MODE0) WHY INPUT??? */
 			0x158 0x30      /* P9.18 spi0_d1 (input) (PIN_INPUT_PULLUP | MUX_MODE0) */
 			0x154 0x10      /* P9.21 spi0_d0 (output) (PIN_OUTPUT_PULLUP | MUX_MODE0) */
 			0x15c 0x10      /* P9.17 spi0_cs0 (PIN_OUTPUT_PULLUP | MUX_MODE0) */
