@@ -74,7 +74,7 @@
 
 				spi-max-frequency = <32320000>;
 				txbuflen = <32768>;
-				rotate = <90>;
+				rotate = <270>;
 				bgr = <0>;
 				fps = <15>;
 				buswidth = <8>;
