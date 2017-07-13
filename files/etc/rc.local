@@ -12,20 +12,19 @@
 # Run final configurations for the pins
 
 logger STARTING T2 FINAL BOOT CONFIG
-sleep 1
-config-pin overlay cape-universal2
-sleep 2
+
+logger T2 FINAL BOOT CONFIG: cape-universal2
+echo cape-universal2 > /sys/devices/platform/bone_capemgr/slots
+sleep 4
+
+logger T2 FINAL BOOT CONFIG: boot-config-pin
 config-pin -f /opt/scripts/t2/boot-config-pin.txt
+sleep 4
 
-# logger T2 configuring P9_19
-# test -d /sys/class/gpio/gpio13 || echo 13 > /sys/class/gpio/export 
-# echo in > /sys/class/gpio/gpio13/direction 
-# logger T2 configuring P9_20
-# test -d /sys/class/gpio/gpio12 || echo 12 > /sys/class/gpio/export
-# echo high > /sys/class/gpio/gpio12/direction
-
+logger T2 FINAL BOOT CONFIG: waveshare35a
 echo waveshare35a > /sys/devices/platform/bone_capemgr/slots
-sleep 2
+sleep 4
+
 logger T2 FINAL BOOT CONFIG FINISHED
 
 exit 0
