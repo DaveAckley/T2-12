@@ -1,4 +1,6 @@
-SUBDIRS:=firmware boot etc opt usr
+#Trying to avoid X11..
+#SUBDIRS:=firmware boot etc opt usr
+SUBDIRS:=firmware boot etc opt 
 
 all:	$(SUBDIRS)
 
