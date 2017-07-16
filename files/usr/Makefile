@@ -16,4 +16,7 @@ realclean:	clean touch
 install:	$(USR_XORG_OUTPUTS)
 
 $(USR_XORG_OUTPUTS):	$(USR_XORG_INPUTS)
-	cp $^ $(USR_XORG_DIR)  || (echo Must be root ; exit 2)
+	if test -d $(USR_XORG_DIR) ; then \
+	cp $^ $(USR_XORG_DIR)  || (echo Must be root ; exit 2) \
+	fi
+
