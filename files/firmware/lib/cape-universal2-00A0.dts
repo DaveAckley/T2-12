@@ -150,8 +150,9 @@
         "i2c1",
         "spi1",
 // CONFIGURING SEPARATELY FOR NOW        "spi0",
-        "dcan0",
-        "dcan1",
+// AAAND, DON'T WANT CAN
+//        "dcan0",
+//        "dcan1",
 
         "pru0",
         "pru1",
@@ -2412,7 +2413,7 @@
     fragment@33 {
         target = <&dcan0>;
         __overlay__ {
-            status = "okay";
+            status = "disabled";
             pinctrl-names = "default";
             pinctrl-0 = <>;
         };
@@ -2421,7 +2422,7 @@
     fragment@34 {
         target = <&dcan1>;
         __overlay__ {
-            status = "okay";
+            status = "disabled";
             pinctrl-names = "default";
             pinctrl-0 = <>;
         };
