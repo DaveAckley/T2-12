@@ -56,3 +56,6 @@ dkms.conf
 
 # AHAX holdouts
 *-hold
+
+# Flag files
+.flagfile_*
