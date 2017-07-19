@@ -1,0 +1,10 @@
+[Unit]
+Description=Final boot-time T2 hardware setup
+After=generic-board-startup.service
+
+[Service]
+Type=simple
+ExecStart=/opt/scripts/t2/t2-startup.sh
+
+[Install]
+WantedBy=multi-user.target
