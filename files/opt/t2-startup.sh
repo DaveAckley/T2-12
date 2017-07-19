@@ -16,6 +16,8 @@ logger T2 FINAL BOOT CONFIG: waveshare35a
 echo waveshare35a > /sys/devices/platform/bone_capemgr/slots
 sleep 2
 
+fbi -d /dev/fb0 -T 1 -noverbose -a /opt/scripts/t2/t2-splash.png
+
 logger T2 FINAL BOOT CONFIG FINISHED
 
 exit 0
