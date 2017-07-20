@@ -26,8 +26,8 @@ $(APP_NAME):	$(OBJS)
 touch:	FORCE
 	touch $(SRCS)
 
-install: 
-	@echo '(install target not yet implemented)'
+install: $(APP_NAME)
+	cp $< /opt/scripts/t2 || (echo must be root ; exit 2)
 
 clean:	
 	rm -f *~

@@ -1,0 +1,9 @@
+[Unit]
+Description=T2 splash screen
+After=t2-startup.service
+
+[Service]
+ExecStart=/opt/scripts/t2/t2-splash.sh
+
+[Install]
+WantedBy=multi-user.target

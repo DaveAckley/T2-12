@@ -16,10 +16,8 @@ int main(int argc, char **argv)
     }
   }
 
-  SDL_Surface* screen = 0;
-
   {
-    unsigned int flags = SDL_INIT_TIMER|SDL_INIT_VIDEO;
+    unsigned int flags = SDL_INIT_TIMER|SDL_INIT_VIDEO|SDL_INIT_NOPARACHUTE;
     int ret = SDL_Init(flags);
     if (ret) {
       fprintf(stderr,"SDL_Init(0x%x) failed: %s\n",
@@ -28,6 +26,8 @@ int main(int argc, char **argv)
       return 1;
     }
   }
+
+  SDL_Surface* screen = 0;
 
   unsigned int swidth = WIDTH;
   unsigned int sheight = HEIGHT;
@@ -72,8 +72,10 @@ int main(int argc, char **argv)
     SDL_Rect rcdest = { 0, 0, 0, 0 };
     SDL_BlitSurface(imgsurf, 0, screen, &rcdest);
     SDL_UpdateRect(screen, 0, 0, swidth, sheight);
-    SDL_Delay(2000);
+    while ( 1 ) 
+      SDL_Delay(1000);
   }
+
 
   {
     SDL_FreeSurface(imgsurf);
