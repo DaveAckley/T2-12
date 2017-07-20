@@ -1,5 +1,6 @@
 PACKAGES+=emacs-nox
 PACKAGES+=fbi
+PACKAGES+=inotify-tools
 PACKAGES+=git g++
 PACKAGES+=libsdl1.2-dev libsdl-image1.2-dev libsdl-ttf2.0-dev
 PACKAGES+=libcrypt-openssl-bignum-perl libcrypt-openssl-rsa-perl libcapture-tiny-perl
@@ -16,7 +17,7 @@ install:	build
 	  echo "NOTE: '$(FLAG_FILE)' detected; installation skipped" ; \
 	else \
 	  ping -c 1 -n google.com || (echo Need net to install packages) ; \
-	  apt-get install $(PACKAGES) ; \
+	  apt-get -y install $(PACKAGES) ; \
 	  touch $(FLAG_FILE) ; \
 	fi
 
