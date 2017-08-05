@@ -87,9 +87,9 @@
 /*      "P9.8",     SYS_5V  */
 /*      "P9.9",     PWR_BUT */
 /*      "P9.10",    RESETn  */
-        "P9.11",
+        "P9.11",    /* T2: DSP_PWRON */
         "P9.12",
-/* T2 configuring DSP_RESET separately        "P9.13", */
+        "P9.13",    /* T2: DSP_WAKE */
         "P9.14",
 /* T2 configuring DSP_DC separately         "P9.15", */
         "P9.16",
