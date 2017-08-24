@@ -25,7 +25,7 @@ $(OUTPUT_DIR):	$(INPUTS)
 	mkdir -p $(OUTPUT_DIR) || (echo Must be root ; exit 2)
 	cp $^ $@ || (echo Must be root ; exit 2)
 
-$(SPLASH_PNG_OUT):	$(SPLASH_PNG_IN) 
+$(SPLASH_PNG_OUT):	$(SPLASH_PNG_IN) $(OUTPUT_DIR)
 	cp $< $@ || (echo Must be root ; exit 2)
 
 $(SERVICE_DIR)/%:	%
