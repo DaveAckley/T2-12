@@ -1,4 +1,5 @@
-SUBDIRS:=files apps
+# 'apps' must install before 'files'
+SUBDIRS:=apps files
 HOSTNAME:=$(shell uname -n)
 HOSTMACH:=$(shell uname -m)
 ON_TILE:=
