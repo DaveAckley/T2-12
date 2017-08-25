@@ -9,7 +9,7 @@ touch:	FORCE
 	touch $(OVERLAY_FILES)
 
 %.dtbo:	%.dts 
-	/usr/bin/dtc $< -o $@
+	/usr/bin/dtc -W no-unit_address_vs_reg $< -o $@
 
 $(INSTALL_DIR)/%.dtbo:	%.dtbo
 	cp $^ $@ || (echo Must be root ; exit 2)
