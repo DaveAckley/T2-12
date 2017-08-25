@@ -1,6 +1,7 @@
 INPUTS:=boot-config-pin.txt t2-startup.sh t2-splash.sh
 OUTPUT_DIR:=/opt/scripts/t2
 OUTPUT_FILE:=$(OUTPUT_DIR)/
+OUTPUTS:=$(patsubst %,$(OUTPUT_DIR)/%,$(INPUTS))
 SERVICE_FILES:=$(wildcard *.service)
 SERVICE_DIR:=/lib/systemd/system
 SERVICE_OUTPUTS:=$(patsubst %,$(SERVICE_DIR)/%,$(SERVICE_FILES))
@@ -19,9 +20,9 @@ clean:	FORCE
 
 realclean:	clean touch
 
-install:	$(OUTPUT_DIR) $(SERVICE_OUTPUTS) $(SPLASH_PNG_OUT)
+install:	$(OUTPUT_DIR) $(OUTPUTS) $(SERVICE_OUTPUTS) $(SPLASH_PNG_OUT)
 
-$(OUTPUT_DIR):	$(INPUTS) 
+$(OUTPUT_DIR)/%:	%
 	mkdir -p $(OUTPUT_DIR) || (echo Must be root ; exit 2)
 	cp $^ $@ || (echo Must be root ; exit 2)
 
