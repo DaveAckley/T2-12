@@ -27,7 +27,8 @@ touch:	FORCE
 	touch $(SRCS)
 
 install: $(APP_NAME)
-	cp $< /opt/scripts/t2 || (echo must be root ; exit 2)
+	mkdir -p /opt/scripts/t2
+	cp $< /opt/scripts/t2/ || (echo must be root ; exit 2)
 
 clean:	
 	rm -f *~
