@@ -1,5 +1,5 @@
 # 'packages' must install first
-SUBDIRS:=packages apps files
+SUBDIRS:=packages apps files services
 HOSTNAME:=$(shell uname -n)
 HOSTMACH:=$(shell uname -m)
 ON_TILE:=
