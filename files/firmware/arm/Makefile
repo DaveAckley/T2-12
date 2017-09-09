@@ -13,7 +13,7 @@ touch:	FORCE
 install:	install_dtbs
 
 $(DTBO_FILE):	$(CAPE_FILE)
-	/usr/bin/dtc $^ -o $@
+	/usr/bin/dtc -W no-unit_address_vs_reg $^ -o $@
 
 install_dtbs:	$(DTB_FILES) 
 
