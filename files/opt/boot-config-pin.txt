@@ -2,6 +2,15 @@
 ##########
 ## SPI Display section
 ## 
+## Power up the display well before fbtft tries to init it
+
+# DSP_PWRON (gpio 30) output
+P9_11 high
+
+# NYI: Part of some future hacky script to control LCD power
+# DSP_WAKE (gpio 31) input
+P9_13 input
+
 ## Nothing actually left to do here at present, since all the
 ## non-gpios are finally being set up by the DT, but keeping this in
 ## place anyway, for the past and the future.
@@ -11,9 +20,6 @@
 # P9_18 spi
 # P9_21 spi
 # P9_22 spi
-
-# DSP_RESET (gpio 31) output
-# P9_13 high
 
 # DSP_DC (gpio 48) output
 # P9_15 high
