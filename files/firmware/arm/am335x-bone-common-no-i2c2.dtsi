@@ -115,7 +115,8 @@
 	lcd_ctrl_pins: lcd_ctrl_pins {
 		pinctrl-single,pins = <
 			0x040 0x17	/* P9.15 DSP_DC gpio1_16 gpio48 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
-			0x074 0x17	/* P9.13 DSP_RESET gpio0_31 gpio31 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
+// 20170909 LCD reset handled by timing circuit not a pin
+//			0x074 0x17	/* P9.13 DSP_RESET gpio0_31 gpio31 (PIN_OUTPUT_PULLUP | MUX_MODE7) */
 			0x17c 0x37	/* P9.19 TP_IRQ gpio0_13 gpio13 (PIN_INPUT_PULLUP  | MUX_MODE7) */
 		>;
 	};

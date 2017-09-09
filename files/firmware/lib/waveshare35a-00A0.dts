@@ -79,7 +79,7 @@
 				fps = <15>;
 				buswidth = <8>;
 				regwidth = <16>;
-				reset-gpios = <&gpio0 31 0>;
+// using h/w to reset				reset-gpios = <&gpio0 31 0>;
 				dc-gpios = <&gpio1 16 0>;
 				debug = <3>;
 
