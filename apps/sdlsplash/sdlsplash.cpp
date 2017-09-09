@@ -1,9 +1,16 @@
 #include <stdio.h>
+#include <signal.h>
 #include "SDL.h"
 #include "SDL_image.h"
 
 #define WIDTH 480
 #define HEIGHT 320
+
+
+static void exitImmediately(int sig)
+{
+  abort();
+}
 
 int main(int argc, char **argv)
 {
@@ -68,6 +75,9 @@ int main(int argc, char **argv)
 
   }
 
+  /* Try to fricken die a little fricken faster sheesh */
+  signal(SIGTERM, exitImmediately);
+  
   {
     SDL_Rect rcdest = { 0, 0, 0, 0 };
     SDL_BlitSurface(imgsurf, 0, screen, &rcdest);
