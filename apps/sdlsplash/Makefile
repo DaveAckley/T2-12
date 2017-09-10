@@ -28,7 +28,8 @@ touch:	FORCE
 
 install: $(APP_NAME)
 	mkdir -p /opt/scripts/t2
-	cp $< /opt/scripts/t2/ || (echo must be root ; exit 2)
+	unlink /opt/scripts/t2/sdlsplash || echo no existing sdlsplash
+	cp $< /opt/scripts/t2/ || (echo status=$$?, must be root? ; exit 2)
 
 clean:	
 	rm -f *~
