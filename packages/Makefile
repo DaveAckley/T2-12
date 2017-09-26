@@ -2,9 +2,10 @@ PACKAGES+=emacs-nox
 PACKAGES+=fbi
 PACKAGES+=inotify-tools
 PACKAGES+=git g++
-PACKAGES+=libsdl1.2-dev libsdl-image1.2-dev libsdl-ttf2.0-dev
-PACKAGES+=libcrypt-openssl-bignum-perl libcrypt-openssl-rsa-perl libcapture-tiny-perl
 PACKAGES+=software-properties-common python-software-properties
+# NOTE WE ARE NOW REQUIRING ppa:ackley/mfm TO ALREADY BE IN THE REPOSITORIES!
+# (SEE /root/T2-12-root-seed.sh FOR WHERE THAT SHOULD HAVE HAPPENED!)
+PACKAGES+=ulam
 
 FLAG_FILE:=.flagfile_INSTALL_COMPLETE
 
