@@ -28,7 +28,7 @@ clean:
 
 realclean:	clean touch
 
-install:	$(CONF_OUTPUTS) $(ETC_OUTPUTS)
+install:	$(CONF_OUTPUTS) $(ETC_OUTPUTS) $(PROFILE_OUTPUTS) $(SUDOER_OUTPUTS)
 
 $(CONF_OUTPUTS):	$(CONF_INPUTS)
 	cp $^ $(CONF_OUTPUT_DIR)  || (echo Must be root ; exit 2)
@@ -38,7 +38,7 @@ $(ETC_OUTPUTS):	$(ETC_INPUTS)
 
 $(PROFILE_OUTPUTS):	$(PROFILE_INPUTS)
 	mkdir -p $(PROFILE_DIR)
-	cp $^ $(PROFILE_DIR)  || (echo Must be root ; exit 2)
+	cp -a $^ $(PROFILE_DIR)  || (echo Must be root ; exit 2)
 
 $(SUDOER_OUTPUTS):	$(SUDOER_INPUTS)
 	mkdir -p $(SUDOER_DIR)
