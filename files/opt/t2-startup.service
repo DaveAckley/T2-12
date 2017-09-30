@@ -3,7 +3,8 @@ Description=T2 hardware setup
 After=generic-board-startup.service
 
 [Service]
-Type=simple
+Type=oneshot
+RemainAfterExit=true
 ExecStart=/opt/scripts/t2/t2-startup.sh
 
 [Install]

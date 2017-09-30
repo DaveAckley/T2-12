@@ -1,8 +1,10 @@
 [Unit]
 Description=T2 splash screen
+Requires=t2-startup.service
 After=t2-startup.service
 
 [Service]
+Type=oneshot
 ExecStart=/opt/scripts/t2/t2-splash.sh
 
 [Install]
