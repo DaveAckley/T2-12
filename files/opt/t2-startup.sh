@@ -12,6 +12,10 @@ logger T2 FINAL BOOT CONFIG: boot-config-pin
 config-pin -f /opt/scripts/t2/boot-config-pin.txt
 sleep 2
 
+logger T2 FINAL BOOT CONFIG: ADC
+echo T2-ADC > /sys/devices/platform/bone_capemgr/slots
+sleep 2
+
 logger T2 FINAL BOOT CONFIG: waveshare35a
 echo waveshare35a > /sys/devices/platform/bone_capemgr/slots
 
