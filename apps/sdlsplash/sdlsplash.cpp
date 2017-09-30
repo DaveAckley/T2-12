@@ -82,8 +82,9 @@ int main(int argc, char **argv)
     SDL_Rect rcdest = { 0, 0, 0, 0 };
     SDL_BlitSurface(imgsurf, 0, screen, &rcdest);
     SDL_UpdateRect(screen, 0, 0, swidth, sheight);
-    while ( 1 ) 
-      SDL_Delay(1000);
+    unsigned ms = 0;
+    while ( ++ms < 5000 ) // five second splash
+      SDL_Delay(1);
   }
 
 
