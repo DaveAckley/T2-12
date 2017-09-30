@@ -2,7 +2,7 @@ CONF_INPUTS:=pruss-blacklist.conf fbtft.conf
 CONF_OUTPUT_DIR:=/etc/modprobe.d
 CONF_OUTPUTS:=$(patsubst %,$(CONF_OUTPUT_DIR)/%,$(CONF_INPUTS))
 
-ETC_INPUTS:=rc.local rsyslog.conf pointercal.xinput
+ETC_INPUTS:=rsyslog.conf pointercal.xinput
 ETC_DIR:=/etc
 ETC_OUTPUTS:=$(patsubst %,$(ETC_DIR)/%,$(ETC_INPUTS))
 
