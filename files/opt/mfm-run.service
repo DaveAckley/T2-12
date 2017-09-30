@@ -1,0 +1,12 @@
+[Unit]
+Description=Boot time mfm processing
+Requires=t2-splash-screen.service
+After=t2-splash-screen.service
+
+[Service]
+Type=oneshot
+#mfm.sh installed by ../../apps/mfm/
+ExecStart=/opt/scripts/t2/mfm.sh
+
+[Install]
+WantedBy=multi-user.target
