@@ -13,6 +13,8 @@ install:	build
 	  for i in $(SERVICES_STOP) ; do \
 	    echo "Stopping $$i" ; \
 	    systemctl stop $$i || true ; \
+	    echo "Disabling $$i" ; \
+	    systemctl disable $$i || true ; \
 	  done ; \
 	  touch $(FLAG_FILE) ; \
 	fi
