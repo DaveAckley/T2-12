@@ -1,4 +1,4 @@
-SERVICES_STOP+=cloud9.service cloud9.socket
+SERVICES_STOP+=cloud9.service cloud9.socket apache2.service
 
 FLAG_FILE:=.flagfile_INSTALL_COMPLETE
 
@@ -11,6 +11,7 @@ install:	build
 	  echo "NOTE: '$(FLAG_FILE)' detected; installation skipped" ; \
 	else \
 	  for i in $(SERVICES_STOP) ; do \
+	    echo "Stopping $$i" ; \
 	    systemctl stop $$i || true ; \
 	  done ; \
 	  touch $(FLAG_FILE) ; \
