@@ -109,6 +109,7 @@
 				pendown-gpio = <&gpio0 13 0>;
 				ti,x-plate-ohms = /bits/ 16 <60>;
 				ti,pressure-max = /bits/ 16 <255>;
+				ti,swap-xy = <1>;
 			};
 		};
 	};
@@ -119,6 +120,6 @@
 		fps =		<&waveshare35a>,"fps:0";
 		bgr =		<&waveshare35a>,"bgr:0";
 		debug =		<&waveshare35a>,"debug:0";
-		swapxy =	<&waveshare35a_ts>,"ti,swap-xy?";
+		swapxy =	<&waveshare35a_ts>,"ti,swap-xy;0";
 	};
 };
