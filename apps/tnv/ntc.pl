@@ -47,7 +47,7 @@ sub generateTCtoRTTable {
 
 }
 
-# We currently have a voltage dividers like these:
+# We currently have voltage dividers like these:
 #
 #                            Rt
 #             10K 0.1%      +---+
