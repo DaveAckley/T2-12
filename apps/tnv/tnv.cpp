@@ -52,7 +52,41 @@ int readChannel(unsigned chn) {
   return count;
 }
 
-int main() {
+unsigned conditionOlive(unsigned raw, int argc, char **argv) {
+  unsigned adder = 115;
+  unsigned shifter = 6;
+  if (argc > 1) {
+    adder = atoi(argv[1]);
+    if (argc > 2)
+      shifter = atoi(argv[2]);
+  }
+  return ~((raw+adder)>>shifter)&0x3f;
+}
+
+unsigned readOlive() {
+  unsigned bits = 8;
+  unsigned samples = 1<<bits;
+  unsigned sum = 0;
+  for (unsigned i = 0; i < samples; ++i)
+    sum += readChannel(3);
+  return sum/samples;
+}
+
+static const char * dirs[] = {"SE", "NW", "WT", "ET", "SW", "NE" };
+void printOlive(unsigned raw, unsigned cooked)
+{
+  printf("olive = 0x%02x (0x%03x raw)", cooked, raw);
+  for (unsigned i = 0; i < 6; ++i) {
+    if (cooked&(1<<i)) printf(" %s",dirs[i]);
+    else               printf(" --");
+  }
+  printf("\n");
+}
+
+
+int main(int argc, char **argv) {
+  unsigned rawolive = readOlive();
+  unsigned olivecount = conditionOlive(rawolive,argc,argv);
   unsigned ctrcount = readChannel(1);
   unsigned edgecount = readChannel(2);
   unsigned gridvcount = readChannel(0);
@@ -63,5 +97,6 @@ int main() {
   printf("edgtmp = %d C  (%f F)\n",
 	 getCentigradeFromCount(edgecount),
 	 getFloatFarenheitFromCount(edgecount));
+  printOlive(rawolive,olivecount);
   return 0;
 }
