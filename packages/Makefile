@@ -3,6 +3,9 @@ PACKAGES+=fbi
 PACKAGES+=inotify-tools
 PACKAGES+=git g++
 PACKAGES+=software-properties-common python-software-properties
+# For our (possible future) interactive services
+PACKAGES+=libsystemd-dev
+PACKAGES+=libpam-systemd
 # For sdlsplash
 PACKAGES+=libsdl1.2-dev libsdl-image1.2-dev libsdl-ttf2.0-dev
 # NOTE WE ARE NOW REQUIRING ppa:ackley/mfm TO ALREADY BE IN THE REPOSITORIES!
