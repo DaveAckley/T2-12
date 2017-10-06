@@ -75,7 +75,7 @@ unsigned readOlive() {
 static const char * dirs[] = {"SE", "NW", "WT", "ET", "SW", "NE" };
 void printOlive(unsigned raw, unsigned cooked)
 {
-  printf("olive = 0x%02x (0x%03x raw)", cooked, raw);
+  printf("olive = 0x%02x (0x%03x / %d raw)", cooked, raw, raw);
   for (unsigned i = 0; i < 6; ++i) {
     if (cooked&(1<<i)) printf(" %s",dirs[i]);
     else               printf(" --");
@@ -83,6 +83,22 @@ void printOlive(unsigned raw, unsigned cooked)
   printf("\n");
 }
 
+void altcook(unsigned raw)
+{
+  unsigned unit = 64;
+  printf("alt(raw=%d/0x%02x,unit=%d) ",raw,raw,unit);
+  for (unsigned i = 0; i < 6; ++i) {
+    if (raw/unit > 0 && (raw/unit*unit)%(2*unit) > 0) {
+      printf(" --");
+      //      raw -= unit;
+    }
+    else
+      printf(" %s", dirs[i]);
+
+    unit += unit;
+  }
+  printf("\n");
+}
 
 int main(int argc, char **argv) {
   unsigned rawolive = readOlive();
@@ -98,5 +114,6 @@ int main(int argc, char **argv) {
 	 getCentigradeFromCount(edgecount),
 	 getFloatFarenheitFromCount(edgecount));
   printOlive(rawolive,olivecount);
+  altcook(rawolive);
   return 0;
 }
