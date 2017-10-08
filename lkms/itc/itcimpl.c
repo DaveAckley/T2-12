@@ -54,12 +54,12 @@ const char * itcDirName(ITCDir d)
     { p4, GPIOF_DIR_OUT,#DC "_OGRLK"}, }
 
 static struct gpio pins[DIR_COUNT][4] = {
-  XX(ET, 39, 38, 36, 37),
-  XX(SE, 10, 11, 13,  9),
-  XX(SW, 31, 54, 35,  8),
-  XX(WT, 51, 52, 55, 53),
-  XX(NW, 49, 30, 50, 48),
-  XX(NE, 17, 96, 18, 19),
+  XX(ET, 69, 68, 66, 67),
+  XX(SE, 26, 27, 45, 23),
+  XX(SW, 61, 10, 65, 22),
+  XX(WT, 81,  8, 11,  9),
+  XX(NW, 79, 60, 80, 78),
+  XX(NE, 49, 14, 50, 51),
 };
 #undef XX
 
