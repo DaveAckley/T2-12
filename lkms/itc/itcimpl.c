@@ -4,8 +4,6 @@
 #include <linux/interrupt.h>	    /* for interrupt functions.. */
 #include <linux/gpio.h>		    /* for gpio functions.. */
 
-static bool ledOn = 0;                      ///< Is the LED on or off? Used for flashing
-
 enum { sRESET = 0,    		/** Initial and ground state, entered on any error */
        sIDLE,			/** Successfully initialized, lock is open */
        sTAKE,			/** We are attempting to take the lock  */
@@ -18,7 +16,18 @@ enum { sRESET = 0,    		/** Initial and ground state, entered on any error */
        sFAILED,			/** Something went wrong while we held the lock  */
 };
 
-enum { DIR_MIN = 0, DIR_ET = DIR_MIN, DIR_SE, DIR_SW, DIR_WT, DIR_NW, DIR_NE, DIR_MAX = DIR_NE, DIR_COUNT };
+#define YY()              \
+  XX(ET, 69, 68, 66, 67), \
+  XX(SE, 26, 27, 45, 23), \
+  XX(SW, 61, 10, 65, 22), \
+  XX(WT, 81,  8, 11,  9), \
+  XX(NW, 79, 60, 80, 78), \
+  XX(NE, 49, 14, 50, 51) 
+
+#define XX(DC,p1,p2,p3,p4) DIR_##DC
+enum { YY(), DIR_MIN = DIR_ET, DIR_MAX = DIR_NE, DIR_COUNT };
+#undef XX
+
 enum { PIN_MIN = 0, PIN_IRQLK = PIN_MIN, PIN_IGRLK, PIN_ORQLK, PIN_OGRLK, PIN_MAX = PIN_OGRLK, PIN_COUNT };
 
 typedef unsigned long JiffyUnit;
@@ -40,7 +49,12 @@ typedef struct itcInfo {
   JiffyUnit lastActive;
 } ITCInfo;
 
-static const char * dirnames[DIR_COUNT] = { "ET", "SE", "SW", "WT", "NW", "NE" };
+static JiffyUnit globalLastActive = 0;
+
+#define XX(DC,p1,p2,p3,p4) #DC
+static const char * dirnames[DIR_COUNT] = { YY() };
+#undef XX
+
 const char * itcDirName(ITCDir d)
 {
   if (d > DIR_MAX) return "(Illegal)";
@@ -52,25 +66,16 @@ const char * itcDirName(ITCDir d)
     { p2, GPIOF_DIR_IN, #DC "_IGRLK"}, \
     { p3, GPIOF_DIR_OUT,#DC "_ORQLK"}, \
     { p4, GPIOF_DIR_OUT,#DC "_OGRLK"}, }
-
-static struct gpio pins[DIR_COUNT][4] = {
-  XX(ET, 69, 68, 66, 67),
-  XX(SE, 26, 27, 45, 23),
-  XX(SW, 61, 10, 65, 22),
-  XX(WT, 81,  8, 11,  9),
-  XX(NW, 79, 60, 80, 78),
-  XX(NE, 49, 14, 50, 51),
-};
+static struct gpio pins[DIR_COUNT][4] = { YY() };
 #undef XX
 
-#define XX(DC) { .direction = DC, .pins = pins[DC] }
-static ITCInfo itcInfo[DIR_COUNT] = {
-  XX(DIR_ET), XX(DIR_SE), XX(DIR_SW), XX(DIR_WT), XX(DIR_NW), XX(DIR_NE),
-};
+#define XX(DC,p1,p2,p3,p4) { .direction = DIR_##DC, .pins = pins[DIR_##DC] }
+static ITCInfo itcInfo[DIR_COUNT] = { YY() };
 #undef XX
 
 static irq_handler_t itc_irq_handler(unsigned int irq, void *dev_id, struct pt_regs *regs)
 {
+  globalLastActive = jiffies;
   printk(KERN_INFO "itc_irq_handler: irq=%d\n", irq);
   return (irq_handler_t) IRQ_HANDLED;  // Announce that the IRQ has been handled correctly
 }
@@ -175,23 +180,26 @@ void itcExitStructures(void) {
   }
 }
 
+void check_timeouts(void)
+{
+  globalLastActive = jiffies;
+  printk(KERN_INFO "itcThreadRunner: timeout %lu\n",globalLastActive);
+}
+
 /** @brief The ITC main timing loop
  *
  *  @param arg A void pointer available to pass data to the thread
  *  @return returns 0 if successful
  */
 int itcThreadRunner(void *arg) {
-  const int blinkPeriod = 20000;
+  const int jiffyTimeout = 5*HZ;
    printk(KERN_INFO "itcThreadRunner: Started\n");
    while(!kthread_should_stop()){           // Returns true when kthread_stop() is called
       set_current_state(TASK_RUNNING);
-      /*if (mode==FLASH)*/ ledOn = !ledOn;      // Invert the LED state
-      //      else if (mode==ON) ledOn = true;
-      //      else ledOn = false;
-      printk(KERN_INFO "itc thread %zu %lu\n",ledOn, jiffies);
-      //      gpio_set_value(gpioLED, ledOn);       // Use the LED state to light/turn off the LED
+      if (time_before(globalLastActive+jiffyTimeout, jiffies))
+	check_timeouts();
       set_current_state(TASK_INTERRUPTIBLE);
-      msleep(blinkPeriod/2);                // millisecond sleep for half of the period
+      msleep(4);
    }
    printk(KERN_INFO "itcThreadRunner: Stopping by request\n");
    return 0;

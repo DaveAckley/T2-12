@@ -91,7 +91,7 @@ static int __init itc_init(void){
    printk(KERN_INFO "Itc: device class created correctly\n"); // Made it! device was initialized
    mutex_init(&itc_mutex);          // Initialize the mutex dynamically
 
-   task = kthread_run(itcThreadRunner, NULL, "Itc_timing_thread");  
+   task = kthread_run(itcThreadRunner, NULL, "ITC_timer");  
    if(IS_ERR(task)){                                     
      printk(KERN_ALERT "Itc: Thread creation failed\n");
      return PTR_ERR(task);
