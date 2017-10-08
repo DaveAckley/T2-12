@@ -13,7 +13,7 @@ clean:	uninstall
 	rm -f test2lock *.o *~
 
 install:	all uninstall
-	insmod t2lock.ko
+	echo insmod t2lock.ko
 
 uninstall:
-	rmmod t2lock 2>/dev/null || exit 0
+	echo rmmod t2lock 2>/dev/null || exit 0
