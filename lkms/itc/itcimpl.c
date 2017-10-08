@@ -34,17 +34,22 @@ typedef unsigned long JiffyUnit;
 typedef unsigned long ITCCounter;
 typedef unsigned char ITCDir;
 typedef unsigned char ITCState;
+typedef unsigned int BitValue;
 typedef int IRQNumber;
 typedef struct itcInfo {
   const struct gpio * const pins;
   const ITCDir direction;
+  BitValue pinStates[PIN_COUNT];
   ITCState state;
   ITCCounter resets;
   ITCCounter locksAttempted;
   ITCCounter locksAcquired;
   ITCCounter locksGranted;
   ITCCounter locksContested;
+  ITCCounter interruptsTaken;
+  ITCCounter edgesMissed;
   JiffyUnit lastActive;
+  JiffyUnit lastReported;
 } ITCInfo;
 
 static JiffyUnit globalLastActive = 0;
@@ -71,20 +76,25 @@ static struct gpio pins[DIR_COUNT][4] = { YY() };
 static ITCInfo itcInfo[DIR_COUNT] = { YY() };
 #undef XX
 
-static irq_handler_t itc_irq_edge_handler(unsigned dir, unsigned pin, unsigned int irq)
+static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned value, unsigned int irq)
 {
-  unsigned value = gpio_get_value(itcInfo[dir].pins[pin].gpio);
-  globalLastActive = jiffies;
-  printk(KERN_INFO "itc_irq_handler %s %d: irq=%d val=%d\n",
-	 itcDirName(dir), pin, irq, value);
-  return (irq_handler_t) IRQ_HANDLED;  // Announce that the IRQ has been handled correctly
+  itc->lastActive = globalLastActive = jiffies;
+  itc->interruptsTaken++;
+  if (value == itc->pinStates[pin])
+    itc->edgesMissed++;
+  else
+    itc->pinStates[pin] = value;
+  return (irq_handler_t) IRQ_HANDLED;
 }
 
 #define XX(DC,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
 #define ZZ(DC,suf)                                                                                  \
 static irq_handler_t itc_irq_handler##DC##suf(unsigned int irq, void *dev_id, struct pt_regs *regs) \
 {                                                                                                   \
-  return itc_irq_edge_handler(DIR_##DC,PIN##suf,irq);                                               \
+  return itc_irq_edge_handler(&itcInfo[DIR_##DC],                                                   \
+                              PIN##suf,                                                             \
+                              gpio_get_value(itcInfo[DIR_##DC].pins[PIN##suf].gpio),                \
+			      irq);	                                                            \
 }
 YY()
 #undef ZZ
@@ -100,6 +110,7 @@ void itcInitStructure(ITCInfo * itc)
   itc->locksGranted = 0;
   itc->locksContested = 0;
   itc->lastActive = jiffies;
+  itc->lastReported = jiffies-1;
 
   printk(KERN_INFO "ITC init %s: IRQLK=%d, IGRLK=%d, ORQLK=%d, OGRLK=%d\n",
 	 dn,
@@ -198,8 +209,25 @@ void itcExitStructures(void) {
 
 void check_timeouts(void)
 {
+  int i;
   globalLastActive = jiffies;
-  printk(KERN_INFO "itcThreadRunner: timeout %lu\n",globalLastActive);
+
+  printk(KERN_INFO "ITC timeout %lu\n", globalLastActive);
+  for (i = DIR_MIN; i <= DIR_MAX; ++i) {
+    if (itcInfo[i].lastReported == itcInfo[i].lastActive) continue;
+    printk(KERN_INFO "ITC %s: s=%d, r=%lu, at=%lu, ac=%lu, gr=%lu, co=%lu, it=%lu, em=%lu\n",
+	   itcDirName(itcInfo[i].direction),
+	   itcInfo[i].state,
+	   itcInfo[i].resets,
+	   itcInfo[i].locksAttempted,
+	   itcInfo[i].locksAcquired,
+	   itcInfo[i].locksGranted,
+	   itcInfo[i].locksContested,
+	   itcInfo[i].interruptsTaken,
+	   itcInfo[i].edgesMissed
+	   );
+    itcInfo[i].lastReported = itcInfo[i].lastActive;
+  }
 }
 
 /** @brief The ITC main timing loop
