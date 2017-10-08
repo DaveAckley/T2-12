@@ -17,15 +17,15 @@ enum { sRESET = 0,    		/** Initial and ground state, entered on any error */
 };
 
 #define YY()              \
-  XX(ET, 69, 68, 66, 67), \
-  XX(SE, 26, 27, 45, 23), \
-  XX(SW, 61, 10, 65, 22), \
-  XX(WT, 81,  8, 11,  9), \
-  XX(NW, 79, 60, 80, 78), \
+  XX(ET, 69, 68, 66, 67)  \
+  XX(SE, 26, 27, 45, 23)  \
+  XX(SW, 61, 10, 65, 22)  \
+  XX(WT, 81,  8, 11,  9)  \
+  XX(NW, 79, 60, 80, 78)  \
   XX(NE, 49, 14, 50, 51) 
 
-#define XX(DC,p1,p2,p3,p4) DIR_##DC
-enum { YY(), DIR_MIN = DIR_ET, DIR_MAX = DIR_NE, DIR_COUNT };
+#define XX(DC,p1,p2,p3,p4) DIR_##DC,
+enum { YY() DIR_MIN = DIR_ET, DIR_MAX = DIR_NE, DIR_COUNT };
 #undef XX
 
 enum { PIN_MIN = 0, PIN_IRQLK = PIN_MIN, PIN_IGRLK, PIN_ORQLK, PIN_OGRLK, PIN_MAX = PIN_OGRLK, PIN_COUNT };
@@ -38,8 +38,6 @@ typedef int IRQNumber;
 typedef struct itcInfo {
   const struct gpio * const pins;
   const ITCDir direction;
-  IRQNumber qIRQLK;
-  IRQNumber qIGRLK;
   ITCState state;
   ITCCounter resets;
   ITCCounter locksAttempted;
@@ -51,7 +49,7 @@ typedef struct itcInfo {
 
 static JiffyUnit globalLastActive = 0;
 
-#define XX(DC,p1,p2,p3,p4) #DC
+#define XX(DC,p1,p2,p3,p4) #DC,
 static const char * dirnames[DIR_COUNT] = { YY() };
 #undef XX
 
@@ -65,26 +63,36 @@ const char * itcDirName(ITCDir d)
     { p1, GPIOF_DIR_IN, #DC "_IRQLK"}, \
     { p2, GPIOF_DIR_IN, #DC "_IGRLK"}, \
     { p3, GPIOF_DIR_OUT,#DC "_ORQLK"}, \
-    { p4, GPIOF_DIR_OUT,#DC "_OGRLK"}, }
+    { p4, GPIOF_DIR_OUT,#DC "_OGRLK"}, },
 static struct gpio pins[DIR_COUNT][4] = { YY() };
 #undef XX
 
-#define XX(DC,p1,p2,p3,p4) { .direction = DIR_##DC, .pins = pins[DIR_##DC] }
+#define XX(DC,p1,p2,p3,p4) { .direction = DIR_##DC, .pins = pins[DIR_##DC] },
 static ITCInfo itcInfo[DIR_COUNT] = { YY() };
 #undef XX
 
-static irq_handler_t itc_irq_handler(unsigned int irq, void *dev_id, struct pt_regs *regs)
+static irq_handler_t itc_irq_edge_handler(unsigned dir, unsigned pin, unsigned int irq)
 {
+  unsigned value = gpio_get_value(itcInfo[dir].pins[pin].gpio);
   globalLastActive = jiffies;
-  printk(KERN_INFO "itc_irq_handler: irq=%d\n", irq);
+  printk(KERN_INFO "itc_irq_handler %s %d: irq=%d val=%d\n",
+	 itcDirName(dir), pin, irq, value);
   return (irq_handler_t) IRQ_HANDLED;  // Announce that the IRQ has been handled correctly
 }
+
+#define XX(DC,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
+#define ZZ(DC,suf)                                                                                  \
+static irq_handler_t itc_irq_handler##DC##suf(unsigned int irq, void *dev_id, struct pt_regs *regs) \
+{                                                                                                   \
+  return itc_irq_edge_handler(DIR_##DC,PIN##suf,irq);                                               \
+}
+YY()
+#undef ZZ
+#undef XX
 
 void itcInitStructure(ITCInfo * itc)
 {
   const char * dn = itcDirName(itc->direction);
-  int i;
-  int result;
   itc->state = sRESET;
   itc->resets = 1;
   itc->locksAttempted = 0;
@@ -97,17 +105,6 @@ void itcInitStructure(ITCInfo * itc)
 	 dn,
 	 itc->pins[PIN_IRQLK].gpio,itc->pins[PIN_IGRLK].gpio,
 	 itc->pins[PIN_ORQLK].gpio,itc->pins[PIN_OGRLK].gpio);
-
-  for (i = PIN_IRQLK; i <= PIN_IGRLK; ++i) {
-    IRQNumber * ip = (i == PIN_IRQLK) ? &itc->qIRQLK  : &itc->qIGRLK;
-    *ip = gpio_to_irq(itc->pins[i].gpio);
-    result = request_irq(*ip, (irq_handler_t) itc_irq_handler,
-			 IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-			 itc->pins[i].label,
-			 NULL);
-    printk(KERN_INFO "ITC %s: irq#=%d, result=%d\n",
-	   itc->pins[i].label, *ip, result);
-  }
 }
 
 void itcInitStructures(void) {
@@ -151,13 +148,32 @@ void itcInitStructures(void) {
       itcInitStructure(&itcInfo[i]);
     }
   }
+
+  /// Now install irq handlers for everybody
+
+#define ZZ(DC,suf) { 				                              \
+    ITCInfo * itc = &itcInfo[DIR_##DC];                                       \
+    const struct gpio * gp = &itc->pins[PIN##suf];                            \
+    int result;                                                               \
+    IRQNumber in = gpio_to_irq(gp->gpio);                                     \
+    result = request_irq(in,                                                  \
+			 (irq_handler_t) itc_irq_handler##DC##suf,            \
+			 IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,          \
+			 gp->label,                                           \
+			 NULL);                                               \
+    printk(KERN_INFO "ITC %s: irq#=%d, result=%d\n", gp->label, in, result);  \
+  }
+#define XX(DC,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
+    YY()
+#undef ZZ
+#undef XX
 }
 
 void itcExitStructure(ITCInfo * itc)
 {
   const char * dn = itcDirName(itc->direction);
-  free_irq(itc->qIRQLK,NULL);
-  free_irq(itc->qIGRLK,NULL);
+  free_irq(gpio_to_irq(itc->pins[PIN_IRQLK].gpio),NULL);
+  free_irq(gpio_to_irq(itc->pins[PIN_IGRLK].gpio),NULL);
   printk(KERN_INFO "ITC exit %s\n", dn);
 }
 
