@@ -50,7 +50,8 @@ dtb=am335x-bonegreen-t2-12.dtb
 
 # AHAX
 # was:cmdline=coherent_pool=1M net.ifnames=0 quiet cape_universal=enable
-cmdline=coherent_pool=1M net.ifnames=0 cape_universal=enable
+# was: cmdline=coherent_pool=1M net.ifnames=0 cape_universal=enable
+cmdline=coherent_pool=1M net.ifnames=0
 
 #In the event of edid real failures, uncomment this next line:
 #cmdline=coherent_pool=1M net.ifnames=0 quiet cape_universal=enable video=HDMI-A-1:1024x768@60e
