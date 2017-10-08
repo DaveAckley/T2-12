@@ -69,9 +69,17 @@ static ITCInfo itcInfo[DIR_COUNT] = {
 };
 #undef XX
 
+static irq_handler_t itc_irq_handler(unsigned int irq, void *dev_id, struct pt_regs *regs)
+{
+  printk(KERN_INFO "itc_irq_handler: irq=%d\n", irq);
+  return (irq_handler_t) IRQ_HANDLED;  // Announce that the IRQ has been handled correctly
+}
+
 void itcInitStructure(ITCInfo * itc)
 {
   const char * dn = itcDirName(itc->direction);
+  int i;
+  int result;
   itc->state = sRESET;
   itc->resets = 1;
   itc->locksAttempted = 0;
@@ -80,18 +88,30 @@ void itcInitStructure(ITCInfo * itc)
   itc->locksContested = 0;
   itc->lastActive = jiffies;
 
-  printk(KERN_INFO "ITC init %s: IRQ=%d, IGR=%d, ORQ=%d, OGGR=%d\n",
+  printk(KERN_INFO "ITC init %s: IRQLK=%d, IGRLK=%d, ORQLK=%d, OGRLK=%d\n",
 	 dn,
 	 itc->pins[PIN_IRQLK].gpio,itc->pins[PIN_IGRLK].gpio,
 	 itc->pins[PIN_ORQLK].gpio,itc->pins[PIN_OGRLK].gpio);
-  //XXX set up interrupts
-  
+
+  for (i = PIN_IRQLK; i <= PIN_IGRLK; ++i) {
+    IRQNumber * ip = (i == PIN_IRQLK) ? &itc->qIRQLK  : &itc->qIGRLK;
+    *ip = gpio_to_irq(itc->pins[i].gpio);
+    result = request_irq(*ip, (irq_handler_t) itc_irq_handler,
+			 IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+			 itc->pins[i].label,
+			 NULL);
+    printk(KERN_INFO "ITC %s: irq#=%d, result=%d\n",
+	   itc->pins[i].label, *ip, result);
+  }
 }
 
 void itcInitStructures(void) {
+
+  /////
+  /// First do global (full tile) inits
+
   int err;
   unsigned count = ARRAY_SIZE(pins)*ARRAY_SIZE(pins[0]);
-  ITCDir i;
 
   printk(KERN_INFO "ITC allocating %d pins\n", count);
 
@@ -109,25 +129,50 @@ void itcInitStructures(void) {
       struct gpio *g = &pins[0][0]+n;
       err = gpio_request_array(g, 1);
       if (err) {
-        printk(KERN_INFO "ITC failed to allocate pin %d: %d\n", g->gpio, err);
+        printk(KERN_INFO "ITC failed to allocate pin%3d: %d\n", g->gpio, err);
       } else {
-        printk(KERN_INFO "ITC allocated pin %d\n", g->gpio); 
+        printk(KERN_INFO "ITC allocated pin%3d for %s\n", g->gpio, g->label); 
       }
     }
   }
 #endif
 
-  for (i = DIR_MIN; i <= DIR_MAX; ++i) {
-    BUG_ON(i != itcInfo[i].direction);  /* Assert we inited directions properly */
-    itcInitStructure(&itcInfo[i]);
+  /////
+  /// Now do local (per-ITC) inits
+  {
+    ITCDir i;
+    for (i = DIR_MIN; i <= DIR_MAX; ++i) {
+      BUG_ON(i != itcInfo[i].direction);  /* Assert we inited directions properly */
+      itcInitStructure(&itcInfo[i]);
+    }
   }
 }
 
+void itcExitStructure(ITCInfo * itc)
+{
+  const char * dn = itcDirName(itc->direction);
+  free_irq(itc->qIRQLK,NULL);
+  free_irq(itc->qIGRLK,NULL);
+  printk(KERN_INFO "ITC exit %s\n", dn);
+}
+
 void itcExitStructures(void) {
+
+  /////
+  /// First do global (full tile) cleanup
+
   unsigned count = ARRAY_SIZE(pins)*ARRAY_SIZE(pins[0]);
+  unsigned i;
 
   gpio_free_array(&pins[0][0], count);
   printk(KERN_INFO "ITC freed %d pins\n", count); 
+
+  /////
+  /// Now do local (per-itc) cleanup
+
+  for (i = DIR_MIN; i <= DIR_MAX; ++i) {
+    itcExitStructure(&itcInfo[i]);
+  }
 }
 
 /** @brief The ITC main timing loop
@@ -135,8 +180,8 @@ void itcExitStructures(void) {
  *  @param arg A void pointer available to pass data to the thread
  *  @return returns 0 if successful
  */
-int itcThreadRunner(void *arg){
-  const int blinkPeriod = 10000;
+int itcThreadRunner(void *arg) {
+  const int blinkPeriod = 20000;
    printk(KERN_INFO "itcThreadRunner: Started\n");
    while(!kthread_should_stop()){           // Returns true when kthread_stop() is called
       set_current_state(TASK_RUNNING);
