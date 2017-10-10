@@ -1,0 +1,357 @@
+{13}  -*- text -*-
+[0:
+
+Fri Oct  6 18:28:08 2017 We have four gpios involved in each pairwise
+connection between two T2 tiles, two inputs and two outputs, that are
+cross-coupled between tiles in the obvious way:
+
+ xx_IRQLK:  Input Request LocK from direction xx
+ xx_IGRLK:  Input Grant LocK from direction xx
+ xx_ORQLK:  Output Request LocK in direction xx
+ xx_OGRLK:  Output Grant LocK in direction xx
+
+
+We will express input or output states as a binary pair with Request
+first and Grant second:
+
+00  IRQLK == 0, IGRLK == 0
+01  IRQLK == 0, IGRLK == 1
+10  IRQLK == 1, IGRLK == 0
+11  IRQLK == 0, IGRLK == 0
+
+[2: Sat Oct  7 02:36:20 2017
+
+We can prefix such states with an 'i' to mean 'input' or an 'o' to
+mean 'output':
+
+'i01'   is a predicate meaning:  ((IRQLK == 0) && (IGRLK == 1))
+'o10'   is an action meaning:    ORQLK = 1; OGRLK = 0;
+
+and we can combine them to express a transition rule:
+
+'i10>o01' meaning:  if ((IRQLK == 1) && (IGRLK == 0)) { ORQLK = 0; OGRLK = 1; }
+
+We express internal state with an 's' followed by a state name:
+
+sIDLE     Lock is open and no requests pending
+sTAKE     We are attempting to take the lock
+sTAKEN    We are successfully holding the lock
+sGIVE     We are attempting to give the lock
+sGIVEN    They are successfully holding the lock
+sRESET    Lock system is reset
+sSYNC     We are attempting to synchronize with our lock partner
+
+o11 is not legal in the normal protocol, and it is the only such
+state, so we use it to be the 'reset' state or ground state.  (So
+IRQLK and IGRLK should have pullups enabled?)
+
+When we read 11 we should reset our state (thus beginning to
+output 11 as well), i.e., 'i11>s11' and 's11>o11'
+
+When we enter the reset state our lock state becomes invalid and users
+of the lock system should see that somehow.
+
+  :2][1:
+
+Sat Oct  7 03:07:15 2017
+
+MACHINE TRANSITIONS
+
+sRESETi11>sSYNC     # matching i11o11 -> SYNC
+sRESET>sRESET       # anything else, stay in reset
+
+sSYNCi11>sSYNC01    # matching i11o11 (again, on timer) -> SYNC01
+sSYNC>sRESET        # anything else, return to reset
+
+sSYNC01i11>sSYNC01  # waiting on i11o01 to i01o01 transition -> SYNC01
+sSYNC01i01>sSYNC00  # matching i01o01 -> SYNC00
+sSYNC01>sRESET      # anything else, reset (again)
+
+sSYNC00i10>sSYNC00  # waiting on i10o00 to i00o00 transition -> SYNC00
+sSYNC00i00>sIDLE    # matching i00o00 -> sIDLE
+sSYNC00>sRESET      # anything else, reset
+
+sIDLEi00>sIDLE      # everybody's still idle
+sIDLEi10>sGIVE      # they're asking for the lock
+sIDLEuTRY>sTRY      # we're trying for the lock
+
+sGIVEi10>sGIVE      # they're still holding the lock
+sGIVEi00>sIDLE      # they released the lock
+sGIVE>sRESET        # anything else, resync
+
+sTRYi00>sTRY        # they haven't responded yet
+sTRYi01>sTAKEN      # we got it
+sTRYi10>sIDLE       # they wanted it too.  probabilistically give up..
+sTRYi10>sTRY ++contested # ..or keep trying and hope they give up?
+sTRY>sRESET         # anything else, resync
+
+sTAKENi01>sTAKEN    # keep holding the lock
+sTAKEN>sFAILED      # something went wrong while we had the lock
+sTAKENuFREE>sIDLE   # release the lock
+
+sFAILED->sRESET     # after bookkeeping
+
+MACHINE OUTPUTS
+
+sRESET:  o11 uRESET
+sSYNC:   o11 uRESET
+sSYNC01: o01 uRESET
+sSYNC00: o00 uRESET
+sIDLE:   o00 uOPEN
+sGIVE:   o01 uBUSY
+sTRY:    o10 uPENDING
+sTAKEN:  o10 uACQUIRED
+sFAILED: o11 uFAILED
+
+  :1]
+
+  :0]
+[3:
+
+Sat Oct  7 05:37:57 2017 Well, that can't be all right, and it ought
+to be more symmetric I'd think, but it's plausibleish enough for a
+start anyway.  And it leaves us wanting to shape up the execution
+framework for it all, in terms of interrupts and timers.
+
+[4:
+
+Sun Oct  8 12:35:36 2017 Well, now we have T2-12/lkms/itc.ko working
+far enough that about an hour ago, a T2-12 tile handled its first
+interrupt from another tile and printk'd about it.  And it triggered
+on both rising and falling edges, as desired.  So that was all pretty
+good.
+
+And that LKM also is running a kernel thread so that we can do
+timeouts and stuff.  Right now the thread is only waking every ten
+seconds or something, but it is waking repeatedly.
+
+And so I'm back here trying to figure out what is the next step.  And
+the suspicion would be the reset sequence, I guess.  With no requests
+coming down from above (mfmt2 level), we should see no edges at all,
+and should arrange for the thread to time out.
+
+Suppose we try to do just that first.  Have the interrupt handler
+record last active time, and have the thread run every few jiffies
+and check if the last active time is too far in the past.[5:
+
+Sun Oct  8 15:15:30 2017 OK, have that.  Looks like HZ=250 on the BBG,
+so each jiffy is 4ms.  We do want the timeout stuff to be a backstop
+for robustness, and the bulk of the time do work using the
+edge-triggered interrupt.
+
+We also want our state machine to be self-stabilizing, or idempotent,
+or stimulus-response, or something like that, so that -- except for
+timeouts -- our state won't change unless the input changes, and we
+can therefore run the transition function any time or multiple times
+without harm.
+
+Could the interrupt routine be unique per pin?  And it would just read
+that one and only pin, compare it to the stored value for that pin,
+and trigger the transition function (with timeout == false) if it
+changed?  And the transition function doesn't actually read any pins
+at all, it just uses the stored values??
+
+[6:
+
+Sun Oct 8 15:25:30 2017 Let's see if we can make unique interrupt
+handlers for each pin.  More YY XX magic; see if it works.[7:
+
+Sun Oct  8 16:54:21 2017 Looks like that worked.  We now have separate
+minimal interrupt handlers for each pin, that dish to a common handler
+that successfully reading the value of the pin whose edge triggered
+the interrupt.
+
+Now, if we store the old value of the pin -- or read everything on
+timeout -- we might be able to detect (single) lost interrupts and
+trigger a reset.  But do we want to do that, rather than just wait a
+while?  We might.
+
+  :7]
+
+  :6]
+
+  :5]
+
+  :4]
+  :3]
+[8:
+
+Mon Oct  9 01:38:26 2017 OK, for the last few hours we have had one
+tile taking interrupts, and a second tile at his SE running a bash
+loop that generates 100 edges on ORQ and OGR every nine seconds.  The
+hero tile is remembering the state of each input, and counts a 'missed
+edge' whenever an interrupt appears _not_ to cause the associated
+input to change.
+
+So far, the hero tile has taken about 264K interrupts, and detected
+nine missed edges.
+
+We'll just pause to let that sink in.
+
+[9:
+
+Mon Oct  9 01:51:32 2017 Missed another one; 10 so far, with about
+270K interrupts taken.
+
+Note the hero tile also been running mfms at generally >49AER this
+whole time.
+
+So here it is: In this test, our edge triggered interrupt handler is
+catching well over 99.99% of the edges.  But it's also definitely
+catching less than 100% of the edges.
+
+So what do we do?
+
+We want to go as fast as possible when taking an uncontested lock --
+when we are in sIDLE and see a rising edge on IRQLK, we want to enter
+sGIVE (and assert OGRLK) as quickly as possible.
+
+On the other side, when we're in sTRY and see a rising edge on IGRLK,
+we want to enter sTAKEN as quickly as possible, so we can report
+uACQUIRED to the user (i.e., mfmt2).
+
+We haven't done it yet, but if we do make this LKM also be a character
+device, like /dev/itcs or something, then mfmt2 could do a lock
+request by doing a one-byte write with the locks it wants, and then do
+a one-byte read to see which locks it has.  And the LKM could block
+that read until all sTRYs are resolved one way or the other.
+
+That could allow parallelizing the lock tries across the ITCs, which
+would be nice.  And if the one byte meant 'I want exactly these
+locks', then writing a null byte would free everything.  And even ho
+ho, conceivably, one could be holding some lock(s) and write a
+non-null byte to free those and acquire some others.
+
+But that would risk a fairness issue if I could write say 001100 and
+then 000100 -- like going from a corner lock event to an edge lock
+event -- without ever freeing the edge involved in both..
+
+It also makes me wonder if we couldn't be just trying for and freeing
+locks all the time, at the LKM level, so that responding to a user
+lock request could be 'atomic' -- you either are currently holding
+those locks (plus perhaps more, who knows) or you're not.  If you are,
+those locks are put into 'persist' mode until you release them, while
+any other locks continue to be tried and taken or granted and freed.
+
+But having to luck into two specific locks simultaneously seems like a
+losing game for those poor corners, though.  So let's not think that
+way right now.
+
+Given a user request for a set of locks, we do this:
+
+ - Check the user state of each requested lock.  If any of them are
+   uOPEN, mark this set as unavailable.
+
+ - If the set is marked unavailable, set it to all zeros (free all)
+
+ - Iterate over the set in a background-randomized order.
+   = If we don't want the lock,
+     - If it's {sTRY, sTAKEN} goto sIDLE
+     - If it's uRESET or uBUSY or uOPEN, do nothing
+     - Otherwise fail (uncovered state?)
+   = If we do want the lock,
+     - If it's sIDLE goto sTRY
+     - If it's {sTRY, sTAKEN}, do nothing
+
+[10:
+
+Mon Oct  9 17:39:00 2017 OK, now we have background-shuffled
+indices.. but we're not doing anything with them..
+
+How can we get another little step to try, here?  Let's try to do some
+kind of reset->idle sequence, brute force with timers.  Our goal is to
+have itc.ko running on two tiles, and have both tiles get to idle with
+each other.
+
+[11:
+
+Mon Oct  9 18:02:40 2017 Start in state sRESET, broadcasting 11.
+Forget about the interrupt handler for now.  On timer tick, call
+updateState(itc) or something in a dir-shuffled order.
+
+In updateState(itc), read the two input pins.  Do a switch statement
+on our state x their pins.  Have the switch statement do nothing but
+call setState, which sets our state and updates our pins.
+
+Go on to the next guy.  When done, sleep for a couple jiffies and then
+do it again.   Every ten seconds or so, printk all our states (maybe
+in dir-shuffled order for fun).
+
+That is all.  Do it.
+[12:
+
+Tue Oct 10 05:54:45 2017 OK well we did that, before we slept some,
+and it's not working of course.  The current problem looks to be the
+sRESET->sSYNC11 idea, or thereabouts: The idea was both parties get to
+sRESET and o11, and then one guy can move on to sSYNC11 to start the
+path towards sSYNC01 and sSYNC00 and then to sIDLE.  (And we did,
+briefly, see sIDLE once, but then it went to sRESET.)
+
+And before trying to understand that further, I'd say here what about
+being heretical and making the two sides of the connection asymmetric
+for reset sequence purposes?  Two points:
+
+(1) Unlike the IXMs that offered rotational and mirror symmetries for
+    interconnection, the T2 tiles really really try hard to ensure
+    there's only a single interconnection pattern: Only a fred and a
+    ginger can interconnect, and then only via ET-WT, NE-SW, or NW-SE.
+
+(2) I _think_ we don't care if the reset sequence is asymmetric as
+    long as the subsequent lock taking process is symmetric.  We can't
+    use fred vs ginger to prioritize who wins a contested lock -- we
+    want to use something randomized somehow -- but it would make the
+    reset sequence liiiiike super-easy right?
+
+Suppose we say ginger moves first on reset, because that seems
+marginally less sexist though it's always in the eyes of the beholder.
+That means fred@sRESET (call it FsRESET) can see i01 and have it be
+okay, but ginger cannot.  So, some rules:
+
+   FsRESETi01 -> sSYNC01     GsRESETi11 -> sSYNC01
+   FsRESETi.. -> sRESET      GsRESETi.. -> sRESET
+
+   FsSYNC01i00 -> sSYNC00    GsSYNC01i11 -> sSYNC01
+   FsSYNC01i.. -> sRESET     GsSYNC01i01 -> sSYNC00
+
+   FsSYNC00i00 -> sIDLE      GsSYNC00i00 -> sIDLE
+
+Which is fine as far as it goes but leaves us with still a race
+between entering sIDLE and leaving it again by trying to take the
+first lock.
+
+(This can also fail if FsRESET sees a i01 before ginger enters reset.
+Let's try again.)
+
+  FsFAILEDi11 -> sRESET      GsFAILEDi11 -> sRESET        # i11 is the only way to get
+  FsFAILEDi.. -> sFAILED     GsFAILEDi.. -> sFAILED       # from sFAILED to sRESET
+
+                             GsRESETi11  -> sSYNC01       # ginger moves first from sRESET
+  FsRESETi11  -> sRESET                                   # fred waits for ginger in sRESET
+  FsRESETi01  -> sSYNC01                                  # fred reacts to ginger's move
+  FsRESETi..  -> sFAILED     GsRESETi..  -> sFAILED       # anything else, try again
+
+                             GsSYNC01i11 -> sSYNC01       # ginger waits for fred in sSYNC01
+  FsSYNC01i01 -> sSYNC01                                  # fred waits for ginger in sSYNC01
+                             GsSYNC01i01 -> sIDLE         # ginger moves first from sSYNC01
+  FsSYNC01i00 -> sIDLE                                    # fred reacts to ginger's move
+  FsSYNC01i.. -> sFAILED     GsSYNC01i.. -> sFAILED
+
+                sIDLEi01 -> sIDLE                         # ignore leftover grants (from reset or uFREE)
+                sIDLEi00 -> sIDLE                         # we're both idle
+                sIDLEi10 -> sGIVE                         # they took the lock
+                sGIVEi10 -> sGIVE                         # they're still holding the lock
+                sGIVEi00 -> sIDLE                         # they freed the lock
+                sIDLEuTRY -> sTAKE                        # try for the lock
+                sTAKEi00 -> sTAKE                         # we're still hoping for the lock
+                sTAKEi01 -> sTAKEN                        # we got the lock
+                sTAKENi01-> sTAKEN                        # we're holding the lock
+                sTAKENuFREE -> sIDLE                      # free the lock
+
+  :12]
+  :11]
+
+  :10]
+
+  :9]
+
+  :8]
