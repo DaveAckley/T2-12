@@ -18,19 +18,20 @@ enum { sRESET = 0,    		/** Initial and ground state, entered on any error */
        STATE_COUNT
 };
 
-/* Here is the ITC-to-GPIO mapping.  Each ITC uses four gpios, labeled
-   IRQLK, IGRLK, ORQLK, and OGRLK.  */
+/* Here is the ITC-to-GPIO mapping.  Each ITC is either a fred or a
+   ginger, and uses four gpios, labeled IRQLK, IGRLK, ORQLK, and
+   OGRLK.  */
 
-#define YY()                       \
-/*  DIR IRQLK IGRLK ORQLK OGRLK */ \
-  XX(ET,  69,   68,   66,   67)    \
-  XX(SE,  26,   27,   45,   23)    \
-  XX(SW,  61,   10,   65,   22)    \
-  XX(WT,  81,    8,   11,    9)    \
-  XX(NW,  79,   60,   80,   78)    \
-  XX(NE,  49,   14,   50,   51) 
+#define YY()                            \
+/*  DIR FRED IRQLK IGRLK ORQLK OGRLK */ \
+  XX(ET,   1,  69,   68,   66,   67)	\
+  XX(SE,   1,  26,   27,   45,   23)	\
+  XX(SW,   0,  61,   10,   65,   22)	\
+  XX(WT,   0,  81,    8,   11,    9)	\
+  XX(NW,   0,  79,   60,   80,   78)	\
+  XX(NE,   1,  49,   14,   50,   51) 
 
-#define XX(DC,p1,p2,p3,p4) DIR_##DC,
+#define XX(DC,fr,p1,p2,p3,p4) DIR_##DC,
 enum { YY() DIR_MIN = DIR_ET, DIR_MAX = DIR_NE, DIR_COUNT };
 #undef XX
 
@@ -45,6 +46,7 @@ typedef int IRQNumber;
 typedef struct itcInfo {
   const struct gpio * const pins;
   const ITCDir direction;
+  const bool isFred;
   BitValue pinStates[PIN_COUNT];
   ITCState state;
   ITCCounter fails;
@@ -66,7 +68,7 @@ typedef struct moduleData {
   ITCInfo itcInfo[DIR_COUNT];
 } ModuleData;
 
-#define XX(DC,p1,p2,p3,p4) {  	                                   \
+#define XX(DC,fr,p1,p2,p3,p4) {  	                           \
     { p1, GPIOF_IN|GPIOF_EXPORT_DIR_FIXED,          #DC "_IRQLK"}, \
     { p2, GPIOF_IN|GPIOF_EXPORT_DIR_FIXED,          #DC "_IGRLK"}, \
     { p3, GPIOF_OUT_INIT_LOW|GPIOF_EXPORT_DIR_FIXED,#DC "_ORQLK"}, \
@@ -77,15 +79,15 @@ static struct gpio pins[DIR_COUNT][4] = { YY() };
 static ModuleData md = {
   .moduleLastActive = 0,
   .nextShuffleTime = 0,
-#define XX(DC,p1,p2,p3,p4) DIR_##DC,
+#define XX(DC,fr,p1,p2,p3,p4) DIR_##DC,
   .shuffledIndices = { YY() },
 #undef XX
-#define XX(DC,p1,p2,p3,p4) { .direction = DIR_##DC, .pins = pins[DIR_##DC] },
+#define XX(DC,fr,p1,p2,p3,p4) { .direction = DIR_##DC, .isFred = fr, .pins = pins[DIR_##DC] },
   .itcInfo = { YY() }
 #undef XX
 };
 
-#define XX(DC,p1,p2,p3,p4) #DC,
+#define XX(DC,fr,p1,p2,p3,p4) #DC,
 static const char * dirnames[DIR_COUNT] = { YY() };
 #undef XX
 
@@ -125,7 +127,7 @@ static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned 
   return (irq_handler_t) IRQ_HANDLED;
 }
 
-#define XX(DC,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
+#define XX(DC,fr,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
 #define ZZ(DC,suf)                                                                                  \
 static irq_handler_t itc_irq_handler##DC##suf(unsigned int irq, void *dev_id, struct pt_regs *regs) \
 {                                                                                                   \
@@ -212,7 +214,7 @@ void itcInitStructures(void) {
 			 NULL);                                               \
     printk(KERN_INFO "ITC %s: irq#=%d, result=%d\n", gp->label, in, result);  \
   }
-#define XX(DC,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
+#define XX(DC,fr,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
     YY()
 #undef ZZ
 #undef XX
@@ -270,24 +272,24 @@ void check_timeouts(void)
 }
 
 #define SS()        \
-  XX(sRESET,  1,1)  \
-  XX(sIDLE,   0,0)  \
-  XX(sTAKE,   1,0)  \
-  XX(sTAKEN,  1,1)  \
-  XX(sGIVE,   0,1)  \
-  XX(sGIVEN,  0,1)  \
-  XX(sSYNC11, 1,1)  \
-  XX(sSYNC01, 0,1)  \
-  XX(sSYNC00, 0,0)  \
-  XX(sFAILED, 1,1)
+  TT(sRESET,  1,1)  \
+  TT(sIDLE,   0,0)  \
+  TT(sTAKE,   1,0)  \
+  TT(sTAKEN,  1,1)  \
+  TT(sGIVE,   0,1)  \
+  TT(sGIVEN,  0,1)  \
+  TT(sSYNC11, 1,1)  \
+  TT(sSYNC01, 0,1)  \
+  TT(sSYNC00, 0,0)  \
+  TT(sFAILED, 1,1)
 
-#define XX(state,orqlk,ogrlk) (((orqlk)<<1)|((ogrlk)<<0)),
+#define TT(state,orqlk,ogrlk) (((orqlk)<<1)|((ogrlk)<<0)),
 const unsigned char outputsForState[STATE_COUNT] = { SS() };
-#undef XX
+#undef TT
 
-#define XX(state,orqlk,ogrlk) #state,
+#define TT(state,orqlk,ogrlk) #state,
 const const char * stateNames[STATE_COUNT] = { SS() };
-#undef XX
+#undef TT
 
 const char * getStateName(ITCState s) {
   if (s >= STATE_COUNT) return "<INVALID>";
