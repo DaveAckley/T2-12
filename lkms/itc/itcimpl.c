@@ -66,11 +66,11 @@ typedef struct moduleData {
   ITCInfo itcInfo[DIR_COUNT];
 } ModuleData;
 
-#define XX(DC,p1,p2,p3,p4) {  	       \
-    { p1, GPIOF_DIR_IN, #DC "_IRQLK"}, \
-    { p2, GPIOF_DIR_IN, #DC "_IGRLK"}, \
-    { p3, GPIOF_DIR_OUT,#DC "_ORQLK"}, \
-    { p4, GPIOF_DIR_OUT,#DC "_OGRLK"}, },
+#define XX(DC,p1,p2,p3,p4) {  	                                   \
+    { p1, GPIOF_IN|GPIOF_EXPORT_DIR_FIXED,          #DC "_IRQLK"}, \
+    { p2, GPIOF_IN|GPIOF_EXPORT_DIR_FIXED,          #DC "_IGRLK"}, \
+    { p3, GPIOF_OUT_INIT_LOW|GPIOF_EXPORT_DIR_FIXED,#DC "_ORQLK"}, \
+    { p4, GPIOF_OUT_INIT_LOW|GPIOF_EXPORT_DIR_FIXED,#DC "_OGRLK"}, },
 static struct gpio pins[DIR_COUNT][4] = { YY() };
 #undef XX
 
