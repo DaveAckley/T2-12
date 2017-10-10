@@ -141,7 +141,7 @@ YY()
 void itcInitStructure(ITCInfo * itc)
 {
   const char * dn = itcDirName(itc->direction);
-  itc->state = sRESET;
+  itc->state = sFAILED;
   itc->resets = 1;
   itc->locksAttempted = 0;
   itc->locksAcquired = 0;
@@ -269,25 +269,45 @@ void check_timeouts(void)
   }
 }
 
-#define XX(state,orqlk,ogrlk) (((orqlk)<<1)|((ogrlk)<<0))
-const unsigned char outputsForState[STATE_COUNT] = {
-  XX(sRESET,1,1),
-  XX(sIDLE,0,0),
-  XX(sTAKE,1,0),
-  XX(sTAKEN,1,1),
-  XX(sGIVE,0,1),
-  XX(sGIVEN,0,1),
-  XX(sSYNC11,1,1),
-  XX(sSYNC01,0,1),
-  XX(sSYNC00,0,0),
-  XX(sFAILED,1,1),
-};
+#define SS()        \
+  XX(sRESET,  1,1)  \
+  XX(sIDLE,   0,0)  \
+  XX(sTAKE,   1,0)  \
+  XX(sTAKEN,  1,1)  \
+  XX(sGIVE,   0,1)  \
+  XX(sGIVEN,  0,1)  \
+  XX(sSYNC11, 1,1)  \
+  XX(sSYNC01, 0,1)  \
+  XX(sSYNC00, 0,0)  \
+  XX(sFAILED, 1,1)
+
+#define XX(state,orqlk,ogrlk) (((orqlk)<<1)|((ogrlk)<<0)),
+const unsigned char outputsForState[STATE_COUNT] = { SS() };
+#undef XX
+
+#define XX(state,orqlk,ogrlk) #state,
+const const char * stateNames[STATE_COUNT] = { SS() };
+#undef XX
+
+const char * getStateName(ITCState s) {
+  if (s >= STATE_COUNT) return "<INVALID>";
+  return stateNames[s];
+ }
 
 void setState(ITCInfo * itc, ITCState newState) {
+  unsigned orqv = outputsForState[newState]>>1;
+  unsigned ogrv = outputsForState[newState]&1;
   if (newState == sRESET) ++itc->resets;
   itc->state = newState;
-  gpio_set_value(itc->pins[PIN_ORQLK].gpio,outputsForState[newState]>>1);
-  gpio_set_value(itc->pins[PIN_OGRLK].gpio,outputsForState[newState]&1);
+  gpio_set_value(itc->pins[PIN_ORQLK].gpio,orqv);
+  gpio_set_value(itc->pins[PIN_OGRLK].gpio,ogrv);
+  printk(KERN_INFO "ITC %s: newstate=%s(%d), O%d%d, I%d%d\n",
+	 itcDirName(itc->direction),
+	 getStateName(itc->state),itc->state,
+	 gpio_get_value(itc->pins[PIN_ORQLK].gpio),
+	 gpio_get_value(itc->pins[PIN_OGRLK].gpio),
+	 gpio_get_value(itc->pins[PIN_IRQLK].gpio),
+	 gpio_get_value(itc->pins[PIN_IGRLK].gpio));
 }
 
 #define SIC(state,irqlk,igrlk) (((state)<<2)|((irqlk)<<1)|((igrlk)<<0))
@@ -325,14 +345,16 @@ void updateState(ITCInfo * itc) {
     ++itc->fails;
     setState(itc,sRESET);
   } else if (nextState != itc->state) {
+    itc->lastActive = jiffies;
     setState(itc,nextState);
   }
 }
 
 void updateStates(void) {
   ITCDir i;
-  for (i = 0; i < ARRAY_SIZE(md.shuffledIndices); ++i) {
+  for (i = 0; i < DIR_COUNT; ++i) {
     ITCDir idx = md.shuffledIndices[i];
+    //    printk(KERN_INFO "update state %d/%d\n",i,idx);
     updateState(&md.itcInfo[idx]);
   }
 }
