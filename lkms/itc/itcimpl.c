@@ -3,6 +3,7 @@
 #include <linux/jiffies.h>	    /* for time_before(), time_after() */
 #include <linux/interrupt.h>	    /* for interrupt functions.. */
 #include <linux/gpio.h>		    /* for gpio functions.. */
+#include <linux/random.h>	    /* for prandom_u32_max() */
 
 enum { sRESET = 0,    		/** Initial and ground state, entered on any error */
        sIDLE,			/** Successfully initialized, lock is open */
@@ -16,13 +17,17 @@ enum { sRESET = 0,    		/** Initial and ground state, entered on any error */
        sFAILED,			/** Something went wrong while we held the lock  */
 };
 
-#define YY()              \
-  XX(ET, 69, 68, 66, 67)  \
-  XX(SE, 26, 27, 45, 23)  \
-  XX(SW, 61, 10, 65, 22)  \
-  XX(WT, 81,  8, 11,  9)  \
-  XX(NW, 79, 60, 80, 78)  \
-  XX(NE, 49, 14, 50, 51) 
+/* Here is the ITC-to-GPIO mapping.  Each ITC uses four gpios, labeled
+   IRQLK, IGRLK, ORQLK, and OGRLK.  */
+
+#define YY()                       \
+/*  DIR IRQLK IGRLK ORQLK OGRLK */ \
+  XX(ET,  69,   68,   66,   67)    \
+  XX(SE,  26,   27,   45,   23)    \
+  XX(SW,  61,   10,   65,   22)    \
+  XX(WT,  81,    8,   11,    9)    \
+  XX(NW,  79,   60,   80,   78)    \
+  XX(NE,  49,   14,   50,   51) 
 
 #define XX(DC,p1,p2,p3,p4) DIR_##DC,
 enum { YY() DIR_MIN = DIR_ET, DIR_MAX = DIR_NE, DIR_COUNT };
@@ -52,7 +57,31 @@ typedef struct itcInfo {
   JiffyUnit lastReported;
 } ITCInfo;
 
-static JiffyUnit globalLastActive = 0;
+typedef struct moduleData {
+  JiffyUnit moduleLastActive;
+  JiffyUnit nextShuffleTime;
+  ITCDir shuffledIndices[DIR_COUNT];
+  ITCInfo itcInfo[DIR_COUNT];
+} ModuleData;
+
+#define XX(DC,p1,p2,p3,p4) {  	       \
+    { p1, GPIOF_DIR_IN, #DC "_IRQLK"}, \
+    { p2, GPIOF_DIR_IN, #DC "_IGRLK"}, \
+    { p3, GPIOF_DIR_OUT,#DC "_ORQLK"}, \
+    { p4, GPIOF_DIR_OUT,#DC "_OGRLK"}, },
+static struct gpio pins[DIR_COUNT][4] = { YY() };
+#undef XX
+
+static ModuleData md = {
+  .moduleLastActive = 0,
+  .nextShuffleTime = 0,
+#define XX(DC,p1,p2,p3,p4) DIR_##DC,
+  .shuffledIndices = { YY() },
+#undef XX
+#define XX(DC,p1,p2,p3,p4) { .direction = DIR_##DC, .pins = pins[DIR_##DC] },
+  .itcInfo = { YY() }
+#undef XX
+};
 
 #define XX(DC,p1,p2,p3,p4) #DC,
 static const char * dirnames[DIR_COUNT] = { YY() };
@@ -64,23 +93,30 @@ const char * itcDirName(ITCDir d)
   return dirnames[d];
 }
   
-#define XX(DC,p1,p2,p3,p4) {  	       \
-    { p1, GPIOF_DIR_IN, #DC "_IRQLK"}, \
-    { p2, GPIOF_DIR_IN, #DC "_IGRLK"}, \
-    { p3, GPIOF_DIR_OUT,#DC "_ORQLK"}, \
-    { p4, GPIOF_DIR_OUT,#DC "_OGRLK"}, },
-static struct gpio pins[DIR_COUNT][4] = { YY() };
-#undef XX
+void shuffleIndices(void) {
+  ITCDir i;
+  for (i = DIR_MAX; i > 0; --i) {
+    int j = prandom_u32_max(i+1); /* generates 0..DIR_MAX down to 0..1 */
+    if (i != j) {
+      ITCDir tmp = md.shuffledIndices[i];
+      md.shuffledIndices[i] = md.shuffledIndices[j];
+      md.shuffledIndices[j] = tmp;
+    }
+  }
+}
 
-#define XX(DC,p1,p2,p3,p4) { .direction = DIR_##DC, .pins = pins[DIR_##DC] },
-static ITCInfo itcInfo[DIR_COUNT] = { YY() };
-#undef XX
+inline void shuffleIndicesOccasionally(void) {
+  if (unlikely(time_after(jiffies,md.nextShuffleTime))) {
+    shuffleIndices();
+    md.nextShuffleTime = jiffies + prandom_u32_max(HZ * 60) + 1; /* half a min on avg */
+  }
+}
 
 static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned value, unsigned int irq)
 {
-  itc->lastActive = globalLastActive = jiffies;
+  itc->lastActive = md.moduleLastActive = jiffies;
   itc->interruptsTaken++;
-  if (value == itc->pinStates[pin])
+  if (unlikely(value == itc->pinStates[pin]))
     itc->edgesMissed++;
   else
     itc->pinStates[pin] = value;
@@ -91,9 +127,9 @@ static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned 
 #define ZZ(DC,suf)                                                                                  \
 static irq_handler_t itc_irq_handler##DC##suf(unsigned int irq, void *dev_id, struct pt_regs *regs) \
 {                                                                                                   \
-  return itc_irq_edge_handler(&itcInfo[DIR_##DC],                                                   \
+  return itc_irq_edge_handler(&md.itcInfo[DIR_##DC],                                                \
                               PIN##suf,                                                             \
-                              gpio_get_value(itcInfo[DIR_##DC].pins[PIN##suf].gpio),                \
+                              gpio_get_value(md.itcInfo[DIR_##DC].pins[PIN##suf].gpio),             \
 			      irq);	                                                            \
 }
 YY()
@@ -155,15 +191,15 @@ void itcInitStructures(void) {
   {
     ITCDir i;
     for (i = DIR_MIN; i <= DIR_MAX; ++i) {
-      BUG_ON(i != itcInfo[i].direction);  /* Assert we inited directions properly */
-      itcInitStructure(&itcInfo[i]);
+      BUG_ON(i != md.itcInfo[i].direction);  /* Assert we inited directions properly */
+      itcInitStructure(&md.itcInfo[i]);
     }
   }
 
   /// Now install irq handlers for everybody
 
 #define ZZ(DC,suf) { 				                              \
-    ITCInfo * itc = &itcInfo[DIR_##DC];                                       \
+    ITCInfo * itc = &md.itcInfo[DIR_##DC];                                    \
     const struct gpio * gp = &itc->pins[PIN##suf];                            \
     int result;                                                               \
     IRQNumber in = gpio_to_irq(gp->gpio);                                     \
@@ -203,30 +239,30 @@ void itcExitStructures(void) {
   /// Now do local (per-itc) cleanup
 
   for (i = DIR_MIN; i <= DIR_MAX; ++i) {
-    itcExitStructure(&itcInfo[i]);
+    itcExitStructure(&md.itcInfo[i]);
   }
 }
 
 void check_timeouts(void)
 {
   int i;
-  globalLastActive = jiffies;
+  md.moduleLastActive = jiffies;
 
-  printk(KERN_INFO "ITC timeout %lu\n", globalLastActive);
+  printk(KERN_INFO "ITC timeout %lu\n", md.moduleLastActive);
   for (i = DIR_MIN; i <= DIR_MAX; ++i) {
-    if (itcInfo[i].lastReported == itcInfo[i].lastActive) continue;
+    if (md.itcInfo[i].lastReported == md.itcInfo[i].lastActive) continue;
     printk(KERN_INFO "ITC %s: s=%d, r=%lu, at=%lu, ac=%lu, gr=%lu, co=%lu, it=%lu, em=%lu\n",
-	   itcDirName(itcInfo[i].direction),
-	   itcInfo[i].state,
-	   itcInfo[i].resets,
-	   itcInfo[i].locksAttempted,
-	   itcInfo[i].locksAcquired,
-	   itcInfo[i].locksGranted,
-	   itcInfo[i].locksContested,
-	   itcInfo[i].interruptsTaken,
-	   itcInfo[i].edgesMissed
+	   itcDirName(md.itcInfo[i].direction),
+	   md.itcInfo[i].state,
+	   md.itcInfo[i].resets,
+	   md.itcInfo[i].locksAttempted,
+	   md.itcInfo[i].locksAcquired,
+	   md.itcInfo[i].locksGranted,
+	   md.itcInfo[i].locksContested,
+	   md.itcInfo[i].interruptsTaken,
+	   md.itcInfo[i].edgesMissed
 	   );
-    itcInfo[i].lastReported = itcInfo[i].lastActive;
+    md.itcInfo[i].lastReported = md.itcInfo[i].lastActive;
   }
 }
 
@@ -237,16 +273,17 @@ void check_timeouts(void)
  */
 int itcThreadRunner(void *arg) {
   const int jiffyTimeout = 5*HZ;
-   printk(KERN_INFO "itcThreadRunner: Started\n");
-   while(!kthread_should_stop()){           // Returns true when kthread_stop() is called
-      set_current_state(TASK_RUNNING);
-      if (time_before(globalLastActive+jiffyTimeout, jiffies))
-	check_timeouts();
-      set_current_state(TASK_INTERRUPTIBLE);
-      msleep(4);
-   }
-   printk(KERN_INFO "itcThreadRunner: Stopping by request\n");
-   return 0;
+  printk(KERN_INFO "itcThreadRunner: Started\n");
+  while(!kthread_should_stop()){           // Returns true when kthread_stop() is called
+    set_current_state(TASK_RUNNING);
+    shuffleIndicesOccasionally();
+    if (time_before(md.moduleLastActive + jiffyTimeout, jiffies))
+      check_timeouts();
+    set_current_state(TASK_INTERRUPTIBLE);
+    msleep(4);
+  }
+  printk(KERN_INFO "itcThreadRunner: Stopping by request\n");
+  return 0;
 }
 
 void itcImplInit(void)
