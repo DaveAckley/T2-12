@@ -15,6 +15,7 @@ enum { sRESET = 0,    		/** Initial and ground state, entered on any error */
        sSYNC01,			/** Second state out of sRESET on way to sIDLE */
        sSYNC00,			/** Third and final state out of sRESET on way to sIDLE */
        sFAILED,			/** Something went wrong while we held the lock  */
+       STATE_COUNT
 };
 
 /* Here is the ITC-to-GPIO mapping.  Each ITC uses four gpios, labeled
@@ -46,6 +47,7 @@ typedef struct itcInfo {
   const ITCDir direction;
   BitValue pinStates[PIN_COUNT];
   ITCState state;
+  ITCCounter fails;
   ITCCounter resets;
   ITCCounter locksAttempted;
   ITCCounter locksAcquired;
@@ -251,9 +253,10 @@ void check_timeouts(void)
   printk(KERN_INFO "ITC timeout %lu\n", md.moduleLastActive);
   for (i = DIR_MIN; i <= DIR_MAX; ++i) {
     if (md.itcInfo[i].lastReported == md.itcInfo[i].lastActive) continue;
-    printk(KERN_INFO "ITC %s: s=%d, r=%lu, at=%lu, ac=%lu, gr=%lu, co=%lu, it=%lu, em=%lu\n",
+    printk(KERN_INFO "ITC %s: s=%d, f=%lu, r=%lu, at=%lu, ac=%lu, gr=%lu, co=%lu, it=%lu, em=%lu\n",
 	   itcDirName(md.itcInfo[i].direction),
 	   md.itcInfo[i].state,
+	   md.itcInfo[i].fails,
 	   md.itcInfo[i].resets,
 	   md.itcInfo[i].locksAttempted,
 	   md.itcInfo[i].locksAcquired,
@@ -263,6 +266,74 @@ void check_timeouts(void)
 	   md.itcInfo[i].edgesMissed
 	   );
     md.itcInfo[i].lastReported = md.itcInfo[i].lastActive;
+  }
+}
+
+#define XX(state,orqlk,ogrlk) (((orqlk)<<1)|((ogrlk)<<0))
+const unsigned char outputsForState[STATE_COUNT] = {
+  XX(sRESET,1,1),
+  XX(sIDLE,0,0),
+  XX(sTAKE,1,0),
+  XX(sTAKEN,1,1),
+  XX(sGIVE,0,1),
+  XX(sGIVEN,0,1),
+  XX(sSYNC11,1,1),
+  XX(sSYNC01,0,1),
+  XX(sSYNC00,0,0),
+  XX(sFAILED,1,1),
+};
+
+void setState(ITCInfo * itc, ITCState newState) {
+  if (newState == sRESET) ++itc->resets;
+  itc->state = newState;
+  gpio_set_value(itc->pins[PIN_ORQLK].gpio,outputsForState[newState]>>1);
+  gpio_set_value(itc->pins[PIN_OGRLK].gpio,outputsForState[newState]&1);
+}
+
+#define SIC(state,irqlk,igrlk) (((state)<<2)|((irqlk)<<1)|((igrlk)<<0))
+void updateState(ITCInfo * itc) {
+  unsigned stateInput;
+  ITCState nextState = sFAILED;
+  // Read input pins
+  itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
+  itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
+
+  stateInput = SIC(itc->state,itc->pinStates[PIN_IRQLK],itc->pinStates[PIN_IGRLK]);
+  switch (stateInput) {
+  case SIC(sRESET,0,0): nextState = sRESET; break;
+  case SIC(sRESET,0,1): nextState = sRESET; break;
+  case SIC(sRESET,1,0): nextState = sRESET; break;
+  case SIC(sRESET,1,1): nextState = sSYNC11; break;
+
+  case SIC(sSYNC11,0,0): nextState = sRESET; break;
+  case SIC(sSYNC11,0,1): nextState = sRESET; break;
+  case SIC(sSYNC11,1,0): nextState = sRESET; break;
+  case SIC(sSYNC11,1,1): nextState = sSYNC01; break;
+
+  case SIC(sSYNC01,0,0): nextState = sRESET; break;
+  case SIC(sSYNC01,0,1): nextState = sSYNC00; break;
+  case SIC(sSYNC01,1,0): nextState = sRESET; break;
+  case SIC(sSYNC01,1,1): nextState = sSYNC01; break;
+
+  case SIC(sSYNC00,0,0): nextState = sIDLE; break;
+  case SIC(sSYNC00,0,1): nextState = sSYNC00; break;
+  case SIC(sSYNC00,1,0): nextState = sRESET; break;
+  case SIC(sSYNC00,1,1): nextState = sRESET; break;
+
+  }
+  if (nextState == sFAILED) {
+    ++itc->fails;
+    setState(itc,sRESET);
+  } else if (nextState != itc->state) {
+    setState(itc,nextState);
+  }
+}
+
+void updateStates(void) {
+  ITCDir i;
+  for (i = 0; i < ARRAY_SIZE(md.shuffledIndices); ++i) {
+    ITCDir idx = md.shuffledIndices[i];
+    updateState(&md.itcInfo[idx]);
   }
 }
 
@@ -277,6 +348,7 @@ int itcThreadRunner(void *arg) {
   while(!kthread_should_stop()){           // Returns true when kthread_stop() is called
     set_current_state(TASK_RUNNING);
     shuffleIndicesOccasionally();
+    updateStates();
     if (time_before(md.moduleLastActive + jiffyTimeout, jiffies))
       check_timeouts();
     set_current_state(TASK_INTERRUPTIBLE);
