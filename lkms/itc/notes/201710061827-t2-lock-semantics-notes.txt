@@ -1,4 +1,4 @@
-{13}  -*- text -*-
+{17}  -*- text -*-
 [0:
 
 Fri Oct  6 18:28:08 2017 We have four gpios involved in each pairwise
@@ -355,3 +355,145 @@ Let's try again.)
   :9]
 
   :8]
+[13: 
+
+Thu Oct 12 14:35:00 2017 OK, it's Thursday again which means it's time
+to dig in and do the hard work.  
+
+Should we make a more flexible table-driven state transition
+mechanism, so we can more easily implement and hack on things like
+wildcard matches and stuff?
+
+Like, an array[POSSIBLE_STATES] of pointers to
+array[RULES_IN_THAT_PARTICULAR_STATE]
+
+struct Rule {
+  u8 bits;
+  u8 mask;
+  u8 newstate;
+  u8 endmarker;
+};
+
+with bits like
+ enum {
+   BIT_PIN_IRQLK = 0x01,
+   BIT_PIN_IGRLK = 0x02,
+   BIT_ITC_ISFRED= 0x04,
+   BIT_USR_TRY   = 0x08,
+   BIT_USR_FREE  = 0x10,
+   BIT_RSV_6     = 0x20,
+   BIT_RSV_7     = 0x40,
+   BIT_RSV_8     = 0x80
+ };
+
+and hacks like
+  enum {
+   INPUT_VALUE_i00 = 0,
+   INPUT_VALUE_i01 = BIT_PIN_IGRLK,
+   INPUT_VALUE_i10 = BIT_PIN_IRQLK,
+   INPUT_VALUE_i11 = BIT_PIN_IRQLK|BIT_PIN_IGRLK,
+   INPUT_VALUE_i_0 = 0,
+   INPUT_VALUE_i_1 = BIT_PIN_IGRLK,
+   INPUT_VALUE_i0_ = 0,
+   INPUT_VALUE_i1_ = BIT_PIN_IRQLK,
+   INPUT_VALUE_i__ = 0,
+   INPUT_MASKV_i00 = BIT_PIN_IGRLK|BIT_PIN_IGRLK,
+   INPUT_MASKV_i01 = BIT_PIN_IGRLK|BIT_PIN_IGRLK,
+   INPUT_MASKV_i10 = BIT_PIN_IGRLK|BIT_PIN_IGRLK,
+   INPUT_MASKV_i11 = BIT_PIN_IRQLK|BIT_PIN_IGRLK,
+   INPUT_MASKV_i_0 = BIT_PIN_IGRLK,
+   INPUT_MASKV_i_1 = BIT_PIN_IGRLK,
+   INPUT_MASKV_i0_ = BIT_PIN_IRQLK,
+   INPUT_MASKV_i1_ = BIT_PIN_IRQLK,
+   INPUT_MASKV_i__ = 0
+
+   ITCSD_VALUE_cF = BIT_ITC_ISFRED,
+   ITCSD_VALUE_cG = 0,
+   ITCSD_VALUE_c_ = 0,
+   ITCSD_MASKV_cF = BIT_ITC_ISFRED,
+   ITCSD_MASKV_cG = BIT_ITC_ISFRED,
+   ITCSD_MASKV_c_ = 0,
+ }
+ 
+and macros like
+#define R_INP(input,newstate)       R_ALL(_,u_,input,newstate,0)
+#define R_USR(user,newstate)        R_ALL(_,user,i__,newstate,0)
+#define R_ITC(side,input,newstate)  R_ALL(side,u_,input,newstate,0)
+#define R_ALL(side,user,input,newst,endm) \
+  { .bits = ((ITCSD_VALUE_c#side)|(USER_VALUE_#user)|(INPUT_VALUE_#input)), \
+    .mask = ((ITCSD_MASKV_c#side)|(USER_MASKV_#user)|(INPUT_MASKV_#input)), \
+    .newst = (newst) \
+    .endmarker = (endm) \
+  }
+#define R_END(newstate) MAKE_FULL_RULE(_,u_,i__,newstate,1)
+
+and declarations like
+
+//In sFAILED:
+  MAKE_SIMPLE_RULE(i11,sRESET),
+  END_RULE(sFAILED)
+
+//In sRESET
+  MAKE_SIDE_RULE(G,i11,sSYNC01),
+  MAKE_SIDE_RULE(F,i11,sRESET),
+  MAKE_SIDE_RULE(F,i01,sSYNC01),
+  END_RULE(sFAILED)
+
+//In sSYNC01
+  MAKE_SIDE_RULE(G,i11,sSYNC01),
+  MAKE_SIDE_RULE(F,i01,sSYNC01),
+  MAKE_SIDE_RULE(G,i01,sIDLE),
+  MAKE_SIDE_RULE(F,i00,sIDLE),
+  END_RULE(sFAILED)
+
+[14: 
+
+Thu Oct 12 15:24:05 2017 Well, so that seems vaguely plausible, except
+we need to understand how we set up the overall per-state dispatch
+table.  
+
+I bet the LKM build system allows us to use ... in macros (unlike the
+MFM build system)..  Maybe?  How does that work again?[15: 
+
+Thu Oct 12 15:46:06 2017 
+
+
+#define YY() \
+  RS(sFAILED, R_INP(i11,sRESET), R_END(sFAILED)) \
+  RS(sRESET, R_ITC(G,i11,sSYNC01), R_ITC(F,i11,sRESET), R_ITC(F,i01,sSYNC01), R_END(sFAILED))
+
+/* Generate state constants */
+#define RS(forState,...) forState,
+enum State {
+ YY()
+ STATE_COUNT
+};
+#undef RS
+
+/* Generate per-state rulesets */
+#define RS(forState,...) const struct Rule ruleSet_#forState[] = { __VA_ARGS__ }
+YY()
+#undef RS
+
+/* Generate state->ruleset dispatch table */
+#define RS(forState,...) ruleSet_#forState,
+const struct Rule ruleSetDispatchTable[STATE_COUNT][]) = {
+  YY()
+};
+#undef RS
+
+[16: 
+
+Thu Oct 12 16:04:18 2017 Well that's some good old fashioned hacros
+there indeedy (with a little C99 flair, assuming it works).
+
+Let's maybe give it a little try?  Actually, let's minimize the names
+a bit first, get rid of the MAKE_SIDE_RULE and MAKE_FULL_RULE and all,
+to save some viznoise and reduce width..
+
+  :16]
+  :15]
+
+  :14]
+
+  :13]
