@@ -5,7 +5,43 @@
 #include <linux/gpio.h>		    /* for gpio functions.. */
 #include <linux/random.h>	    /* for prandom_u32_max() */
 
-enum { sRESET = 0,    		/** Initial and ground state, entered on any error */
+#include "ruleset.h"                /* get macros and constants */
+
+/* GENERATE STATE CONSTANTS */
+#define RS(forState,output,...) forState,
+enum State {
+#include "RULES.h"
+  STATE_COUNT
+};
+#undef RS
+
+/* GENERATE STATE NAMES */
+#define RS(forState,output,...) #forState,
+const const char * stateNames[STATE_COUNT] = { 
+#include "RULES.h"
+};
+#undef RS
+
+/* GENERATE STATE->output table */
+#define RS(forState,output,...) OUTPUT_VALUE_##output,
+const u8 outputsForState[STATE_COUNT] = {
+#include "RULES.h"
+};
+#undef RS
+
+/* GENERATE PER-STATE RULESETS */
+#define RS(forState,output,...) const Rule ruleSet_##forState[] = { __VA_ARGS__ };
+#include "RULES.h"
+#undef RS
+
+/* GENERATE STATE->RULESET DISPATCH TABLE */
+#define RS(forState,output,...) ruleSet_##forState,
+const Rule *(ruleSetDispatchTable[STATE_COUNT]) = {
+#include "RULES.h"
+};
+#undef RS
+
+#if 0
        sIDLE,			/** Successfully initialized, lock is open */
        sTAKE,			/** We are attempting to take the lock  */
        sTAKEN,			/** We are confirmed as holding the lock  */
@@ -14,9 +50,9 @@ enum { sRESET = 0,    		/** Initial and ground state, entered on any error */
        sSYNC11,			/** First state out of sRESET on way to sIDLE */
        sSYNC01,			/** Second state out of sRESET on way to sIDLE */
        sSYNC00,			/** Third and final state out of sRESET on way to sIDLE */
-       sFAILED,			/** Something went wrong while we held the lock  */
        STATE_COUNT
 };
+#endif
 
 /* Here is the ITC-to-GPIO mapping.  Each ITC is either a fred or a
    ginger, and uses four gpios, labeled IRQLK, IGRLK, ORQLK, and
@@ -271,26 +307,6 @@ void check_timeouts(void)
   }
 }
 
-#define SS()        \
-  TT(sRESET,  1,1)  \
-  TT(sIDLE,   0,0)  \
-  TT(sTAKE,   1,0)  \
-  TT(sTAKEN,  1,1)  \
-  TT(sGIVE,   0,1)  \
-  TT(sGIVEN,  0,1)  \
-  TT(sSYNC11, 1,1)  \
-  TT(sSYNC01, 0,1)  \
-  TT(sSYNC00, 0,0)  \
-  TT(sFAILED, 1,1)
-
-#define TT(state,orqlk,ogrlk) (((orqlk)<<1)|((ogrlk)<<0)),
-const unsigned char outputsForState[STATE_COUNT] = { SS() };
-#undef TT
-
-#define TT(state,orqlk,ogrlk) #state,
-const const char * stateNames[STATE_COUNT] = { SS() };
-#undef TT
-
 const char * getStateName(ITCState s) {
   if (s >= STATE_COUNT) return "<INVALID>";
   return stateNames[s];
@@ -312,7 +328,7 @@ void setState(ITCInfo * itc, ITCState newState) {
 	 gpio_get_value(itc->pins[PIN_IGRLK].gpio));
 }
 
-#define SIC(state,irqlk,igrlk) (((state)<<2)|((irqlk)<<1)|((igrlk)<<0))
+#define SIC(irqlk,igrlk) (((irqlk)<<1)|((igrlk)<<0)))
 void updateState(ITCInfo * itc) {
   unsigned stateInput;
   ITCState nextState = sFAILED;
@@ -320,33 +336,21 @@ void updateState(ITCInfo * itc) {
   itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
   itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
 
+  // XXX NEED TO BUILD IN USER INPUT AND ISFRED
   stateInput = SIC(itc->state,itc->pinStates[PIN_IRQLK],itc->pinStates[PIN_IGRLK]);
-  switch (stateInput) {
-  case SIC(sRESET,0,0): nextState = sRESET; break;
-  case SIC(sRESET,0,1): nextState = sRESET; break;
-  case SIC(sRESET,1,0): nextState = sRESET; break;
-  case SIC(sRESET,1,1): nextState = sSYNC11; break;
 
-  case SIC(sSYNC11,0,0): nextState = sRESET; break;
-  case SIC(sSYNC11,0,1): nextState = sRESET; break;
-  case SIC(sSYNC11,1,0): nextState = sRESET; break;
-  case SIC(sSYNC11,1,1): nextState = sSYNC01; break;
-
-  case SIC(sSYNC01,0,0): nextState = sRESET; break;
-  case SIC(sSYNC01,0,1): nextState = sSYNC00; break;
-  case SIC(sSYNC01,1,0): nextState = sRESET; break;
-  case SIC(sSYNC01,1,1): nextState = sSYNC01; break;
-
-  case SIC(sSYNC00,0,0): nextState = sIDLE; break;
-  case SIC(sSYNC00,0,1): nextState = sSYNC00; break;
-  case SIC(sSYNC00,1,0): nextState = sRESET; break;
-  case SIC(sSYNC00,1,1): nextState = sRESET; break;
-
+  Rule * rulep = ruleSetDispatchTable[itc->state];
+  while (1) {
+    if ((stateInput & rulep->mask) == rulep->bits) {
+      nextState = rulep->newstate;
+      break;
+    }
+    if (rulep->endmarker) break;
+    ++rulep;
   }
-  if (nextState == sFAILED) {
-    ++itc->fails;
-    setState(itc,sRESET);
-  } else if (nextState != itc->state) {
+
+  if (nextState != itc->state) {
+    if (nextState == sFAILED) ++itc->fails;
     itc->lastActive = jiffies;
     setState(itc,nextState);
   }
