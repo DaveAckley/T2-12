@@ -308,25 +308,29 @@ void check_timeouts(void)
 }
 
 void setState(ITCInfo * itc, ITCState newState) {
-  unsigned orqv = (outputsForState[newState]>>1)&1;
-  unsigned ogrv = (outputsForState[newState]>>0)&1;
+  itc->pinStates[PIN_ORQLK] = (outputsForState[newState]>>1)&1;
+  itc->pinStates[PIN_OGRLK] = (outputsForState[newState]>>0)&1;
   itc->lastActive = jiffies;
-  if (newState == sRESET) ++itc->resets;
-  itc->state = newState;
-  gpio_set_value(itc->pins[PIN_ORQLK].gpio,orqv);
-  gpio_set_value(itc->pins[PIN_OGRLK].gpio,ogrv);
-  printk(KERN_INFO "ITC %s: newstate=%s(%d), O%d%d, I%d%d\n",
+  if (itc->state != newState) {
+    if (newState == sRESET) ++itc->resets;
+    itc->state = newState;
+  }
+  gpio_set_value(itc->pins[PIN_ORQLK].gpio,itc->pinStates[PIN_ORQLK]);
+  gpio_set_value(itc->pins[PIN_OGRLK].gpio,itc->pinStates[PIN_OGRLK]);
+  printk(KERN_INFO "ITC %s: newstate=%s(%d), o%d%d, i%d%d\n",
 	 itcDirName(itc->direction),
 	 getStateName(itc->state),itc->state,
-	 gpio_get_value(itc->pins[PIN_ORQLK].gpio),
-	 gpio_get_value(itc->pins[PIN_OGRLK].gpio),
-	 gpio_get_value(itc->pins[PIN_IRQLK].gpio),
-	 gpio_get_value(itc->pins[PIN_IGRLK].gpio));
+	 itc->pinStates[PIN_ORQLK],
+	 itc->pinStates[PIN_OGRLK],
+	 itc->pinStates[PIN_IRQLK],
+	 itc->pinStates[PIN_IRQLK]);
 }
 void updateState(ITCInfo * itc) {
   unsigned stateInput;
   ITCState nextState = sFAILED;
   const Rule * rulep;
+  unsigned oldIRQ = itc->pinStates[PIN_IRQLK];
+  unsigned oldIGR = itc->pinStates[PIN_IGRLK];
 
   // Read input pins
   itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
@@ -351,7 +355,9 @@ void updateState(ITCInfo * itc) {
     ++rulep;
   }
 
-  if (nextState != itc->state) {
+  if (nextState != itc->state
+      || oldIRQ != itc->pinStates[PIN_IRQLK] 
+      || oldIGR != itc->pinStates[PIN_IGRLK]) {
     if (nextState == sFAILED) ++itc->fails;
     setState(itc,nextState);
   }
