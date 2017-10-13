@@ -25,8 +25,8 @@ enum RuleInputBits {
 };
 
 enum RuleOutputBits {
-  BOUT_PIN_ORQLK = 0x01,
-  BOUT_PIN_OGRLK = 0x02,
+  BOUT_PIN_ORQLK = 0x02, // Left bit in oXX
+  BOUT_PIN_OGRLK = 0x01, // Right bit in oXX
 };
 
 enum ValuesAndMasks {
