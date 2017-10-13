@@ -7,7 +7,7 @@ RS(sRESET,o11, /** Initial and ground state, entered on any error */
    R_ITC(F,i01,sSYNC01), /* fred reacts to ginger's move */
    R_END(sFAILED))       /* else punt */
 
-RS(sSYNC01,o11, /** Out of reset, looking for i01 */
+RS(sSYNC01,o01, /** Out of reset, looking for i01 */
    R_ITC(G,i11,sSYNC01), /* ginger waits while fred's in reset */
    R_ITC(F,i01,sSYNC01), /* fred waits for ginger to leave SYNC01 */
    R_ITC(G,i01,sIDLE),   /* ginger moves first from SYNC01 */
