@@ -7,53 +7,6 @@
 
 #include "ruleset.h"                /* get macros and constants */
 
-/* GENERATE STATE CONSTANTS */
-#define RS(forState,output,...) forState,
-enum State {
-#include "RULES.h"
-  STATE_COUNT
-};
-#undef RS
-
-/* GENERATE STATE NAMES */
-#define RS(forState,output,...) #forState,
-const const char * stateNames[STATE_COUNT] = { 
-#include "RULES.h"
-};
-#undef RS
-
-/* GENERATE STATE->output table */
-#define RS(forState,output,...) OUTPUT_VALUE_##output,
-const u8 outputsForState[STATE_COUNT] = {
-#include "RULES.h"
-};
-#undef RS
-
-/* GENERATE PER-STATE RULESETS */
-#define RS(forState,output,...) const Rule ruleSet_##forState[] = { __VA_ARGS__ };
-#include "RULES.h"
-#undef RS
-
-/* GENERATE STATE->RULESET DISPATCH TABLE */
-#define RS(forState,output,...) ruleSet_##forState,
-const Rule *(ruleSetDispatchTable[STATE_COUNT]) = {
-#include "RULES.h"
-};
-#undef RS
-
-#if 0
-       sIDLE,			/** Successfully initialized, lock is open */
-       sTAKE,			/** We are attempting to take the lock  */
-       sTAKEN,			/** We are confirmed as holding the lock  */
-       sGIVE,			/** They are attempting to take the lock  */
-       sGIVEN,			/** They are confirmed as holding the lock  */
-       sSYNC11,			/** First state out of sRESET on way to sIDLE */
-       sSYNC01,			/** Second state out of sRESET on way to sIDLE */
-       sSYNC00,			/** Third and final state out of sRESET on way to sIDLE */
-       STATE_COUNT
-};
-#endif
-
 /* Here is the ITC-to-GPIO mapping.  Each ITC is either a fred or a
    ginger, and uses four gpios, labeled IRQLK, IGRLK, ORQLK, and
    OGRLK.  */
@@ -96,6 +49,45 @@ typedef struct itcInfo {
   JiffyUnit lastActive;
   JiffyUnit lastReported;
 } ITCInfo;
+
+/* GENERATE STATE CONSTANTS */
+#define RS(forState,output,...) forState,
+enum {
+#include "RULES.h"
+  STATE_COUNT
+};
+#undef RS
+
+/* GENERATE STATE NAMES */
+#define RS(forState,output,...) #forState,
+const const char * stateNames[STATE_COUNT] = { 
+#include "RULES.h"
+};
+#undef RS
+
+const char * getStateName(ITCState s) {
+  if (s >= STATE_COUNT) return "<INVALID>";
+  return stateNames[s];
+ }
+
+/* GENERATE STATE->output table */
+#define RS(forState,output,...) OUTPUT_VALUE_##output,
+const u8 outputsForState[STATE_COUNT] = {
+#include "RULES.h"
+};
+#undef RS
+
+/* GENERATE PER-STATE RULESETS */
+#define RS(forState,output,...) const Rule ruleSet_##forState[] = { __VA_ARGS__ };
+#include "RULES.h"
+#undef RS
+
+/* GENERATE STATE->RULESET DISPATCH TABLE */
+#define RS(forState,output,...) ruleSet_##forState,
+const Rule *(ruleSetDispatchTable[STATE_COUNT]) = {
+#include "RULES.h"
+};
+#undef RS
 
 typedef struct moduleData {
   JiffyUnit moduleLastActive;
@@ -291,9 +283,9 @@ void check_timeouts(void)
   printk(KERN_INFO "ITC timeout %lu\n", md.moduleLastActive);
   for (i = DIR_MIN; i <= DIR_MAX; ++i) {
     if (md.itcInfo[i].lastReported == md.itcInfo[i].lastActive) continue;
-    printk(KERN_INFO "ITC %s: s=%d, f=%lu, r=%lu, at=%lu, ac=%lu, gr=%lu, co=%lu, it=%lu, em=%lu\n",
+    printk(KERN_INFO "ITC %s: s=%s, f=%lu, r=%lu, at=%lu, ac=%lu, gr=%lu, co=%lu, it=%lu, em=%lu\n",
 	   itcDirName(md.itcInfo[i].direction),
-	   md.itcInfo[i].state,
+	   getStateName(md.itcInfo[i].state),
 	   md.itcInfo[i].fails,
 	   md.itcInfo[i].resets,
 	   md.itcInfo[i].locksAttempted,
@@ -306,11 +298,6 @@ void check_timeouts(void)
     md.itcInfo[i].lastReported = md.itcInfo[i].lastActive;
   }
 }
-
-const char * getStateName(ITCState s) {
-  if (s >= STATE_COUNT) return "<INVALID>";
-  return stateNames[s];
- }
 
 void setState(ITCInfo * itc, ITCState newState) {
   unsigned orqv = outputsForState[newState]>>1;
@@ -328,18 +315,26 @@ void setState(ITCInfo * itc, ITCState newState) {
 	 gpio_get_value(itc->pins[PIN_IGRLK].gpio));
 }
 
-#define SIC(irqlk,igrlk) (((irqlk)<<1)|((igrlk)<<0)))
 void updateState(ITCInfo * itc) {
   unsigned stateInput;
   ITCState nextState = sFAILED;
+  const Rule * rulep;
+
   // Read input pins
   itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
   itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
 
   // XXX NEED TO BUILD IN USER INPUT AND ISFRED
-  stateInput = SIC(itc->state,itc->pinStates[PIN_IRQLK],itc->pinStates[PIN_IGRLK]);
+  stateInput =
+    RULE_BITS(
+	      itc->pinStates[PIN_IRQLK],
+	      itc->pinStates[PIN_IGRLK],
+	      itc->isFred,
+	      0 /* uTRY */,
+	      0 /* uFREE */
+	      );
 
-  Rule * rulep = ruleSetDispatchTable[itc->state];
+  rulep = ruleSetDispatchTable[itc->state];
   while (1) {
     if ((stateInput & rulep->mask) == rulep->bits) {
       nextState = rulep->newstate;

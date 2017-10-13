@@ -8,15 +8,20 @@ typedef struct _rule {
   u8 endmarker;
 } Rule;
 
+#define RULE_BITS(irqlk,igrlk,isfred,try,free) (	\
+  ((irqlk)<<0) | \
+  ((igrlk)<<1) | \
+  ((isfred)<<2) | \
+  ((try)<<3) | \
+  ((free)<<4))
+
+
 enum RuleInputBits {
-  BINP_PIN_IRQLK = 0x01,
-  BINP_PIN_IGRLK = 0x02,
-  BINP_ITC_ISFRED= 0x04,
-  BINP_USR_TRY   = 0x08,
-  BINP_USR_FREE  = 0x10,
-  BINP_RSV_6     = 0x20,
-  BINP_RSV_7     = 0x40,
-  BINP_RSV_8     = 0x80
+  BINP_PIN_IRQLK = RULE_BITS(1,0,0,0,0),
+  BINP_PIN_IGRLK = RULE_BITS(0,1,0,0,0),
+  BINP_ITC_ISFRED= RULE_BITS(0,0,1,0,0),
+  BINP_USR_TRY   = RULE_BITS(0,0,0,1,0),
+  BINP_USR_FREE  = RULE_BITS(0,0,0,0,1),
 };
 
 enum RuleOutputBits {
