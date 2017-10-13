@@ -50,6 +50,8 @@ typedef struct itcInfo {
   JiffyUnit lastReported;
 } ITCInfo;
 
+void setState(ITCInfo * itc, ITCState newState) ; // FORWARD
+
 /* GENERATE STATE CONSTANTS */
 #define RS(forState,output,...) forState,
 enum {
@@ -282,6 +284,12 @@ void check_timeouts(void)
 
   printk(KERN_INFO "ITC timeout %lu\n", md.moduleLastActive);
   for (i = DIR_MIN; i <= DIR_MAX; ++i) {
+    const int killIDLEJiffies = HZ*15;
+    if (time_before(md.itcInfo[i].lastActive+killIDLEJiffies, jiffies)) {
+      printk(KERN_INFO "failing %s\n", itcDirName(md.itcInfo[i].direction));
+      setState(&md.itcInfo[i],sFAILED);
+      continue;
+    }
     if (md.itcInfo[i].lastReported == md.itcInfo[i].lastActive) continue;
     printk(KERN_INFO "ITC %s: s=%s, f=%lu, r=%lu, at=%lu, ac=%lu, gr=%lu, co=%lu, it=%lu, em=%lu\n",
 	   itcDirName(md.itcInfo[i].direction),
@@ -300,8 +308,9 @@ void check_timeouts(void)
 }
 
 void setState(ITCInfo * itc, ITCState newState) {
-  unsigned orqv = outputsForState[newState]>>1;
-  unsigned ogrv = outputsForState[newState]&1;
+  unsigned orqv = (outputsForState[newState]>>1)&1;
+  unsigned ogrv = (outputsForState[newState]>>0)&1;
+  itc->lastActive = jiffies;
   if (newState == sRESET) ++itc->resets;
   itc->state = newState;
   gpio_set_value(itc->pins[PIN_ORQLK].gpio,orqv);
@@ -314,7 +323,6 @@ void setState(ITCInfo * itc, ITCState newState) {
 	 gpio_get_value(itc->pins[PIN_IRQLK].gpio),
 	 gpio_get_value(itc->pins[PIN_IGRLK].gpio));
 }
-
 void updateState(ITCInfo * itc) {
   unsigned stateInput;
   ITCState nextState = sFAILED;
@@ -324,7 +332,6 @@ void updateState(ITCInfo * itc) {
   itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
   itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
 
-  // XXX NEED TO BUILD IN USER INPUT AND ISFRED
   stateInput =
     RULE_BITS(
 	      itc->pinStates[PIN_IRQLK],
@@ -346,7 +353,6 @@ void updateState(ITCInfo * itc) {
 
   if (nextState != itc->state) {
     if (nextState == sFAILED) ++itc->fails;
-    itc->lastActive = jiffies;
     setState(itc,nextState);
   }
 }
