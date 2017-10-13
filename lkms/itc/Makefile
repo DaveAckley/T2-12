@@ -4,7 +4,7 @@ itc-objs+=itcinit.o itcimpl.o
 
 all:	itc.ko testitc
 
-itc.ko:	itcinit.c itcimpl.c Makefile
+itc.ko:	itcinit.c itcimpl.c $(wildcard *.h) Makefile
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) modules
 
 testitc:	testitc.c Makefile
