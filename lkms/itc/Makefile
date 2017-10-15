@@ -8,7 +8,7 @@ itc.ko:	itcinit.c itcimpl.c $(wildcard *.h) Makefile
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) modules
 
 testitc:	testitc.c Makefile
-	$(CC) testitc.c -o testitc
+	$(CC) -Wall -pedantic -ansi -Werror testitc.c -o testitc
 
 clean:	uninstall
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) clean
