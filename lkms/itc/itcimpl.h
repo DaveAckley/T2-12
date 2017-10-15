@@ -13,5 +13,6 @@
 int itcThreadRunner(void *arg) ;
 void itcImplInit(void) ;
 void itcImplExit(void) ;
+int itcGetCurrentLockInfo(u8 buffer[4], int len) ;
 
 #endif /* ITCIMPL_H */

@@ -52,6 +52,11 @@ typedef struct itcInfo {
 
 void setState(ITCInfo * itc, ITCState newState) ; // FORWARD
 
+bool isActiveWithin(ITCInfo * itc, int jiffyCount)
+{
+  return time_after(itc->lastActive + jiffyCount, jiffies);
+}
+
 /* GENERATE STATE CONSTANTS */
 #define RS(forState,output,...) forState,
 enum {
@@ -277,6 +282,36 @@ void itcExitStructures(void) {
   }
 }
 
+int itcGetCurrentLockInfo(u8 buffer[4], int len)
+{
+  int i;
+
+  if (len < 0) return -EINVAL;
+  if (len == 0) return 0;
+  if (len > 4) len = 4;
+
+  switch (len) {
+  case 4: buffer[3] = 0;
+  case 3: buffer[2] = 0;
+  case 2: buffer[1] = 0;
+  case 1: buffer[0] = 0;
+  }
+  
+  for (i = DIR_MIN; i <= DIR_MAX; ++i) {
+    ITCInfo * itc = &md.itcInfo[i];
+    u8 bit = 1<<i;
+    switch (len) {
+    case 4: if (isActiveWithin(itc,1 * HZ)) buffer[3] |= bit;
+    case 3: if (itc->state == sGIVE) buffer[2] |= bit;
+    case 2: if (itc->state == sTAKEN) buffer[1] |= bit;
+    case 1: if (itc->state == sIDLE) buffer[0] |= bit;
+    }
+  }
+
+  return len;
+}
+
+
 void check_timeouts(void)
 {
   int i;
@@ -284,8 +319,8 @@ void check_timeouts(void)
 
   printk(KERN_INFO "ITC timeout %lu\n", md.moduleLastActive);
   for (i = DIR_MIN; i <= DIR_MAX; ++i) {
-    const int killIDLEJiffies = HZ*15;
-    if (time_before(md.itcInfo[i].lastActive+killIDLEJiffies, jiffies)) {
+    const int killIDLEJiffies = HZ*5;
+    if (!isActiveWithin(&md.itcInfo[i], killIDLEJiffies)) {
       printk(KERN_INFO "failing %s\n", itcDirName(md.itcInfo[i].direction));
       setState(&md.itcInfo[i],sFAILED);
       continue;

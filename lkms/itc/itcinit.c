@@ -133,26 +133,28 @@ static int dev_open(struct inode *inodep, struct file *filep){
 }
 
 /** @brief This function is called whenever device is being read from user space i.e. data is
- *  being sent from the device to the user. In this case is uses the copy_to_user() function to
- *  send the buffer string to the user and captures any errors.
+ *  being sent from the device to the user. 
  *  @param filep A pointer to a file object (defined in linux/fs.h)
  *  @param buffer The pointer to the buffer to which this function writes the data
  *  @param len The length of the b
  *  @param offset The offset if required
  */
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
-   int error_count = 0;
-   // copy_to_user has the format ( * to, *from, size) and returns 0 on success
-   error_count = copy_to_user(buffer, message, size_of_message);
+  int error = 0;
+  u8 infoBuffer[4];
+  if (len > 4) len = 4;
 
-   if (error_count==0){           // success!
-      printk(KERN_INFO "Itc: Sent %d characters to the user\n", size_of_message);
-      return (size_of_message=0); // clear the position to the start and return 0
-   }
-   else {
-      printk(KERN_INFO "Itc: Failed to send %d characters to the user\n", error_count);
-      return -EFAULT;      // Failed -- return a bad address message (i.e. -14)
-   }
+  error = itcGetCurrentLockInfo(infoBuffer,len);
+  if (error < 0)
+    return error;
+
+  error = copy_to_user(buffer, infoBuffer, len);
+
+  if (!error)
+    return len;
+
+  printk(KERN_INFO "Itc: Failed to send %d characters to the user\n", error);
+  return -EFAULT;      // Failed -- return a bad address message (i.e. -14)
 }
 
 /** @brief This function is called whenever the device is being written to from user space i.e.
