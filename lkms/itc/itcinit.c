@@ -15,7 +15,7 @@
 
 #include "itcimpl.h"
 
-#define  DEVICE_NAME "itcdev"     ///< The device will appear at /dev/itcdev/
+#define  DEVICE_NAME "itc!locks"     ///< The device will appear at /dev/itc/locks/
 #define  CLASS_NAME  "itccls"     ///< The device class -- this is a character device driver
 
 MODULE_LICENSE("GPL");            ///< The license type -- this affects available functionality
