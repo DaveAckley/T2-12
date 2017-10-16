@@ -51,6 +51,7 @@ typedef struct itcInfo {
 } ITCInfo;
 
 void setState(ITCInfo * itc, ITCState newState) ; // FORWARD
+void updateState(ITCInfo * itc) ;                 // FORWARD
 
 bool isActiveWithin(ITCInfo * itc, int jiffyCount)
 {
@@ -101,6 +102,8 @@ typedef struct moduleData {
   JiffyUnit nextShuffleTime;
   ITCDir shuffledIndices[DIR_COUNT];
   ITCInfo itcInfo[DIR_COUNT];
+  u8 userLockset;
+  bool userRequestActive;
 } ModuleData;
 
 #define XX(DC,fr,p1,p2,p3,p4) {  	                           \
@@ -159,6 +162,7 @@ static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned 
     itc->edgesMissed++;
   else
     itc->pinStates[pin] = value;
+  updateState(itc);
   return (irq_handler_t) IRQ_HANDLED;
 }
 
@@ -282,6 +286,25 @@ void itcExitStructures(void) {
   }
 }
 
+ssize_t itcTryForLockset(u8 lockset)
+{
+  if (lockset & 0xc0)  // We only support cmd==0 at present
+    return -EINVAL;
+
+  {
+    DEFINE_SPINLOCK(mLock);
+    unsigned long flags;
+
+    spin_lock_irqsave(&mLock, flags); // get lock (for us on UP, disable interrupts)
+    // Critical section
+    md.userLockset = lockset;
+    md.userRequestActive = 1;
+    spin_unlock_irqrestore(&mLock, flags); // restore state
+  }
+
+  return -ENODEV;      // Unimplemented operation
+}
+
 int itcGetCurrentLockInfo(u8 buffer[4], int len)
 {
   int i;
@@ -360,12 +383,21 @@ void setState(ITCInfo * itc, ITCState newState) {
 	 itc->pinStates[PIN_IRQLK],
 	 itc->pinStates[PIN_IRQLK]);
 }
+
 void updateState(ITCInfo * itc) {
   unsigned stateInput;
   ITCState nextState = sFAILED;
   const Rule * rulep;
   unsigned oldIRQ = itc->pinStates[PIN_IRQLK];
   unsigned oldIGR = itc->pinStates[PIN_IGRLK];
+  unsigned activeTry = 0;
+  unsigned activeFree = 0;
+
+  if (md.userRequestActive) {
+    unsigned isTake = (md.userLockset>>itc->direction)&1;
+    activeTry = isTake;
+    activeFree = !isTake;
+  }
 
   // Read input pins
   itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
@@ -376,8 +408,8 @@ void updateState(ITCInfo * itc) {
 	      itc->pinStates[PIN_IRQLK],
 	      itc->pinStates[PIN_IGRLK],
 	      itc->isFred,
-	      0 /* uTRY */,
-	      0 /* uFREE */
+	      activeTry,
+	      activeFree
 	      );
 
   rulep = ruleSetDispatchTable[itc->state];
@@ -402,7 +434,6 @@ void updateStates(void) {
   ITCDir i;
   for (i = 0; i < DIR_COUNT; ++i) {
     ITCDir idx = md.shuffledIndices[i];
-    //    printk(KERN_INFO "update state %d/%d\n",i,idx);
     updateState(&md.itcInfo[idx]);
   }
 }
@@ -417,7 +448,7 @@ int itcThreadRunner(void *arg) {
   printk(KERN_INFO "itcThreadRunner: Started\n");
   while(!kthread_should_stop()){           // Returns true when kthread_stop() is called
     set_current_state(TASK_RUNNING);
-    shuffleIndicesOccasionally();
+    shuffleIndicesOccasionally();          // Indices not used by interrupt, so no lock needed
     updateStates();
     if (time_before(md.moduleLastActive + jiffyTimeout, jiffies))
       check_timeouts();

@@ -19,41 +19,48 @@
 
 #define BUFFER_LENGTH 256               /** The buffer length (crude but fine) */
 static char receive[BUFFER_LENGTH];     /** The receive buffer from the LKM */
+#define DEVICE_NAME "/dev/itc/locks"
 
 int main(){
-  int ret, fd, i;
+  int ret, fd;
   /*  char stringToSend[BUFFER_LENGTH]; */
   printf("Starting itc device test code example...\n");
-  fd = open("/dev/itc/locks", O_RDWR);             /* Open the device with read/write access */
-  if (fd < 0){
-    perror("Failed to open the device...");
+  fd = open(DEVICE_NAME, O_RDWR);             /* Open the device with read/write access */
+  if (fd < 0) {
+    perror("Failed to open " DEVICE_NAME);
     return errno;
   }
-#if 0   
-   printf("Type in a short string to send to the kernel module:\n");
-   scanf("%[^\n]%*c", stringToSend);              /* Read in a string (with spaces) */
-   printf("Writing message to the device [%s].\n", stringToSend);
-   ret = write(fd, stringToSend, strlen(stringToSend)); /* Send the string to the LKM */
-   if (ret < 0){
-      perror("Failed to write the message to the device.");
-      return errno;
-   }
 
-   printf("Press ENTER to read back from the device...");
-   getchar();
-#endif
+  {
+    int i;
+    for (i = 0; i < 5; ++i) {
+      unsigned char bufi = i;
+      if (i==4) bufi |= 0x40; /* make illegal for test */
+      ret = write(fd, &bufi, 1);
+      if (ret < 0) {
+        perror("Write failed");
+        continue;
+      }
+    }
+  }
 
-   ret = read(fd, receive, 4);        /* Read the response from the LKM */
-   if (ret < 0){
-     perror("Failed to read the message from the device.");
-     return errno;
-   }
-   printf("Read 4 got %d: ", ret);
-   for (i = 0; i < ret; ++i) {
-     if (i) printf(", ");
-     printf("%d = 0x%02x",i,receive[i]);
-   }
-   printf("\n");
+  {
+    int i, j;
+    for (j = 0; j < 5; ++j) {
+      ret = read(fd, receive, 4);        /* Read the response from the LKM */
+      if (ret < 0){
+        perror("Failed to read the message from the device.");
+        return errno;
+      }
+      printf("Read 4 got %d: ", ret);
+      for (i = 0; i < ret; ++i) {
+        if (i) printf(", ");
+        printf("%d = 0x%02x",i,receive[i]);
+      }
+      printf("\n");
+    }
+  }
+
    ret = close(fd);
    if (ret < 0){
      perror("Close failed.");

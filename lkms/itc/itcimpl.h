@@ -15,4 +15,20 @@ void itcImplInit(void) ;
 void itcImplExit(void) ;
 int itcGetCurrentLockInfo(u8 buffer[4], int len) ;
 
+// itcTryForLockset
+// Returns:
+//
+//  o -ENODEV if currently unimplemented code is encountered
+//
+//  o -EINVAL if either of the top two bits of lockset are non-zero,
+//     and in this case the current lock posture remains unchanged
+//
+//  o -EBUSY if any requested locks were already given to far side,
+//    and in this case any locks that we are holding will be released
+//
+//  o 1 if we successfully took all requested locks and released any
+//    others that we may have been holding
+
+ssize_t itcTryForLockset(u8 lockset) ;
+
 #endif /* ITCIMPL_H */

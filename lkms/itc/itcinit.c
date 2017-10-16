@@ -24,8 +24,6 @@ MODULE_DESCRIPTION("Access and control the T2 intertile connection system");  //
 MODULE_VERSION("0.1");            ///< A version number to inform users
 
 static int    majorNumber;                  ///< Store the device number -- determined automatically
-static char   message[256] = {0};           ///< Memory for the string that is passed from userspace
-static short  size_of_message;              ///< Used to remember the size of the string stored
 static int    numberOpens = 0;              ///< Counts the number of times the device is opened
 static struct class*  itcClass  = NULL; ///< The device-driver class struct pointer
 static struct device* itcDevice = NULL; ///< The device-driver device struct pointer
@@ -157,9 +155,10 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
   return -EFAULT;      // Failed -- return a bad address message (i.e. -14)
 }
 
-/** @brief This function is called whenever the device is being written to from user space i.e.
- *  data is sent to the device from the user. The data is copied to the message[] array in this
- *  LKM using message[x] = buffer[x]
+/** @brief This function is called whenever the device is being
+ *  written to from user space i.e.  data is sent to the device from
+ *  the user. At present, one byte only is read, and interpreted as a
+ *  lockset to attempt to take.
  *  @param filep A pointer to a file object
  *  @param buffer The buffer to that contains the string to write to the device
  *  @param len The length of the array of data that is being passed in the const char buffer
@@ -167,26 +166,16 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
  */
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
 
-  const size_t MAXLEN=100;
-  size_t bytesToCopy = (len>=MAXLEN) ? MAXLEN : len;
-  size_t bytesNotCopied, bytesCopied;
-  printk(KERN_INFO "Itc: b2Copy %zu\n", bytesToCopy);
+  u8 lockset;
+  int notcopied;
 
-  bytesNotCopied = copy_from_user(message, buffer, bytesToCopy);
-  printk(KERN_INFO "Itc: b!Copied %zu\n", bytesNotCopied);
+  notcopied = copy_from_user(&lockset, buffer, 1);
+  if (notcopied != 0) {
+    printk(KERN_INFO "Itc: copy_from_user failed (%u)\n", notcopied);
+    return -EFAULT;
+  }
 
-  bytesCopied = bytesToCopy - bytesNotCopied;
-
-  printk(KERN_INFO "Itc: bCopied %zu\n", bytesCopied);
-
-  sprintf(message + bytesCopied, "(%zu bytes)", bytesCopied);
-  size_of_message = strlen(message);     // store the length of the stored message
-   printk(KERN_INFO "Itc: Received %zu characters from the user\n", bytesCopied);
-   if (bytesNotCopied) {
-     printk(KERN_INFO "Itc: Failed to receive %zu bytes!\n", bytesNotCopied);
-     return -EFAULT;
-   }
-   return len;
+  return itcTryForLockset(lockset);
 }
 
 /** @brief The device release function that is called whenever the device is closed/released by
