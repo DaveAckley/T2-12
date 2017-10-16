@@ -182,14 +182,20 @@ YY()
 void itcInitStructure(ITCInfo * itc)
 {
   const char * dn = itcDirName(itc->direction);
-  itc->state = sFAILED;
-  itc->resets = 1;
+  itc->resets = 0;
   itc->locksAttempted = 0;
   itc->locksAcquired = 0;
   itc->locksGranted = 0;
   itc->locksContested = 0;
   itc->lastActive = jiffies;
   itc->lastReported = jiffies-1;
+
+  // Capture initial input states
+  itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
+  itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
+
+  // Set up initial state
+  setState(itc,sFAILED);
 
   printk(KERN_INFO "ITC init %s: IRQLK=%d, IGRLK=%d, ORQLK=%d, OGRLK=%d\n",
 	 dn,
@@ -388,8 +394,6 @@ void updateState(ITCInfo * itc) {
   unsigned stateInput;
   ITCState nextState = sFAILED;
   const Rule * rulep;
-  unsigned oldIRQ = itc->pinStates[PIN_IRQLK];
-  unsigned oldIGR = itc->pinStates[PIN_IGRLK];
   unsigned activeTry = 0;
   unsigned activeFree = 0;
 
@@ -399,9 +403,10 @@ void updateState(ITCInfo * itc) {
     activeFree = !isTake;
   }
 
+  // XXX can't update pinStates[I*] here -- makes lost edges in 
   // Read input pins
-  itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
-  itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
+  //  itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
+  //  itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
 
   stateInput =
     RULE_BITS(
@@ -422,10 +427,10 @@ void updateState(ITCInfo * itc) {
     ++rulep;
   }
 
-  if (nextState != itc->state
-      || oldIRQ != itc->pinStates[PIN_IRQLK] 
-      || oldIGR != itc->pinStates[PIN_IGRLK]) {
-    if (nextState == sFAILED) ++itc->fails;
+  if (nextState != itc->state) {
+    if (nextState == sFAILED) {
+      ++itc->fails;
+    }
     setState(itc,nextState);
   }
 }
