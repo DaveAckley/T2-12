@@ -348,7 +348,7 @@ void check_timeouts(void)
 
   printk(KERN_INFO "ITC timeout %lu\n", md.moduleLastActive);
   for (i = DIR_MIN; i <= DIR_MAX; ++i) {
-    const int killIDLEJiffies = HZ*5;
+    const int killIDLEJiffies = HZ*60;
     if (!isActiveWithin(&md.itcInfo[i], killIDLEJiffies)) {
       printk(KERN_INFO "failing %s\n", itcDirName(md.itcInfo[i].direction));
       setState(&md.itcInfo[i],sFAILED);
