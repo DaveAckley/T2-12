@@ -3,52 +3,12 @@
 #include <linux/jiffies.h>	    /* for time_before(), time_after() */
 #include <linux/interrupt.h>	    /* for interrupt functions.. */
 #include <linux/gpio.h>		    /* for gpio functions.. */
-#include <linux/random.h>	    /* for prandom_u32_max() */
 
 #include "ruleset.h"                /* get macros and constants */
 
-/* Here is the ITC-to-GPIO mapping.  Each ITC is either a fred or a
-   ginger, and uses four gpios, labeled IRQLK, IGRLK, ORQLK, and
-   OGRLK.  */
+DECLARE_WAIT_QUEUE_HEAD(userWaitQ); /* For user context sleeping during lock negotiations */
 
-#define YY()                            \
-/*  DIR FRED IRQLK IGRLK ORQLK OGRLK */ \
-  XX(ET,   1,  69,   68,   66,   67)	\
-  XX(SE,   1,  26,   27,   45,   23)	\
-  XX(SW,   0,  61,   10,   65,   22)	\
-  XX(WT,   0,  81,    8,   11,    9)	\
-  XX(NW,   0,  79,   60,   80,   78)	\
-  XX(NE,   1,  49,   14,   50,   51) 
-
-#define XX(DC,fr,p1,p2,p3,p4) DIR_##DC,
-enum { YY() DIR_MIN = DIR_ET, DIR_MAX = DIR_NE, DIR_COUNT };
-#undef XX
-
-enum { PIN_MIN = 0, PIN_IRQLK = PIN_MIN, PIN_IGRLK, PIN_ORQLK, PIN_OGRLK, PIN_MAX = PIN_OGRLK, PIN_COUNT };
-
-typedef unsigned long JiffyUnit;
-typedef unsigned long ITCCounter;
-typedef unsigned char ITCDir;
-typedef unsigned char ITCState;
-typedef unsigned int BitValue;
-typedef int IRQNumber;
-typedef struct itcInfo {
-  const struct gpio * const pins;
-  const ITCDir direction;
-  const bool isFred;
-  BitValue pinStates[PIN_COUNT];
-  ITCState state;
-  ITCCounter fails;
-  ITCCounter resets;
-  ITCCounter locksAttempted;
-  ITCCounter locksAcquired;
-  ITCCounter locksGranted;
-  ITCCounter locksContested;
-  ITCCounter interruptsTaken;
-  ITCCounter edgesMissed;
-  JiffyUnit lastActive;
-  JiffyUnit lastReported;
-} ITCInfo;
+DEFINE_SPINLOCK(mLock);             /* For protecting access to ModuleData md */
 
 void setState(ITCInfo * itc, ITCState newState) ; // FORWARD
 void updateState(ITCInfo * itc) ;                 // FORWARD
@@ -97,36 +57,27 @@ const Rule *(ruleSetDispatchTable[STATE_COUNT]) = {
 };
 #undef RS
 
-typedef struct moduleData {
-  JiffyUnit moduleLastActive;
-  JiffyUnit nextShuffleTime;
-  ITCDir shuffledIndices[DIR_COUNT];
-  ITCInfo itcInfo[DIR_COUNT];
-  u8 userLockset;
-  bool userRequestActive;
-} ModuleData;
-
 #define XX(DC,fr,p1,p2,p3,p4) {  	                           \
     { p1, GPIOF_IN|GPIOF_EXPORT_DIR_FIXED,          #DC "_IRQLK"}, \
     { p2, GPIOF_IN|GPIOF_EXPORT_DIR_FIXED,          #DC "_IGRLK"}, \
     { p3, GPIOF_OUT_INIT_LOW|GPIOF_EXPORT_DIR_FIXED,#DC "_ORQLK"}, \
     { p4, GPIOF_OUT_INIT_LOW|GPIOF_EXPORT_DIR_FIXED,#DC "_OGRLK"}, },
-static struct gpio pins[DIR_COUNT][4] = { YY() };
+static struct gpio pins[DIR_COUNT][4] = { DIRDATAMACRO() };
 #undef XX
 
-static ModuleData md = {
+ModuleData md = {
   .moduleLastActive = 0,
   .nextShuffleTime = 0,
 #define XX(DC,fr,p1,p2,p3,p4) DIR_##DC,
-  .shuffledIndices = { YY() },
+  .shuffledIndices = { DIRDATAMACRO() },
 #undef XX
 #define XX(DC,fr,p1,p2,p3,p4) { .direction = DIR_##DC, .isFred = fr, .pins = pins[DIR_##DC] },
-  .itcInfo = { YY() }
+  .itcInfo = { DIRDATAMACRO() }
 #undef XX
 };
 
 #define XX(DC,fr,p1,p2,p3,p4) #DC,
-static const char * dirnames[DIR_COUNT] = { YY() };
+static const char * dirnames[DIR_COUNT] = { DIRDATAMACRO() };
 #undef XX
 
 const char * itcDirName(ITCDir d)
@@ -144,13 +95,6 @@ void shuffleIndices(void) {
       md.shuffledIndices[i] = md.shuffledIndices[j];
       md.shuffledIndices[j] = tmp;
     }
-  }
-}
-
-inline void shuffleIndicesOccasionally(void) {
-  if (unlikely(time_after(jiffies,md.nextShuffleTime))) {
-    shuffleIndices();
-    md.nextShuffleTime = jiffies + prandom_u32_max(HZ * 60) + 1; /* half a min on avg */
   }
 }
 
@@ -175,7 +119,7 @@ static irq_handler_t itc_irq_handler##DC##suf(unsigned int irq, void *dev_id, st
                               gpio_get_value(md.itcInfo[DIR_##DC].pins[PIN##suf].gpio),             \
 			      irq);	                                                            \
 }
-YY()
+DIRDATAMACRO()
 #undef ZZ
 #undef XX
 
@@ -190,9 +134,9 @@ void itcInitStructure(ITCInfo * itc)
   itc->lastActive = jiffies;
   itc->lastReported = jiffies-1;
 
-  // Capture initial input states
-  itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
-  itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
+  // Init to opposite of pin states to help edge interrupts score right?
+  itc->pinStates[PIN_IRQLK] = !gpio_get_value(itc->pins[PIN_IRQLK].gpio);
+  itc->pinStates[PIN_IGRLK] = !gpio_get_value(itc->pins[PIN_IGRLK].gpio);
 
   // Set up initial state
   setState(itc,sFAILED);
@@ -260,7 +204,7 @@ void itcInitStructures(void) {
     printk(KERN_INFO "ITC %s: irq#=%d, result=%d\n", gp->label, in, result);  \
   }
 #define XX(DC,fr,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
-    YY()
+    DIRDATAMACRO()
 #undef ZZ
 #undef XX
 }
@@ -292,23 +236,37 @@ void itcExitStructures(void) {
   }
 }
 
-ssize_t itcTryForLockset(u8 lockset)
+ssize_t itcInterpretCommandByte(u8 cmd)
 {
-  if (lockset & 0xc0)  // We only support cmd==0 at present
+  unsigned long flags;
+  ITCDir i;
+
+  if (cmd & 0xc0)  // We only support cmd==0 at present
     return -EINVAL;
 
-  {
-    DEFINE_SPINLOCK(mLock);
-    unsigned long flags;
+  // First set up our request
+  spin_lock_irqsave(&mLock, flags);      // Grab mLock
+  md.userRequestTime = jiffies;          // CRITICAL SECTION: mLock
+  md.userLockset = cmd;                  // CRITICAL SECTION: mLock
+  md.userRequestActive = 1;              // CRITICAL SECTION: mLock
+  spin_unlock_irqrestore(&mLock, flags); // Free mLock
 
-    spin_lock_irqsave(&mLock, flags); // get lock (for us on UP, disable interrupts)
-    // Critical section
-    md.userLockset = lockset;
-    md.userRequestActive = 1;
-    spin_unlock_irqrestore(&mLock, flags); // restore state
+  // Now kick each direction, to make sure they see our requests
+  for (i = 0; i < DIR_COUNT; ++i) {
+    ITCDir idx = md.shuffledIndices[i];
+    ITCInfo * itc = &md.itcInfo[idx];
+    spin_lock_irqsave(&mLock, flags);      // Grab mLock
+    updateState(itc);                      // CRITICAL SECTION: mLock
+    spin_unlock_irqrestore(&mLock, flags); // Free mLock
   }
 
-  return -ENODEV;      // Unimplemented operation
+  // Now wait until our request has been handled
+
+  while (md.userRequestActive) {
+    wait_event_interruptible(userWaitQ, !md.userRequestActive);
+  }          
+
+  return 0;      // 'Operation Worked'..
 }
 
 int itcGetCurrentLockInfo(u8 buffer[4], int len)
@@ -403,11 +361,6 @@ void updateState(ITCInfo * itc) {
     activeFree = !isTake;
   }
 
-  // XXX can't update pinStates[I*] here -- makes lost edges in 
-  // Read input pins
-  //  itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
-  //  itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
-
   stateInput =
     RULE_BITS(
 	      itc->pinStates[PIN_IRQLK],
@@ -453,12 +406,17 @@ int itcThreadRunner(void *arg) {
   printk(KERN_INFO "itcThreadRunner: Started\n");
   while(!kthread_should_stop()){           // Returns true when kthread_stop() is called
     set_current_state(TASK_RUNNING);
-    shuffleIndicesOccasionally();          // Indices not used by interrupt, so no lock needed
     updateStates();
+
+    if (md.userRequestActive && time_before(md.userRequestTime + 10, jiffies)) {
+      md.userRequestActive = 0;
+      wake_up_interruptible(&userWaitQ);
+    }
+
     if (time_before(md.moduleLastActive + jiffyTimeout, jiffies))
       check_timeouts();
     set_current_state(TASK_INTERRUPTIBLE);
-    msleep(4);
+    msleep(1);
   }
   printk(KERN_INFO "itcThreadRunner: Stopping by request\n");
   return 0;

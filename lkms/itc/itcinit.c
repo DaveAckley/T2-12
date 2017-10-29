@@ -15,16 +15,16 @@
 
 #include "itcimpl.h"
 
-#define  DEVICE_NAME "itc!locks"     ///< The device will appear at /dev/itc/locks/
+#define  DEVICE_NAME "itc!locks"  ///< The device will appear at /dev/itc/locks/
 #define  CLASS_NAME  "itccls"     ///< The device class -- this is a character device driver
 
-MODULE_LICENSE("GPL");            ///< The license type -- this affects available functionality
-MODULE_AUTHOR("Dave Ackley");     ///< The author -- visible when you use modinfo
-MODULE_DESCRIPTION("Access and control the T2 intertile connection system");  ///< The description -- see modinfo
-MODULE_VERSION("0.1");            ///< A version number to inform users
+MODULE_LICENSE("GPL");            ///< All MFM code is LGPL or GPL licensed
+MODULE_AUTHOR("Dave Ackley");     ///< Email: ackley@ackleyshack.com
+MODULE_DESCRIPTION("Access and control the T2 intertile connection system");  ///< modinfo description
+MODULE_VERSION("0.2");            ///< 0.2 for initial char device code
 
-static int    majorNumber;                  ///< Store the device number -- determined automatically
-static int    numberOpens = 0;              ///< Counts the number of times the device is opened
+static int    majorNumber;                  ///< Our assigned device number
+static int    numberOpens = 0;              ///< Stats: Number of times the device is opened
 static struct class*  itcClass  = NULL; ///< The device-driver class struct pointer
 static struct device* itcDevice = NULL; ///< The device-driver device struct pointer
 
@@ -166,16 +166,28 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
  */
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
 
-  u8 lockset;
-  int notcopied;
+  u8 lockCmd;
+  ssize_t ret;
+  u32 bytesHandled;
 
-  notcopied = copy_from_user(&lockset, buffer, 1);
-  if (notcopied != 0) {
-    printk(KERN_INFO "Itc: copy_from_user failed (%u)\n", notcopied);
-    return -EFAULT;
+  shuffleIndicesOccasionally(); // Indices not used by interrupt, so no lock needed
+
+  /* This loop written expecting len to most often be 1 */
+  for (bytesHandled = 0; bytesHandled < len; ++bytesHandled) {
+    ret = copy_from_user(&lockCmd, &buffer[bytesHandled], 1);
+    if (ret != 0) {
+      printk(KERN_INFO "Itc: copy_from_user failed\n");
+      return -EFAULT;
+    }
+    ret = itcInterpretCommandByte(lockCmd);
+    if (ret < 0) {
+      if (bytesHandled == 0)  // If no bytes yet written
+        return ret;           // ..you get the error code
+      break;                  // Otherwise you get a partial write
+    }
   }
 
-  return itcTryForLockset(lockset);
+  return bytesHandled;
 }
 
 /** @brief The device release function that is called whenever the device is closed/released by

@@ -4,8 +4,8 @@
  * @date   6 October 2017
  * @version 0.1
 
- * @brief A Linux user space program that communicates with the
- * itc.c LKM. For this example to work the device * must be called
+ * @brief A Linux user space program that communicates with the itc.c
+ * LKM. For this example to work the device must be called
  * /dev/itlocks.
 
  * @see itc.c
@@ -23,7 +23,6 @@ static char receive[BUFFER_LENGTH];     /** The receive buffer from the LKM */
 
 int main(){
   int ret, fd;
-  /*  char stringToSend[BUFFER_LENGTH]; */
   printf("Starting itc device test code example...\n");
   fd = open(DEVICE_NAME, O_RDWR);             /* Open the device with read/write access */
   if (fd < 0) {
@@ -31,6 +30,18 @@ int main(){
     return errno;
   }
 
+  {
+    char buf[2];
+    buf[0] = '\003'; /* go for bottom two locks */
+
+    ret = write(fd, buf, 1);
+    if (ret < 0) 
+      perror("Write failed");
+    else 
+      printf("Write returned %d\n",ret);
+  }
+
+#if 0
   {
     int i;
     for (i = 0; i < 5; ++i) {
@@ -43,6 +54,7 @@ int main(){
       }
     }
   }
+#endif
 
   {
     int i, j;
