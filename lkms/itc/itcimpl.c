@@ -319,23 +319,30 @@ int itcGetCurrentLockInfo(u8 * buffer, int len)
 }
 
 
-void check_timeouts(void)
+void make_reports(void)
 {
   int i;
-  md.moduleLastActive = jiffies;
+  /*  md.moduleLastActive = jiffies;
 
   printk(KERN_INFO "ITC timeout %lu\n", md.moduleLastActive);
+  */
   for (i = DIR_MIN; i <= DIR_MAX; ++i) {
+    /*
     const int killIDLEJiffies = HZ*60;
     if (!isActiveWithin(&md.itcInfo[i], killIDLEJiffies)) {
       printk(KERN_INFO "failing %s\n", itcDirName(md.itcInfo[i].direction));
       setState(&md.itcInfo[i],sFAILED);
       continue;
     }
+    */
     if (md.itcInfo[i].lastReported == md.itcInfo[i].lastActive) continue;
-    printk(KERN_INFO "ITC %s: s=%s, f=%lu, r=%lu, at=%lu, ac=%lu, gr=%lu, co=%lu, it=%lu, em=%lu\n",
+    printk(KERN_INFO "ITC %s(%s): o%d%d i%d%d, f%lu, r%lu, at%lu, ac%lu, gr%lu, co%lu, it%lu, em%lu\n",
 	   itcDirName(md.itcInfo[i].direction),
 	   getStateName(md.itcInfo[i].state),
+	   md.itcInfo[i].pinStates[PIN_ORQLK],
+	   md.itcInfo[i].pinStates[PIN_OGRLK],
+	   md.itcInfo[i].pinStates[PIN_IRQLK],
+	   md.itcInfo[i].pinStates[PIN_IGRLK],
 	   md.itcInfo[i].fails,
 	   md.itcInfo[i].resets,
 	   md.itcInfo[i].locksAttempted,
@@ -411,9 +418,23 @@ void updateState(ITCInfo * itc) {
 
 void refreshInputs(ITCInfo* itc)
 {
+  unsigned irq = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
+  unsigned igr = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
   BUG_ON(!itc);
-  itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
-  itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
+  if (irq != itc->pinStates[PIN_IRQLK] ||
+      igr != itc->pinStates[PIN_IGRLK]) {
+
+    printk(KERN_INFO "ITC %s i%d%d -> i%d%d\n",
+           itcDirName(itc->direction),
+           itc->pinStates[PIN_IRQLK],
+           itc->pinStates[PIN_IGRLK],
+           irq,
+           igr
+           );
+
+    itc->pinStates[PIN_IRQLK] = irq;
+    itc->pinStates[PIN_IGRLK] = igr;
+  }
 }
 
 void updateStates(ITCIterator * itr) {
@@ -448,8 +469,9 @@ int itcThreadRunner(void *arg) {
     if (time_before(md.moduleLastActive + jiffyTimeout, jiffies)) {
       updateStates(&idxItr);
       md.moduleLastActive = jiffies;
-
     }
+
+    make_reports();
     set_current_state(TASK_INTERRUPTIBLE);
     msleep(1);
   }
