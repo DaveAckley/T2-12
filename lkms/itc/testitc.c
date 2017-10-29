@@ -59,12 +59,12 @@ int main(){
   {
     int i, j;
     for (j = 0; j < 5; ++j) {
-      ret = read(fd, receive, 4);        /* Read the response from the LKM */
+      ret = read(fd, receive, 6);        /* Read the response from the LKM */
       if (ret < 0){
         perror("Failed to read the message from the device.");
         return errno;
       }
-      printf("Read 4 got %d: ", ret);
+      printf("Read 6 got %d: ", ret);
       for (i = 0; i < ret; ++i) {
         if (i) printf(", ");
         printf("%d = 0x%02x",i,receive[i]);

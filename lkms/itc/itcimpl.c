@@ -8,7 +8,7 @@
 
 DECLARE_WAIT_QUEUE_HEAD(userWaitQ); /* For user context sleeping during lock negotiations */
 
-DEFINE_SPINLOCK(mLock);             /* For protecting access to ModuleData md */
+DEFINE_SPINLOCK(mdLock);             /* For protecting access to md */
 
 void setState(ITCInfo * itc, ITCState newState) ; // FORWARD
 void updateState(ITCInfo * itc) ;                 // FORWARD
@@ -67,10 +67,10 @@ static struct gpio pins[DIR_COUNT][4] = { DIRDATAMACRO() };
 
 ModuleData md = {
   .moduleLastActive = 0,
-  .nextShuffleTime = 0,
-#define XX(DC,fr,p1,p2,p3,p4) DIR_##DC,
-  .shuffledIndices = { DIRDATAMACRO() },
-#undef XX
+  .userRequestTime = 0,
+  .userLockset = 0,
+  .userRequestActive = 0,
+
 #define XX(DC,fr,p1,p2,p3,p4) { .direction = DIR_##DC, .isFred = fr, .pins = pins[DIR_##DC] },
   .itcInfo = { DIRDATAMACRO() }
 #undef XX
@@ -86,16 +86,30 @@ const char * itcDirName(ITCDir d)
   return dirnames[d];
 }
   
-void shuffleIndices(void) {
+void itcIteratorShuffle(ITCIterator * itr) {
   ITCDir i;
+  BUG_ON(!itr);
+  itr->m_usesRemaining = prandom_u32_max(20000) + 1; /* average of 10K uses per shuffle */
+
   for (i = DIR_MAX; i > 0; --i) {
     int j = prandom_u32_max(i+1); /* generates 0..DIR_MAX down to 0..1 */
     if (i != j) {
-      ITCDir tmp = md.shuffledIndices[i];
-      md.shuffledIndices[i] = md.shuffledIndices[j];
-      md.shuffledIndices[j] = tmp;
+      ITCDir tmp = itr->m_indices[i];
+      itr->m_indices[i] = itr->m_indices[j];
+      itr->m_indices[j] = tmp;
     }
   }
+
+  printk(KERN_DEBUG "ITC %p iterator order is %d%d%d%d%d%d for next %d uses\n",
+         itr,
+         itr->m_indices[0],
+         itr->m_indices[1],
+         itr->m_indices[2],
+         itr->m_indices[3],
+         itr->m_indices[4],
+         itr->m_indices[5],
+         itr->m_usesRemaining
+         );
 }
 
 static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned value, unsigned int irq)
@@ -125,12 +139,14 @@ DIRDATAMACRO()
 
 void itcInitStructure(ITCInfo * itc)
 {
-  const char * dn = itcDirName(itc->direction);
+  itc->fails = 0;
   itc->resets = 0;
   itc->locksAttempted = 0;
   itc->locksAcquired = 0;
   itc->locksGranted = 0;
   itc->locksContested = 0;
+  itc->interruptsTaken = 0;
+  itc->edgesMissed = 0;
   itc->lastActive = jiffies;
   itc->lastReported = jiffies-1;
 
@@ -140,11 +156,6 @@ void itcInitStructure(ITCInfo * itc)
 
   // Set up initial state
   setState(itc,sFAILED);
-
-  printk(KERN_INFO "ITC init %s: IRQLK=%d, IGRLK=%d, ORQLK=%d, OGRLK=%d\n",
-	 dn,
-	 itc->pins[PIN_IRQLK].gpio,itc->pins[PIN_IGRLK].gpio,
-	 itc->pins[PIN_ORQLK].gpio,itc->pins[PIN_OGRLK].gpio);
 }
 
 void itcInitStructures(void) {
@@ -154,6 +165,10 @@ void itcInitStructures(void) {
 
   int err;
   unsigned count = ARRAY_SIZE(pins)*ARRAY_SIZE(pins[0]);
+
+  // Init the user context iterator
+  itcIteratorInitialize(&md.userContextIterator);
+
 
   printk(KERN_INFO "ITC allocating %d pins\n", count);
 
@@ -173,7 +188,7 @@ void itcInitStructures(void) {
       if (err) {
         printk(KERN_INFO "ITC failed to allocate pin%3d: %d\n", g->gpio, err);
       } else {
-        printk(KERN_INFO "ITC allocated pin%3d for %s\n", g->gpio, g->label); 
+        //        printk(KERN_INFO "ITC allocated pin%3d for %s\n", g->gpio, g->label); 
       }
     }
   }
@@ -201,7 +216,8 @@ void itcInitStructures(void) {
 			 IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,          \
 			 gp->label,                                           \
 			 NULL);                                               \
-    printk(KERN_INFO "ITC %s: irq#=%d, result=%d\n", gp->label, in, result);  \
+    if (result)                                                               \
+      printk(KERN_INFO "ITC %s: irq#=%d, result=%d\n", gp->label, in, result);\
   }
 #define XX(DC,fr,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
     DIRDATAMACRO()
@@ -239,25 +255,27 @@ void itcExitStructures(void) {
 ssize_t itcInterpretCommandByte(u8 cmd)
 {
   unsigned long flags;
-  ITCDir i;
 
   if (cmd & 0xc0)  // We only support cmd==0 at present
     return -EINVAL;
 
   // First set up our request
-  spin_lock_irqsave(&mLock, flags);      // Grab mLock
-  md.userRequestTime = jiffies;          // CRITICAL SECTION: mLock
-  md.userLockset = cmd;                  // CRITICAL SECTION: mLock
-  md.userRequestActive = 1;              // CRITICAL SECTION: mLock
-  spin_unlock_irqrestore(&mLock, flags); // Free mLock
+  spin_lock_irqsave(&mdLock, flags);     // Grab mdLock
+  md.userRequestTime = jiffies;          // CRITICAL SECTION: mdLock
+  md.userLockset = cmd;                  // CRITICAL SECTION: mdLock
+  md.userRequestActive = 1;              // CRITICAL SECTION: mdLock
+  spin_unlock_irqrestore(&mdLock, flags); // Free mdLock
 
   // Now kick each direction, to make sure they see our requests
-  for (i = 0; i < DIR_COUNT; ++i) {
-    ITCDir idx = md.shuffledIndices[i];
+  for (itcIteratorStart(&md.userContextIterator);
+       itcIteratorHasNext(&md.userContextIterator);
+       ) {
+    ITCDir idx = itcIteratorGetNext(&md.userContextIterator);
     ITCInfo * itc = &md.itcInfo[idx];
-    spin_lock_irqsave(&mLock, flags);      // Grab mLock
-    updateState(itc);                      // CRITICAL SECTION: mLock
-    spin_unlock_irqrestore(&mLock, flags); // Free mLock
+    
+    spin_lock_irqsave(&mdLock, flags);      // Grab mdLock
+    updateState(itc);                      // CRITICAL SECTION: mdLock
+    spin_unlock_irqrestore(&mdLock, flags); // Free mdLock
   }
 
   // Now wait until our request has been handled
@@ -269,29 +287,31 @@ ssize_t itcInterpretCommandByte(u8 cmd)
   return 0;      // 'Operation Worked'..
 }
 
-int itcGetCurrentLockInfo(u8 buffer[4], int len)
+int itcGetCurrentLockInfo(u8 * buffer, int len)
 {
+  ITCIterator * itr = &md.userContextIterator;
   int i;
 
   if (len < 0) return -EINVAL;
   if (len == 0) return 0;
-  if (len > 4) len = 4;
 
-  switch (len) {
-  case 4: buffer[3] = 0;
-  case 3: buffer[2] = 0;
-  case 2: buffer[1] = 0;
-  case 1: buffer[0] = 0;
-  }
+  for (i = 0; i < len; ++i) buffer[i] = 0;
   
-  for (i = DIR_MIN; i <= DIR_MAX; ++i) {
-    ITCInfo * itc = &md.itcInfo[i];
-    u8 bit = 1<<i;
+  for (itcIteratorStart(itr); itcIteratorHasNext(itr);) {
+    ITCDir idx = itcIteratorGetNext(itr);
+    ITCInfo * itc = &md.itcInfo[idx];
+    u8 bit = 1<<idx;
     switch (len) {
-    case 4: if (isActiveWithin(itc,1 * HZ)) buffer[3] |= bit;
+    default:
+    case 6: if (itc->state == sRESET) buffer[5] |= bit;
+    case 5: if (itc->state == sFAILED) buffer[4] |= bit;
+    case 4: if (itc->state == sIDLE) buffer[3] |= bit;
     case 3: if (itc->state == sGIVE) buffer[2] |= bit;
-    case 2: if (itc->state == sTAKEN) buffer[1] |= bit;
-    case 1: if (itc->state == sIDLE) buffer[0] |= bit;
+    case 2: if (itc->state == sTAKE ||
+                itc->state == sRACE ||
+                itc->state == sSYNC01) buffer[1] |= bit;
+    case 1: if (itc->state == sTAKEN) buffer[0] |= bit;
+    case 0: break;
     }
   }
 
@@ -334,18 +354,19 @@ void setState(ITCInfo * itc, ITCState newState) {
   itc->pinStates[PIN_OGRLK] = (outputsForState[newState]>>0)&1;
   itc->lastActive = jiffies;
   if (itc->state != newState) {
+    printk(KERN_INFO "ITC %s: %s->%s o%d%d i%d%d\n",
+           itcDirName(itc->direction),
+           getStateName(itc->state),
+           getStateName(newState),
+           itc->pinStates[PIN_ORQLK],
+           itc->pinStates[PIN_OGRLK],
+           itc->pinStates[PIN_IRQLK],
+           itc->pinStates[PIN_IRQLK]);
     if (newState == sRESET) ++itc->resets;
     itc->state = newState;
   }
   gpio_set_value(itc->pins[PIN_ORQLK].gpio,itc->pinStates[PIN_ORQLK]);
   gpio_set_value(itc->pins[PIN_OGRLK].gpio,itc->pinStates[PIN_OGRLK]);
-  printk(KERN_INFO "ITC %s: newstate=%s(%d), o%d%d, i%d%d\n",
-	 itcDirName(itc->direction),
-	 getStateName(itc->state),itc->state,
-	 itc->pinStates[PIN_ORQLK],
-	 itc->pinStates[PIN_OGRLK],
-	 itc->pinStates[PIN_IRQLK],
-	 itc->pinStates[PIN_IRQLK]);
 }
 
 void updateState(ITCInfo * itc) {
@@ -388,11 +409,19 @@ void updateState(ITCInfo * itc) {
   }
 }
 
-void updateStates(void) {
-  ITCDir i;
-  for (i = 0; i < DIR_COUNT; ++i) {
-    ITCDir idx = md.shuffledIndices[i];
-    updateState(&md.itcInfo[idx]);
+void refreshInputs(ITCInfo* itc)
+{
+  BUG_ON(!itc);
+  itc->pinStates[PIN_IRQLK] = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
+  itc->pinStates[PIN_IGRLK] = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
+}
+
+void updateStates(ITCIterator * itr) {
+  for (itcIteratorStart(itr); itcIteratorHasNext(itr);) {
+    ITCDir idx = itcIteratorGetNext(itr);
+    ITCInfo * itc = &md.itcInfo[idx];
+    refreshInputs(itc);
+    updateState(itc);
   }
 }
 
@@ -402,19 +431,25 @@ void updateStates(void) {
  *  @return returns 0 if successful
  */
 int itcThreadRunner(void *arg) {
-  const int jiffyTimeout = 5*HZ;
+  const int jiffyTimeout = HZ/10;
+
+  ITCIterator idxItr;
+  itcIteratorInitialize(&idxItr);
+
   printk(KERN_INFO "itcThreadRunner: Started\n");
   while(!kthread_should_stop()){           // Returns true when kthread_stop() is called
     set_current_state(TASK_RUNNING);
-    updateStates();
 
-    if (md.userRequestActive && time_before(md.userRequestTime + 10, jiffies)) {
+    if (md.userRequestActive && time_before(md.userRequestTime + jiffyTimeout, jiffies)) {
       md.userRequestActive = 0;
       wake_up_interruptible(&userWaitQ);
     }
 
-    if (time_before(md.moduleLastActive + jiffyTimeout, jiffies))
-      check_timeouts();
+    if (time_before(md.moduleLastActive + jiffyTimeout, jiffies)) {
+      updateStates(&idxItr);
+      md.moduleLastActive = jiffies;
+
+    }
     set_current_state(TASK_INTERRUPTIBLE);
     msleep(1);
   }

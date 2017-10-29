@@ -37,9 +37,37 @@ enum { PIN_MIN = 0, PIN_IRQLK = PIN_MIN, PIN_IGRLK, PIN_ORQLK, PIN_OGRLK, PIN_MA
 typedef unsigned long JiffyUnit;
 typedef unsigned long ITCCounter;
 typedef unsigned char ITCDir;
+typedef ITCDir ITCDirSet[DIR_COUNT];
+typedef unsigned int ITCUseCount;
 typedef unsigned char ITCState;
 typedef unsigned int BitValue;
 typedef int IRQNumber;
+
+typedef struct itciterator {
+  ITCDir m_nextIndex;
+  ITCDirSet m_indices;
+  ITCUseCount m_usesRemaining;
+} ITCIterator;
+
+void itcIteratorShuffle(ITCIterator * itr) ;
+
+static inline void itcIteratorInitialize(ITCIterator * itr) {
+  int i;
+  for (i = 0; i < DIR_COUNT; ++i) itr->m_indices[i] = i;
+  itr->m_usesRemaining = 0;
+}
+static inline void itcIteratorStart(ITCIterator * itr) {
+  if (itr->m_usesRemaining == 0) itcIteratorShuffle(itr);
+  itr->m_nextIndex = 0;
+}
+static inline bool itcIteratorHasNext(ITCIterator * itr) {
+  return itr->m_nextIndex < DIR_COUNT;
+}
+static inline ITCDir itcIteratorGetNext(ITCIterator * itr) {
+  BUG_ON(!itcIteratorHasNext(itr));
+  return itr->m_indices[itr->m_nextIndex++];
+}
+
 typedef struct itcInfo {
   const struct gpio * const pins;
   const ITCDir direction;
@@ -59,9 +87,8 @@ typedef struct itcInfo {
 } ITCInfo;
 
 typedef struct moduleData {
+  ITCIterator userContextIterator;
   JiffyUnit moduleLastActive;
-  JiffyUnit nextShuffleTime;
-  ITCDir shuffledIndices[DIR_COUNT];
   ITCInfo itcInfo[DIR_COUNT];
   JiffyUnit userRequestTime;
   u8 userLockset;
@@ -71,7 +98,7 @@ typedef struct moduleData {
 int itcThreadRunner(void *arg) ;
 void itcImplInit(void) ;
 void itcImplExit(void) ;
-int itcGetCurrentLockInfo(u8 buffer[4], int len) ;
+int itcGetCurrentLockInfo(u8 * buffer, int len) ;
 
 // itcInterpretCommandByte
 // Returns:
@@ -90,27 +117,5 @@ int itcGetCurrentLockInfo(u8 buffer[4], int len) ;
 ssize_t itcInterpretCommandByte(u8 cmd) ;
 
 extern ModuleData md;
-
-/*
-  Shuffle the itc iteration order in md.  Shuffles the order that
-  iterations (including principally updateStates()) consider the lock
-  directions, to help reduce architectural spatial anisotropies This
-  is slightly non-cheap so users should generally call
-  shuffleIndicesOccasionally over this.
-*/
-void shuffleIndices(void) ;
-
-/*
-  shuffleIndicesOccasionally should be called reasonably frequently,
-  and it, in turn, will call shuffleIndices at reasonably rare and
-  random intervals.
- */
-static inline void shuffleIndicesOccasionally(void) {
-  if (unlikely(time_after(jiffies,md.nextShuffleTime))) {
-    shuffleIndices();
-    md.nextShuffleTime = jiffies + prandom_u32_max(HZ * 60) + 1; /* half a min on avg */
-  }
-}
-
 
 #endif /* ITCIMPL_H */

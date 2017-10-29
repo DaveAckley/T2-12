@@ -58,16 +58,16 @@ static struct file_operations fops =
  *  @return returns 0 if successful
  */
 static int __init itc_init(void){
-   printk(KERN_INFO "Itc: Initializing itc LKM\n");
+   printk(KERN_INFO "ITC: Initializing LKM\n");
    itcImplInit();
 
    // Try to dynamically allocate a major number for the device -- more difficult but worth it
    majorNumber = register_chrdev(0, DEVICE_NAME, &fops);
    if (majorNumber<0) {
-      printk(KERN_ALERT "Itc failed to register a major number\n");
+      printk(KERN_ALERT "ITC: Failed to register a major number\n");
       return majorNumber;
    }
-   printk(KERN_INFO "Itc: registered correctly with major number %d\n", majorNumber);
+   printk(KERN_INFO "ITC: Registered correctly with major number %d\n", majorNumber);
 
    // Register the device class
    itcClass = class_create(THIS_MODULE, CLASS_NAME);
@@ -76,22 +76,22 @@ static int __init itc_init(void){
       printk(KERN_ALERT "Failed to register device class\n");
       return PTR_ERR(itcClass);     // Correct way to return an error on a pointer
    }
-   printk(KERN_INFO "Itc: device class registered correctly\n");
+   printk(KERN_INFO "ITC: Device class registered correctly\n");
 
    // Register the device driver
    itcDevice = device_create(itcClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME);
    if (IS_ERR(itcDevice)){          // Clean up if there is an error
       class_destroy(itcClass);      // Repeated code but the alternative is goto statements
       unregister_chrdev(majorNumber, DEVICE_NAME);
-      printk(KERN_ALERT "Failed to create the device\n");
+      printk(KERN_ALERT "ITC: Failed to create the device\n");
       return PTR_ERR(itcDevice);
    }
-   printk(KERN_INFO "Itc: device class created correctly\n"); // Made it! device was initialized
+   printk(KERN_INFO "ITC: Device class created correctly\n"); // Made it! device was initialized
    mutex_init(&itc_mutex);          // Initialize the mutex dynamically
 
    task = kthread_run(itcThreadRunner, NULL, "ITC_timer");  
    if(IS_ERR(task)){                                     
-     printk(KERN_ALERT "Itc: Thread creation failed\n");
+     printk(KERN_ALERT "ITC: Thread creation failed\n");
      return PTR_ERR(task);
    }
 
@@ -111,7 +111,7 @@ static void __exit itc_exit(void){
    class_destroy(itcClass);                         // remove the device class
    unregister_chrdev(majorNumber, DEVICE_NAME);     // unregister the major number
    kthread_stop(task);                              // Kill the timing thread
-   printk(KERN_INFO "Itc: Bye for now.\n");
+   printk(KERN_INFO "ITC: Bye for now.\n");
 }
 
 /** @brief The device open function that is called each time the device is opened
@@ -122,11 +122,11 @@ static void __exit itc_exit(void){
 static int dev_open(struct inode *inodep, struct file *filep){
 
    if(!mutex_trylock(&itc_mutex)){                  // Try to acquire the mutex (returns 0 on fail)
-	printk(KERN_ALERT "Itc: Device in use by another process");
+	printk(KERN_ALERT "ITC: Device in use by another process");
 	return -EBUSY;
    }
    numberOpens++;
-   printk(KERN_INFO "Itc: Device has been opened %d time(s)\n", numberOpens);
+   printk(KERN_INFO "ITC: Device has been opened %d time(s)\n", numberOpens);
    return 0;
 }
 
@@ -138,9 +138,10 @@ static int dev_open(struct inode *inodep, struct file *filep){
  *  @param offset The offset if required
  */
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
+  const unsigned int MAX_BUF = 128;
   int error = 0;
-  u8 infoBuffer[4];
-  if (len > 4) len = 4;
+  u8 infoBuffer[MAX_BUF];
+  if (len > MAX_BUF) len = MAX_BUF;
 
   error = itcGetCurrentLockInfo(infoBuffer,len);
   if (error < 0)
@@ -151,7 +152,7 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
   if (!error)
     return len;
 
-  printk(KERN_INFO "Itc: Failed to send %d characters to the user\n", error);
+  printk(KERN_INFO "ITC: Failed to send %d characters to the user\n", error);
   return -EFAULT;      // Failed -- return a bad address message (i.e. -14)
 }
 
@@ -169,8 +170,6 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
   u8 lockCmd;
   ssize_t ret;
   u32 bytesHandled;
-
-  shuffleIndicesOccasionally(); // Indices not used by interrupt, so no lock needed
 
   /* This loop written expecting len to most often be 1 */
   for (bytesHandled = 0; bytesHandled < len; ++bytesHandled) {
@@ -197,7 +196,7 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
  */
 static int dev_release(struct inode *inodep, struct file *filep){
    mutex_unlock(&itc_mutex);                      // release the mutex (i.e., lock goes up)
-   printk(KERN_INFO "Itc: Device successfully closed\n");
+   printk(KERN_INFO "ITC: Device successfully closed\n");
    return 0;
 }
 
