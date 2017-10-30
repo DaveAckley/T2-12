@@ -111,7 +111,7 @@ void itcIteratorShuffle(ITCIterator * itr) {
     }
   }
 
-  printk(KERN_INFO "ITC %p iterator order is %d%d%d%d%d%d for next %d uses\n",
+  printk(KERN_DEBUG "ITC %p iterator order is %d%d%d%d%d%d for next %d uses\n",
          itr,
          itr->m_indices[0],
          itr->m_indices[1],
