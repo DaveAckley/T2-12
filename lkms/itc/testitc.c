@@ -21,8 +21,22 @@
 static char receive[BUFFER_LENGTH];     /** The receive buffer from the LKM */
 #define DEVICE_NAME "/dev/itc/locks"
 
-int main(){
-  int ret, fd;
+int main(int argc, char ** argv){
+  int ret, fd, lockbits;
+  char * progname = *argv++;
+  if (--argc != 1) {
+    printf("Usage: %s LOCKBITS-IN-OCTAL\n",progname);
+    exit(1);
+  }
+  {
+    char * end;
+    lockbits = strtol(argv[0],&end,8);
+    if (*end) {
+      printf("Crap in octal arg '%s'\n",end);
+      exit(2);
+    }
+  }
+  
   printf("Starting itc device test code example...\n");
   fd = open(DEVICE_NAME, O_RDWR);             /* Open the device with read/write access */
   if (fd < 0) {
@@ -32,13 +46,16 @@ int main(){
 
   {
     char buf[2];
-    buf[0] = '\003'; /* go for bottom two locks */
+    buf[0] = lockbits; /* go for specified locks */
 
     ret = write(fd, buf, 1);
-    if (ret < 0) 
-      perror("Write failed");
+    if (ret < 0) {
+      char msg[200];
+      sprintf(msg,"Write '\\%03o' failed",buf[0]);
+      perror(msg);
+    }
     else 
-      printf("Write returned %d\n",ret);
+      printf("Write '\\%03o' returned %d\n",buf[0],ret);
   }
 
 #if 0
