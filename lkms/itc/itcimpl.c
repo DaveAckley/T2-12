@@ -89,7 +89,7 @@ const char * itcDirName(ITCDir d)
 void itcIteratorShuffle(ITCIterator * itr) {
   ITCDir i;
   BUG_ON(!itr);
-  itr->m_usesRemaining = prandom_u32_max(20000) + 1; /* average of 10K uses per shuffle */
+  itr->m_usesRemaining = prandom_u32_max(200) + 1; /* average of 100 uses per shuffle */
 
   for (i = DIR_MAX; i > 0; --i) {
     int j = prandom_u32_max(i+1); /* generates 0..DIR_MAX down to 0..1 */
@@ -368,7 +368,7 @@ void setState(ITCInfo * itc, ITCState newState) {
            itc->pinStates[PIN_ORQLK],
            itc->pinStates[PIN_OGRLK],
            itc->pinStates[PIN_IRQLK],
-           itc->pinStates[PIN_IRQLK]);
+           itc->pinStates[PIN_IGRLK]);
     if (newState == sRESET) ++itc->resets;
     itc->state = newState;
   }
@@ -462,6 +462,7 @@ int itcThreadRunner(void *arg) {
     set_current_state(TASK_RUNNING);
 
     if (md.userRequestActive && time_before(md.userRequestTime + jiffyTimeout, jiffies)) {
+      printk(KERN_INFO "itcThreadRunner: Clearing userRequestActive\n");
       md.userRequestActive = 0;
       wake_up_interruptible(&userWaitQ);
     }
