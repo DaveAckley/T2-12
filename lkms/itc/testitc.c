@@ -18,11 +18,73 @@
 #include<unistd.h>
 
 #define BUFFER_LENGTH 256               /** The buffer length (crude but fine) */
-static char receive[BUFFER_LENGTH];     /** The receive buffer from the LKM */
+static unsigned char receive[BUFFER_LENGTH];     /** The receive buffer from the LKM */
 #define DEVICE_NAME "/dev/itc/locks"
 
+void dieNeg(int val, char * msg)
+{
+  if (val < 0) {
+    perror(msg);
+    exit(-val);
+  }
+}
+
+static char * dirnames[6] = { "ET", "SE", "SW", "WT", "NW", "NE" };
+static char * rdinfo[] = { "held", "unst", "givn", "idle", "fail", "rset" };
+void printFlags(unsigned char ch) {
+  int i;
+  int seen = 0;
+  for (i=0; i < 6; ++i) {
+    if ((ch&(1<<i))) {
+      if (seen++) printf(",");
+      printf("%s",dirnames[i]);
+    }
+  }
+}
+
+void reportStatus(int fd)
+{
+  int i, ret;
+  ret = read(fd, receive, 6);        /* Read the response from the LKM */
+  dieNeg(ret,"read");
+
+  printf("Read 6 got %d: ", ret);
+  for (i = 0; i < ret; ++i) {
+    unsigned char b = receive[i];
+    if (i) printf(" ");
+    printf("%s[",rdinfo[i]);
+    printFlags(b);
+    printf("]");
+  }
+  printf("\n");
+}
+
+void writeLockRequest(int fd, int lockbits)
+{
+  int ret;
+  char buf;
+  buf = lockbits; /* go for specified locks */
+      
+  ret = write(fd, &buf, 1);
+  if (ret < 0) {
+    char msg[200];
+    sprintf(msg,"Write '\\%03o' failed",buf);
+    dieNeg(ret,msg);
+  }
+  printf("Write '\\%03o' returned %d\n",buf,ret);
+}
+
+void multimode(int fd, int count) {
+  int i, ret;
+  for (i = 0; i < count; ++i) {
+    unsigned char byte = rand()&077;
+    ret = write(fd, &byte, 1);
+    dieNeg(ret,"multimode write");
+  }
+}
+
 int main(int argc, char ** argv){
-  int ret, fd, lockbits;
+  int fd, lockbits;
   char * progname = *argv++;
   if (--argc != 1) {
     printf("Usage: %s LOCKBITS-IN-OCTAL\n",progname);
@@ -36,64 +98,18 @@ int main(int argc, char ** argv){
       exit(2);
     }
   }
-  
-  printf("Starting itc device test code example...\n");
+
   fd = open(DEVICE_NAME, O_RDWR);             /* Open the device with read/write access */
-  if (fd < 0) {
-    perror("Failed to open " DEVICE_NAME);
-    return errno;
+  dieNeg(fd,"open " DEVICE_NAME);
+
+  if (lockbits > 077)
+    multimode(fd,lockbits);
+  else {
+    writeLockRequest(fd,lockbits);
+    reportStatus(fd);
   }
 
-  {
-    char buf[2];
-    buf[0] = lockbits; /* go for specified locks */
+  dieNeg(close(fd),"close");
 
-    ret = write(fd, buf, 1);
-    if (ret < 0) {
-      char msg[200];
-      sprintf(msg,"Write '\\%03o' failed",buf[0]);
-      perror(msg);
-    }
-    else 
-      printf("Write '\\%03o' returned %d\n",buf[0],ret);
-  }
-
-#if 0
-  {
-    int i;
-    for (i = 0; i < 5; ++i) {
-      unsigned char bufi = i;
-      if (i==4) bufi |= 0x40; /* make illegal for test */
-      ret = write(fd, &bufi, 1);
-      if (ret < 0) {
-        perror("Write failed");
-        continue;
-      }
-    }
-  }
-#endif
-
-  {
-    int i, j;
-    for (j = 0; j < 5; ++j) {
-      ret = read(fd, receive, 6);        /* Read the response from the LKM */
-      if (ret < 0){
-        perror("Failed to read the message from the device.");
-        return errno;
-      }
-      printf("Read 6 got %d: ", ret);
-      for (i = 0; i < ret; ++i) {
-        if (i) printf(", ");
-        printf("%d = 0x%02x",i,receive[i]);
-      }
-      printf("\n");
-    }
-  }
-
-   ret = close(fd);
-   if (ret < 0){
-     perror("Close failed.");
-     return errno;
-   }
-   return 0;
+  return 0;
 }
