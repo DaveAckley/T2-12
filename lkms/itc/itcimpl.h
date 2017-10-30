@@ -38,26 +38,24 @@ typedef unsigned long JiffyUnit;
 typedef unsigned long ITCCounter;
 typedef unsigned char ITCDir;
 typedef ITCDir ITCDirSet[DIR_COUNT];
-typedef unsigned int ITCUseCount;
+typedef int ITCIteratorUseCount;
 typedef unsigned char ITCState;
 typedef unsigned int BitValue;
 typedef int IRQNumber;
 
 typedef struct itciterator {
+  ITCIteratorUseCount m_usesRemaining;
+  ITCIteratorUseCount m_averageUsesPerShuffle;
   ITCDir m_nextIndex;
   ITCDirSet m_indices;
-  ITCUseCount m_usesRemaining;
 } ITCIterator;
 
 void itcIteratorShuffle(ITCIterator * itr) ;
 
-static inline void itcIteratorInitialize(ITCIterator * itr) {
-  int i;
-  for (i = 0; i < DIR_COUNT; ++i) itr->m_indices[i] = i;
-  itr->m_usesRemaining = 0;
-}
+void itcIteratorInitialize(ITCIterator * itr, ITCIteratorUseCount avguses) ;
+
 static inline void itcIteratorStart(ITCIterator * itr) {
-  if (itr->m_usesRemaining == 0) itcIteratorShuffle(itr);
+  if (--itr->m_usesRemaining < 0) itcIteratorShuffle(itr);
   itr->m_nextIndex = 0;
 }
 static inline bool itcIteratorHasNext(ITCIterator * itr) {

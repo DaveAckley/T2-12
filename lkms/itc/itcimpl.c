@@ -86,10 +86,21 @@ const char * itcDirName(ITCDir d)
   return dirnames[d];
 }
   
+void itcIteratorInitialize(ITCIterator * itr, ITCIteratorUseCount avguses) {
+  int i;
+  BUG_ON(!itr);
+  BUG_ON(avguses <= 0);
+  BUG_ON((avguses<<1) <= 0);
+  itr->m_averageUsesPerShuffle = avguses;
+  for (i = 0; i < DIR_COUNT; ++i) itr->m_indices[i] = i;
+  itcIteratorShuffle(itr);
+}
+
 void itcIteratorShuffle(ITCIterator * itr) {
   ITCDir i;
   BUG_ON(!itr);
-  itr->m_usesRemaining = prandom_u32_max(200) + 1; /* average of 100 uses per shuffle */
+  itr->m_usesRemaining = 
+    prandom_u32_max(itr->m_averageUsesPerShuffle<<1) + 1; /* max is double avg, given uniform random */
 
   for (i = DIR_MAX; i > 0; --i) {
     int j = prandom_u32_max(i+1); /* generates 0..DIR_MAX down to 0..1 */
@@ -100,7 +111,7 @@ void itcIteratorShuffle(ITCIterator * itr) {
     }
   }
 
-  printk(KERN_DEBUG "ITC %p iterator order is %d%d%d%d%d%d for next %d uses\n",
+  printk(KERN_INFO "ITC %p iterator order is %d%d%d%d%d%d for next %d uses\n",
          itr,
          itr->m_indices[0],
          itr->m_indices[1],
@@ -166,8 +177,8 @@ void itcInitStructures(void) {
   int err;
   unsigned count = ARRAY_SIZE(pins)*ARRAY_SIZE(pins[0]);
 
-  // Init the user context iterator
-  itcIteratorInitialize(&md.userContextIterator);
+  // Init the user context iterator, with frequent shuffling
+  itcIteratorInitialize(&md.userContextIterator, 25);
 
 
   printk(KERN_INFO "ITC allocating %d pins\n", count);
@@ -455,13 +466,13 @@ int itcThreadRunner(void *arg) {
   const int jiffyTimeout = HZ/10;
 
   ITCIterator idxItr;
-  itcIteratorInitialize(&idxItr);
+  itcIteratorInitialize(&idxItr,2500); // init with rare shuffling
 
   printk(KERN_INFO "itcThreadRunner: Started\n");
-  while(!kthread_should_stop()){           // Returns true when kthread_stop() is called
+  while(!kthread_should_stop()) {    // Returns true when kthread_stop() is called
     set_current_state(TASK_RUNNING);
 
-    if (md.userRequestActive && time_before(md.userRequestTime + jiffyTimeout, jiffies)) {
+    if (md.userRequestActive && time_before(md.userRequestTime + jiffyTimeout/10, jiffies)) {
       printk(KERN_INFO "itcThreadRunner: Clearing userRequestActive\n");
       md.userRequestActive = 0;
       wake_up_interruptible(&userWaitQ);
