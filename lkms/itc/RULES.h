@@ -16,9 +16,9 @@ RS(sSYNC01,o01, /** Out of reset, looking for i01 */
 
 RS(sIDLE,o00, /** In sync, waiting for a lock grab */
    R_INP(i01,sIDLE),     /* ignore leftover grants (from reset or uFREE) */
-   R_INP(i00,sIDLE),     /* we're both idle */
    R_INP(i10,sGIVE),     /* they took the lock */
    R_USR(uTRY,sTAKE),    /* we're going for the lock */
+   R_INP(i00,sIDLE),     /* we're both just idle */
    R_END(sFAILED))       /* they must have reset, die with them */
 
 RS(sGIVE,o01,  /** They've got the lock */
