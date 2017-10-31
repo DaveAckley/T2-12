@@ -1,4 +1,4 @@
-{17}  -*- text -*-
+{34}  -*- text -*-
 [0:
 
 Fri Oct  6 18:28:08 2017 We have four gpios involved in each pairwise
@@ -355,10 +355,10 @@ Let's try again.)
   :9]
 
   :8]
-[13: 
+[13:
 
 Thu Oct 12 14:35:00 2017 OK, it's Thursday again which means it's time
-to dig in and do the hard work.  
+to dig in and do the hard work.
 
 Should we make a more flexible table-driven state transition
 mechanism, so we can more easily implement and hack on things like
@@ -414,7 +414,7 @@ and hacks like
    ITCSD_MASKV_cG = BIT_ITC_ISFRED,
    ITCSD_MASKV_c_ = 0,
  }
- 
+
 and macros like
 #define R_INP(input,newstate)       R_ALL(_,u_,input,newstate,0)
 #define R_USR(user,newstate)        R_ALL(_,user,i__,newstate,0)
@@ -446,16 +446,16 @@ and declarations like
   MAKE_SIDE_RULE(F,i00,sIDLE),
   END_RULE(sFAILED)
 
-[14: 
+[14:
 
 Thu Oct 12 15:24:05 2017 Well, so that seems vaguely plausible, except
 we need to understand how we set up the overall per-state dispatch
-table.  
+table.
 
 I bet the LKM build system allows us to use ... in macros (unlike the
-MFM build system)..  Maybe?  How does that work again?[15: 
+MFM build system)..  Maybe?  How does that work again?[15:
 
-Thu Oct 12 15:46:06 2017 
+Thu Oct 12 15:46:06 2017
 
 
 #define YY() \
@@ -482,7 +482,7 @@ const struct Rule ruleSetDispatchTable[STATE_COUNT][]) = {
 };
 #undef RS
 
-[16: 
+[16:
 
 Thu Oct 12 16:04:18 2017 Well that's some good old fashioned hacros
 there indeedy (with a little C99 flair, assuming it works).
@@ -496,4 +496,419 @@ to save some viznoise and reduce width..
 
   :14]
 
-  :13]
+  :13][17:
+
+Sat Oct 14 04:52:51 2017 So, it seems like the ruleset hacros are
+actually working, sufficient to discover the first actual bug in the
+transition rules rather than in the framework.
+[18:
+
+Sat Oct 14 04:54:24 2017 Just for the record, here's the entire
+current ruleset:
+
+-----cut here-----
+/* THIS IS THE MASTER FILE CONTAINING ALL STATE TRANSITION INFO */
+/* NO #define/#ifndef macro guard here!  File is included multiple times! */
+
+RS(sRESET,o11, /** Initial and ground state, entered on any error */
+   R_ITC(G,i11,sSYNC01), /* ginger moves first from sRESET */
+   R_ITC(F,i11,sRESET),  /* fred waits for ginger in sRESET */
+   R_ITC(F,i01,sSYNC01), /* fred reacts to ginger's move */
+   R_END(sFAILED))       /* else punt */
+
+RS(sSYNC01,o01, /** Out of reset, looking for i01 */
+   R_ITC(G,i11,sSYNC01), /* ginger waits while fred's in reset */
+   R_ITC(F,i01,sSYNC01), /* fred waits for ginger to leave SYNC01 */
+   R_ITC(G,i01,sIDLE),   /* ginger moves first from SYNC01 */
+   R_ITC(F,i00,sIDLE),   /* fred reacts to ginger's move */
+   R_END(sFAILED))       /* else punt */
+
+RS(sIDLE,o00, /** In sync, waiting for a lock grab */
+   R_INP(i01,sIDLE),     /* ignore leftover grants (from reset or uFREE) */
+   R_INP(i00,sIDLE),     /* we're both idle */
+   R_INP(i10,sGIVE),     /* they took the lock */
+   R_USR(uTRY,sTAKE),    /* we're going for the lock */
+   R_END(sFAILED))       /* they must have reset, die with them */
+
+RS(sGIVE,o01,  /** They've got the lock */
+   R_INP(i10,sGIVE),	 /* they're still holding the lock */
+   R_INP(i00,sIDLE),	 /* they freed the lock */
+   R_END(sFAILED))       /* else punt */
+
+RS(sTAKE,o10,  /** We're going for lock */
+   R_INP(i00,sTAKE),	 /* we're still hoping for the lock */
+   R_INP(i01,sTAKEN),	 /* we got the lock */
+   R_INP(i10,sRACE),     /* we both reached for the gun */
+   R_END(sFAILED))       /* else punt */
+
+RS(sRACE,o11,  /** A race has been detected */
+   R_END(sFAILED))       /* for now just punt */
+
+RS(sTAKEN,o10, /** We've got the lock */
+   R_USR(uFREE,sIDLE),   /* we freed the lock */
+   R_INP(i01,sTAKEN),    /* we still hold the lock */
+   R_END(sFAILED))       /* uh-oh the lock broke under us */
+
+RS(sFAILED,o11, /** Something went wrong, reset required  */
+   R_INP(i11,sRESET),    /* i11, you bet: It's the only way to get */
+   R_END(sFAILED))       /* off of FAILED onto RESET (burma shave)*/
+-----cut here-----
+
+So that's kind of cool.
+
+  :18]
+
+  :17]
+[19:
+
+Sat Oct 14 04:57:37 2017 Main issue we're dealing with now is which
+'bottom half' technology do we want to use -- if any.  Here's what
+we've kind of gleaned about the whole linux interrupt landscape:
+
+ - the so-called 'top half' of an interrupt handler is what I would
+   have just called 'the interrupt handler' -- the part that runs at
+   interrupt level, with at least interrupts of its own sort disabled.
+
+ - the 'bottom half' has some specific historical meanings, but today
+   basically just means 'any deferred work triggered by an interrupt'.
+
+ - different deferred work mechanisms exist, with different tradeoffs
+   of how long they defer work vs how much of a pain to use they are.
+
+ - 'softirqs' are the fastest, running basically as soon as all 'real'
+   (aka 'hard') interrupts have been handled, before returning to
+   'process context'.  Softirqs can be interrupted but cannot sleep.
+
+   = 'process context' is when you're executing either in a kernel
+     thread, or on behalf of a user process (e.g. (or i.e.?) in a
+     system call).  Among lots of other things, the signature feature
+     of being in process context is that you can sleep.
+
+ - 'tasklets' are built on softirqs but are easier to use for some
+   reason I don't exactly recall (mostly because I didn't really
+   figure out how to use softirqs.)
+
+ - 'work queues' are data structures / functions you register on a
+   (usually) preestablished kernel thread.
+
+ - 'kernel threads' are just what they sound like.  Communication
+   protocols between the (top half) interrupt handler and the thread
+   is entirely up to you.
+
+To manage shared data, you generally need some combination of
+disabling interrupts and spinlocks (but the spinlock macros are empty
+on a uniprocessor system).  There are also full-on mutexes of various
+sorts but I didn't dig into them.
+
+[22: Sat Oct 14 06:40:21 2017 (Except one of Derek Molloy's sample LKM
+uses a mutex to provide exclusive access to a module -- and I think we
+want to follow that so only mfmt2 will access the lock system, and the
+lock system won't have to deal with reentrant syscalls.)  :22]
+
+[20:
+
+Sat Oct 14 05:43:27 2017 In my situation it's not completely clear I
+need much of an explicit bottom half at all, except perhaps for
+handling time-outs.  We're trying to design the state transition code
+to be totally fast enough to run to completion in the top half, and
+other than that..
+
+Things we have to get done:
+
+ - Respond to edges on IRQLK and IGRLK.  Note that in general, after
+   there's an edge on either of them, there won't be any more edges
+   (for a long time) until we make an edge on our ORQLK or OGRLK.  So
+   that may help us avoid losing edge interrupts.
+
+ - Reset if things get wedged for more than a few jiffies.
+
+ - Decide whether to declare a neighbor offline or online based on
+   their activity and/or getting to sIDLE with them.  (We might see
+   spurious edges from time to time, and they shouldn't cause a
+   neighbor to be declared 'up' if it wasn't recently.)
+
+ - Respond to try and free lock requests from user space.
+
+ - Respond to open and close requests from user space.
+
+And the main sync issues seem to be between the user process context
+and the interrupt level.  It seems we might only need a kernel thread
+or some other kind of timer to handle time out if we lose an edge or
+the neighbor disappears or whatever.  So let's ignore that for now and
+say there's just two players -- user space system calling into my LKM
+code, and the interrupt handler running on an external edge.
+
+[21:
+
+Sat Oct 14 06:23:26 2017 We 'already have' paired connections getting
+to sIDLE with each other, and for the moment that would basically be a
+'permanent' condition except that we are artificially failing the
+connections every ten seconds or so in a background kernel thread, to
+force them to resync.
+
+And we have done a few manual tests where we grabbed the lock using
+the /sys/class/gpio interface we export, and we got the expected
+behavior.
+
+We were thinking about making a char device for interacting with the
+module, so you could open it once and then do blocking writes to make
+requests and blocking reads to get replies.. But that does mean two
+system calls where an ioctl could do it in one..  I didn't focus much
+on how to set up an ioctl though.  They feel old and crufty and hard
+to use from my experiences in user space.
+
+Well let's read up on ioctl's a little bit here.[23:
+
+Sat Oct 14 08:24:04 2017 Well, Robert Love apparently holds up ioctl
+as the poster child for what a system call should _not_ be.. but then
+people say 'don't write new system calls', and suggest writing device
+nodes with read write and ioctl instead..  Thanks.  Thanks a lot.
+[24:
+
+Sat Oct 14 15:03:12 2017 Hey, why can't we return the lock results in
+the blocking write return value?  0 means the request was done
+completely as requested, anything else is status info about what went
+wrong.  Then it's (relatively) natural, it's only one system call, and
+it's not an ioctl.
+
+If we could eventually support non-blocking I/O, we might even be able
+to overlap making a lock request with speculative execution like
+loading the event window.  But we'd want to interrupt that as soon as
+the lock attempt failed, or else we'd end up further behind.
+
+  :24]
+  :23]
+
+  :21]
+
+  :20]
+
+  :19]
+[25:
+
+Sun Oct 15 01:56:43 2017 OK, let's try again.  This time suppose we
+start from the userspace point of view.
+
+So this is /dev/itlocks and we (mfmt2) are going to open it like
+
+  int lockfd = open("/dev/itlocks",O_RDWR);  // with suitable sudo or udev..
+  if (lockfd < 0) FAIL(..)
+
+(given that some prior mechanism already did '# insmod itc.ko')
+
+(I don't really like '/dev/itlocks' as a name, because I'm not using
+'it' anywhere else to mean 'intertile'.  But '/dev/itclocks' looks
+like it's about clocks.  /dev/lockitc?  /dev/lockit??  I wanted to do
+like /dev/itc/locks but it seems[26:
+
+Sun Oct 15 02:26:58 2017 With internet + stack overflow FTW yet again
+we now are on /dev/itc/locks, after this massive change:
+
+-#define  DEVICE_NAME "itcdev"     ///< The device will appear at /dev/itcdev/
++#define  DEVICE_NAME "itc!locks"     ///< The device will appear at /dev/itc/locks/
+
+Yes, of course, naturally, '!'.
+
+And furthermore, from the Molloy example we started with, that device
+is already hooked up:
+
+(root@beaglebone:/home/t2/T2-12/lkms/itc# tail -f /var/log/messages&)
+
+root@beaglebone:/home/t2/T2-12/lkms/itc# cat </dev/itc/locks
+Oct 15 08:25:53 beaglebone kernel: [32182.704948] Itc: Device has been opened 1 time(s)
+Oct 15 08:25:53 beaglebone kernel: [32182.737286] Itc: Sent 0 characters to the user
+Oct 15 08:25:53 beaglebone kernel: [32182.758347] Itc: Device successfully closed
+root@beaglebone:/home/t2/T2-12/lkms/itc#
+
+  :26])
+
+  :25][27:
+
+Sun Oct 15 02:34:30 2017 So anyway.  Idea is we write ONE BYTE to try
+for a set of locks, as a bitmask, and we get back 1 if we got the set
+we wanted, or 0 if we didn't.  That's not the normal syscall return,
+but it's sort of like the 'return the number of bytes written' that
+write() is supposed to return.
+
+For starters that will be a blocking write, and 'atomic' in that when
+the call returns we will either have all the requested locks or none
+of them.
+
+And since a lock set only takes six bits, we have room for extra
+control codes as well, like for resetting things, or explicitly
+enabling and disabling locking in given directions.
+
+Let's say the byte format is:
+
+    0  1  2  3  4  5  6  7
+  +--+--+--+--+--+--+--+--+
+  | CMD |ET|SE|SW|WT|NW|NE|
+  +--+--+--+--+--+--+--+--+
+
+and
+
+  CMD = 00 -> try for this set of locks (forsaking all others)
+  CMD = 01 -> enable selected locks (leaving others alone)
+  CMD = 10 -> disable selected locks (leaving others alone)
+  CMD = 11 -> reset selected locks (leaving others alone)
+
+So a null (0x00) means 'free all locks I hold', and a rubout (0xFF)
+means 'reset all locks'.  And delete (0x7f) means 'enable all locks',
+which seems unintuitive, but nobody is supposed to know what the ASCII
+code of delete is anyway.
+
+Guess I'm not sure if resetting should include disabling, enabling, or
+neither..  Maybe we can say enabled is the default state, so resetting
+should include enabling.  Because, really, when we say reset, here,
+what we mean is resetting the locking state machine that has no
+purpose when the channel is disabled.
+
+(We'll need to extend the state machine with uENABLE, uDISABLE, and
+sDISABLED, I think.) (But we still don't really know how user input is
+going to interact with the state machine anyway.)
+
+[28:
+
+Sun Oct 15 03:03:17 2017 OK, so for now it's:
+
+  CMD = 11 -> enable and reset selected locks (leaving others alone)
+
+and I guess there's no way to reset a disabled lock.  Which
+'obviously' 'nobody' 'would ever want to do'.
+
+So our opening sequence becomes:
+
+bool T2LockManager::Init() {
+  m_lockfd = open("/dev/itc/locks",O_RDWR);  // with suitable sudo or udev..
+  if (m_lockfd < 0) { Error(..); return false; }
+//201710150352: WAS:  u8 cmd = 0xff;          // enable and reset all
+  u8 cmd = 0x7f;          // enable and reset all
+  int wrote = write(m_lockfd, &cmd, 1);
+  if (wrote != 1) { Error(..); return false; }  // reset should work!
+  return true;
+}
+[30: 
+
+Sun Oct 15 03:49:04 2017 So, continuing..  In use:
+
+inline bool T2LockManager::TryLockset(u8 lockset) {
+  if (m_lockfd < 0) FAIL(ILLEGAL_STATE);     // open it first you norg
+  return FastTryLockset(lockset);
+}
+inline void T2LockManager::FreeAllLocks() { TryLockset(0); }
+
+inline bool T2LockManager::FastTryLockset(u8 lockset) {
+  return 1 == write(m_lockfd, &lockset, 1);
+}
+inline void T2LockManager::FastFreeAllLocks() { FastTryLockset(0); }
+
+[31: 
+
+Sun Oct 15 04:00:27 2017 And that all seems vaguely plausible.  We
+need to go back to the LKM side now, be thinking about the user<>FSM
+interaction, and try to implement some minimal char device stuff.
+             
+Like we should be able to get to:
+
+inline u8 T2LockManager::GetLocksHeld() { 
+  u8 buf;
+  if (m_lockfd < 0) FAIL(ILLEGAL_STATE);
+  if (1 != read(m_lockfd, &buf, 1)) FAIL(..);
+  return buf;
+}
+
+or something.  With the idea that a single read always starts with the
+locks held?  And if someone reads multiple bytes they want additional
+state?  Maybe it would be better to implement seeking.  Do char
+devices normally do that?[32: 
+
+Sun Oct 15 04:11:30 2017 Seems like they certainly can, even if they
+often don't because in many cases doesn't make sense.  The position
+seems to be that unless you so disk-like that you want to be
+integrated into the buffer cache system and the virtual memory system
+and so on, then you're a character device.  They note, for example,
+that /dev/kmem is a character device, and it's emininently seekable..
+
+So we're a char device.  We can support seek if we want.  We could
+pretend we have a whole 'memory layout' of information that you could
+seek to different parts of and read what you wanted.
+
+But we're not going to do that now.  Right now you read one byte and
+get a bitmask of the locks we hold.  Read two bytes and you get that
+plus a bitmask of the locks somebody else holds.  Read three bytes and
+you get that plus a bitmask of directions considered active based on
+interaction history.  Try to read more and the return value stays 3.
+
+[33: 
+
+Sun Oct 15 07:40:21 2017 OK, starting to run down a bit now, but we
+have a minimal sort of sample read working that returns some vaguely
+plausible status info on the locks.
+
+We note that at the moment we are doing nothing about disabling
+interrupts or spinlocks or whatever while we're accessing the data.
+It's totally possible for interrupts to hit while we're iterating over
+the lock info.  
+
+Due to my limited imagination at the moment, I'm having trouble seeing
+why we should care even if it does.
+
+This information is all advisory anyway, and stale even before it's
+sent to userspace.  All our counters for events and jiffies are u32's
+which I believe are atomically written.  So if a lock state changes
+between asking if it's taken and asking if it's idle, is that so
+horrible?
+
+Well, maybe.  We don't really know what if anything mfmt2 will be
+doing with this information, except possibly displaying it around the
+border of the screen, in which case who gives a fuck if it's
+inconsistent for a moment.
+
+Almost surely, things will be different on the dev_write side of
+things, where we will be promising best-effort all-or-none atomicity
+in lockset allocation.
+
+  :33]
+  :32]
+
+  :31]
+  :30]
+[29:
+
+Sun Oct 15 03:20:31 2017 Although if CMD = 11 means 'enable and reset
+selected locks', do we need 'CMD = 01 -> enable selected locks'?  How
+much value is there in enabling a lock without resetting it?  If we
+could get that code back we could have a lot more room to work with.
+
+Something like
+
+  CMD = 00 -> try for this set of locks (forsaking all others)
+  CMD = 01 -> enable and reset selected locks (leaving others alone)
+  CMD = 10 -> disable selected locks (leaving others alone)
+  CMD = 11 -> special command, format
+
+                    0  1  2  3  4  5  6  7
+                  +--+--+--+--+--+--+--+--+
+                  | 1| 1| SUBCMD | LK_IDX |
+                  +--+--+--+--+--+--+--+--+
+
+              where LK_IDX = 0..5 -> ET..NE,
+                    LK_IDX = 6 -> reserved, illegal
+                    LK_IDX = 7 -> all locks
+
+           and the eight possible SUBCMDs could include things like
+           setting long or short timeouts on a particular channel or
+           whatever. 
+
+           But really this is getting silly.  If we need that much
+           configuration we should just fucking implement ioctl as
+           well, and be done with it.  So let's just calm down here:
+
+  CMD = 11 -> reserved, illegal
+
+
+  :29]
+
+  :28]
+
+  :27]
