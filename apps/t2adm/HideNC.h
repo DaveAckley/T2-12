@@ -23,7 +23,7 @@ public:
   void Refresh() ;
   void NapMS(int ms) ;
 
-  void MvPrintW(int y, int x, const char * str) ;
+  void MvPrintW(int y, int x, const char * fmt, ...) ;
 
   bool NeedRedraw() ;
 

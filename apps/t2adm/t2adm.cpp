@@ -4,6 +4,8 @@
 int main() {
   int x = 0, y = 1, next_x = 0, direction = 1;
   HideNC hnc;
+  LockSit ls(hnc);
+
   hnc.Startup();
 
   while (hnc.IsRunning()) {
@@ -29,6 +31,7 @@ int main() {
     }
     x += direction;
     hnc.MvPrintW(y, x, "o");
+    ls.DrawITCStatus();
     hnc.Refresh();
     hnc.NapMS(1000/30); // 30 FPS
   }

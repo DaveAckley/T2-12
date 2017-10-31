@@ -3,6 +3,7 @@
 #include <ncurses.h> /* horrible polluter ncurses only included here */
 #include <unistd.h>  /* for sleep */
 #include <stdlib.h>  /* for unsetenv */
+#include <stdarg.h>  /* for for va_args */
 
 #define DELAY 30000
 
@@ -60,7 +61,14 @@ int HideNC::Getch() {
 
 void HideNC::Erase() { erase(); }
 
-void HideNC::MvPrintW(int y, int x, const char * str) { mvprintw(y,x,str); }
+void HideNC::MvPrintW(int y, int x, const char * fmt, ...) 
+{
+  move(y,x);
+  va_list args;
+  va_start(args, fmt);
+  vwprintw(stdscr,fmt,args); 
+  va_end(args);
+}
 
 bool HideNC::NeedRedraw() { return redraw; }
 
