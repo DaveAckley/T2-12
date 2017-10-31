@@ -29,9 +29,15 @@ public:
 
   void FinishedRedraw() ;
 
-  int GetMaxX() { return max_x; }
+  int GetMaxX() const { return max_x; }
 
-  int GetMaxY() { return max_y; }
+  int GetMaxY() const { return max_y; }
+
+  bool InBounds(int x, int y) const {
+    if (x < 0 || x >= GetMaxX()) return false;
+    if (y < 0 || y >= GetMaxY()) return false;
+    return true;
+  }
 };
 
 #endif /* HIDENC_H */

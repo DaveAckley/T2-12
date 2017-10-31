@@ -63,6 +63,8 @@ void HideNC::Erase() { erase(); }
 
 void HideNC::MvPrintW(int y, int x, const char * fmt, ...) 
 {
+  if (y<0 || y>=GetMaxY()) abort();
+  if (x<0 || x>=GetMaxX()) abort();
   move(y,x);
   va_list args;
   va_start(args, fmt);
