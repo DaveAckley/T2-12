@@ -121,6 +121,46 @@
 		>;
 	};
 
+// 20171030 trying to get pulldowns enabled on *_I??LK pins so that
+// unconnected tiles will see i00 and remain in sFAILED, rather than
+// seeing i11 and moving on to sRESET.
+
+	itc_lock_pins: itc_lock_pins {
+		pinctrl-single,pins = <
+		        0x090 0x0f      /* P8.07 ET_ORQLK (PIN_OUTPUT | MUX_MODE7) */
+		        0x094 0x0f      /* P8.08 ET_OGRLK (PIN_OUTPUT | MUX_MODE7) */
+			0x09c 0x27      /* P8.09 ET_IRQLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+			0x098 0x27      /* P8.10 ET_IGRLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+
+		        0x034 0x0f      /* P8.11 SE_ORQLK (PIN_OUTPUT | MUX_MODE7) */
+		        0x024 0x0f      /* P8.13 SE_OGRLK (PIN_OUTPUT | MUX_MODE7) */
+			0x028 0x27      /* P8.14 SE_IRQLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+			0x09C 0x27      /* P8.17 SE_IGRLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+
+		        0x08c 0x0f      /* P8.18 SW_ORQLK (PIN_OUTPUT | MUX_MODE7) */
+		        0x020 0x0f      /* P8.19 SW_OGRLK (PIN_OUTPUT | MUX_MODE7) */
+			0x07c 0x27      /* P8.26 SW_IRQLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+			0x0d8 0x27      /* P8.31 SW_IGRLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+
+		        0x0dc 0x0f      /* P8.32 WT_ORQLK (PIN_OUTPUT | MUX_MODE7) */
+		        0x0d4 0x0f      /* P8.33 WT_OGRLK (PIN_OUTPUT | MUX_MODE7) */
+			0x0cc 0x27      /* P8.34 WT_IRQLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+			0x0d0 0x27      /* P8.35 WT_IGRLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+
+		        0x0c8 0x0f      /* P8.36 NW_ORQLK (PIN_OUTPUT | MUX_MODE7) */
+		        0x0c0 0x0f      /* P8.37 NW_OGRLK (PIN_OUTPUT | MUX_MODE7) */
+			0x0c4 0x27      /* P8.38 NW_IRQLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+			0x078 0x27      /* P9.12 NW_IGRLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+
+		        0x048 0x0f      /* P9.14 NE_ORQLK (PIN_OUTPUT | MUX_MODE7) */
+		        0x0cc 0x0f      /* P9.16 NE_OGRLK (PIN_OUTPUT | MUX_MODE7) */
+			0x044 0x27      /* P9.23 NE_IRQLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+			0x180 0x27      /* P9.26 NE_IGRLK (PIN_INPUT_PULLDOWN | MUX_MODE7) */
+
+                        >;
+	};
+
+
 	user_leds_default: user_leds_default {
 		pinctrl-single,pins = <
 			AM33XX_IOPAD(0x854, PIN_OUTPUT_PULLDOWN | MUX_MODE7)	/* gpmc_a5.gpio1_21 */
