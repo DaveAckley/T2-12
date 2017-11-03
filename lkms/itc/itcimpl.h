@@ -66,18 +66,21 @@ static inline ITCDir itcIteratorGetNext(ITCIterator * itr) {
   return itr->m_indices[itr->m_nextIndex++];
 }
 
+/* GENERATE STATE CONSTANTS */
+#define RS(forState,output,...) forState,
+enum {
+#include "RULES.h"
+  STATE_COUNT
+};
+#undef RS
+
 typedef struct itcInfo {
   const struct gpio * const pins;
   const ITCDir direction;
   const bool isFred;
   BitValue pinStates[PIN_COUNT];
   ITCState state;
-  ITCCounter fails;
-  ITCCounter resets;
-  ITCCounter locksAttempted;
-  ITCCounter locksAcquired;
-  ITCCounter locksGranted;
-  ITCCounter locksContested;
+  ITCCounter enteredCount[STATE_COUNT];
   ITCCounter interruptsTaken;
   ITCCounter edgesMissed;
   JiffyUnit lastActive;

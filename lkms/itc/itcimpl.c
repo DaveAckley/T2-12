@@ -11,20 +11,20 @@ DECLARE_WAIT_QUEUE_HEAD(userWaitQ); /* For user context sleeping during lock neg
 DEFINE_SPINLOCK(mdLock);             /* For protecting access to md */
 
 void setState(ITCInfo * itc, ITCState newState) ; // FORWARD
-void updateState(ITCInfo * itc) ;                 // FORWARD
+void updateState(ITCInfo * itc, bool timeout) ;   // FORWARD
 
 bool isActiveWithin(ITCInfo * itc, int jiffyCount)
 {
   return time_after(itc->lastActive + jiffyCount, jiffies);
 }
 
-/* GENERATE STATE CONSTANTS */
-#define RS(forState,output,...) forState,
-enum {
+/* GENERATE STATE ENTRY COUNTERS */
+#define RS(forState,output,...) 0,
+u32 timesStateEntered[STATE_COUNT] = {
 #include "RULES.h"
-  STATE_COUNT
 };
 #undef RS
+
 
 /* GENERATE STATE NAMES */
 #define RS(forState,output,...) #forState,
@@ -125,13 +125,12 @@ void itcIteratorShuffle(ITCIterator * itr) {
 
 static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned value, unsigned int irq)
 {
-  itc->lastActive = md.moduleLastActive = jiffies;
   itc->interruptsTaken++;
   if (unlikely(value == itc->pinStates[pin]))
     itc->edgesMissed++;
   else
     itc->pinStates[pin] = value;
-  updateState(itc);
+  updateState(itc,false);
   return (irq_handler_t) IRQ_HANDLED;
 }
 
@@ -150,12 +149,8 @@ DIRDATAMACRO()
 
 void itcInitStructure(ITCInfo * itc)
 {
-  itc->fails = 0;
-  itc->resets = 0;
-  itc->locksAttempted = 0;
-  itc->locksAcquired = 0;
-  itc->locksGranted = 0;
-  itc->locksContested = 0;
+  int i;
+
   itc->interruptsTaken = 0;
   itc->edgesMissed = 0;
   itc->lastActive = jiffies;
@@ -167,6 +162,10 @@ void itcInitStructure(ITCInfo * itc)
 
   // Set up initial state
   setState(itc,sFAILED);
+
+  // Clear state counters after setting initial state
+  for (i = 0; i < STATE_COUNT; ++i)
+    itc->enteredCount[i] = 0;
 }
 
 void itcInitStructures(void) {
@@ -285,7 +284,7 @@ ssize_t itcInterpretCommandByte(u8 cmd)
     ITCInfo * itc = &md.itcInfo[idx];
     
     spin_lock_irqsave(&mdLock, flags);      // Grab mdLock
-    updateState(itc);                      // CRITICAL SECTION: mdLock
+    updateState(itc,false);                 // CRITICAL SECTION: mdLock
     spin_unlock_irqrestore(&mdLock, flags); // Free mdLock
   }
 
@@ -354,12 +353,12 @@ void make_reports(void)
 	   md.itcInfo[i].pinStates[PIN_OGRLK],
 	   md.itcInfo[i].pinStates[PIN_IRQLK],
 	   md.itcInfo[i].pinStates[PIN_IGRLK],
-	   md.itcInfo[i].fails,
-	   md.itcInfo[i].resets,
-	   md.itcInfo[i].locksAttempted,
-	   md.itcInfo[i].locksAcquired,
-	   md.itcInfo[i].locksGranted,
-	   md.itcInfo[i].locksContested,
+	   md.itcInfo[i].enteredCount[sFAILED],
+	   md.itcInfo[i].enteredCount[sRESET],
+	   md.itcInfo[i].enteredCount[sTAKE],
+	   md.itcInfo[i].enteredCount[sTAKEN],
+	   md.itcInfo[i].enteredCount[sGIVE],
+	   md.itcInfo[i].enteredCount[sRACE],
 	   md.itcInfo[i].interruptsTaken,
 	   md.itcInfo[i].edgesMissed
 	   );
@@ -368,9 +367,6 @@ void make_reports(void)
 }
 
 void setState(ITCInfo * itc, ITCState newState) {
-  itc->pinStates[PIN_ORQLK] = (outputsForState[newState]>>1)&1;
-  itc->pinStates[PIN_OGRLK] = (outputsForState[newState]>>0)&1;
-  itc->lastActive = jiffies;
   if (itc->state != newState) {
     printk(KERN_INFO "ITC %s: %s->%s o%d%d i%d%d\n",
            itcDirName(itc->direction),
@@ -380,14 +376,19 @@ void setState(ITCInfo * itc, ITCState newState) {
            itc->pinStates[PIN_OGRLK],
            itc->pinStates[PIN_IRQLK],
            itc->pinStates[PIN_IGRLK]);
-    if (newState == sRESET) ++itc->resets;
+
+    itc->pinStates[PIN_ORQLK] = (outputsForState[newState]>>1)&1;
+    itc->pinStates[PIN_OGRLK] = (outputsForState[newState]>>0)&1;
+    itc->lastActive = md.moduleLastActive = jiffies;
+
+    ++itc->enteredCount[newState];
     itc->state = newState;
   }
   gpio_set_value(itc->pins[PIN_ORQLK].gpio,itc->pinStates[PIN_ORQLK]);
   gpio_set_value(itc->pins[PIN_OGRLK].gpio,itc->pinStates[PIN_OGRLK]);
 }
 
-void updateState(ITCInfo * itc) {
+void updateState(ITCInfo * itc,bool istimeout) {
   unsigned stateInput;
   ITCState nextState = sFAILED;
   const Rule * rulep;
@@ -406,7 +407,8 @@ void updateState(ITCInfo * itc) {
 	      itc->pinStates[PIN_IGRLK],
 	      itc->isFred,
 	      activeTry,
-	      activeFree
+	      activeFree,
+              istimeout
 	      );
 
   rulep = ruleSetDispatchTable[itc->state];
@@ -419,12 +421,7 @@ void updateState(ITCInfo * itc) {
     ++rulep;
   }
 
-  if (nextState != itc->state) {
-    if (nextState == sFAILED) {
-      ++itc->fails;
-    }
-    setState(itc,nextState);
-  }
+  setState(itc,nextState);
 }
 
 void refreshInputs(ITCInfo* itc)
@@ -448,12 +445,12 @@ void refreshInputs(ITCInfo* itc)
   }
 }
 
-void updateStates(ITCIterator * itr) {
+void updateStates(ITCIterator * itr, bool istimeout) {
   for (itcIteratorStart(itr); itcIteratorHasNext(itr);) {
     ITCDir idx = itcIteratorGetNext(itr);
     ITCInfo * itc = &md.itcInfo[idx];
     refreshInputs(itc);
-    updateState(itc);
+    updateState(itc,istimeout);
   }
 }
 
@@ -479,7 +476,7 @@ int itcThreadRunner(void *arg) {
     }
 
     if (time_before(md.moduleLastActive + jiffyTimeout, jiffies)) {
-      updateStates(&idxItr);
+      updateStates(&idxItr,true);
       md.moduleLastActive = jiffies;
     }
 
