@@ -8,20 +8,22 @@ typedef struct _rule {
   u8 endmarker;
 } Rule;
 
-#define RULE_BITS(irqlk,igrlk,isfred,try,free) (	\
+#define RULE_BITS(irqlk,igrlk,isfred,try,free,timeout) (	\
   ((irqlk)<<0) | \
   ((igrlk)<<1) | \
   ((isfred)<<2) | \
   ((try)<<3) | \
-  ((free)<<4))
+  ((free)<<4) | \
+  ((timeout)<<5))
 
 
 enum RuleInputBits {
-  BINP_PIN_IRQLK = RULE_BITS(1,0,0,0,0),
-  BINP_PIN_IGRLK = RULE_BITS(0,1,0,0,0),
-  BINP_ITC_ISFRED= RULE_BITS(0,0,1,0,0),
-  BINP_USR_TRY   = RULE_BITS(0,0,0,1,0),
-  BINP_USR_FREE  = RULE_BITS(0,0,0,0,1),
+  BINP_PIN_IRQLK = RULE_BITS(1,0,0,0,0,0),
+  BINP_PIN_IGRLK = RULE_BITS(0,1,0,0,0,0),
+  BINP_ITC_ISFRED= RULE_BITS(0,0,1,0,0,0),
+  BINP_USR_TRY   = RULE_BITS(0,0,0,1,0,0),
+  BINP_USR_FREE  = RULE_BITS(0,0,0,0,1,0),
+  BINP_TIMEOUT   = RULE_BITS(0,0,0,0,0,1),
 };
 
 enum RuleOutputBits {
@@ -63,21 +65,28 @@ enum ValuesAndMasks {
   USER_VALUE_uFREE = BINP_USR_FREE,
   USER_MASKV_uFREE = BINP_USR_TRY|BINP_USR_FREE,
 
+  TIMEOUT_VALUE_t_ = 0,
+  TIMEOUT_VALUE_to = BINP_TIMEOUT,
+  TIMEOUT_MASKV_t_ = 0,
+  TIMEOUT_MASKV_to = BINP_TIMEOUT,
+
   OUTPUT_VALUE_o00 = 0,
   OUTPUT_VALUE_o01 = BOUT_PIN_OGRLK,
   OUTPUT_VALUE_o10 = BOUT_PIN_ORQLK,
   OUTPUT_VALUE_o11 = BOUT_PIN_ORQLK|BOUT_PIN_OGRLK,
 };
 
-#define R_INP(input,newst)       R_ALL(_,u_,input,newst,0)
-#define R_USR(user,newst)        R_ALL(_,user,i__,newst,0)
-#define R_ITC(side,input,newst)  R_ALL(side,u_,input,newst,0)
-#define R_ALL(side,user,input,newst,endm) \
-  { .bits = ((ITCSD_VALUE_c##side)|(USER_VALUE_##user)|(INPUT_VALUE_##input)), \
-    .mask = ((ITCSD_MASKV_c##side)|(USER_MASKV_##user)|(INPUT_MASKV_##input)), \
+#define R_INP(input,newst)       R_ALL(_,u_,input,t_,newst,0)
+#define R_USR(user,newst)        R_ALL(_,user,i__,t_,newst,0)
+#define R_ITC(side,input,newst)  R_ALL(side,u_,input,t_,newst,0)
+#define R_ITM(side,newst)        R_ALL(side,u_,i__,to,newst,0)
+
+#define R_ALL(side,user,input,timeout,newst,endm)                       \
+  { .bits = ((ITCSD_VALUE_c##side)|(USER_VALUE_##user)|(INPUT_VALUE_##input)|(TIMEOUT_VALUE_##timeout)), \
+    .mask = ((ITCSD_MASKV_c##side)|(USER_MASKV_##user)|(INPUT_MASKV_##input)|(TIMEOUT_MASKV_##timeout)), \
     .newstate = (newst),						       \
     .endmarker = (endm)                                                        \
   }
-#define R_END(newst) R_ALL(_,u_,i__,newst,1)
+#define R_END(newst) R_ALL(_,u_,i__,t_,newst,1)
 
 #endif /* RULESET_H */
