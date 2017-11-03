@@ -45,6 +45,7 @@ static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
  */
 static struct file_operations fops =
 {
+   .owner = THIS_MODULE,
    .open = dev_open,
    .read = dev_read,
    .write = dev_write,
@@ -121,10 +122,6 @@ static void __exit itc_exit(void){
  */
 static int dev_open(struct inode *inodep, struct file *filep){
 
-   if(!mutex_trylock(&itc_mutex)){                  // Try to acquire the mutex (returns 0 on fail)
-	printk(KERN_ALERT "ITC: Device in use by another process");
-	return -EBUSY;
-   }
    numberOpens++;
    printk(KERN_INFO "ITC: Device has been opened %d time(s)\n", numberOpens);
    return 0;
@@ -143,7 +140,13 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
   u8 infoBuffer[MAX_BUF];
   if (len > MAX_BUF) len = MAX_BUF;
 
-  error = itcGetCurrentLockInfo(infoBuffer,len);
+  // Get the mutex (returns 0 unless interrupted)
+  if((error = mutex_lock_interruptible(&itc_mutex))) return error;
+
+  error = itcGetCurrentLockInfo(infoBuffer,len);  // ITC_MUTEX HELD
+
+  mutex_unlock(&itc_mutex);
+
   if (error < 0)
     return error;
 
@@ -178,7 +181,14 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
       printk(KERN_INFO "Itc: copy_from_user failed\n");
       return -EFAULT;
     }
-    ret = itcInterpretCommandByte(lockCmd);
+
+    // Get the mutex (returns 0 unless interrupted)
+    if((ret = mutex_lock_interruptible(&itc_mutex))) return ret;
+
+    ret = itcInterpretCommandByte(lockCmd);   // ITC_MUTEX HELD
+
+    mutex_unlock(&itc_mutex);
+
     if (ret < 0) {
       if (bytesHandled == 0)  // If no bytes yet written
         return ret;           // ..you get the error code
