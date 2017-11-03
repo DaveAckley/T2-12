@@ -3,7 +3,8 @@ SRCS:=$(wildcard *.cpp)
 OBJS:=$(patsubst %.cpp,%.o,$(SRCS))
 HDRS:=$(patsubst %.cpp,%.h,$(SRCS))
 
-CFLAGS += -Wall -Werror -pedantic -ansi -g2 -fno-stack-protector
+#CFLAGS += -Wall -Werror -pedantic -ansi -g2 -fno-stack-protector
+CFLAGS += -Wall -Werror -pedantic -ansi -g2
 LIBS += -lncurses
 
 CMDS:=build touch install clean realclean
