@@ -54,17 +54,22 @@ int HideNC::Getch() {
     getmaxyx(stdscr, max_y, max_x);
   } else if (ch == 'q' || ch == '\021' || ch == '\003') // q, ^Q, ^C
     running = 0;
-  else 
+  else if (ch == '\014') { // ^L
+    redraw = 1;
+    Clear();
+  } else 
     return ch;
   return -1;
 }
+
+void HideNC::Clear() { clear(); }
 
 void HideNC::Erase() { erase(); }
 
 void HideNC::MvPrintW(int y, int x, const char * fmt, ...) 
 {
-  if (y<0 || y>=GetMaxY()) abort();
-  if (x<0 || x>=GetMaxX()) abort();
+  if (y<0 || y>=GetMaxY()) return;
+  if (x<0 || x>=GetMaxX()) return;
   move(y,x);
   va_list args;
   va_start(args, fmt);

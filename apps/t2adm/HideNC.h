@@ -19,6 +19,7 @@ public:
   bool IsRunning() ;
 
   int Getch() ;
+  void Clear() ;
   void Erase() ;
   void Refresh() ;
   void NapMS(int ms) ;
