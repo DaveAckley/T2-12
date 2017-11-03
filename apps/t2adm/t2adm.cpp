@@ -30,11 +30,9 @@ int main() {
 
     hnc.MvPrintW(y, x, " ");
     while (!hnc.InBounds(x+dx, y+dy)) nextDir(dx,dy);
-    x += dx;
-    y += dy;
-    hnc.MvPrintW(y, x, "o");
-    ls.CheckITCStatus(false);
-    ls.DrawITCStatus(false);
+    ls.CheckITCStatus();
+    ls.DrawITCStatus();
+    hnc.MvPrintW(0,0,"");
     hnc.Refresh();
     hnc.NapMS(1000/30); // 30 FPS
   }
