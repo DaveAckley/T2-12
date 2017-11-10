@@ -8,12 +8,18 @@ RS(sRESET,o11, /** Initial and ground state, entered on any error */
    R_END(sFAILED))       /* else punt */
 
 RS(sSYNC01,o01, /** Out of reset, looking for i01 */
-   R_ITM(G,sFAILED),     /* ginger fails if timeout waiting for fred */
+   R_ITM(G,sWAIT),       /* ginger goes to special state if timeout waiting for fred */
    R_ITC(G,i11,sSYNC01), /* ginger waits while fred's in reset */
    R_ITC(F,i01,sSYNC01), /* fred waits for ginger to leave SYNC01 */
    R_ITC(G,i01,sIDLE),   /* ginger moves first from SYNC01 */
    R_ITC(F,i00,sIDLE),   /* fred reacts to ginger's move */
    R_END(sFAILED))       /* else punt */
+
+RS(sWAIT,o11, /** Magic increasing timeout wait state, reset by entering sRESET */
+   R_ITM(G,sFAILED)      /* Fail if waited a long time */
+   R_INP(i0_,sFAILED),   /* Go fail if any sign of life */
+   R_INP(i_0,sFAILED),   /* Go fail if any sign of life */
+   R_END(sWAIT)          /* Otherwise keep waiting */
 
 RS(sIDLE,o00, /** In sync, waiting for a lock grab */
    R_INP(i01,sIDLE),     /* ignore leftover grants (from reset or uFREE) */

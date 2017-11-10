@@ -1,4 +1,4 @@
-{57}  -*- text -*-
+{60}  -*- text -*-
 [0:
 
 Fri Oct  6 18:28:08 2017 We have four gpios involved in each pairwise
@@ -1121,4 +1121,60 @@ TODO
  - Get some actual intertile timing and robustness data using two
    interlooped tiles.
 
-  :56]
+  :56][57: 
+
+Fri Nov 10 13:15:55 2017 OK so lost a lot of time on .. stuff.  Of
+which only a little was directly T2-12 related, unfortunately.  (Did
+do a redo of the T2-12 case latching base, which now takes a _lot_
+more space on the build platform, but now pulls the posts towards the
+board, rather than tending to spread them, and provides greater and
+more 'artistic' protection and support for the board.)
+
+Anyway, so we have run across a RULES.h issue that we want to address
+as a priority here: Sometimes gingers get solid i11 from unconnected
+faces, and they do an aggravating sRESET->sSYNC->sFAILED->sRESET loop
+at high speed.  It's only the gingers since they move first out of
+sRESET, but still.
+
+So we're thinking we need to have a FAILED mechanism that cannot be
+escaped quickly except by seeing _some_ kind of edge.  The problem is
+like all the edges are potentially busy meaning other things in other
+contexts. 
+
+How about this?  Have two failure/reset stages, one where fred has to
+go first, and one where ginger has to go first.  So we'll hang, or
+long timeout anyway, in one or the other of those states, if nobody is
+actually changing.
+
+
+
+On 'original' failure, go to sFAILED,o11
+
+In sFAILED,i11, freds go to sPRESET,o01
+In sFAILED,i11, gingers stay in sFAILED
+In sFAILED,i01, gingers go to sPRESET,o01
+
+In sPRESET,i11, freds stay in sPRESET
+In sPRESET,i01, freds go to sRESET,o11
+In sPRESET,i01, freds go to sRESET,o11
+
+[58: 
+
+Fri Nov 10 14:22:18 2017 Or suppose when ginger times out of sSYNC01,
+instead of going to sFAILED goes to sWAIT, which has a magically
+increasing timeout every time we enter sWAIT without having reached
+sIDLE.  So this now extended loop --
+sRESET->sSYNC->sWAIT->sFAILED->sRESET -- keeps happening, just slower
+and slower, as the ginger increasingly despairs of finding a fred.
+
+Let's try for that..[59: 
+
+Fri Nov 10 14:31:29 2017 Why am I coding this on my laptop??
+Committing to get this crap over to the tiles..
+
+  :59]
+
+
+  :58]
+
+  :57]
