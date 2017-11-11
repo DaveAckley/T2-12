@@ -67,7 +67,7 @@ static inline ITCDir itcIteratorGetNext(ITCIterator * itr) {
 }
 
 /* GENERATE STATE CONSTANTS */
-#define RS(forState,output,...) forState,
+#define RS(forState,ef,output,...) forState,
 enum {
 #include "RULES.h"
   STATE_COUNT
@@ -85,6 +85,8 @@ typedef struct itcInfo {
   ITCCounter edgesMissed;
   JiffyUnit lastActive;
   JiffyUnit lastReported;
+  unsigned magicWaitTimeouts;
+  unsigned magicWaitTimeoutLimit;
 } ITCInfo;
 
 typedef struct moduleData {

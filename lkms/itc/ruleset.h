@@ -76,6 +76,9 @@ enum ValuesAndMasks {
   OUTPUT_VALUE_o11 = BOUT_PIN_ORQLK|BOUT_PIN_OGRLK,
 };
 
+/* Function pointer meaning 'no entry function' */
+#define entryFunction__ NULL
+
 #define R_INP(input,newst)       R_ALL(_,u_,input,t_,newst,0)
 #define R_USR(user,newst)        R_ALL(_,user,i__,t_,newst,0)
 #define R_ITC(side,input,newst)  R_ALL(side,u_,input,t_,newst,0)

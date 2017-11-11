@@ -19,7 +19,7 @@ bool isActiveWithin(ITCInfo * itc, int jiffyCount)
 }
 
 /* GENERATE STATE ENTRY COUNTERS */
-#define RS(forState,output,...) 0,
+#define RS(forState,ef,output,...) 0,
 u32 timesStateEntered[STATE_COUNT] = {
 #include "RULES.h"
 };
@@ -27,8 +27,8 @@ u32 timesStateEntered[STATE_COUNT] = {
 
 
 /* GENERATE STATE NAMES */
-#define RS(forState,output,...) #forState,
-const const char * stateNames[STATE_COUNT] = { 
+#define RS(forState,ef,output,...) #forState,
+const char * stateNames[STATE_COUNT] = { 
 #include "RULES.h"
 };
 #undef RS
@@ -39,19 +39,37 @@ const char * getStateName(ITCState s) {
  }
 
 /* GENERATE STATE->output table */
-#define RS(forState,output,...) OUTPUT_VALUE_##output,
+#define RS(forState,ef,output,...) OUTPUT_VALUE_##output,
 const u8 outputsForState[STATE_COUNT] = {
 #include "RULES.h"
 };
 #undef RS
 
+typedef ITCState ITCEntryFunction(struct itcInfo*,unsigned stateInput);
+
+/* GENERATE ENTRY FUNCTION DECLARATIONS */
+#define RSE(forState,output,...) extern ITCEntryFunction entryFunction_##forState;
+#define RSN(forState,output,...) 
+#include "RULES.h"
+#undef RSE
+#undef RSN
+
+/* GENERATE STATE->entry function pointers */
+#define RSE(forState,output,...) entryFunction_##forState,
+#define RSN(forState,output,...) NULL,
+ITCEntryFunction *(entryFuncsForState[STATE_COUNT]) = {
+#include "RULES.h"
+};
+#undef RSE
+#undef RSN
+
 /* GENERATE PER-STATE RULESETS */
-#define RS(forState,output,...) const Rule ruleSet_##forState[] = { __VA_ARGS__ };
+#define RS(forState,ef,output,...) const Rule ruleSet_##forState[] = { __VA_ARGS__ };
 #include "RULES.h"
 #undef RS
 
 /* GENERATE STATE->RULESET DISPATCH TABLE */
-#define RS(forState,output,...) ruleSet_##forState,
+#define RS(forState,ef,output,...) ruleSet_##forState,
 const Rule *(ruleSetDispatchTable[STATE_COUNT]) = {
 #include "RULES.h"
 };
@@ -166,6 +184,11 @@ void itcInitStructure(ITCInfo * itc)
   // Clear state counters after setting initial state
   for (i = 0; i < STATE_COUNT; ++i)
     itc->enteredCount[i] = 0;
+
+  // Set up magic wait counters for decelerating connection attempts
+  itc->magicWaitTimeouts = 0;
+  itc->magicWaitTimeoutLimit = 1;
+
 }
 
 void itcInitStructures(void) {
@@ -415,6 +438,11 @@ void updateState(ITCInfo * itc,bool istimeout) {
   while (1) {
     if ((stateInput & rulep->mask) == rulep->bits) {
       nextState = rulep->newstate;
+
+      if (entryFuncsForState[nextState]) /* Have a custom state entry function? */
+        /* We do. Let it maybe update our destination */
+        nextState = (*entryFuncsForState[nextState])(itc,stateInput); 
+
       break;
     }
     if (rulep->endmarker) break;
@@ -452,6 +480,44 @@ void updateStates(ITCIterator * itr, bool istimeout) {
     refreshInputs(itc);
     updateState(itc,istimeout);
   }
+}
+
+////CUSTOM STATE ENTRY FUNCTIONS
+ITCState entryFunction_sWAIT(ITCInfo * itc,unsigned stateInput) {
+  BUG_ON(!itc);
+  /*
+  printk(KERN_INFO "ITC %s i%d%d from %s efWAIT %08x, to %u, tol %u\n",
+         itcDirName(itc->direction),
+         itc->pinStates[PIN_IRQLK],
+         itc->pinStates[PIN_IGRLK],
+         getStateName(itc->state),
+         stateInput,
+         itc->magicWaitTimeouts,
+         itc->magicWaitTimeoutLimit
+         );
+  */
+  
+  /* If we're timing-out in sWAIT, check magic counters */
+  if (itc->state == sWAIT && (stateInput & BINP_TIMEOUT)) {
+    /* If we've exhausted our patience.. */
+    if (++itc->magicWaitTimeouts > itc->magicWaitTimeoutLimit) {
+      /* ..be twice as patient next time, up to a limit..*/
+      if (itc->magicWaitTimeoutLimit < (1<<10))
+        itc->magicWaitTimeoutLimit <<= 1;
+      /* ..and try failing instead of waiting.. */
+      itc->magicWaitTimeouts = 0;
+      return sFAILED;
+    }
+  }
+  return sWAIT;
+}
+
+ITCState entryFunction_sIDLE(ITCInfo * itc,unsigned stateInput) {
+  BUG_ON(!itc);
+  /* Getting to sIDLE means we are paired; be willing to reset quick again*/
+  itc->magicWaitTimeouts = 0;
+  itc->magicWaitTimeoutLimit = 1;
+  return sIDLE;
 }
 
 /** @brief The ITC main timing loop
