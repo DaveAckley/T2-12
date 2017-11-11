@@ -512,12 +512,15 @@ ITCState entryFunction_sWAIT(ITCInfo * itc,unsigned stateInput) {
   return sWAIT;
 }
 
-ITCState entryFunction_sIDLE(ITCInfo * itc,unsigned stateInput) {
+ITCState entryFunction_sFAILED(ITCInfo * itc,unsigned stateInput) {
   BUG_ON(!itc);
-  /* Getting to sIDLE means we are paired; be willing to reset quick again*/
-  itc->magicWaitTimeouts = 0;
-  itc->magicWaitTimeoutLimit = 1;
-  return sIDLE;
+  /* Getting to sFAILED from anywhere _but_ sWAIT seems a pathetic
+     reason to have hope, but let's believe in love after love..*/
+  if (itc->state != sWAIT) {
+    itc->magicWaitTimeouts = 0;
+    itc->magicWaitTimeoutLimit = 1;
+  }
+  return sFAILED;
 }
 
 /** @brief The ITC main timing loop

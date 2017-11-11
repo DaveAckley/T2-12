@@ -34,7 +34,7 @@ RSE(sWAIT,o11, /** Magic increasing timeout wait state, reset by entering sRESET
    R_INP(i_0,sFAILED),   /* Go fail if any sign of life */
    R_END(sWAIT))          /* Otherwise keep waiting (until magic kicks in) */
 
-RSE(sIDLE,o00, /** In sync, waiting for a lock grab */
+RSN(sIDLE,o00, /** In sync, waiting for a lock grab */
    R_INP(i01,sIDLE),     /* ignore leftover grants (from reset or uFREE) */
    R_INP(i10,sGIVE),     /* they took the lock */
    R_USR(uTRY,sTAKE),    /* we're going for the lock */
@@ -61,7 +61,7 @@ RSN(sTAKEN,o10,  /** We've got the lock */
    R_INP(i01,sTAKEN),    /* we still hold the lock */
    R_END(sFAILED))       /* uh-oh the lock broke under us */
 
-RSN(sFAILED,o11, /** Something went wrong, reset required  */
+RSE(sFAILED,o11, /** Something went wrong, reset required  */
    R_INP(i11,sRESET),    /* i11, you bet: It's the only way to get */
    R_END(sFAILED))       /* off of FAILED onto RESET (burma shave)*/
 
