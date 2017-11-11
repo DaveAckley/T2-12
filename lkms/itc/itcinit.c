@@ -141,7 +141,7 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
   if (len > MAX_BUF) len = MAX_BUF;
 
   // Get the mutex (returns 0 unless interrupted)
-  if((error = mutex_lock_interruptible(&itc_mutex))) return error;
+  if ((error = mutex_lock_interruptible(&itc_mutex))) return error;
 
   error = itcGetCurrentLockInfo(infoBuffer,len);  // ITC_MUTEX HELD
 
