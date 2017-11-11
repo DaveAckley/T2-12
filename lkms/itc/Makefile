@@ -11,13 +11,13 @@ ETC_MODULES_FILE:=/etc/modules-load.d/t2_12_modules.conf
 all:	itc.ko testitc
 
 itc.ko:	itcinit.c itcimpl.c $(wildcard *.h) Makefile
-	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) modules
+	make -C /lib/modules/$(shell uname -r)/build/ M=$(CURDIR) modules
 
 testitc:	testitc.c Makefile
 	$(CC) -Wall -pedantic -ansi -Werror testitc.c -o testitc
 
-clean:	uninstall
-	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) clean
+clean:	FORCE
+	make -C /lib/modules/$(shell uname -r)/build/ M=$(CURDIR) clean
 	rm -f testitc *.o *~
 
 insmod:	all rmmod
@@ -27,7 +27,7 @@ rmmod:
 	rmmod itc 2>/dev/null || exit 0
 
 install:	all
-	make INSTALL_MOD_DIR=itc -C /lib/modules/4.4.54-ti-r93/build/ M=/home/t2/T2-12/lkms/itc modules_install
+	make INSTALL_MOD_DIR=itc -C /lib/modules/4.4.54-ti-r93/build/ M=$(CURDIR) modules_install
 	test -f $(ETC_MODULES_FILE) || \
 	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
 	grep itc $(ETC_MODULES_FILE) || echo itc >> $(ETC_MODULES_FILE)
