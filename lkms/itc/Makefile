@@ -27,8 +27,7 @@ rmmod:
 	rmmod itc 2>/dev/null || exit 0
 
 install:	all
-	mkdir -p $(MODULES_OUTPUT_DIR)
-	cp -f itc.ko $(MODULES_OUTPUT_DIR)
+	make INSTALL_MOD_DIR=itc -C /lib/modules/4.4.54-ti-r93/build/ M=/home/t2/T2-12/lkms/itc modules_install
 	test -f $(ETC_MODULES_FILE) || \
 	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
 	grep itc $(ETC_MODULES_FILE) || echo itc >> $(ETC_MODULES_FILE)
