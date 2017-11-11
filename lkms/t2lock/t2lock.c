@@ -78,8 +78,8 @@ static ssize_t period_store(struct kobject *kobj, struct kobj_attribute *attr, c
  *  The period variable is associated with the blinkPeriod variable and it is to be exposed
  *  with mode 0666 using the period_show and period_store functions above
  */
-static struct kobj_attribute period_attr = __ATTR(blinkPeriod, 0666, period_show, period_store);
-static struct kobj_attribute mode_attr = __ATTR(mode, 0666, mode_show, mode_store);
+static struct kobj_attribute period_attr = __ATTR(blinkPeriod, 0664, period_show, period_store);
+static struct kobj_attribute mode_attr = __ATTR(mode, 0664, mode_show, mode_store);
 
 /** The ebb_attrs[] is an array of attributes that is used to create the attribute group below.
  *  The attr property of the kobj_attribute is used to extract the attribute struct
