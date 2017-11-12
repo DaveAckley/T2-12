@@ -1,0 +1,73 @@
+{5}  -*- text -*- 
+[0:
+
+Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
+at least the subset of go.el that we actually use..
+
+[1:
+
+Sun Nov 12 12:55:31 2017 So, we're here to have a place to discuss all
+the issues of talking packets back and forth between the PRUs and
+kernelspace and userspace.
+
+Of course we're way in the middle of things here.  One current issue
+is: Do we need a custom LKM for this at all, or could we just use some
+existing thing that presents RPMsg IO to userspace?  We've seen claims
+that some demo or some kind of module will create devices like
+/dev/rpmsg_pru30 that we could theoretically write and read packets
+from.  But so far we haven't managed to demonstrate that.[2:
+
+Sun Nov 12 14:19:43 2017 It seems perhaps like we need the 'correct'
+crap on the PRU side for the LKM side 'probe' to create the devices.
+There's these comments in PRU code like:
+
+/*
+ * Using the name 'rpmsg-client-sample' will probe the RPMsg sample driver
+ * found at linux-x.y.z/samples/rpmsg/rpmsg_client_sample.c
+ *
+ * Using the name 'rpmsg-pru' will probe the rpmsg_pru driver found
+ * at linux-x.y.z/drivers/rpmsg/rpmsg_pru.c
+ */
+
+so if my current demo fws aren't using the right sort of names..
+..what name is my current demo using?[3:
+
+Sun Nov 12 14:23:18 2017 Well, I guess it's using
+
+    /*
+     * Using the name 'rpmsg-pru-itcio' will probe the rpmsg_pru driver found
+     * at linux-x.y.z/drivers/rpmsg/rpmsg_pru_itcio.c
+     */
+    #define CHAN_NAME					"rpmsg-pru-itcio"
+    #define CHAN_DESC					"Channel 31"
+    #define CHAN_PORT					31
+
+according to pru/itcio/firmware/main_pru1.c[4:
+
+Sun Nov 12 14:49:01 2017 Well it seems more the other way around.  I
+copied the modules_install stuff from lkms/itc/Makefile, and after
+running that, it seems that 'modprobe rpmsg_pru_itcio' boots the PRU:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# modprobe rpmsg_pru_itcio
+    Nov 12 14:48:34 beaglebone kernel: [52236.139924]  remoteproc2: powering up 4a338000.pru1
+    Nov 12 14:48:34 beaglebone kernel: [52236.169561]  remoteproc2: Booting fw image am335x-pru1-fw, size 71100
+    Nov 12 14:48:34 beaglebone kernel: [52236.196808] ti-pruss 4a300000.pruss: configured system_events = 0x00000000000c0000 intr_channels = 0x0000000a host_intr = 0x0000000a
+    Nov 12 14:48:34 beaglebone kernel: [52236.251818]  remoteproc2: remote processor 4a338000.pru1 is now up
+    Nov 12 14:48:34 beaglebone kernel: [52236.277011] virtio_rpmsg_bus virtio0: rpmsg host is online
+    Nov 12 14:48:34 beaglebone kernel: [52236.282695] virtio_rpmsg_bus virtio0: creating channel rpmsg-pru-itcio addr 0x1f
+    Nov 12 14:48:34 beaglebone kernel: [52236.316205] rpmsg_pru_itcio rpmsg0: chnl: 0x400 -> 0x1f
+    Nov 12 14:48:34 beaglebone kernel: [52236.346715] rpmsg_pru_itcio rpmsg0: pru_itcio device ready at /dev/rpmsg_pru_itcio
+    root@beaglebone:/home/t2/T2-12/pru/itcio/firmware#                
+
+Committing this as a checkpoint, adding rpmsg_pru_itcio to my
+/etc/modules stuff, and trying a reboot..
+
+:4]
+
+:3]
+
+:2]
+
+:1]
+
+:0]
