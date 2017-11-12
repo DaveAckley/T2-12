@@ -13,16 +13,24 @@ obj-m += rpmsg_pru_itcio.o
 
 KDIR?=/lib/modules/$(shell uname -r)/build
 
+ETC_MODULES_FILE:=/etc/modules-load.d/t2_12_modules.conf
 
-.PHONY: all
-all:
+all:	FORCE
 	@make -C $(KDIR) M=$(CURDIR) modules
 
-.PHONY: clean
-clean:
+clean:	FORCE
 	@make -C $(KDIR) M=$(CURDIR) clean
 
-.PHONY:	install
 install:	all
+	make INSTALL_MOD_DIR=itc -C /lib/modules/4.4.54-ti-r93/build/ M=$(CURDIR) modules_install
+	test -f $(ETC_MODULES_FILE) || \
+	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
+	grep rpmsg_pru_itcio $(ETC_MODULES_FILE) || echo rpmsg_pru_itcio >> $(ETC_MODULES_FILE)
+	depmod
+
+
+insmod:	all
 	rmmod rpmsg_pru_itcio || exit 0
 	insmod rpmsg_pru_itcio.ko
+
+.PHONY:	FORCE
