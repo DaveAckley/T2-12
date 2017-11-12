@@ -40,4 +40,41 @@ P9_13 input
 ## 
 ## Setting up PRU pins and GPIOs for the intertile connectors
 
+# EAST TERMINAL
 P9_28 pruout
+# Note 'P9_42B' in pinmap is 'P9_92' in cape-universal2
+P9_92 pruout
+P9_31 pruin
+P9_29 pruin
+
+# SOUTHEAST TERMINAL
+P9_27 pruout
+# Note 'P9_41B' in pinmap is 'P9_91' in cape-universal2
+P9_91 pruout
+P9_30 pruin
+P8_16 pruin
+
+# SOUTHWEST TERMINAL
+P9_25 pruout
+P8_12 pruout
+P8_15 pruin
+P9_24 pruin
+
+# WEST TERMINAL
+P8_45 pruout
+P8_46 pruout
+P8_39 pruin
+P8_40 pruin
+
+# NORTHWEST TERMINAL
+P8_27 pruout
+P8_29 pruout
+P8_43 pruin
+P8_44 pruin
+
+# NORTHEAST TERMINAL
+P8_28 pruout
+P8_30 pruout
+P8_41 pruin
+P8_42 pruin
+
