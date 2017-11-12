@@ -43,7 +43,7 @@ static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
  * /linux/fs.h lists the callback functions that you wish to associated with your file operations
  * using a C99 syntax structure. char devices usually implement open, read, write and release calls
  */
-static struct file_operations fops =
+static const struct file_operations fops =
 {
    .owner = THIS_MODULE,
    .open = dev_open,
