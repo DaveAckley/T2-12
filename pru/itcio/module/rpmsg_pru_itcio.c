@@ -72,15 +72,16 @@
 #include <linux/poll.h>
 
 #define PRU_MAX_DEVICES 4
-#define DRIVER_BUF_SIZE 1
+#define RPMSG_BUF_SIZE 512
+#define MAX_PACKET_SIZE (RPMSG_BUF_SIZE-sizeof(struct rpmsg_hdr))
 
 struct rpmsg_pru_itcio_dev {
-	struct rpmsg_channel *rpmsg_dev;
-	struct device *dev;
-	bool dev_lock;
-	bool buf_lock;
-	struct cdev cdev;
-	dev_t devt;
+  struct rpmsg_channel *rpmsg_dev;
+  struct device *dev;
+  bool dev_lock;
+  bool buf_lock;
+  struct cdev cdev;
+  dev_t devt;
 };
 
 static struct class *rpmsg_pru_itcio_class;
@@ -89,87 +90,105 @@ static dev_t rpmsg_pru_itcio_devt;
 static DEFINE_IDR(rpmsg_pru_itcio_minors);
 
 
-
-static int rpmsg_pru_itcio_open(struct inode *inode,
-					   struct file *filp)
+/** @brief The callback function for when the device is opened
+ *  What
+ *  @param inodep A pointer to an inode object (defined in linux/fs.h)
+ *  @param filep A pointer to a file object (defined in linux/fs.h)
+ */
+static int rpmsg_pru_itcio_open(struct inode *inode, struct file *filp)
 {
-	int ret = -EACCES;
-	struct rpmsg_pru_itcio_dev *pp_example_dev;
+  int ret = -EACCES;
+  struct rpmsg_pru_itcio_dev *iodev;
 
-	pp_example_dev = container_of(inode->i_cdev,
-				      struct rpmsg_pru_itcio_dev,
-				      cdev);
+  iodev = container_of(inode->i_cdev, struct rpmsg_pru_itcio_dev, cdev);
 
-	if (!pp_example_dev->dev_lock) {
-		pp_example_dev->dev_lock = true;
-		filp->private_data = pp_example_dev;
-		ret = 0;
-	}
+  if (!iodev->dev_lock) {
+    iodev->dev_lock = true;
+    filp->private_data = iodev;
+    ret = 0;
+  }
 
-	if (ret)
-		dev_err(pp_example_dev->dev,
-			"Failed to open already open device\n");
-
-	return ret;
+  if (ret)
+    dev_err(iodev->dev, "Device already open\n");
+  
+  return ret;
 }
 
+/** @brief The callback for when the device is closed/released by
+ *  the userspace program
+ *  @param inodep A pointer to an inode object (defined in linux/fs.h)
+ *  @param filep A pointer to a file object (defined in linux/fs.h)
+ */
+static int rpmsg_pru_itcio_release(struct inode *inode, struct file *filp)
+{
+  struct rpmsg_pru_itcio_dev *iodev;
+
+  iodev = container_of(inode->i_cdev, struct rpmsg_pru_itcio_dev, cdev);
+  iodev->buf_lock = false;
+  iodev->dev_lock = false;
+  
+  return 0;
+}
+
+/** @brief This callback used when data is being written to the device
+ *  from user space.  This is primarily to be for MFM cache update
+ *  packet transfer, but at present at this level, we're just talking
+ *  about uninterpreted byte chunks (that fit in MAX_PACKET_SIZE).
+ *  (Note also that MFM packets are less than 256 bytes (128?), but
+ *  that is not reflected in the limits here.)
+ *
+ *  @param filp A pointer to a file object
+ *  @param buf The buffer to that contains the data to write to the device
+ *  @param count The number of bytes to write from buf
+ *  @param offset The offset if required
+ */
 
 static ssize_t rpmsg_pru_itcio_write(struct file *filp,
-						const char __user *buf,
-						size_t count, loff_t *f_ops)
+                                     const char __user *buf,
+                                     size_t count, loff_t *offset)
 {
-	int ret;
-	static char driver_buf[DRIVER_BUF_SIZE];
-	struct rpmsg_pru_itcio_dev *pp_example_dev;
+  int ret;
+  static char driver_buf[RPMSG_BUF_SIZE];
+  struct rpmsg_pru_itcio_dev *iodev;
 
-	pp_example_dev = filp->private_data;
+  iodev = filp->private_data;
 
-	if (!pp_example_dev->buf_lock){
+  if (!iodev->buf_lock){
 
-		if (count > DRIVER_BUF_SIZE - sizeof(struct rpmsg_hdr)) {
-			dev_err(pp_example_dev->dev, "Data larger than buffer size");
-			return -EINVAL;
-		}
+    printk(KERN_INFO "ITCIO write count %d/ max %d\n",
+           count,
+           RPMSG_BUF_SIZE - sizeof(struct rpmsg_hdr));
 
-		if (copy_from_user(driver_buf, buf, count)) {
-			dev_err(pp_example_dev->dev, "Failed to copy data");
-			return -EFAULT;
-		}
+    if (count > MAX_PACKET_SIZE) {
+      dev_err(iodev->dev, "Data larger than buffer size");
+      return -EINVAL;
+    }
 
-		pp_example_dev->buf_lock = true;
-		ret = rpmsg_send(pp_example_dev->rpmsg_dev, (void *)driver_buf,
-				 DRIVER_BUF_SIZE*sizeof(char));
-		if (ret) {
-			dev_err(pp_example_dev->dev,
-				"Transmission on rpmsg bus failed %d\n",ret);
-			pp_example_dev->buf_lock = false;
-			return -EFAULT;
-		}
+    if (copy_from_user(driver_buf, buf, count)) {
+      dev_err(iodev->dev, "Failed to copy data");
+      return -EFAULT;
+    }
 
-		dev_info(pp_example_dev->dev, "Input message : %c",
-			 driver_buf[0]);
-		return count;
-	}
+    iodev->buf_lock = true;
+    ret = rpmsg_send(iodev->rpmsg_dev, (void *)driver_buf, count);
+    if (ret) {
+      dev_err(iodev->dev,
+              "Transmission on rpmsg bus failed %d\n",ret);
+      iodev->buf_lock = false;
+      return -EFAULT;
+    }
 
-	dev_err(pp_example_dev->dev, "Buffer is locked\n");
+    dev_info(iodev->dev, "Sending %d starting with %c",
+             count,
+             driver_buf[0]);
 
-	return -EFAULT;
+    return count;
+  }
+
+  dev_err(iodev->dev, "Buffer is locked\n");
+  return -EFAULT;
 }
 
-
-static int rpmsg_pru_itcio_release(struct inode *inode,
-					      struct file *filp)
-{
-	struct rpmsg_pru_itcio_dev *pp_example_dev;
-
-	pp_example_dev = container_of(inode->i_cdev,
-				      struct rpmsg_pru_itcio_dev,
-				      cdev);
-	pp_example_dev->buf_lock = false;
-	pp_example_dev->dev_lock = false;
-
-	return 0;
-}
 
 static const struct file_operations rpmsg_pru_itcio_fops = {
         .owner	= THIS_MODULE,
@@ -187,7 +206,8 @@ static void rpmsg_pru_itcio_cb(struct rpmsg_channel *rpmsg_dev,
 
 	pp_example_dev = dev_get_drvdata(&rpmsg_dev->dev);
 
-	print_hex_dump(KERN_INFO, "incoming message:", DUMP_PREFIX_NONE, 16, 1,
+        printk(KERN_INFO "Received %d",len);
+	print_hex_dump(KERN_INFO, "pkt:", DUMP_PREFIX_NONE, 16, 1,
 		       data, len, true);
 
 	if (pp_example_dev->buf_lock)
