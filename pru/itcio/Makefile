@@ -1,4 +1,4 @@
-PRUDIRS:=firmware module
+PRUDIRS:=module firmware
 
 CMDS:=build install clean realclean touch
 
