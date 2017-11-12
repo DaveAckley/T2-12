@@ -1,4 +1,20 @@
 /*
+ * Source Modified by Dave Ackley < ackley@ackleyshack.com >
+ * Modifications copyright (C) 2017 The Regents of the University of New Mexico
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
+/* Based on:
+ *
  * Source Modified by Zubeen Tolani < ZeekHuge - zeekhuge@gmail.com >
  * Based on the examples distributed by TI
  *
@@ -111,7 +127,7 @@ void main(void)
 			CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
 			/* Receive all available messages, multiple messages can be sent per kick */
 			while (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) == PRU_RPMSG_SUCCESS) {
-				number = payload[0] - '0';
+                                number = 2;
 				/* toggle gpio 'number' times*/
 				while (number > 0){
 					__R30 ^= gpio;
@@ -121,6 +137,7 @@ void main(void)
 					--number;
 				}
 				/* Echo the message back to the same address from which we just received */
+                                payload[0]++; /* But increment the first byte to show we care */
 				pru_rpmsg_send(&transport, dst, src, payload, len);					
 			}
 		}
