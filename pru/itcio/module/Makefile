@@ -6,10 +6,11 @@
 # rpmsg_pru_itcio.c in this directory.
 
 #
-# Makefile to compile rpmsg_pru_itcio.c
+# Makefile to compile itc_pkt.c
 #
 
-obj-m += rpmsg_pru_itcio.o
+MNAME:=itc_pkt
+obj-m += $(MNAME).o
 
 KDIR?=/lib/modules/$(shell uname -r)/build
 
@@ -25,12 +26,12 @@ install:	all
 	make INSTALL_MOD_DIR=itc -C /lib/modules/4.4.54-ti-r93/build/ M=$(CURDIR) modules_install
 	test -f $(ETC_MODULES_FILE) || \
 	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
-	grep rpmsg_pru_itcio $(ETC_MODULES_FILE) || echo rpmsg_pru_itcio >> $(ETC_MODULES_FILE)
+	grep $(MNAME) $(ETC_MODULES_FILE) || echo $(MNAME) >> $(ETC_MODULES_FILE)
 	depmod
 
 
 insmod:	all
-	rmmod rpmsg_pru_itcio || exit 0
-	insmod rpmsg_pru_itcio.ko
+	rmmod $(MNAME) || exit 0
+	insmod $(MNAME).ko
 
 .PHONY:	FORCE

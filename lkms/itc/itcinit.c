@@ -135,28 +135,25 @@ static int dev_open(struct inode *inodep, struct file *filep){
  *  @param offset The offset if required
  */
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
-  const unsigned int MAX_BUF = 128;
-  int error = 0;
-  u8 infoBuffer[MAX_BUF];
+  enum { MAX_BUF = 256 };
+  static u8 infoBuffer[MAX_BUF];  // static for shorter stack (but longer mutex)
+  int error;
+
   if (len > MAX_BUF) len = MAX_BUF;
 
   // Get the mutex (returns 0 unless interrupted)
   if ((error = mutex_lock_interruptible(&itc_mutex))) return error;
 
-  error = itcGetCurrentLockInfo(infoBuffer,len);  // ITC_MUTEX HELD
+  len = itcGetCurrentLockInfo(infoBuffer,len);     // ITC_MUTEX HELD
+  if (len > 0)                                     // ITC_MUTEX HELD
+    error = copy_to_user(buffer, infoBuffer, len); // ITC_MUTEX HELD
 
   mutex_unlock(&itc_mutex);
 
   if (error < 0)
     return error;
 
-  error = copy_to_user(buffer, infoBuffer, len);
-
-  if (!error)
-    return len;
-
-  printk(KERN_INFO "ITC: Failed to send %d characters to the user\n", error);
-  return -EFAULT;      // Failed -- return a bad address message (i.e. -14)
+  return len;
 }
 
 /** @brief This function is called whenever the device is being

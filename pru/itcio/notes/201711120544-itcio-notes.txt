@@ -1,4 +1,4 @@
-{5}  -*- text -*- 
+{9}  -*- text -*- 
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -71,3 +71,49 @@ Committing this as a checkpoint, adding rpmsg_pru_itcio to my
 :1]
 
 :0]
+[5:
+
+Sun Nov 12 17:01:34 2017 OK, so it's gross and we're doing it by hand
+in t2-startup.sh, but we have a functioning /dev/rpmsg_pru_itcio
+getting created at boot.  Now we 'just' have to make it useful.
+
+The current hard part is doing something sensible on the read side.
+I think we're going to try to find some kfifo sample code and buffer
+the incoming rpmsg packets there, and have the read side draw from the
+kfifo.  First question: Does a kfifo work in blocks or bytes?  In
+other words, are we going to lose our rpmsg packet boundaries going in
+and out of a kfifo?  Is a kfifo a linked list of blocks or a circular
+byte array??[6:
+
+Sun Nov 12 17:31:00 2017 Not completely clear but sort of looking like
+kfifo is byte-oriented, despite some stuff talking about 'records'.
+
+Q: Could we just leave stuff in the rpmsg queue until userspace comes
+along to read it?  The queue would fill fast but we're expecting mfmt2
+to basically have a thread sitting on the read side, pulling packets
+to userspace for dishing off.  Or maybe it's polling during events and
+stuff, advancing communications.
+
+But we can't really ignore the rpmsg callback, because it's up to us
+to get rid of data[len] at that point; rpmsg is going to assume we
+did.  So we could make our own linked list of packets, using the
+kernel's linked list stuff rather than the kfifo.[7:
+
+Sun Nov 12 18:07:24 2017 Or we could use skb's from the network
+stack??  That seems like a huge kettle of fish, but then we could
+conceivably be routing more or less genuine network crap between
+tiles, for good and for ill.. 
+
+:7]
+
+:6]
+
+:5]
+[8:
+
+Tue Nov 14 18:12:42 2017 OK, pushing all this crap as a checkpoint.
+Renamed the module to itc_pkt and made its device be /dev/itc/packets,
+to be a sibling of /dev/itc/locks.  Probably should be /dev/t2/*, but
+deal with that later.
+
+:8]

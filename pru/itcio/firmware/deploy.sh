@@ -76,6 +76,6 @@ echo "-Rebooting"
 	fi
 
 echo "******************************************************************************"
-echo "Done. So now $OUT_HEADER$OUT_PIN_NUMBER will toggle n number of times where"
-echo "n is echo n > /dev/rpmsg_pru_itcio"
+echo "Done. Incremented packet echo via"
+echo "echo pktdata > /dev/itc/packets"
 echo "******************************************************************************"

@@ -75,10 +75,10 @@ volatile register uint32_t __R31;
 #define FROM_ARM_HOST			19
 
 /*
- * Using the name 'rpmsg-pru-itcio' will probe the rpmsg_pru driver found
- * at linux-x.y.z/drivers/rpmsg/rpmsg_pru_itcio.c
+ * Using the name 'itc-pkt' will probe the itc_pkt driver found
+ * at /lib/modules/4.4.54-ti-r93/itc/itc_pkt.ko
  */
-#define CHAN_NAME					"rpmsg-pru-itcio"
+#define CHAN_NAME					"itc-pkt"
 #define CHAN_DESC					"Channel 31"
 #define CHAN_PORT					31
 
