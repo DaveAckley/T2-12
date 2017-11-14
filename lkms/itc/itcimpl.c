@@ -328,6 +328,8 @@ int itcGetCurrentLockInfo(u8 * buffer, int len)
   if (len < 0) return -EINVAL;
   if (len == 0) return 0;
 
+  if (len > 6) len = 6;
+
   for (i = 0; i < len; ++i) buffer[i] = 0;
   
   for (itcIteratorStart(itr); itcIteratorHasNext(itr);) {
