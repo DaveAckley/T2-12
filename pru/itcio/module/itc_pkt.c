@@ -79,16 +79,13 @@ struct itc_pkt_dev {
   struct rpmsg_channel *rpmsg_dev;
   struct device *dev;
   bool dev_lock;
-  bool buf_lock;
+  //  bool buf_lock;
   struct cdev cdev;
   dev_t devt;
 };
 
 static struct class *itc_pkt_class;
 static dev_t itc_pkt_devt;
-
-static DEFINE_IDR(itc_pkt_minors);
-
 
 /** @brief The callback function for when the device is opened
  *  What
@@ -124,7 +121,7 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   struct itc_pkt_dev *iodev;
 
   iodev = container_of(inode->i_cdev, struct itc_pkt_dev, cdev);
-  iodev->buf_lock = false;
+  //  iodev->buf_lock = false;
   iodev->dev_lock = false;
   
   return 0;
@@ -153,7 +150,7 @@ static ssize_t itc_pkt_write(struct file *filp,
 
   iodev = filp->private_data;
 
-  if (!iodev->buf_lock){
+  if (1/*!iodev->buf_lock*/){
 
     dev_info(iodev->dev, "Write count %d / max %d\n",
              count,
@@ -169,12 +166,12 @@ static ssize_t itc_pkt_write(struct file *filp,
       return -EFAULT;
     }
 
-    iodev->buf_lock = true;
+    //    iodev->buf_lock = true;
     ret = rpmsg_send(iodev->rpmsg_dev, (void *)driver_buf, count);
     if (ret) {
       dev_err(iodev->dev,
               "Transmission on rpmsg bus failed %d\n",ret);
-      iodev->buf_lock = false;
+      //      iodev->buf_lock = false;
       return -EFAULT;
     }
 
@@ -210,8 +207,10 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
   print_hex_dump(KERN_INFO, "pkt:", DUMP_PREFIX_NONE, 16, 1,
                  data, len, true);
   
+  /*
   if (iodev->buf_lock)
     iodev->buf_lock = false;
+  */
 }
 
 
@@ -230,24 +229,20 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
   dev_info(&rpmsg_dev->dev, "chnl: 0x%x -> 0x%x\n", rpmsg_dev->src,
            rpmsg_dev->dst);
 
+  minor_obtained = rpmsg_dev->dst - 30;
+  if (minor_obtained < 0 || minor_obtained > 1) {
+    dev_err(&rpmsg_dev->dev, "Failed : Unrecognized destination %d\n",
+            rpmsg_dev->dst);
+    return -ENODEV;
+  }
+
   iodev = devm_kzalloc(&rpmsg_dev->dev, sizeof(*iodev), GFP_KERNEL);
   if (!iodev)
     return -ENOMEM;
 
-  minor_obtained = idr_alloc(&itc_pkt_minors,
-                             iodev, 0, PRU_MAX_DEVICES,
-                             GFP_KERNEL);
-
-  if (minor_obtained < 0) {
-    ret = minor_obtained;
-    dev_err(&rpmsg_dev->dev, "Failed : couldnt get a minor number with return value %d\n",
-            ret);
-    goto fail_idr_alloc;
-  }
-
   iodev->devt = MKDEV(MAJOR(itc_pkt_devt), minor_obtained);
 
-  printk(KERN_INFO "OBTAINED minor %d for %p", minor_obtained, iodev);
+  printk(KERN_INFO "USING minor %d for destination 0x%x", minor_obtained, rpmsg_dev->dst);
 
   cdev_init(&iodev->cdev, &itc_pkt_fops);
   iodev->cdev.owner = THIS_MODULE;
@@ -260,7 +255,7 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
   iodev->dev = device_create(itc_pkt_class,
                              &rpmsg_dev->dev,
                              iodev->devt, NULL,
-                             "itc!packets%d", minor_obtained);
+                             "itc!pru%d", minor_obtained);
   if (IS_ERR(iodev->dev)) {
     dev_err(&rpmsg_dev->dev, "Failed to create device file entries\n");
     ret = PTR_ERR(iodev->dev);
@@ -270,15 +265,22 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
   iodev->rpmsg_dev = rpmsg_dev;
 
   dev_set_drvdata(&rpmsg_dev->dev, iodev);
-  dev_info(&rpmsg_dev->dev, "pru itc packet device ready at /dev/itc/packets%d",minor_obtained);
+  dev_info(&rpmsg_dev->dev, "pru itc packet device ready at /dev/itc/pru%d",minor_obtained);
+
+  ret = rpmsg_send(iodev->rpmsg_dev, "HEWO", 4);
+  if (ret) {
+    dev_err(iodev->dev, "Opening transmission on rpmsg bus failed %d\n",ret);
+    ret = PTR_ERR(iodev->dev);
+    goto fail_device_create;
+  } else {
+    printk(KERN_INFO "OPENER sent");
+  }
 
   return 0;
 
 fail_device_create:
   cdev_del(&iodev->cdev);
 fail_cdev_init:
-  idr_remove(&itc_pkt_minors, minor_obtained);
-fail_idr_alloc:
   return ret;
 }
 
@@ -291,8 +293,6 @@ static void itc_pkt_remove(struct rpmsg_channel *rpmsg_dev)
 
 	device_destroy(itc_pkt_class, pp_example_dev->devt);
 	cdev_del(&pp_example_dev->cdev);
-	idr_remove(&itc_pkt_minors,
-		   MINOR(pp_example_dev->devt));
 }
 
 
@@ -353,7 +353,6 @@ static int __init itc_pkt_init (void)
 static void __exit itc_pkt_exit (void)
 {
 	unregister_rpmsg_driver(&itc_pkt_driver);
-	idr_destroy(&itc_pkt_minors);
 	class_destroy(itc_pkt_class);
 	unregister_chrdev_region(itc_pkt_devt,
 				 PRU_MAX_DEVICES);
