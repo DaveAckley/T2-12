@@ -1,4 +1,4 @@
-{9}  -*- text -*- 
+{26}  -*- text -*- 
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -116,4 +116,312 @@ Renamed the module to itc_pkt and made its device be /dev/itc/packets,
 to be a sibling of /dev/itc/locks.  Probably should be /dev/t2/*, but
 deal with that later.
 
-:8]
+:8][9:
+
+Thu Nov 16 22:36:46 2017 All right; we lost a couple of days to
+stuff, but here we are again.  What about those skb's?  Any chance
+they're at all general purpose?[10:
+
+Thu Nov 16 22:44:01 2017 Well, it looks mostly byte-oriented too, but
+with special support for packet heads and tails.  So at that point it
+seems we might just as well use a kfifo but enforce the discipline
+that we grow and shrink it by units of packets, and we use our own
+packet framing discipline to know where the packet boundaries are
+starting from the current head of the kfifo.
+
+At least, let's take that provisionally and see where it gets us.
+
+Let's review our packet semantics document from way back when -- when
+we were thinking an FPGA for comms -- and see how much we still might
+like it.[11:
+
+Thu Nov 16 23:08:13 2017 OK, the file is MFMPFD11.txt, now copied but
+not commited in T2-12/doc.
+
+It's calling for a two byte header on a 255 max packet size, with the
+data alleged to be byte-escaped to eliminate nulls, but no actual data
+format is included in MFMPFD11.[12:
+
+Thu Nov 16 23:46:04 2017 And hmm indeed, it looks like kfifo (at least
+in 2009) explicitly supports variable-length records between 0 and 255
+bytes..  Except I think it wants the length in the first byte rather
+than the second; dunno.[13:
+
+Thu Nov 16 23:55:56 2017 What if we took that to heart?  In principle
+I like having the length first anyway.. we were toying with having the
+start-of-byte be an extra 1 bit before the first packet byte, in which
+case we could have a whole first byte for length if we wanted it..  If
+you send 15 or more straight 0s then the channel goes idle, and at
+that point the first 1 bit to arrive is a byte-alignment start bit
+rather than a data bit.  But you send packets back-to-back if you have
+them, and the byte sync just carries over.
+
+Now one thing is we do have to keep clocking _all_ the live channels
+all the time -- even if some of them are 'idle' -- so that either side
+can start a packet any time it wants.  But once the channels are
+logically idle we won't be generating bytes for inbound packets.
+[14:
+
+Fri Nov 17 00:11:54 2017 Now, we really could do bit or byte stuffing
+on the wire, with a privileged packet delimiter, but then convert them
+to counted packets before sending them to linux.  Or maybe we can just
+count on the rpmsg framing to imply the count?  Or not, because we
+might have a lot of short packets which could burn a lot of rpmsg
+buffers, when memory is not that cheap down toward the PRU end of
+things?
+
+But in any case we would say the beginning of an rpmsg is always the
+beginning of a packet?  But then could we dare to put multiple packets
+in one buffer?  I suppose as long as there's more than max packet len
+bytes still in the rpmsg buffer we could keep going.  But that would
+tend to increase latency.. Who knows..
+
+[15:
+
+Fri Nov 17 00:49:00 2017 Pop pop pop..  So, status:
+
+(1) We're going to try using a kfifo in its recsize==1 mode
+
+(2) We're going to do bit stuffing on the wire with a reserved
+    end-of-packet / start-of-packet sequence.
+
+(3) We're going to unstuff the bits and assemble bytes in PRU memory
+    while tracking the len and updating the packet status.
+
+(4) Our PRU code will have a single incoming and a single outgoing
+    packet buffer for each direction (so, three in and three out per
+    PRU, six in and six out overall).
+
+(5) Our PRU main loop will just continually advance the wire bit state
+    machines for each direction, and those state machines will report
+    conditions like 'incoming packet complete' and 'outgoing packet
+    buffer empty', and in response the PRU main loop will service them
+    appropriately, calling pru_rpmsg_send in the former case and/or
+    pru_rpmsg_receive in the latter.  If there's no more rpmsg buffers
+    available for sending data to linux, we mark the packet blown and
+    start discarding until another start-of-packet.  If there's no
+    more rpmsg buffers available containing data from linux, the
+    corresponding output channel goes idle.
+
+'And that's all there is to it.'  Yahright.[16:
+
+Fri Nov 17 01:30:44 2017 And we're still thinking the wire bit state
+machines are written in assembler, using the context-switching design
+previously worked up.. but we're not sure how that's going to
+interface to the the main loop, which we are thinking is going to be
+C.
+
+Now, I don't think we actually ate all the registers in our state
+machine design.  Could we try to see if there's a way to get along
+with the clpru usages?[17:
+
+Fri Nov 17 09:36:55 2017 All right, so it's all about 'spruhv7a.pdf',
+the 'PRU Optimizing Compiler C/C++ Compiler v2.1 (Rev. A)' manual.
+[19:
+
+Fri Nov 17 09:41:45 2017 And the key table for register usage appears
+to be Table 6-4 on page 105-106:
+
+   Table 6-4. Register Usage
+    Register  Usage                   Save on Call    Save on Entry
+     R0.w0     Expression register     Yes
+     R1        Expression register     Yes
+     R2        Stack pointer (SP)
+     R3.w0     Expression register
+     R3.w2     Expression register                     Yes
+                (usually used as Link
+                register to store the
+                return address) 
+     R4        Argument pointer (AP)                   Yes
+     R5        Expression register                     Yes
+     R6        Expression register                     Yes
+     R7        Expression register                     Yes
+     R8        Expression register                     Yes
+     R9        Expression register                     Yes
+     R10       Expression register                     Yes
+     R11       Expression register                     Yes
+     R12       Expression register                     Yes
+     R13       Expression register                     Yes
+     R14       Return register         Yes
+     R15       Expression register     Yes
+     R16       Expression register     Yes
+     R17       Expression register     Yes
+     R18       Expression register     Yes
+     R19       Expression register     Yes
+     R20       Expression register     Yes
+     R21       Expression register     Yes
+     R22       Expression register     Yes
+     R23       Expression register     Yes
+     R24       Expression register     Yes
+     R25       Expression register     Yes
+     R26       Expression register     Yes
+     R27       Expression register     Yes
+     R28       Expression register     Yes
+     R29       Expression register     Yes
+     R30       Control register
+     R31       Control register
+
+[20:
+
+Fri Nov 17 10:13:17 2017 Aand how does that fit together with what we
+were imagining in a pure ASM environment?  From
+T2-local/candidates/beagleboardgreen/BBG-SHR/SymmetricBitstreamTransceiver.inc:
+
+    /*
+       PRUx REGISTER USAGE
+
+       R0 : reserved for context switching
+       R1 : arg ret + tmp
+       R2-6 : temp caller saves
+       R7-9 : temp callee saves
+       R10-17 : context register (see below)
+       R18-29 : reserved
+       R30 : direct GPIO output
+       R31 : status and direct GPIO input
+    */
+                                
+
+and I think everything but R30 and R31 are actually movable.  In
+particular, the 8 register context struct just has to be contiguous
+but can otherwise go anywhere.
+
+But if the main loop is, in effect, the context-switching threaded
+state machines, that means we will need to be calling C from ASM, not
+(just) the reverse.
+
+[21:
+
+Fri Nov 17 11:01:39 2017 So I don't know if I have the strength for it
+now, but it seems one good workflow spike would be to write an ASM
+main loop that does the processing currently in main_pru1.c.
+Something like:
+
+//C
+
+struct pru_rpmsg_transport transport;
+
+unsigned getOutboundPacket(uint8_t * buffer) {
+   unsigned len;
+   if (pru_rpmsg_receive(&transport, &src, &dst, buffer, &len) != PRU_RPMSG_SUCCESS)
+     return 0;
+   return len;
+}
+void putInboundPacket(uint8_t * buffer, unsigned len)
+{
+   pru_rpmsg_send(&transport, dst, src, buffer, len);					
+}
+
+int main() {
+   uint16_t src, dst, len;
+
+   /* allow OCP master port access by the PRU so the PRU can read external memories */
+   CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
+
+   /* clear the status of the PRU-ICSS system event that the ARM will use to 'kick' us */
+   CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
+
+   /* Make sure the Linux drivers are ready for RPMsg communication */
+   status = &resourceTable.rpmsg_vdev.status;
+   while (!(*status & VIRTIO_CONFIG_S_DRIVER_OK));
+
+   /* Initialize pru_virtqueue corresponding to vring0 (PRU to ARM Host direction) */
+   pru_virtqueue_init(&transport.virtqueue0, &resourceTable.rpmsg_vring0, TO_ARM_HOST, FROM_ARM_HOST);
+
+   /* Initialize pru_virtqueue corresponding to vring1 (ARM Host to PRU direction) */
+   pru_virtqueue_init(&transport.virtqueue1, &resourceTable.rpmsg_vring1, TO_ARM_HOST, FROM_ARM_HOST);
+
+   /* Create the RPMsg channel between the PRU and ARM user space using the transport structure. */
+   while (pru_rpmsg_channel(RPMSG_NS_CREATE, &transport, CHAN_NAME, CHAN_DESC, CHAN_PORT) != PRU_RPMSG_SUCCESS);
+
+   mainLoop(&transport);
+}
+
+;ASM
+.whatever mainLoop
+    ;; R14 is ptr to transport
+    blah
+    blah
+    ;; call getOutboundPacket for more data to send
+    blah
+    ;; call putInboundPacket for push received data to linux
+
+:21]
+
+:20]
+:19]
+
+:17]
+
+:16]
+
+
+:15]
+
+:14]
+
+
+:13]
+
+:12]
+
+:11]
+
+
+:10]
+
+:9]
+[18: Fri Nov 17 09:39:47 2017 Hmm using the go macros makes it much
+more obvious this T2 tile is running on GMT.  Confusing.  It's 2:40AM
+here in Mountain Time.  :18]
+[22:
+
+Fri Nov 24 07:28:52 2017 OK godamn it
+
+(1) Demo C code running on two PRUs talking to linux
+(2) Demo C calling an ASM routine and it returning something
+(3) Demo that ASM routine calling another C routine.
+
+[23:
+
+Fri Nov 24 07:30:44 2017 How to push toward (1)?  Let's try to get our
+itcio LKM to support two minor devices.  That hadn't seemed hopeless
+last time we worked, IIRC.
+
+:23]
+
+:22]
+[24:
+
+Fri Nov 24 10:28:47 2017 Useful info from http://theduchy.ualr.edu/?p=996
+
+    The structure of communications using INTC can be seen in the
+    Technical Reference Manual, Table 4-17.
+
+    PRU0 is connected to Host-0 using R31 bit 30.
+
+    PRU1 is connected to Host-1 using R31 bit 31.
+
+    System events (SYS_EVT) are connected to one of the ten channels
+    (0..9).  This channel connection is done through the resource table.
+
+    Table 4-21 demonstrates the Interrupt number and connection to a
+    pin. Pins 16, 17, 18, and 19 are connected to signals
+    pr1_pru_mst_intr[0]_intr_req, pr1_pru_mst_intr[1]_intr_req,
+    pr1_pru_mst_intr[2]_intr_req,  and pr1_pru_mst_intr[3]_intr_req.
+
+:24]
+[25:
+
+Fri Nov 24 11:37:35 2017 OK, well, after just the right amount of pain
+and suffering, apparently, I now have both pru0 and pru1 up and
+running the minimal packet demo code, as /dev/itc/packets0 and
+/dev/itc/packets1, respectively.
+
+Finally.
+
+Thinking of renaming to /dev/itc/pru0 etc but uncertain if my current
+flow guarantees that pru0 will always get minor 0.
+
+In any case, pushing all this.
+
+:25]
