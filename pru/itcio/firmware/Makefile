@@ -39,8 +39,8 @@ PRU0_FW		=$(GEN_DIR)/main_pru0_fw.out
 # Variable to edit in the makefile
 
 # add the required firmwares to TARGETS
-# TARGETS		=$(PRU1_FW) $(PRU0_FW)
-TARGETS		=$(PRU1_FW)
+ TARGETS		=$(PRU1_FW) $(PRU0_FW)
+#TARGETS		=$(PRU1_FW)
 
 # add the required files while linkin the FW code
 # required linking files for PRU1
@@ -70,13 +70,13 @@ $(PRU0_FW): $(GEN_DIR)/main_pru0.object $(LINK_PRU0_FW)
 	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
 
 
-$(GEN_DIR)/main_pru0.object: main_pru0.c 
+$(GEN_DIR)/main_pru0.object: main_pru0.c main_prux.inc
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$<'
 	@$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 
-$(GEN_DIR)/main_pru1.object: main_pru1.c
+$(GEN_DIR)/main_pru1.object: main_pru1.c main_prux.inc
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$<'
 	@$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<

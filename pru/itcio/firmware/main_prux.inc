@@ -1,0 +1,79 @@
+/* -*- c -*- */
+#include "prux.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <pru_cfg.h>
+#include <pru_intc.h>
+#include <rsc_types.h>
+#include <pru_virtqueue.h>
+#include <pru_rpmsg.h>
+#include "resource_table_x.h"
+
+volatile register uint32_t __R31;
+volatile register uint32_t __R30;
+volatile register uint32_t __R31;
+
+/*
+ * Used to make sure the Linux drivers are ready for RPMsg communication
+ * Found at linux-x.y.z/include/uapi/linux/virtio_config.h
+ */
+#define VIRTIO_CONFIG_S_DRIVER_OK	4
+
+uint8_t payload[RPMSG_BUF_SIZE];
+
+/*
+* main.c
+*/
+void main(void)
+{
+  struct pru_rpmsg_transport transport;
+  uint16_t src, dst, len;
+  volatile uint8_t *status,number;
+  volatile uint32_t gpio;
+
+  gpio = 0x000F;
+
+  /* allow OCP master port access by the PRU so the PRU can read external memories */
+  CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
+  
+  /* clear the status of the PRU-ICSS system event that the ARM will use to 'kick' us */
+  CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
+  
+  /* Make sure the Linux drivers are ready for RPMsg communication */
+  status = &resourceTable.rpmsg_vdev.status;
+  while (!(*status & VIRTIO_CONFIG_S_DRIVER_OK));
+  
+  /* Initialize pru_virtqueue corresponding to vring0 (PRU to ARM Host direction) */
+  pru_virtqueue_init(&transport.virtqueue0, &resourceTable.rpmsg_vring0, TO_ARM_HOST, FROM_ARM_HOST);
+  
+  /* Initialize pru_virtqueue corresponding to vring1 (ARM Host to PRU direction) */
+  pru_virtqueue_init(&transport.virtqueue1, &resourceTable.rpmsg_vring1, TO_ARM_HOST, FROM_ARM_HOST);
+  
+  /* Create the RPMsg channel between the PRU and ARM user space using the transport structure. */
+  while (pru_rpmsg_channel(RPMSG_NS_CREATE, &transport, CHAN_NAME, CHAN_DESC, CHAN_PORT) != PRU_RPMSG_SUCCESS);
+  while (1) {
+    /* Check bit 30 of register R31 to see if the ARM has kicked us */
+    if (__R31 & HOST_INT) {
+      /* Clear the event status */
+      CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
+      /* Receive all available messages, multiple messages can be sent per kick */
+      while (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) == PRU_RPMSG_SUCCESS) {
+        number = 2;
+        /* toggle gpio 'number' times*/
+        while (number > 0){
+          __R30 ^= gpio;
+          __delay_cycles(100000000);
+          __R30 ^= gpio;
+          __delay_cycles(100000000);
+          --number;
+        }
+        /* Echo the message back to the same address from which we just received */
+        payload[0]++; /* But increment the first byte to show we care */
+        payload[0] += PRU; /* and an extra increment from PRU1 */
+        pru_rpmsg_send(&transport, dst, src, payload, len);					
+      }
+    }
+  }
+}
+
