@@ -1,4 +1,4 @@
-{26}  -*- text -*- 
+{30}  -*- text -*- 
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -425,3 +425,45 @@ flow guarantees that pru0 will always get minor 0.
 In any case, pushing all this.
 
 :25]
+[26:
+
+Fri Nov 24 12:32:42 2017 So it was possible for pru1 to get minor 0
+and vv, but I've now rehacked to not use idr_alloc for minors and
+instead use (rpmsg->dest - 30), which appears to do what we want.
+
+Renaming to /dev/itc/pru[01].
+
+
+:26]
+[27:
+
+Fri Nov 24 15:00:28 2017 OK, so boot time stuff remains messed up --
+with some indications on the net that RCN was making changes in
+related stuff in mid-2017, so whatever.  We're now just rebinding the
+pru stuff in our own boot script.
+
+:27]
+[28:
+
+Fri Nov 24 20:31:54 2017 OK, so it appears we're sometimes losing
+ARM->PRU interrupts destined for PRU0.  I am perfectly willing to
+believe whatever the reason is it's my lack of knowledge, and
+consequent incorrect configuration/coding, that's to blame.
+
+In any case, rather than continue down that debugging hole at present,
+instead we have enabled the PRU instruction cycle counters, and have
+added a backup 1HZ timeout for incoming messages: If it's been more
+than 200M cycles since the last ARM->PRU interrupt, we go ahead and
+check for messages (and reset the timeout clock) anyway.[29:
+
+Fri Nov 24 21:53:23 2017 And the threat of timeout appears to be
+sufficient to keep the interrupts arriving, across reboot reloads and
+what-not -- at least, I'm seeing pretty regular ~5ms RTT for the
+current setup (with lots of kernel logging and all and etc), without
+any ~500ms outliers one might expect if the timeout was kicking in.
+
+Committing all this.  Time to push on to case (2) from :22: above.
+
+:29]
+
+:28]
