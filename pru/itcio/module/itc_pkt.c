@@ -71,7 +71,7 @@
 #include <linux/uaccess.h>
 #include <linux/poll.h>
 
-#define PRU_MAX_DEVICES 4
+#define PRU_MAX_DEVICES 2
 #define RPMSG_BUF_SIZE 512
 #define MAX_PACKET_SIZE (RPMSG_BUF_SIZE-sizeof(struct rpmsg_hdr))
 
@@ -225,6 +225,8 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
   struct itc_pkt_dev *iodev;
   int minor_obtained;
 
+  printk(KERN_INFO "ZORG itc_pkt_probe");
+
   dev_info(&rpmsg_dev->dev, "chnl: 0x%x -> 0x%x\n", rpmsg_dev->src,
            rpmsg_dev->dst);
 
@@ -245,6 +247,8 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
 
   iodev->devt = MKDEV(MAJOR(itc_pkt_devt), minor_obtained);
 
+  printk(KERN_INFO "OBTAINED minor %d for %p", minor_obtained, iodev);
+
   cdev_init(&iodev->cdev, &itc_pkt_fops);
   iodev->cdev.owner = THIS_MODULE;
   ret = cdev_add(&iodev->cdev, iodev->devt,1);
@@ -255,7 +259,8 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
 
   iodev->dev = device_create(itc_pkt_class,
                              &rpmsg_dev->dev,
-                             iodev->devt, NULL, "itc!packets");
+                             iodev->devt, NULL,
+                             "itc!packets%d", minor_obtained);
   if (IS_ERR(iodev->dev)) {
     dev_err(&rpmsg_dev->dev, "Failed to create device file entries\n");
     ret = PTR_ERR(iodev->dev);
@@ -265,7 +270,7 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
   iodev->rpmsg_dev = rpmsg_dev;
 
   dev_set_drvdata(&rpmsg_dev->dev, iodev);
-  dev_info(&rpmsg_dev->dev, "pru itc packet device ready at /dev/itc/packets");
+  dev_info(&rpmsg_dev->dev, "pru itc packet device ready at /dev/itc/packets%d",minor_obtained);
 
   return 0;
 
@@ -309,38 +314,39 @@ static struct rpmsg_driver itc_pkt_driver = {
 
 static int __init itc_pkt_init (void)
 {
-	int ret;
+  int ret;
 
-	itc_pkt_class = class_create(THIS_MODULE, "itc_pkt");
-	if (IS_ERR(itc_pkt_class))
-	{
-		pr_err("Failed to create class\n");
-		ret= PTR_ERR(itc_pkt_class);
-		goto fail_class_create;
-	}
+  printk(KERN_INFO "ZORG itc_pkt_init");
 
-	ret = alloc_chrdev_region(&itc_pkt_devt, 0,
-				  PRU_MAX_DEVICES, "itc_pkt");
-	if (ret) {
-		pr_err("Failed to allocate chrdev region\n");
-		goto fail_alloc_chrdev_region;
-	}
+  itc_pkt_class = class_create(THIS_MODULE, "itc_pkt");
+  if (IS_ERR(itc_pkt_class)) {
+    pr_err("Failed to create class\n");
+    ret= PTR_ERR(itc_pkt_class);
+    goto fail_class_create;
+  }
 
-	ret = register_rpmsg_driver(&itc_pkt_driver);
-	if (ret) {
-		pr_err("Failed to register the driver on rpmsg bus");
-		goto fail_register_rpmsg_driver;
-	}
+  ret = alloc_chrdev_region(&itc_pkt_devt, 0,
+                            PRU_MAX_DEVICES, "itc_pkt");
+  if (ret) {
+    pr_err("Failed to allocate chrdev region\n");
+    goto fail_alloc_chrdev_region;
+  }
 
-	return 0;
+  ret = register_rpmsg_driver(&itc_pkt_driver);
+  if (ret) {
+    pr_err("Failed to register the driver on rpmsg bus");
+    goto fail_register_rpmsg_driver;
+  }
 
-fail_register_rpmsg_driver:
-	unregister_chrdev_region(itc_pkt_devt,
-				 PRU_MAX_DEVICES);
-fail_alloc_chrdev_region:
-	class_destroy(itc_pkt_class);
-fail_class_create:
-	return ret;
+  return 0;
+
+ fail_register_rpmsg_driver:
+  unregister_chrdev_region(itc_pkt_devt,
+                           PRU_MAX_DEVICES);
+ fail_alloc_chrdev_region:
+  class_destroy(itc_pkt_class);
+ fail_class_create:
+  return ret;
 }
 
 

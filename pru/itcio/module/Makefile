@@ -22,7 +22,9 @@ all:	FORCE
 clean:	FORCE
 	@make -C $(KDIR) M=$(CURDIR) clean
 
-install:	all
+install:	install_files insmod
+
+install_files:	all
 	make INSTALL_MOD_DIR=itc -C /lib/modules/4.4.54-ti-r93/build/ M=$(CURDIR) modules_install
 	test -f $(ETC_MODULES_FILE) || \
 	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
@@ -30,7 +32,7 @@ install:	all
 	depmod
 
 
-insmod:	all
+insmod:	FORCE
 	rmmod $(MNAME) || exit 0
 	insmod $(MNAME).ko
 
