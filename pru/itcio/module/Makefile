@@ -33,7 +33,7 @@ install_files:	all
 
 
 insmod:	FORCE
-	rmmod $(MNAME) || exit 0
-	insmod $(MNAME).ko
+	modprobe -r $(MNAME) || exit 0
+	modprobe $(MNAME)
 
 .PHONY:	FORCE
