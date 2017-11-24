@@ -20,9 +20,11 @@ logger T2 FINAL BOOT CONFIG: waveshare35a
 echo waveshare35a > /sys/devices/platform/bone_capemgr/slots
 
 logger T2 FINAL BOOT CONFIG: PRUs
-logger "Rebooting pru-core 1"
+echo "Rebooting PRUs"
+echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/unbind 2>/dev/null
 echo "4a338000.pru1"  > /sys/bus/platform/drivers/pru-rproc/unbind 2> /dev/null
 echo "4a338000.pru1" > /sys/bus/platform/drivers/pru-rproc/bind
+echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/bind
 
 logger T2 FINAL BOOT CONFIG FINISHED
 
