@@ -1,4 +1,4 @@
-{30}  -*- text -*- 
+{33}  -*- text -*- 
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -467,3 +467,66 @@ Committing all this.  Time to push on to case (2) from :22: above.
 :29]
 
 :28]
+[30:
+
+Fri Nov 24 22:24:31 2017 Summarizing register usage:
+
+
+ r2 contains the stack pointer,
+ r3 contains the return address,
+ r14 to r29 are used for argument passing,
+ r14 is used for the return value,
+ r3 to r13 must be saved by the callee.
+
+(from https://www.embeddedrelated.com/showarticle/603.php)
+
+:30]
+[31:
+
+Sat Nov 25 13:58:23 2017 OK, well, so after all sorts of worthless and
+worthwhile diversions, we finally appear to qualify for having done
+(2) from :22: above.  Here's us calling an asm routine from C:
+
+    ..
+    extern int addfuncasm(int a, int b);
+    ..
+            payload[0]++; /* But increment the first byte to show we care */
+            payload[0] = addfuncasm(payload[0]+1, ON_PRU); /* add extra increments via asm */
+    ..
+
+and here's the function:
+
+            .global addfuncasm
+    addfuncasm:
+            ADD R14, R15, R14
+            JMP r3.w2
+        
+and here's the behavior:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio# echo aaa > /dev/itc/pru1
+    Nov 25 13:58:04 beaglebone kernel: [  875.954349] itc_pkt itc!pru1: Write count 4 / max 496
+    Nov 25 13:58:04 beaglebone kernel: [  875.968757] itc_pkt itc!pru1: Sending 4 starting with a
+    Nov 25 13:58:04 beaglebone kernel: [  875.974292] Received 4
+    Nov 25 13:58:04 beaglebone kernel: [  875.976667] pkt:64 61 61 0a                                      daa.
+    root@beaglebone:/home/t2/T2-12/pru/itcio# echo aaa > /dev/itc/pru0
+    Nov 25 13:58:08 beaglebone kernel: [  879.922753] itc_pkt itc!pru0: Write count 4 / max 496
+    Nov 25 13:58:08 beaglebone kernel: [  879.937989] itc_pkt itc!pru0: Sending 4 starting with a
+    Nov 25 13:58:08 beaglebone kernel: [  879.943529] Received 4
+    Nov 25 13:58:08 beaglebone kernel: [  879.945947] pkt:63 61 61 0a                                      caa.
+    root@beaglebone:/home/t2/T2-12/pru/itcio# 
+
+So there's that.
+
+Moving on to (3).  Would like to jump the ambition a little and have
+our C function called from asm generate an rpmsg_send of a variable or
+something.  We'll see.
+[32:
+
+Sat Nov 25 18:44:13 2017 Well, now have a SENDVAL macro that takes a
+string and a register and sends a message to linux containing same,
+and we're calling it from asm.
+
+Committing.
+
+:32]
+:31]
