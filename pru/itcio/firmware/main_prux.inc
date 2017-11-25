@@ -24,19 +24,52 @@ volatile register uint32_t __R31;
 
 uint8_t payload[RPMSG_BUF_SIZE];
 
+extern int addfuncasm(int a, int b);
+extern void initStateMachines();
+extern void advanceStateMachines();
+
+static struct pru_rpmsg_transport transport;
+static unsigned firstPacket = 1;
+static uint16_t firstSrc, firstDst;
+
+int sendVal(const char * str, uint32_t val)
+{
+  enum { BUF_LEN = 50 };
+  char buf[BUF_LEN];
+  int len = 0;
+  int i;
+
+  if (firstPacket) return 0; /* Not ready yet */
+  buf[len++] = 'V'; /* here comes a debug Value */
+
+  /* First the value in hex */
+  for (i = 0; i < 8; ++i) {
+    buf[len++] = "0123456789abcdef"[val>>28];
+    val <<= 4;
+  }
+
+  /* Then a space */
+  buf[len++] = ' ';
+
+  /* Then the string if any */
+  if (str) {
+    /* Take as much string as we can hold */
+    while (len < BUF_LEN-2 && *str) buf[len++] = *str++;
+  }
+  buf[len++] = '\0';
+
+  /* Send it */
+  pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);
+  return 1;  
+}
+
 /*
 * main.c
 */
 void main(void)
 {
-  struct pru_rpmsg_transport transport;
   uint16_t src, dst, len;
   volatile uint8_t *status,number;
-  volatile uint32_t gpio;
-  unsigned firstPacket = 1;
-  uint16_t firstSrc, firstDst;
-
-  gpio = 0x000F;
 
   /* allow OCP master port access by the PRU so the PRU can read external memories */
   CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
@@ -61,7 +94,14 @@ void main(void)
   /* Create the RPMsg channel between the PRU and ARM user space using the transport structure. */
   while (pru_rpmsg_channel(RPMSG_NS_CREATE, &transport, CHAN_NAME, CHAN_DESC, CHAN_PORT) != PRU_RPMSG_SUCCESS);
 
+  /* Fire up the bit bangers for the packet comms */
+  initStateMachines();
+
   while (1) {
+
+    /* Move them bits!  Push them out!  Pull them in! */
+    advanceStateMachines();
+    
     /* Check bit 30 or 31 of register R31 to see if the ARM has kicked us */
     /* Also check once per second if no kicks -- some interrupts get missed? grr */
     if ((__R31 & HOST_INT) || PRUX_CTRL.CYCLE > 200000000) { 
@@ -84,10 +124,8 @@ void main(void)
 
         /* Echo the message back to the same address from which we just received */
         payload[0]++; /* But increment the first byte to show we care */
-        payload[0] += ON_PRU; /* and an extra increment from PRU1 */
+        payload[0] = addfuncasm(payload[0]+1, ON_PRU); /* add extra increments via asm */
         pru_rpmsg_send(&transport, dst, src, payload, len);					
-
-
       }
     }
   }
