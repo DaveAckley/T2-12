@@ -21,6 +21,11 @@ KERNEL_HEADERS_PKG:=linux-headers-$(KERNEL_VERSION)
 PACKAGES+=$(KERNEL_HEADERS_PKG)
 FLAG_FILE:=.flagfile_INSTALL_COMPLETE
 
+## Packages we can safely remove
+REMOVE_PACKAGES+=doc-beaglebone-getting-started
+REMOVE_PACKAGES+=doc-beaglebone-getting-started
+REMOVE_PACKAGES+=doc-seeed-bbgw-getting-started
+
 build:	FORCE
 	@echo "PACKAGES: $(PACKAGES)"
 	@echo "NOTE: Not doing 'apt-get update' -- do it yourself if you dare"
