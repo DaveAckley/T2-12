@@ -26,7 +26,7 @@ HEAP_SIZE=0x100
 
 
 #CFLAGS=--preproc_only -v3 -O2 --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR)
-CFLAGS=-v3 -O2 --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR) -ppd -ppa
+CFLAGS=-v3 -O4 --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR) -ppd -ppa -al
 LFLAGS=--reread_libs --warn_sections --stack_size=$(STACK_SIZE) --heap_size=$(HEAP_SIZE)
 
 
@@ -61,12 +61,12 @@ all: $(TARGETS)
 	@echo '-	Generated firmwares are : $^'
 
 
-$(PRU1_FW): $(GEN_DIR)/main_pru1.object $(LINK_PRU1_FW)
+$(PRU1_FW): $(GEN_DIR)/main_pru1.object $(GEN_DIR)/main_pru1_def.object $(LINK_PRU1_FW)
 	@echo 'LD	$^'
 	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
 
 
-$(PRU0_FW): $(GEN_DIR)/main_pru0.object $(LINK_PRU0_FW)
+$(PRU0_FW): $(GEN_DIR)/main_pru0.object $(GEN_DIR)/main_pru0_def.object $(LINK_PRU0_FW)
 	@echo 'LD	$^' 
 	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
 
@@ -76,11 +76,20 @@ $(GEN_DIR)/main_pru0.object: main_pru0.c main_prux.inc prux.h
 	@echo 'CC	$<'
 	@$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
+$(GEN_DIR)/main_pru0_def.object: main_prux_def.asm
+	@mkdir -p $(GEN_DIR)
+	@echo 'CC	$<'
+	@$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 $(GEN_DIR)/main_pru1.object: main_pru1.c main_prux.inc prux.h
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$<'
 	@$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+
+$(GEN_DIR)/main_pru1_def.object: main_prux_def.asm
+	@mkdir -p $(GEN_DIR)
+	@echo 'CC	$<'
+	$(PRU_CGT)/bin/clpru -DON_PRU=1 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 
 
