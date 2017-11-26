@@ -1,4 +1,4 @@
-{33}  -*- text -*- 
+{47}  -*- text -*- 
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -530,3 +530,311 @@ Committing.
 
 :32]
 :31]
+[33:
+
+Sun Nov 26 06:43:56 2017 OK, so a good next step would be the ability
+to read and set the PRU-controlled pins.  That will let us answer the
+following still-outstanding 'fourth round' questions:
+
+(4.1) Can we really read and write the ITC pins via the PRUs?
+
+(4.2) Can we really control ALL the relevant pins, including the ones
+   with contested lines and the ones we stole from other low-level
+   functions like the cape I2C?
+
+(4.3) Do the signals appear reliable at essentially DC clocking rates?
+
+while leaving open the big money Fifth Round Questions:
+
+(5.1) Can we implement the SBST state machines and have them actually
+   work, in a time period like, say, this semester?
+
+(5.2) Can we actually send a packet across tiles from linux to linux via
+   the PRUs and the external connectors?
+
+while not approaching or forgetting the Final Round Questions:
+
+(6.1) Will our signal integrity start to break down, at speeds our
+   initial code will be able to achieve?  Or In Other Words
+
+(6.2) HOW FUCKING FAST WILL ALL THIS GO IN ACTUAL REALITY? 
+
+
+:33]
+[34:
+
+Sun Nov 26 07:02:59 2017 So, for (4.1), we want some simple command
+and respond format between itc_pkt and the PRUs.  We're already
+planning/using the following packet design decisions:
+
+ - First byte is packet type.
+
+ - Any packet type with its high-order bit set is an intertile data
+   packet (inbound or outbound depending on direction).  The remaining
+   seven bits of a data packet type will not be locked down until we
+   get there but are likely to include 3 bits of src/dst, an overrun
+   bit, and an error bit.
+
+ - Any packet type with its high-order bit clear is a special command,
+   with semantics that depend pretty utterly on the packet type.
+
+ - Special packet type 'V' (inbound) is now already defined to be a
+   "debug print 'V'alue" going from PRU to linux.  ('V' outbound is
+   currently undefined.)
+
+And now we're going to lay down a couple more special packet types.
+
+ - 'R' (outbound) shall mean 'Read R31 and report its current value here'
+
+ - 'R' (inbound) shall mean 'You asked for R31 and here it is'
+
+ - 'W' (outbound) shall mean 'Write R30 with these bits'
+
+ - 'W' (inbound) shall mean 'I wrote these bits to R30'.
+
+We're thinking we might use a fill-in-the-blank style packet format
+here, which could give us some nice properties like flexibility and
+cheapness.  Specifically, suppose 'R' (outbound) -- let's call it
+R/out -- worked like this:
+
+  'R'
+
+[35:
+
+Sun Nov 26 07:43:02 2017 Holy crap look at this:
+
+    root@beaglebone:/sys/kernel/debug/remoteproc# ls remoteproc1
+    name  recovery	regs  single_step  state  version
+    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc1/regs 
+    ============== Control Registers ==============
+    CTRL      := 0x0000800b
+    STS (PC)  := 0x0000003a (0x000000e8)
+    WAKEUP_EN := 0x00000000
+    CYCLE     := 0x0af1df26
+    STALL     := 0x03489034
+    CTBIR0    := 0x00000000
+    CTBIR1    := 0x00000000
+    CTPPR0    := 0x00000100
+    CTPPR1    := 0x00000000
+    =============== Debug Registers ===============
+    PRU is executing, cannot print/access debug registers.
+    root@beaglebone:/sys/kernel/debug/remoteproc#
+
+Which is coming to us care of Zeek the beaglescope guy's blog entry at
+https://www.zeekhuge.me/post/ptp_docs_commands_and_tools/
+
+Although watch out -- things are not quite all as they seem at first:
+
+    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc0/regs
+    cat: remoteproc0/regs: No such file or directory
+    root@beaglebone:/sys/kernel/debug/remoteproc# 
+
+whaduh?
+
+    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc0/name
+    wkup_m3
+
+oh yeah, the little Cortex-M3 in there doing power management..
+
+    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc1/name 
+    4a338000.pru1
+    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc2/name 
+    4a334000.pru0
+
+[36:
+
+Sun Nov 26 07:47:44 2017 And furthermore, look at fricken this:
+
+    root@beaglebone:/sys/kernel/debug/remoteproc# echo 1 > remoteproc1/single_step 
+    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc1/regs
+    ============== Control Registers ==============
+    CTRL      := 0x00000109
+    STS (PC)  := 0x0000003b (0x000000ec)
+    WAKEUP_EN := 0x00000000
+    CYCLE     := 0x00118b01
+    STALL     := 0x000543a4
+    CTBIR0    := 0x00000000
+    CTBIR1    := 0x00000000
+    CTPPR0    := 0x00000100
+    CTPPR1    := 0x00000000
+    =============== Debug Registers ===============
+    GPREG0  := 0x0bebc200	CT_REG0  := 0x00020000
+    GPREG1  := 0x00118aff	CT_REG1  := 0x48040000
+    GPREG2  := 0x000005dc	CT_REG2  := 0x4802a000
+    GPREG3  := 0x0037bc06	CT_REG3  := 0x00030000
+    GPREG4  := 0x00024000	CT_REG4  := 0x00026000
+    GPREG5  := 0x00020024	CT_REG5  := 0x48060000
+    GPREG6  := 0x000006d0	CT_REG6  := 0x48030000
+    GPREG7  := 0x00000200	CT_REG7  := 0x00028000
+    GPREG8  := 0x00000000	CT_REG8  := 0x46000000
+    GPREG9  := 0x000006d8	CT_REG9  := 0x4a100000
+    GPREG10 := 0x9c65dfd5	CT_REG10 := 0x48318000
+    GPREG11 := 0x00000000	CT_REG11 := 0x48022000
+    GPREG12 := 0xcd077786	CT_REG12 := 0x48024000
+    GPREG13 := 0x3fbcf516	CT_REG13 := 0x48310000
+    GPREG14 := 0x0000ffff	CT_REG14 := 0x481cc000
+    GPREG15 := 0x000005c0	CT_REG15 := 0x481d0000
+    GPREG16 := 0x000005bc	CT_REG16 := 0x481a0000
+    GPREG17 := 0x00000001	CT_REG17 := 0x4819c000
+    GPREG18 := 0x000005dc	CT_REG18 := 0x48300000
+    GPREG19 := 0x00000200	CT_REG19 := 0x48302000
+    GPREG20 := 0x00040002	CT_REG20 := 0x48304000
+    GPREG21 := 0x20747372	CT_REG21 := 0x00032400
+    GPREG22 := 0x72616863	CT_REG22 := 0x480c8000
+    GPREG23 := 0x206f7420	CT_REG23 := 0x480ca000
+    GPREG24 := 0x646e6573	CT_REG24 := 0x00000000
+    GPREG25 := 0x206f7420	CT_REG25 := 0x00002000
+    GPREG26 := 0x20656874	CT_REG26 := 0x0002e000
+    GPREG27 := 0x6e6f6f6d	CT_REG27 := 0x00032000
+    GPREG28 := 0x696c6120	CT_REG28 := 0x00010000
+    GPREG29 := 0x00006563	CT_REG29 := 0x49000000
+    GPREG30 := 0x00000ff0	CT_REG30 := 0x40000000
+    GPREG31 := 0x00000020	CT_REG31 := 0x80000000
+    root@beaglebone:/sys/kernel/debug/remoteproc# echo 0 > remoteproc1/single_step 
+
+So we can actually put the PRUs into single-step mode, read their
+registers (including R30/R31, looks like), and then put it back in
+continuous-run mode, all from the comfort of sysfs.  (The second
+column is the contents of the constants table, which could be useful
+too.)[37:
+
+Sun Nov 26 07:53:30 2017 It also appears that echoing 1 to single_step,
+while it is already in single-step mode, causes the targeted PRU to do
+one more instruction and then stop again.  So who's written us a GDB
+interface to the effen PRUs??
+
+[38:
+
+Sun Nov 26 07:56:23 2017 Also also, 'dmesg -Hw' appears to be like
+'tail -f /var/log/messages', except at the dmesg level.  It doesn't
+report 'logger' commands, but I bet it doesn't get log-rotated at
+night either..
+
+:38]
+
+:37]
+
+So 'we don't actually need' my 'R' packet, in that sense.  Although as
+far as I can tell we might still need 'W' -- [39:
+
+Sun Nov 26 09:20:55 2017 No, looks like we have pretty full
+debug-style control if we want it, via memory-mapped addresses.  But
+that's not really the whole point anyway, and 'nearly full-speed'
+printf debugging isn't the same as clunkachunk breakpoint debugging
+for better and for worse.
+[40:
+
+Sun Nov 26 09:29:29 2017 There's lots of good stuff in SPRUHF8A.. wish
+I'd found it earlier but anyway.
+
+In particular, section 4 table 7 figure 3 page 21 seems to suggest
+that at least some of the PRU pins have to have additional
+PRU-internal MUX settings, on top of the stuff the device tree is
+doing.  Like to get at pr1_pru1_pru_r31[11:8], for example, we need to
+set 'pin_mux_sel[0] = 1', however that is done..
+[41:
+
+Sun Nov 26 09:56:45 2017 Well, still reading SPRUHF8A, but it's time
+well-spent now, I feel.  Reminder that R0.b0 is used to specify a
+register shift in XIN and XOUT instructions, which we are planning to
+use for our state machine context switching.  Note also that it seems
+we have to use different 'device id's for scratch pad destinations on
+PRU0 and PRU1.  Device 10 is bank 0, which is nominally meant for PRU,
+and device 11 is bank 1 likewise for PRU1.  So we'll apparently need
+
+  XOUT (10+PRU), R4, sizeof(mycontext)
+
+instructions or the like.
+
+Also, XFR register shifting needs to be enabled via the 'SPP register
+of the PRU-ICSS CFG register space'.[42:
+
+Sun Nov 26 19:39:13 2017 Which we find in Section 10.1.13 page 288 of
+SPRUHF8A.  According to 10.1 page 272, SPP is at +0x40 relative to the
+PRU_ICSS_CFG base address, which is at 0x0002_6000 in the PRU local
+memory map, according to Section 3.1.2 page 19.[43:
+
+Sun Nov 26 19:46:44 2017 And we have a linker symbol defined for that
+address:
+
+	PRU_CFG			: org = 0x00026000 len = 0x00000044	CREGISTER=4
+
+in AM335x_PRU.cmd.[44:
+
+Sun Nov 26 19:49:30 2017 Aand we have definitions for the CFG
+registers in T2-12/pru/include/am335x/pru_cfg.h, which has stuff like:
+
+	/* PRU_CFG_SPP register bit field */
+	union {
+		volatile uint32_t SPP;
+
+		volatile struct {
+			unsigned PRU1_PAD_HP_EN : 1;	// 0
+			unsigned XFR_SHIFT_EN : 1;	// 1
+			unsigned rsvd2 : 30;		// 31:2
+		} SPP_bit;
+	};	// 0x34
+
+and
+
+	union {
+		volatile uint32_t PIN_MX;
+
+		volatile struct {
+			unsigned PIN_MUX_SEL : 8;	// 7:0
+			unsigned rsvd2 : 24;		// 31:8
+		} PIN_MX_bit;
+	};	//0x40
+
+inside the 'pruCfg' struct.  Plus a declaration of CT_CFG to be a
+constant table near pointer to all that stuff.  So, something like
+
+CT_CFG.SPP_bit.XFR_SHIFT_EN = 1;
+
+'should' suffice to turn on the XFR register shifting we need, and
+
+CT_CFG.PIN_MX_bit.PIN_MUX_SEL = 1;
+
+[45: Sun Nov 26 20:09:50 2017 Except it actually looks like we don't
+have to screw with that anyway.  It looks like the default,
+CT_CFG.PIN_MX_bit.PIN_MUX_SEL = 10, does what we want, mapping
+prus-to-prus in the obvious way in and out.  It looks like the
+alternate values -- .PIN_MUX_SEL == 1, 2, or 3 -- are for remapping
+stuff or providing stuff in multiple places.  Figures 3 and 4, pp 21
+and 22, both show 'bypass' connections for 'pruish' external names
+mapping to corresponding pruish internal names, regardless of the
+value of PIN_MUX_SEL.
+
+So I think that one's a false alarm.  But the
+
+  CT_CFG.SPP_bit.XFR_SHIFT_EN = 1;
+
+thing I'm fairly confident we will need.
+
+:45]
+
+:44]
+
+:43]
+:42]
+
+:41]
+
+:40]
+
+:39]
+
+:36]
+
+:35]
+
+:34]
+[46:
+
+Sun Nov 26 20:20:00 2017 And 'CT_CFG.SPP_bit.XFR_SHIFT_EN = 1;'
+compiles fine in main_prux.inc, although we haven't got any XIN/XOUTs
+yet in the asm so it's untested.
+
+Moving on to hardware for a couple hours here..
+
+:46]
