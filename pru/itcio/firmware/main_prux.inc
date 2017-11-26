@@ -63,6 +63,27 @@ int sendVal(const char * str, uint32_t val)
   return 1;  
 }
 
+/**
+   Reset and re-enable the cycle counter.  According to SPRU8FHA,
+   Table 29, page 80, the cycle counter (1) Does not wrap at
+   0xffffffff, but instead disables counting, and (2) Can be cleared
+   when it is disabled.
+
+   On the other hand, though, two points: (A) It should be highly
+   unlikely for the cycle counter to hit the max in the loop below,
+   and (B) I have code that, apparently, was successfully clearing the
+   cycle counter without disabling it first.
+
+   So given (A) and (b) we 'ought to be fine' just clearing the
+   counter on the fly, but out of an abundance of caution we are
+   writing and using this routine instead anyway.
+ */
+static inline void resetCycleCounter() {
+  PRUX_CTRL.CTRL_bit.CTR_EN = 0;   /* disable cycle counter */
+  PRUX_CTRL.CYCLE = 0;             /* clear it while disabled */
+  PRUX_CTRL.CTRL_bit.CTR_EN = 1;   /* and re-enable counting */
+}
+
 /*
 * main.c
 */
@@ -74,9 +95,11 @@ void main(void)
   /* allow OCP master port access by the PRU so the PRU can read external memories */
   CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
 
-  CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
+  /* enable XFR 'register shifting', which the state machines use for context switching */
+  CT_CFG.SPP_bit.XFR_SHIFT_EN = 1;
 
-  PRUX_CTRL.CTRL_bit.CTR_EN = 1;   /* turn on our cycle counter */
+  /* enable our cycle counter */
+  resetCycleCounter();
 
   /* clear the status of the PRU-ICSS system event that the ARM will use to 'kick' us */
   CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
@@ -110,7 +133,7 @@ void main(void)
       CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
 
       /* Reset timeout clock */
-      PRUX_CTRL.CYCLE = 0;
+      resetCycleCounter();
 
       /* Receive all available messages, multiple messages can be sent per kick */
       while (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) == PRU_RPMSG_SUCCESS) {
