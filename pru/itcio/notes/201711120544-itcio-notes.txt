@@ -1,4 +1,4 @@
-{47}  -*- text -*- 
+{53}  -*- text -*- 
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -835,6 +835,76 @@ Sun Nov 26 20:20:00 2017 And 'CT_CFG.SPP_bit.XFR_SHIFT_EN = 1;'
 compiles fine in main_prux.inc, although we haven't got any XIN/XOUTs
 yet in the asm so it's untested.
 
-Moving on to hardware for a couple hours here..
+Moving on to hardware for a couple hours here..[47:
+
+Tue Nov 28 16:14:54 2017 Well so on the hardware front the latest
+board build is being a real drag.  Guessing some kind of crossed wire
+somewhere is pushing current where it's not supposed to be going, with
+the result that linux is panicking at various non-reproducible times
+during booting or early uptime.  Urgh.  Poking around with the
+multimeter, the main power rails seem okay; haven't dragged in the
+oscilloscope yet because time.
+
+So what's the next TODO or two here?[48: Tue Nov 28 16:27:28 2017
+Well, doing (4.1) -- via our own packets, not sysfs -- would certainly
+be a good thing.  It's 9:30AM here in mountain time; let's aim at that
+for an hour or so here.  :48]
+
+:47]
 
 :46]
+[49:
+
+Tue Nov 28 16:29:54 2017 So, a fill-in-the-blank packet format:
+
+Given outbound
+RxxxxFOOBAR
+
+PRU produces
+
+R0123FOOBAR
+
+where '0123' is the contents of R31 in little-endian binary.  The
+remainder of the packet is passed back unchanged, and 'caller' can do
+whatever they want with it -- use it as a message tag, or not have it,
+or whatever.  If the message isn't big enough to fit all of R31, PRU
+fills in whatever it can.
+
+[50:
+
+Tue Nov 28 17:52:14 2017 OK, well 'R' seems to be working as
+described.  The opening 'HEWO' packet the driver sends now gets
+returned as 'HUnk' which took me a second to parse..
+
+But I realize that what we really need now is a way to get packet
+responses back to userspace, rather than only to dmesg.  Then we could
+do all this stuff via scripts and what-not.
+
+So, this is where we were reading up on kfifos, but never got to
+implementation.  We believe we can have a kfifo that preserves
+variable-length record structures, with a one byte count per record,
+and that's just what we think we want.  We'll have the rpmsg callback
+put crap in the kfifo, and we'll have readers block until they can
+pull a packet out of the kfifo.
+
+The 'only' issue is that we just hadn't, and still haven't, found any
+finite concrete example of that to work from.[51:
+
+Tue Nov 28 18:14:55 2017 OK, well I guess 'record-example.c' from the
+kfifo author Stefani Seibold is where we're supposed to start.  I'd
+looked at it briefly before but often it's easier to work from
+something _not_ written by the actual designer/implementer of a given
+pile of code...[52:
+
+Wed Nov 29 07:53:41 2017 OK, so aside from how doh long it took me to
+remember/understand that using clever power-of-2 fifo sizes meant that
+_I_ had to declare my static kfifo with a power-of-2 size, the kfifo
+went in fairly smoothly.  
+
+:52]
+
+:51]
+
+:50]
+
+:49]
