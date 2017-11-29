@@ -50,7 +50,7 @@
 
 /*
  * Using the name 'itc-pkt' does seemingly probe the itc_pkt driver
- * found at /lib/modules/4.4.54-ti-r93/itc/itc_pkt.ko
+ * that we install at /lib/modules/4.4.54-ti-r93/itc/itc_pkt.ko
  */
 #define CHAN_NAME  "itc-pkt"
 #define CHAN_DESC  "Channel " xstr(HOST_INT_BIT) 

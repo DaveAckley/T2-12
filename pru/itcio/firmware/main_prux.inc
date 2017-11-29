@@ -27,6 +27,7 @@ uint8_t payload[RPMSG_BUF_SIZE];
 extern int addfuncasm(int a, int b);
 extern void initStateMachines();
 extern void advanceStateMachines();
+extern unsigned processITCPacket(uint8_t * packet, uint16_t len);
 
 static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
@@ -82,6 +83,47 @@ static inline void resetCycleCounter() {
   PRUX_CTRL.CTRL_bit.CTR_EN = 0;   /* disable cycle counter */
   PRUX_CTRL.CYCLE = 0;             /* clear it while disabled */
   PRUX_CTRL.CTRL_bit.CTR_EN = 1;   /* and re-enable counting */
+}
+
+unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
+{
+  unsigned i;
+  if (len == 0) return 0; /* or assert? */
+  switch (packet[0]) {
+
+  case 'R': {                        /* PACKET TYPE: 'R'ead R31 */
+    uint32_t r31 = __R31;
+    if (len > 5) len = 5;
+    for (i = 1; i < len; ++i) {
+      packet[i] = r31&0xff;
+      r31 >>=8;
+    }
+    break;
+  }
+
+  case 'W': {                        /* PACKET TYPE: 'W'rite R30 */
+    uint32_t tmp = 0;
+    uint32_t tlen = len;
+    if (tlen > 5) tlen = 5;
+    for (i = 1; i < tlen; ++i) {
+      tmp >>= 8;
+      tmp |= packet[i]<<24;
+    }
+    __R31 = tmp;
+    break;
+  }
+
+  default:
+    {
+      for (i = 1; i < len; ++i) {
+        const char ch = "![EPKTYP]"[i-1];
+        if (!ch) break;
+        packet[i] = ch;
+      }
+      break;
+    }
+  }
+  return 1;
 }
 
 /*
@@ -145,10 +187,16 @@ void main(void)
           firstPacket = 0;
         }
 
-        /* Echo the message back to the same address from which we just received */
-        payload[0]++; /* But increment the first byte to show we care */
-        payload[0] = addfuncasm(payload[0]+1, ON_PRU); /* add extra increments via asm */
-        pru_rpmsg_send(&transport, dst, src, payload, len);					
+        if (len > 0) {
+          unsigned ret;
+          if (payload[0]&0x80) ret = processITCPacket(payload,len);
+          else ret = processSpecialPacket(payload,len);
+
+          if (ret) {
+            /* Return the processed packet back to where it came from */
+            pru_rpmsg_send(&transport, dst, src, payload, len);
+          }
+        }
       }
     }
   }

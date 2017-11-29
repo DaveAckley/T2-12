@@ -1,7 +1,5 @@
 /*
- *
  * Copyright (C) 2017 The Regents of the University of New Mexico
- *
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -13,52 +11,6 @@
  * GNU General Public License for more details.
  *
  */
-
-/* This software is based in part on 'rpmsg_pru_parallel_example.c',
- * which is: Copyright (C) 2016 Zubeen Tolani <ZeekHuge -
- * zeekhuge@gmail.com> and also licensed under the terms of the GNU
- * General Public License version 2.
- *
- */
-
-/* And that software, in turn, was based on examples from the
- * 'pru-software-support-package', which includes the following:
- */
-
-/*
- * Copyright (C) 2016 Texas Instruments Incorporated - http://www.ti.com/
- *
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *	* Redistributions of source code must retain the above copyright
- *	  notice, this list of conditions and the following disclaimer.
- *
- *	* Redistributions in binary form must reproduce the above copyright
- *	  notice, this list of conditions and the following disclaimer in the
- *	  documentation and/or other materials provided with the
- *	  distribution.
- *
- *	* Neither the name of Texas Instruments Incorporated nor the names of
- *	  its contributors may be used to endorse or promote products derived
- *	  from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-
 
 #include <linux/kernel.h>
 #include <linux/rpmsg.h>
@@ -75,11 +27,22 @@
 #define RPMSG_BUF_SIZE 512
 #define MAX_PACKET_SIZE (RPMSG_BUF_SIZE-sizeof(struct rpmsg_hdr))
 
+/* ITC packets are max 255.  Guarantee space for 16 (256*16 == 4,096 == 2**12) */
+#define KFIFO_SIZE (1<<12)
+#define PROC_FIFO "itc-pkt-fifo"
+
+/* lock for read access (no lock for write access - rpmsg cb will be only writer) */
+static DEFINE_MUTEX(read_lock);
+
+/* REC_1 for one byte record lengths is perfect for us.. */
+typedef STRUCT_KFIFO_REC_1(KFIFO_SIZE) MyKFIFO;
+
+static MyKFIFO myKfifo;
+
 struct itc_pkt_dev {
   struct rpmsg_channel *rpmsg_dev;
   struct device *dev;
   bool dev_lock;
-  //  bool buf_lock;
   struct cdev cdev;
   dev_t devt;
 };
@@ -121,7 +84,6 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   struct itc_pkt_dev *iodev;
 
   iodev = container_of(inode->i_cdev, struct itc_pkt_dev, cdev);
-  //  iodev->buf_lock = false;
   iodev->dev_lock = false;
   
   return 0;
@@ -141,55 +103,63 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
  */
 
 static ssize_t itc_pkt_write(struct file *filp,
-                                     const char __user *buf,
-                                     size_t count, loff_t *offset)
+                             const char __user *buf,
+                             size_t count, loff_t *offset)
 {
   int ret;
-  static char driver_buf[RPMSG_BUF_SIZE];
+  static unsigned char driver_buf[RPMSG_BUF_SIZE];
   struct itc_pkt_dev *iodev;
 
   iodev = filp->private_data;
 
-  if (1/*!iodev->buf_lock*/){
-
-    dev_info(iodev->dev, "Write count %d / max %d\n",
-             count,
-             RPMSG_BUF_SIZE - sizeof(struct rpmsg_hdr));
-
-    if (count > MAX_PACKET_SIZE) {
-      dev_err(iodev->dev, "Data larger than buffer size");
-      return -EINVAL;
-    }
-
-    if (copy_from_user(driver_buf, buf, count)) {
-      dev_err(iodev->dev, "Failed to copy data");
-      return -EFAULT;
-    }
-
-    //    iodev->buf_lock = true;
-    ret = rpmsg_send(iodev->rpmsg_dev, (void *)driver_buf, count);
-    if (ret) {
-      dev_err(iodev->dev,
-              "Transmission on rpmsg bus failed %d\n",ret);
-      //      iodev->buf_lock = false;
-      return -EFAULT;
-    }
-
-    dev_info(iodev->dev, "Sending %d starting with %c",
-             count,
-             driver_buf[0]);
-
-    return count;
+  if (count > MAX_PACKET_SIZE) {
+    dev_err(iodev->dev, "Data larger than buffer size");
+    return -EINVAL;
   }
 
-  dev_err(iodev->dev, "Buffer is locked\n");
-  return -EFAULT;
+  if (copy_from_user(driver_buf, buf, count)) {
+    dev_err(iodev->dev, "Failed to copy data");
+    return -EFAULT;
+  }
+
+  ret = rpmsg_send(iodev->rpmsg_dev, (void *)driver_buf, count);
+  if (ret) {
+    dev_err(iodev->dev,
+            "Transmission on rpmsg bus failed %d\n",ret);
+    return -EFAULT;
+  }
+
+  dev_info(iodev->dev,
+           (driver_buf[0]&0x80)?
+             "Sending length %d type 0x%02x packet" :
+             "Sending length %d type '%c' packet",
+           count,
+           driver_buf[0]);
+
+  return count;
+}
+
+static ssize_t itc_pkt_read(struct file *file, char __user *buf,
+                            size_t count, loff_t *ppos)
+{
+  int ret;
+  unsigned int copied;
+
+  if (mutex_lock_interruptible(&read_lock))
+    return -ERESTARTSYS;
+
+  ret = kfifo_to_user(&myKfifo, buf, count, &copied);
+
+  mutex_unlock(&read_lock);
+
+  return ret ? ret : copied;
 }
 
 
 static const struct file_operations itc_pkt_fops = {
   .owner= THIS_MODULE,
   .open	= itc_pkt_open,
+  .read = itc_pkt_read,
   .write= itc_pkt_write,
   .release= itc_pkt_release,
 };
@@ -206,11 +176,13 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
   printk(KERN_INFO "Received %d",len);
   print_hex_dump(KERN_INFO, "pkt:", DUMP_PREFIX_NONE, 16, 1,
                  data, len, true);
-  
-  /*
-  if (iodev->buf_lock)
-    iodev->buf_lock = false;
-  */
+
+  if (len > 255) {
+    printk(KERN_ERR "Truncating overlength (%d) packet",len);
+    len = 255;
+  }
+
+  kfifo_in(&myKfifo, data, len);
 }
 
 
@@ -318,6 +290,8 @@ static int __init itc_pkt_init (void)
 
   printk(KERN_INFO "ZORG itc_pkt_init");
 
+  INIT_KFIFO(myKfifo);
+
   itc_pkt_class = class_create(THIS_MODULE, "itc_pkt");
   if (IS_ERR(itc_pkt_class)) {
     pr_err("Failed to create class\n");
@@ -367,3 +341,51 @@ MODULE_DESCRIPTION("T2 intertile packet communications subsystem");  ///< modinf
 
 MODULE_VERSION("0.3");            ///< 0.3 for renaming to itc_pkt
 /// 0.2 for initial import
+
+/////ADDITIONAL COPYRIGHT INFO
+
+/* This software is based in part on 'rpmsg_pru_parallel_example.c',
+ * which is: Copyright (C) 2016 Zubeen Tolani <ZeekHuge -
+ * zeekhuge@gmail.com> and also licensed under the terms of the GNU
+ * General Public License version 2.
+ *
+ */
+
+/* And that software, in turn, was based on examples from the
+ * 'pru-software-support-package', which includes the following:
+ */
+
+/*
+ * Copyright (C) 2016 Texas Instruments Incorporated - http://www.ti.com/
+ *
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *	* Redistributions of source code must retain the above copyright
+ *	  notice, this list of conditions and the following disclaimer.
+ *
+ *	* Redistributions in binary form must reproduce the above copyright
+ *	  notice, this list of conditions and the following disclaimer in the
+ *	  documentation and/or other materials provided with the
+ *	  distribution.
+ *
+ *	* Neither the name of Texas Instruments Incorporated nor the names of
+ *	  its contributors may be used to endorse or promote products derived
+ *	  from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+

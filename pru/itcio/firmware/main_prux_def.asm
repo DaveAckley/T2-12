@@ -34,3 +34,20 @@ initStateMachines:
         .def advanceStateMachines
 advanceStateMachines:
         JMP r3.w2               ; Return
+	
+
+	;; unsigned processITCPacket(uint8_t * packet, uint16_t len);
+	;; R14: packet
+        ;; R15: len
+        .def processITCPacket
+processITCPacket:
+        QBNE hasLen, r15, 0
+        LDI R14, 0
+        JMP r3.w2               ; Return 0
+hasLen:
+        LBBO &R15, R14, 0, 1    ; R15 = packet[0]
+        ADD R15, R15, 3         ; Add 3 to show we were here
+        SBBO &R15, R14, 0, 1    ; packet[0] = R15
+        LDI R14, 1
+        JMP r3.w2               ; Return 1
+        
