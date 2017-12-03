@@ -1,4 +1,4 @@
-{53}  -*- text -*- 
+{55}  -*- text -*- 
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -908,3 +908,32 @@ went in fairly smoothly.
 :50]
 
 :49]
+[53:
+
+Sun Dec  3 00:46:17 2017 So have been dealing with a paper deadline but
+was just playing here.  With only one kfifo, a packet sent to linux by
+PRU0 can be read by like 'cat < /dev/itc/pru1', which seems odd.  But
+then, we'd kind of prefer to have a single point of packet access for
+both PRUs, since mfms in userspace really doesn't care and it would be
+easier to just have a single thread blocking on a single device.[54:
+
+Sun Dec  3 00:57:30 2017 But on the other hand, for debugging, stats,
+and configuration purposes, we'd like to have easy access to each PRU
+independently.
+
+What if we distinguish earlier and harder between ITC packets and
+special packets?  And actually have three fucking fifos in the itc_pkt
+driver -- one for pru0 specials, one for pru1 specials, and one for
+all ITC packets.  Then we have like /dev/itc/pru[01] for special
+packets, and perhaps /dev/itc/packets for all ITC packets.  And in
+general, userspace/mfmt2 will just have a thread blocking on
+/dev/itc/packets, to receive cache updates from anywhere.
+
+Can a char driver with a dynamic major have three minors, but have one
+of them be named 'packets' instead of 'pru2'?  I bet so.. didn't I
+have to use some formatting interface to get 'pru%d' to begin with?
+
+
+:54]
+
+:53]
