@@ -23,7 +23,8 @@
 #include <linux/uaccess.h>
 #include <linux/poll.h>
 
-#define PRU_MAX_DEVICES 2
+#define PRU_MAX_DEVICES 2       /* PRU0, PRU1*/
+#define MINOR_DEVICES (PRU_MAX_DEVICES+1)  /* +1 for the ITC packet interface */
 #define RPMSG_BUF_SIZE 512
 #define MAX_PACKET_SIZE (RPMSG_BUF_SIZE-sizeof(struct rpmsg_hdr))
 
@@ -31,13 +32,20 @@
 #define KFIFO_SIZE (1<<12)
 #define PROC_FIFO "itc-pkt-fifo"
 
+/* PRU special packets are expected to be smaller are rarer.  Give them 1KB each */
+#define SPECIAL_KFIFO_SIZE (1<<10)
+
 /* lock for read access (no lock for write access - rpmsg cb will be only writer) */
 static DEFINE_MUTEX(read_lock);
 
 /* REC_1 for one byte record lengths is perfect for us.. */
-typedef STRUCT_KFIFO_REC_1(KFIFO_SIZE) MyKFIFO;
+typedef STRUCT_KFIFO_REC_1(KFIFO_SIZE) ITCPacketFIFO;
+typedef STRUCT_KFIFO_REC_1(SPECIAL_KFIFO_SIZE) SpecialPacketFIFO;
 
-static MyKFIFO myKfifo;
+static ITCPacketFIFO itcPacketKfifo;
+static SpecialPacketFIFO special0Kfifo;
+static SpecialPacketFIFO special1Kfifo;
+static int open_pru_minors;
 
 struct itc_pkt_dev {
   struct rpmsg_channel *rpmsg_dev;
@@ -49,6 +57,8 @@ struct itc_pkt_dev {
 
 static struct class *itc_pkt_class;
 static dev_t itc_pkt_devt;
+
+static struct itc_pkt_dev * iodev_itc_packet_device;
 
 /** @brief The callback function for when the device is opened
  *  What
@@ -145,10 +155,19 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
   int ret;
   unsigned int copied;
 
+  struct itc_pkt_dev *iodev = file->private_data;
+  int minor = MINOR(iodev->devt);
+
+  printk(KERN_INFO "read file * = %p, %d:%d", file, MAJOR(iodev->devt), minor);
   if (mutex_lock_interruptible(&read_lock))
     return -ERESTARTSYS;
 
-  ret = kfifo_to_user(&myKfifo, buf, count, &copied);
+  switch (minor) {
+  case 0: ret = kfifo_to_user(&special0Kfifo, buf, count, &copied); break;
+  case 1: ret = kfifo_to_user(&special1Kfifo, buf, count, &copied); break;
+  case 2: ret = kfifo_to_user(&itcPacketKfifo, buf, count, &copied); break;
+  default: BUG_ON(1);
+  } 
 
   mutex_unlock(&read_lock);
 
@@ -169,22 +188,89 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
                                void *data , int len , void *priv,
                                u32 src )
 {
-  struct itc_pkt_dev *iodev;
+  struct itc_pkt_dev *iodev = dev_get_drvdata(&rpmsg_dev->dev);
+  int minor = MINOR(iodev->devt);
 
-  iodev = dev_get_drvdata(&rpmsg_dev->dev);
-
-  printk(KERN_INFO "Received %d",len);
-  print_hex_dump(KERN_INFO, "pkt:", DUMP_PREFIX_NONE, 16, 1,
-                 data, len, true);
+  printk(KERN_INFO "Received %d from %d",len, minor);
 
   if (len > 255) {
     printk(KERN_ERR "Truncating overlength (%d) packet",len);
     len = 255;
   }
 
-  kfifo_in(&myKfifo, data, len);
+  print_hex_dump(KERN_INFO, "pkt:", DUMP_PREFIX_NONE, 16, 1,
+                 data, len, true);
+
+  if (len > 0) {
+    // ITC data if first byte MSB set
+    if ((*(char*)data)&0x80) kfifo_in(&itcPacketKfifo, data, len);
+    else if (minor == 0) kfifo_in(&special0Kfifo, data, len);
+    else if (minor == 1) kfifo_in(&special1Kfifo, data, len);
+    else BUG_ON(1);
+  }
 }
 
+
+static struct itc_pkt_dev * make_itc_minor(struct device * dev,
+                                           int minor_obtained,
+                                           int * err_ret)
+{
+  struct itc_pkt_dev *iodev;
+  enum { BUFSZ = 16 };
+  char devname[BUFSZ];
+  int ret;
+
+  BUG_ON(!err_ret);
+  
+  if (minor_obtained == 2)
+    snprintf(devname,BUFSZ,"itc!packets");
+  else
+    snprintf(devname,BUFSZ,"itc!pru%d",minor_obtained);
+
+  iodev = devm_kzalloc(dev, sizeof(*iodev), GFP_KERNEL);
+  if (!iodev) {
+    ret = -ENOMEM;
+    goto fail_kzalloc;
+  }
+
+  iodev->devt = MKDEV(MAJOR(itc_pkt_devt), minor_obtained);
+
+  printk(KERN_INFO "INITTING /dev/%s", devname);
+
+  cdev_init(&iodev->cdev, &itc_pkt_fops);
+  iodev->cdev.owner = THIS_MODULE;
+  ret = cdev_add(&iodev->cdev, iodev->devt,1);
+
+  if (ret) {
+    dev_err(dev, "Unable to init cdev\n");
+    goto fail_cdev_init;
+  }
+
+  iodev->dev = device_create(itc_pkt_class,
+                             dev,
+                             iodev->devt, NULL,
+                             devname);
+  
+  if (IS_ERR(iodev->dev)) {
+    dev_err(dev, "Failed to create device file entries\n");
+    ret = PTR_ERR(iodev->dev);
+    goto fail_device_create;
+  }
+
+  dev_set_drvdata(dev, iodev);
+  dev_info(dev, "pru itc packet device ready at /dev/%s",devname);
+
+  return iodev;
+  
+ fail_device_create:
+  cdev_del(&iodev->cdev);
+
+ fail_cdev_init:
+
+ fail_kzalloc:
+  *err_ret = ret;
+  return 0;
+}
 
 /*
  * driver probe function
@@ -208,80 +294,77 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
     return -ENODEV;
   }
 
-  iodev = devm_kzalloc(&rpmsg_dev->dev, sizeof(*iodev), GFP_KERNEL);
+  iodev = make_itc_minor(&rpmsg_dev->dev, minor_obtained, &ret);
+
   if (!iodev)
-    return -ENOMEM;
-
-  iodev->devt = MKDEV(MAJOR(itc_pkt_devt), minor_obtained);
-
-  printk(KERN_INFO "USING minor %d for destination 0x%x", minor_obtained, rpmsg_dev->dst);
-
-  cdev_init(&iodev->cdev, &itc_pkt_fops);
-  iodev->cdev.owner = THIS_MODULE;
-  ret = cdev_add(&iodev->cdev, iodev->devt,1);
-  if (ret) {
-    dev_err(&rpmsg_dev->dev, "Unable to init cdev\n");
-    goto fail_cdev_init;
-  }
-
-  iodev->dev = device_create(itc_pkt_class,
-                             &rpmsg_dev->dev,
-                             iodev->devt, NULL,
-                             "itc!pru%d", minor_obtained);
-  if (IS_ERR(iodev->dev)) {
-    dev_err(&rpmsg_dev->dev, "Failed to create device file entries\n");
-    ret = PTR_ERR(iodev->dev);
-    goto fail_device_create;
-  }
-
+    return ret;
+  
   iodev->rpmsg_dev = rpmsg_dev;
+  ++open_pru_minors;
 
-  dev_set_drvdata(&rpmsg_dev->dev, iodev);
-  dev_info(&rpmsg_dev->dev, "pru itc packet device ready at /dev/itc/pru%d",minor_obtained);
-
-  ret = rpmsg_send(iodev->rpmsg_dev, "HEWO", 4);
+  /* send empty message to give PRU src & dst info*/
+  ret = rpmsg_send(iodev->rpmsg_dev, "", 0);
   if (ret) {
     dev_err(iodev->dev, "Opening transmission on rpmsg bus failed %d\n",ret);
     ret = PTR_ERR(iodev->dev);
-    goto fail_device_create;
-  } else {
-    printk(KERN_INFO "OPENER sent");
+    cdev_del(&iodev->cdev);
   }
 
-  return 0;
+  /* If first minor, also open packet device*/
+  if (open_pru_minors == 1) {
 
-fail_device_create:
-  cdev_del(&iodev->cdev);
-fail_cdev_init:
+    BUG_ON(minor_obtained == 2);
+
+    /* XXX NOT READY FOR PRIME TIME
+    iodev_itc_packet_device = make_itc_minor(&rpmsg_dev->dev, 2, &ret);
+
+    if (!iodev_itc_packet_device)
+      return ret;
+
+    iodev_itc_packet_device->rpmsg_dev = 0;
+    ++open_pru_minors;
+    */
+  }
+
   return ret;
 }
 
+/* NOT USED
 
-static void itc_pkt_remove(struct rpmsg_channel *rpmsg_dev)
-{
-	struct itc_pkt_dev *pp_example_dev;
+ if (minor_obtained != 2) {
+    ret = rpmsg_send(iodev->rpmsg_dev, "HEWO", 4);
+    if (ret) {
+      dev_err(iodev->dev, "Opening transmission on rpmsg bus failed %d\n",ret);
+      ret = PTR_ERR(iodev->dev);
+      goto fail_device_create;
+    } else {
+*/
 
-	pp_example_dev = dev_get_drvdata(&rpmsg_dev->dev);
 
-	device_destroy(itc_pkt_class, pp_example_dev->devt);
-	cdev_del(&pp_example_dev->cdev);
+static void itc_pkt_remove(struct rpmsg_channel *rpmsg_dev) {
+  struct itc_pkt_dev *iodev;
+
+  iodev = dev_get_drvdata(&rpmsg_dev->dev);
+
+  device_destroy(itc_pkt_class, iodev->devt);
+  cdev_del(&iodev->cdev);
 }
 
 
-static const struct rpmsg_device_id
-	rpmsg_driver_itc_pkt_id_table[] = {
-		{ .name = "itc-pkt" },
-		{ },
-	};
+static const struct rpmsg_device_id rpmsg_driver_itc_pkt_id_table[] = {
+  { .name = "itc-pkt" },
+  { },
+};
+
 MODULE_DEVICE_TABLE(rpmsg, rpmsg_driver_itc_pkt_id_table);
 
 static struct rpmsg_driver itc_pkt_driver = {
-	.drv.name	= KBUILD_MODNAME,
-	.drv.owner	= THIS_MODULE,
-	.id_table	= rpmsg_driver_itc_pkt_id_table,
-	.probe		= itc_pkt_probe,
-	.callback	= itc_pkt_cb,
-	.remove		= itc_pkt_remove,
+  .drv.name	= KBUILD_MODNAME,
+  .drv.owner	= THIS_MODULE,
+  .id_table	= rpmsg_driver_itc_pkt_id_table,
+  .probe	= itc_pkt_probe,
+  .callback	= itc_pkt_cb,
+  .remove	= itc_pkt_remove,
 };
 
 static int __init itc_pkt_init (void)
@@ -290,7 +373,11 @@ static int __init itc_pkt_init (void)
 
   printk(KERN_INFO "ZORG itc_pkt_init");
 
-  INIT_KFIFO(myKfifo);
+  INIT_KFIFO(itcPacketKfifo);
+  INIT_KFIFO(special0Kfifo);
+  INIT_KFIFO(special1Kfifo);
+
+  open_pru_minors = 0;
 
   itc_pkt_class = class_create(THIS_MODULE, "itc_pkt");
   if (IS_ERR(itc_pkt_class)) {
@@ -300,7 +387,7 @@ static int __init itc_pkt_init (void)
   }
 
   ret = alloc_chrdev_region(&itc_pkt_devt, 0,
-                            PRU_MAX_DEVICES, "itc_pkt");
+                            MINOR_DEVICES, "itc_pkt");
   if (ret) {
     pr_err("Failed to allocate chrdev region\n");
     goto fail_alloc_chrdev_region;
@@ -316,7 +403,7 @@ static int __init itc_pkt_init (void)
 
  fail_register_rpmsg_driver:
   unregister_chrdev_region(itc_pkt_devt,
-                           PRU_MAX_DEVICES);
+                           MINOR_DEVICES);
  fail_alloc_chrdev_region:
   class_destroy(itc_pkt_class);
  fail_class_create:
@@ -326,10 +413,10 @@ static int __init itc_pkt_init (void)
 
 static void __exit itc_pkt_exit (void)
 {
-	unregister_rpmsg_driver(&itc_pkt_driver);
-	class_destroy(itc_pkt_class);
-	unregister_chrdev_region(itc_pkt_devt,
-				 PRU_MAX_DEVICES);
+  unregister_rpmsg_driver(&itc_pkt_driver);
+  class_destroy(itc_pkt_class);
+  unregister_chrdev_region(itc_pkt_devt,
+                           MINOR_DEVICES);
 }
 
 module_init(itc_pkt_init);
