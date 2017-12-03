@@ -91,17 +91,7 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
   if (len == 0) return 0; /* or assert? */
   switch (packet[0]) {
 
-  case 'R': {                        /* PACKET TYPE: 'R'ead R31 */
-    uint32_t r31 = __R31;
-    if (len > 5) len = 5;
-    for (i = 1; i < len; ++i) {
-      packet[i] = r31&0xff;
-      r31 >>=8;
-    }
-    break;
-  }
-
-  case 'W': {                        /* PACKET TYPE: 'W'rite R30 */
+  case 'W': {                        /* PACKET TYPE: 'W'rite R30 (and then R31) */
     uint32_t tmp = 0;
     uint32_t tlen = len;
     if (tlen > 5) tlen = 5;
@@ -109,7 +99,17 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
       tmp >>= 8;
       tmp |= packet[i]<<24;
     }
-    __R31 = tmp;
+    __R30 = tmp;
+    /* FALL THROUGH INTO CASE 'R' */
+  }
+
+  case 'R': {                        /* PACKET TYPE: 'R'ead R31 */
+    uint32_t r31 = __R31;
+    if (len > 5) len = 5;
+    for (i = 1; i < len; ++i) {
+      packet[i] = r31&0xff;
+      r31 >>=8;
+    }
     break;
   }
 
