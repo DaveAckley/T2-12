@@ -1,4 +1,4 @@
-{55}  -*- text -*- 
+{68}  -*- text -*- 
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -536,7 +536,7 @@ Sun Nov 26 06:43:56 2017 OK, so a good next step would be the ability
 to read and set the PRU-controlled pins.  That will let us answer the
 following still-outstanding 'fourth round' questions:
 
-(4.1) Can we really read and write the ITC pins via the PRUs?
+[56: DONE  :56](4.1) Can we really read and write the ITC pins via the PRUs?
 
 (4.2) Can we really control ALL the relevant pins, including the ones
    with contested lines and the ones we stole from other low-level
@@ -937,3 +937,179 @@ have to use some formatting interface to get 'pru%d' to begin with?
 :54]
 
 :53]
+[55:
+
+Wed Dec  6 00:16:23 2017 OK, so I believe we have achieved 4.1.  Let's
+call that for now.[57: Wed Dec  6 00:17:23 2017 At least, we're pretty
+sure we have seen input pins that were looped back with ribbon cable change
+states when we changed other output pins.  We need some runnable code
+to deal with actual ITC pin names like ET_OGRLK and so forth, so we
+can write scripts to test stuff much more thoroughly.
+
+So where('s the first place we really) do want to embed pin name info?
+In the itc_pkt driver?  How?  Lots of names under /dev/itc?  Like
+
+# cat /dev/itc/pin/ET_OGRLK
+0
+# echo 1 > /dev/itc/pin/ET_OGRLK
+# cat /dev/itc/pin/ET_OGRLK
+1
+# 
+
+or
+
+# cat /dev/itc/pin/ET/OGRLK
+0
+# echo 1 > /dev/itc/pin/ET/OGRLK
+# cat /dev/itc/pin/ET/OGRLK
+1
+# 
+
+[58:
+
+Wed Dec  6 01:01:02 2017 Maybe that?[59:
+
+Wed Dec  6 08:00:24 2017 Or /dev/itc/dir/ET/OGRLK, to avoid
+unbalancing /dev/itc.  Or  /dev/itc/dir/ET/pin/OGRLK so that we could
+also expand in dir/ with things like /dev/itc/dir/ET/packet?  But not
+for reading, only for writing, since we aren't planning to buffer
+inbound packets separately by their source direction.  Or weren't,
+anyway..  I suppose we could, though, and then have /dev/itc/packet
+use the randomized iterator to scan over the six kfifos looking for
+any packet..  Hmm.  If we wanted to support blocking we'd need to put
+a wait queue .. [60: Wed Dec  6 08:38:33 2017 So, waiting on multiple
+queues in the kernel seems a bit non-trivial.  Let's try to keep it
+the simple choice here (KITSCH).
+
+If /dev/itc/dir/ET/packet exists, it will be write-only for now, and
+it will just add the appropriate packet header byte for the given
+direction, figure out whether that's PRU0 or PRU1, and dish it to
+rpmsg.  Shouldn't call it /packet though, if it's not a packet when it
+goes in.  ET/payload?  ET/send?  ET/datapacket?  ET/packetbody?
+
+[61:
+
+Wed Dec  6 09:08:00 2017 I have to say it's tempting to want
+reasonable direction-based point-to-point comms.
+
+(Hmm, it's also tempting to want fricking MOUNTAIN TIME on MY TILES
+instead of UTC..  For those times when we are connected to the net..
+Could we quick add a TZ config to our T2-12 repo?)[62:
+
+Wed Dec  6 09:20:18 2017 OK well attempt #1 didn't work:
+
+    root@beaglebone:/home/t2/T2-12# echo 'Etc/Navajo' > /etc/timezone
+    root@beaglebone:/home/t2/T2-12# cat /etc/timezone 
+    Etc/Navajo
+    root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
+
+    Current default time zone: 'Etc/UTC'
+    Local time is now:      Wed Dec  6 09:19:51 UTC 2017.
+    Universal Time is now:  Wed Dec  6 09:19:51 UTC 2017.
+
+    root@beaglebone:/home/t2/T2-12# 
+
+[63:
+
+Wed Dec  6 09:21:26 2017 Nor attempt #2:
+
+    root@beaglebone:/home/t2/T2-12# echo 'Etc/MST7MDT' > /etc/timezone
+    root@beaglebone:/home/t2/T2-12# cat /etc/timezone 
+    Etc/MST7MDT
+    root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
+
+    Current default time zone: 'Etc/UTC'
+    Local time is now:      Wed Dec  6 09:21:05 UTC 2017.
+    Universal Time is now:  Wed Dec  6 09:21:05 UTC 2017.
+
+    root@beaglebone:/home/t2/T2-12# cat /etc/timezone 
+    Etc/UTC
+    root@beaglebone:/home/t2/T2-12#
+
+[64:
+
+Wed Dec  6 09:29:56 2017 Nor attempt #3
+
+    root@beaglebone:/home/t2/T2-12# cp /usr/share/zoneinfo/MST7MDT /etc/localtime 
+    root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
+
+    Current default time zone: 'Etc/UTC'
+    Local time is now:      Wed Dec  6 09:29:32 UTC 2017.
+    Universal Time is now:  Wed Dec  6 09:29:32 UTC 2017.
+
+    root@beaglebone:/home/t2/T2-12# cat /etc/timezone 
+    Etc/UTC
+    root@beaglebone:/home/t2/T2-12# 
+
+Nor attempt #4
+
+    root@beaglebone:/home/t2/T2-12# cp /usr/share/zoneinfo/MST7MDT /etc/localtime 
+    root@beaglebone:/home/t2/T2-12# echo 'Etc/MST7MDT' > /etc/timezone
+    root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
+
+    Current default time zone: 'Etc/UTC'
+    Local time is now:      Wed Dec  6 09:30:45 UTC 2017.
+    Universal Time is now:  Wed Dec  6 09:30:45 UTC 2017.
+
+    root@beaglebone:/home/t2/T2-12# 
+
+[65:
+
+Wed Dec  6 02:33:53 2017 Enfin.   Attempt #5:
+
+    root@beaglebone:/home/t2/T2-12# ln -fs /usr/share/zoneinfo/MST7MDT /etc/localtime 
+    root@beaglebone:/home/t2/T2-12# ls -l /etc/localtime 
+    lrwxrwxrwx 1 root root 27 Dec  6 02:33 /etc/localtime -> /usr/share/zoneinfo/MST7MDT
+    root@beaglebone:/home/t2/T2-12# rm /etc/timezone 
+    root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
+
+    Current default time zone: 'SystemV/MST7MDT'
+    Local time is now:      Wed Dec  6 02:33:45 MST 2017.
+    Universal Time is now:  Wed Dec  6 09:33:45 UTC 2017.
+
+    root@beaglebone:/home/t2/T2-12# 
+
+Or maybe I like this better:
+
+    root@beaglebone:/home/t2/T2-12# ln -fs /usr/share/zoneinfo/Navajo /etc/localtime 
+    root@beaglebone:/home/t2/T2-12# rm /etc/timezone 
+    root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
+
+    Current default time zone: 'America/Denver'
+    Local time is now:      Wed Dec  6 02:35:40 MST 2017.
+    Universal Time is now:  Wed Dec  6 09:35:40 UTC 2017.
+
+    root@beaglebone:/home/t2/T2-12# 
+
+since anything SystemV creeps me out.
+[66:
+
+Wed Dec  6 03:03:59 2017 OK, well it didn't involve too much yak
+shaving, and now we have a new T2-12/pkgconfig directory that
+currently just sets the timezone to mountain.[67:
+
+Wed Dec  6 03:07:54 2017 Oh and look at these timestamps now!  So
+local!  So right!  T2 tiles come from the mountains!  T2!
+
+:67]
+
+:66]
+:65]
+
+:64]
+
+:63]
+
+:62]
+
+:61]
+
+:60] 
+
+:59]
+
+:58]
+
+:57]
+
+:55]
