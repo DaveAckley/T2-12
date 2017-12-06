@@ -1,5 +1,5 @@
-# 'packages' must install first
-SUBDIRS:=packages lkms pru apps files services
+# 'packages' must install first, then pkgconfig
+SUBDIRS:=packages pkgconfig lkms pru apps files services
 HOSTNAME:=$(shell uname -n)
 HOSTMACH:=$(shell uname -m)
 ON_TILE:=
