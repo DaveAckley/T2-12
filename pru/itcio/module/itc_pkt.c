@@ -55,10 +55,54 @@ struct itc_pkt_dev {
   dev_t devt;
 };
 
-static struct class *itc_pkt_class;
+static struct itc_pkt_dev * make_itc_minor(struct device * dev,
+                                           int minor_obtained,
+                                           int * err_ret);
+
+/*CLASS ATTRIBUTE STUFF*/
+static ssize_t itc_pkt_class_store_poke(struct class *c,
+                                        struct class_attribute *attr,
+                                        const char *buf,
+                                        size_t count)
+{
+  unsigned poker;
+  if (sscanf(buf,"%u",&poker) == 1) {
+    printk(KERN_INFO "store poke %u",poker);
+    return count;
+  }
+  return -EINVAL;
+}
+
+static ssize_t itc_pkt_class_read_pop(struct class *c,
+                                      struct class_attribute *attr,
+                                      char *buf)
+{
+  sprintf(buf,"62&0");
+  return strlen(buf);
+}
+
+static ssize_t itc_pkt_class_store_pop(struct class *c,
+                                        struct class_attribute *attr,
+                                        const char *buf,
+                                        size_t count)
+{
+  unsigned poker;
+  if (sscanf(buf,"%u",&poker) == 1) {
+    printk(KERN_INFO "store pop %u",poker);
+    return count;
+  }
+  return -EINVAL;
+}
+
+static struct class_attribute itc_pkt_class_attrs[] = {
+  __ATTR(poke, 0200, NULL, itc_pkt_class_store_poke),
+  __ATTR(pop, 0644, itc_pkt_class_read_pop, itc_pkt_class_store_pop),
+  __ATTR_NULL,
+};
+
 static dev_t itc_pkt_devt;
 
-static struct itc_pkt_dev * iodev_itc_packet_device;
+/*static struct itc_pkt_dev * iodev_itc_packet_device;*/
 
 /** @brief The callback function for when the device is opened
  *  What
@@ -211,67 +255,6 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
 }
 
 
-static struct itc_pkt_dev * make_itc_minor(struct device * dev,
-                                           int minor_obtained,
-                                           int * err_ret)
-{
-  struct itc_pkt_dev *iodev;
-  enum { BUFSZ = 16 };
-  char devname[BUFSZ];
-  int ret;
-
-  BUG_ON(!err_ret);
-  
-  if (minor_obtained == 2)
-    snprintf(devname,BUFSZ,"itc!packets");
-  else
-    snprintf(devname,BUFSZ,"itc!pru%d",minor_obtained);
-
-  iodev = devm_kzalloc(dev, sizeof(*iodev), GFP_KERNEL);
-  if (!iodev) {
-    ret = -ENOMEM;
-    goto fail_kzalloc;
-  }
-
-  iodev->devt = MKDEV(MAJOR(itc_pkt_devt), minor_obtained);
-
-  printk(KERN_INFO "INITTING /dev/%s", devname);
-
-  cdev_init(&iodev->cdev, &itc_pkt_fops);
-  iodev->cdev.owner = THIS_MODULE;
-  ret = cdev_add(&iodev->cdev, iodev->devt,1);
-
-  if (ret) {
-    dev_err(dev, "Unable to init cdev\n");
-    goto fail_cdev_init;
-  }
-
-  iodev->dev = device_create(itc_pkt_class,
-                             dev,
-                             iodev->devt, NULL,
-                             devname);
-  
-  if (IS_ERR(iodev->dev)) {
-    dev_err(dev, "Failed to create device file entries\n");
-    ret = PTR_ERR(iodev->dev);
-    goto fail_device_create;
-  }
-
-  dev_set_drvdata(dev, iodev);
-  dev_info(dev, "pru itc packet device ready at /dev/%s",devname);
-
-  return iodev;
-  
- fail_device_create:
-  cdev_del(&iodev->cdev);
-
- fail_cdev_init:
-
- fail_kzalloc:
-  *err_ret = ret;
-  return 0;
-}
-
 /*
  * driver probe function
  */
@@ -341,22 +324,164 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
 */
 
 
-static void itc_pkt_remove(struct rpmsg_channel *rpmsg_dev) {
-  struct itc_pkt_dev *iodev;
-
-  iodev = dev_get_drvdata(&rpmsg_dev->dev);
-
-  device_destroy(itc_pkt_class, iodev->devt);
-  cdev_del(&iodev->cdev);
-}
-
-
 static const struct rpmsg_device_id rpmsg_driver_itc_pkt_id_table[] = {
   { .name = "itc-pkt" },
   { },
 };
 
 MODULE_DEVICE_TABLE(rpmsg, rpmsg_driver_itc_pkt_id_table);
+
+static ssize_t itc_pkt_show_ET_TXRDY(struct device *dev,
+                                     struct device_attribute *attr,
+                                     char * buf)
+{
+  struct itc_pkt_dev *itc = dev_get_drvdata(dev);
+  return sprintf(buf,"HI FROM %p (ET_TXRDY)\n", itc);
+}
+
+static ssize_t itc_pkt_store_ET_TXRDY(struct device *dev,
+                                      struct device_attribute *attr,
+                                      const char * buf,
+                                      size_t size)
+{
+  struct itc_pkt_dev *itc = dev_get_drvdata(dev);
+  printk(KERN_INFO "HI STORE %p (ET_TXRDY)(%s/%u)\n",
+         itc,buf,size);
+  return size;
+}
+    
+static DEVICE_ATTR(ET_TXRDY, 0644, itc_pkt_show_ET_TXRDY, itc_pkt_store_ET_TXRDY);
+
+static ssize_t itc_pkt_read_poop_data(struct file *filp, struct kobject *kobj,
+                                      struct bin_attribute *attr,
+                                      char *buffer, loff_t offset, size_t count)
+{
+  /*  struct itc_pkt_dev * itc; */
+  /*  ssize_t ret = 0; */
+
+  BUG_ON(!kobj);
+  printk(KERN_INFO "read poop data kobject %p", kobj);
+
+  if (offset) return 0;
+  
+  snprintf(buffer,count,"P0123456789oop");
+
+  return strlen(buffer);
+}
+
+static ssize_t itc_pkt_write_poop_data(struct file *filp, struct kobject *kobj,
+                                       struct bin_attribute *attr,
+                                       char *buffer, loff_t offset, size_t count)
+{
+  /*  struct itc_pkt_dev *itc =
+    dev_get_drvdata(container_of(kobj,
+    struct device, kobj)); */
+  /*  int ret = 0; */
+
+  printk(KERN_INFO "write poop data kobject %p/(%s/%u)", kobj,buffer,count);
+
+  return count;
+}
+
+static BIN_ATTR(poop_data, 0644, itc_pkt_read_poop_data, itc_pkt_write_poop_data, 0);
+
+/*DEVICE ATTRIBUTE STUFF*/
+static struct attribute *itc_pkt_attrs[] = {
+  &dev_attr_ET_TXRDY.attr,
+  NULL,
+};
+
+static struct bin_attribute * itc_pkt_bin_attrs[] = {
+  &bin_attr_poop_data,
+  NULL,
+};
+
+static const struct attribute_group itc_pkt_group = {
+  .attrs = itc_pkt_attrs, 
+  .bin_attrs = itc_pkt_bin_attrs, 
+};
+
+static const struct attribute_group * itc_pkt_groups[] = {
+  &itc_pkt_group, 
+  NULL,
+};
+
+static struct class itc_pkt_class_instance = {
+  .name = "itc_pkt",
+  .owner = THIS_MODULE,
+  .class_attrs = itc_pkt_class_attrs,
+  .dev_groups = itc_pkt_groups,
+};
+
+static struct itc_pkt_dev * make_itc_minor(struct device * dev,
+                                           int minor_obtained,
+                                           int * err_ret)
+{
+  struct itc_pkt_dev *iodev;
+  enum { BUFSZ = 16 };
+  char devname[BUFSZ];
+  int ret;
+
+  BUG_ON(!err_ret);
+  
+  if (minor_obtained == 2)
+    snprintf(devname,BUFSZ,"itc!packets");
+  else
+    snprintf(devname,BUFSZ,"itc!pru%d",minor_obtained);
+
+  iodev = devm_kzalloc(dev, sizeof(*iodev), GFP_KERNEL);
+  if (!iodev) {
+    ret = -ENOMEM;
+    goto fail_kzalloc;
+  }
+
+  iodev->devt = MKDEV(MAJOR(itc_pkt_devt), minor_obtained);
+
+  printk(KERN_INFO "INITTING /dev/%s", devname);
+
+  cdev_init(&iodev->cdev, &itc_pkt_fops);
+  iodev->cdev.owner = THIS_MODULE;
+  ret = cdev_add(&iodev->cdev, iodev->devt,1);
+
+  if (ret) {
+    dev_err(dev, "Unable to init cdev\n");
+    goto fail_cdev_init;
+  }
+
+  iodev->dev = device_create(&itc_pkt_class_instance,
+                             dev,
+                             iodev->devt, NULL,
+                             devname);
+  
+  if (IS_ERR(iodev->dev)) {
+    dev_err(dev, "Failed to create device file entries\n");
+    ret = PTR_ERR(iodev->dev);
+    goto fail_device_create;
+  }
+
+  dev_set_drvdata(dev, iodev);
+  dev_info(dev, "pru itc packet device ready at /dev/%s",devname);
+
+  return iodev;
+  
+ fail_device_create:
+  cdev_del(&iodev->cdev);
+
+ fail_cdev_init:
+
+ fail_kzalloc:
+  *err_ret = ret;
+  return 0;
+}
+
+static void itc_pkt_remove(struct rpmsg_channel *rpmsg_dev) {
+  struct itc_pkt_dev *iodev;
+
+  iodev = dev_get_drvdata(&rpmsg_dev->dev);
+
+  device_destroy(&itc_pkt_class_instance, iodev->devt);
+  cdev_del(&iodev->cdev);
+}
 
 static struct rpmsg_driver itc_pkt_driver = {
   .drv.name	= KBUILD_MODNAME,
@@ -366,6 +491,7 @@ static struct rpmsg_driver itc_pkt_driver = {
   .callback	= itc_pkt_cb,
   .remove	= itc_pkt_remove,
 };
+
 
 static int __init itc_pkt_init (void)
 {
@@ -379,12 +505,13 @@ static int __init itc_pkt_init (void)
 
   open_pru_minors = 0;
 
-  itc_pkt_class = class_create(THIS_MODULE, "itc_pkt");
-  if (IS_ERR(itc_pkt_class)) {
-    pr_err("Failed to create class\n");
-    ret= PTR_ERR(itc_pkt_class);
-    goto fail_class_create;
+  ret = class_register(&itc_pkt_class_instance);
+  if (ret) {
+    pr_err("Failed to register class\n");
+    goto fail_class_register;
   }
+
+  /*  itc_pkt_class_instance.dev_groups = itc_pkt_groups;   */
 
   ret = alloc_chrdev_region(&itc_pkt_devt, 0,
                             MINOR_DEVICES, "itc_pkt");
@@ -405,8 +532,8 @@ static int __init itc_pkt_init (void)
   unregister_chrdev_region(itc_pkt_devt,
                            MINOR_DEVICES);
  fail_alloc_chrdev_region:
-  class_destroy(itc_pkt_class);
- fail_class_create:
+  class_unregister(&itc_pkt_class_instance);
+ fail_class_register:
   return ret;
 }
 
@@ -414,7 +541,7 @@ static int __init itc_pkt_init (void)
 static void __exit itc_pkt_exit (void)
 {
   unregister_rpmsg_driver(&itc_pkt_driver);
-  class_destroy(itc_pkt_class);
+  class_unregister(&itc_pkt_class_instance);
   unregister_chrdev_region(itc_pkt_devt,
                            MINOR_DEVICES);
 }
