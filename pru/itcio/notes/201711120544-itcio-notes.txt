@@ -1,4 +1,4 @@
-{68}  -*- text -*- 
+{80}  -*- text -*- 
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -943,25 +943,25 @@ Wed Dec  6 00:16:23 2017 OK, so I believe we have achieved 4.1.  Let's
 call that for now.[57: Wed Dec  6 00:17:23 2017 At least, we're pretty
 sure we have seen input pins that were looped back with ribbon cable change
 states when we changed other output pins.  We need some runnable code
-to deal with actual ITC pin names like ET_OGRLK and so forth, so we
+to deal with actual ITC pin names like ET_TXRDY and so forth, so we
 can write scripts to test stuff much more thoroughly.
 
 So where('s the first place we really) do want to embed pin name info?
 In the itc_pkt driver?  How?  Lots of names under /dev/itc?  Like
 
-# cat /dev/itc/pin/ET_OGRLK
+# cat /dev/itc/pin/ET_TXRDY
 0
-# echo 1 > /dev/itc/pin/ET_OGRLK
-# cat /dev/itc/pin/ET_OGRLK
+# echo 1 > /dev/itc/pin/ET_TXRDY
+# cat /dev/itc/pin/ET_TXRDY
 1
 # 
 
 or
 
-# cat /dev/itc/pin/ET/OGRLK
+# cat /dev/itc/pin/ET/TXRDY
 0
-# echo 1 > /dev/itc/pin/ET/OGRLK
-# cat /dev/itc/pin/ET/OGRLK
+# echo 1 > /dev/itc/pin/ET/TXRDY
+# cat /dev/itc/pin/ET/TXRDY
 1
 # 
 
@@ -969,8 +969,8 @@ or
 
 Wed Dec  6 01:01:02 2017 Maybe that?[59:
 
-Wed Dec  6 08:00:24 2017 Or /dev/itc/dir/ET/OGRLK, to avoid
-unbalancing /dev/itc.  Or  /dev/itc/dir/ET/pin/OGRLK so that we could
+Wed Dec  6 08:00:24 2017 Or /dev/itc/dir/ET/TXRDY, to avoid
+unbalancing /dev/itc.  Or  /dev/itc/dir/ET/pin/TXRDY so that we could
 also expand in dir/ with things like /dev/itc/dir/ET/packet?  But not
 for reading, only for writing, since we aren't planning to buffer
 inbound packets separately by their source direction.  Or weren't,
@@ -991,6 +991,55 @@ goes in.  ET/payload?  ET/send?  ET/datapacket?  ET/packetbody?
 
 Wed Dec  6 09:08:00 2017 I have to say it's tempting to want
 reasonable direction-based point-to-point comms.
+
+[68:
+
+Wed Dec  6 03:49:03 2017 So that would mean a kfifo per dir, in
+addition to the kfifo for the special packets.  And scanning the
+packet kfifos on /dev/itc/packet reads.  But then we could have
+plausible blocking reads on /dev/itc/dir/ET/packet.
+
+But only a non-blocking read on /dev/itc/packets grr.  Could it be one
+extra wait queue for packet level reads?  So whenever we add anything
+to any dir kfifo, we wake up two wait queues?  Our own dir plus the
+packet level?  And whoever gets it gets it?[69:
+
+Wed Dec  6 04:34:01 2017 Maybe but then we also have to have a mutex
+for reading each dir kfifo to arbitrate who actually does get it.
+Which is a drag, but then, we already signed up for that the instant
+we considered having /dev/itc/packets and /dev/itc/dir/ET/packet --
+whether anybody is blocking or not.
+
+So once again, how bad do we really want /dev/itc/dir/ET/packet???
+
+Vs throwing that dispatch up to userspace and dealing with it there.
+
+The reason I was wanting it in kernel was so we could consider
+shipping data --- like, say, a new .mfz file -- inter-tile, while
+mfmt2 was running and doing cache traffic over the same itc channels.
+
+[70:
+
+Wed Dec  6 04:51:01 2017 Did a little reading about implementing a new
+socket type and eventually using like skbuffs and hooking into the
+networ klayers.  Maybe someday.  What can we do now to move the ball
+while likely foreclosing as little possible of that stuff down the
+road?
+
+We basically want UDP-like semantics, with our own address space or
+address family or whatever it's called.[71:
+
+Wed Dec  6 07:21:39 2017 Anyway. Anyway damnit this is not
+progressing.  First stop, just setting and testing the pins --
+/dev/itc/dir/ET/TXRDY etc -- via requests to the PRUs.
+
+:71]
+
+:70]
+
+:69]
+
+:68]
 
 (Hmm, it's also tempting to want fricking MOUNTAIN TIME on MY TILES
 instead of UTC..  For those times when we are connected to the net..
@@ -1113,3 +1162,128 @@ local!  So right!  T2 tiles come from the mountains!  T2!
 :57]
 
 :55]
+[72:
+
+Sat Dec  9 05:53:27 2017 OK, let's take a few minutes here before
+breakfast to see about these attribute groups..  Greg KH says if I
+have a class, which I do, I want to be dealing with these guys:
+
+    struct class {
+        ...
+        struct class_attribute      *class_attrs;
+        struct device_attribute     *dev_attrs;
+        struct bin_attribute        *dev_bin_attrs;
+        ...
+    }
+
+So let's look for a couple of believable-looking examples mentioning,
+say, "struct class_attribute"..
+[73:
+
+Sat Dec  9 05:59:58 2017 Something like this perhaps:
+
+    static struct class_attribute class_attr[] =
+    { __ATTR(enable, 0644, enable_show, enable_store), __ATTR_NULL };
+
+    static struct class hello_drv =
+    { .name = "Dev_Hello", .owner = THIS_MODULE, .class_attrs =
+                    (struct class_attribute *) &class_attr, };
+                
+plus this
+
+
+    status = class_register(&hello_drv);
+    if (status < 0)
+       printk("Registering Class Failed\n");
+
+in the module _init().
+
+from https://github.com/Jeshwanth/Linux_modules_examples/blob/master/sysfs/enable_attr_sysfs.c
+
+[74:
+
+Sat Dec  9 06:01:51 2017 So, __ATTR does the stringification?  We
+never write the name of the sysfs entry as a string ourselves?
+
+[75:
+
+Sat Dec  9 06:26:35 2017 Ah, doh,
+https://www.kernel.org/doc/Documentation/filesystems/sysfs.txt 
+
+with a device level example:
+
+    #define DEVICE_ATTR(_name, _mode, _show, _store) \
+    struct device_attribute dev_attr_##_name = __ATTR(_name, _mode, _show,
+    _store)
+
+    For example, declaring
+
+    static DEVICE_ATTR(foo, S_IWUSR | S_IRUGO, show_foo, store_foo);
+
+    is equivalent to doing:
+
+    static struct device_attribute dev_attr_foo = {
+       .attr = {
+                 .name = "foo",
+                 .mode = S_IWUSR | S_IRUGO,
+               },
+       .show = show_foo,
+       .store = store_foo,
+    };
+                                      
+from which we can learn (1) __ATTR does stringify, but (2) This is not
+an attribute _group_ example, which is what we thought we were going
+for.. [76:
+
+Sun Dec 10 05:30:03 2017 OK, so, in modern parlance, this:
+
+    TIL the reason I can't google decent answers for my linux kernel
+    questions anymore is it's time for me to git clone mainline and
+    use git grep and discover I can understand the results.
+
+[77:
+
+Sun Dec 10 05:38:17 2017 We now have a framework for groups of
+attributes stuck onto the ->dev_groups of our itc_pkt_class object,
+courtesy of drivers/misc/c2port/core.c, and it's time to pick a first
+attribute or few to try implementing.[78:
+
+Sun Dec 10 06:14:06 2017 I guess for starters we're going for like
+ET_TXRDY as a single attribute, with show and set, and defer ET/TXRDY
+until we understand things better.
+
+[79:
+
+Sun Dec 10 12:25:00 2017 OK, so it took forever but we have managed to
+get class attributes demoed in itc_pkt.c, living amongst the
+previously demoed /dev/itc/pru[01] == /sys/class/itc_pkt/itc!pru[01].
+The key at the end appeared to be ditching class_create in favor of
+class_register, so we could set up its .class_attrs before registering
+it.
+
+A little hard to believe there isn't a way to do it with class_create,
+but I haven't found an example of that yet.  And class_create goes to
+__class_create which goes to __class_register which goes to
+add_class_attrs..  Aaand add_class_attrs appears to be called only
+from there:
+
+    linux-stable$ git grep add_class_attrs
+    drivers/base/class.c:static int add_class_attrs(struct class *cls)
+    drivers/base/class.c:       error = add_class_attrs(class_get(cls));
+    linux-stable$ 
+
+so for us it's class_register rather than class_create, I guess.
+
+:79]
+:78]
+
+:77]
+
+:76]
+
+:75]
+
+:74]
+
+:73]
+:72]
