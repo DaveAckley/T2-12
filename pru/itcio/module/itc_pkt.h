@@ -125,6 +125,9 @@ extern ITCDeviceState * make_itc_minor(struct device * dev,
 #define ITC_DIR_NAME_TO_R31_PIN__NW_RXRDY 2
 #define ITC_DIR_NAME_TO_R31_PIN__NW_RXDAT 3
 
+#define ITC_DIR_AND_PIN_TO_R30_BIT(dir,pin) ITC_DIR_NAME_TO_R30_PIN__##dir##_##pin
+#define ITC_DIR_AND_PIN_TO_R31_BIT(dir,pin) ITC_DIR_NAME_TO_R31_PIN__##dir##_##pin
+
 /* MACRO ITERATORS */
 #define FOR_XX_IN_ITC_ALL_DIR XX(NE) XX(ET) XX(SE) XX(SW) XX(WT) XX(NW)
 #define FOR_XX_IN_ITC_ALL_PRUDIR XX(0) XX(1) XX(2)

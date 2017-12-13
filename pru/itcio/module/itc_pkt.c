@@ -73,10 +73,13 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
     if (prunum == 0) kfifop = &S.special0Kfifo;
     else kfifop = &S.special1Kfifo;
 
+    printk(KERN_INFO "waiting for response to '%s' packet\n", buf);
+
     while (kfifo_is_empty(kfifop)) {
       wait_event_interruptible(devstate->specialWaitQ, !kfifo_is_empty(kfifop));
     }
-    kfifo_out(kfifop, buf, bufsiz);
+    if (!kfifo_out(kfifop, buf, bufsiz))
+      printk(KERN_WARNING "kfifo was empty\n");
     ret = 0;
   }
 
@@ -156,6 +159,15 @@ static ssize_t itc_pin_write_handler(unsigned pru, unsigned prudir, unsigned bit
   return count;
 }
 
+static uint32_t extract32(const char *p) {
+  int i;
+  uint32_t ret = 0;
+
+  for (i = 0; i < 4; ++i)
+    ret |= ((unsigned) p[i])<<(i<<3);
+  return ret;
+}
+
 static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
                                     struct class *c,
                                     struct class_attribute *attr,
@@ -177,8 +189,12 @@ static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
     return -EIO;
   }
 
-  return sprintf(buf,"I COULD ANALYZE THIS %s(%d)\n",
-                 msg,ret);
+  {
+    uint32_t r31 = extract32(&msg[1]);
+    uint32_t val = (r31>>bit)&1;
+    printk(KERN_INFO "R31 0x%08x@%u = %u\n", r31, bit, val);
+    return sprintf(buf,"%u", val);
+  }
 }
 
 #define ITC_INPUT_PIN_FUNC(dir,pin)                                     \
@@ -188,7 +204,7 @@ static ssize_t itc_pkt_class_read_##dir##_##pin(struct class *c,        \
 {                                                                       \
   return itc_pin_read_handler(ITC_DIR_TO_PRU(dir),                      \
                               ITC_DIR_TO_PRUDIR(dir),                   \
-                              ITC_PIN_NAME_TO_PIN_NUMBER(pin),          \
+                              ITC_DIR_AND_PIN_TO_R31_BIT(dir,pin),      \
                               c,attr,buf);                              \
 }                                                                       \
 
@@ -200,7 +216,7 @@ static ssize_t itc_pkt_class_write_##dir##_##pin(struct class *c,       \
 {                                                                       \
   return itc_pin_write_handler(ITC_DIR_TO_PRU(dir),                     \
                                ITC_DIR_TO_PRUDIR(dir),                  \
-                               ITC_PIN_NAME_TO_PIN_NUMBER(pin),         \
+                               ITC_DIR_AND_PIN_TO_R30_BIT(dir,pin),     \
                                c,attr,buf,count);                       \
 }                                                                       \
 
@@ -210,8 +226,6 @@ static ssize_t itc_pkt_class_write_##dir##_##pin(struct class *c,       \
 #define XX(dir) \
   ITC_OUTPUT_PIN_FUNC(dir,TXRDY) \
   ITC_OUTPUT_PIN_FUNC(dir,TXDAT) \
-  ITC_INPUT_PIN_FUNC(dir,TXRDY) \
-  ITC_INPUT_PIN_FUNC(dir,TXDAT) \
   ITC_INPUT_PIN_FUNC(dir,RXRDY) \
   ITC_INPUT_PIN_FUNC(dir,RXDAT) \
 
@@ -227,7 +241,7 @@ FOR_XX_IN_ITC_ALL_DIR
   __ATTR(dir##_##pin, 0444, itc_pkt_class_read_##dir##_##pin, NULL)
 /* output pins are read-write */
 #define ITC_OUTPUT_PIN_ATTR(dir,pin) \
-  __ATTR(dir##_##pin, 0644, itc_pkt_class_read_##dir##_##pin, itc_pkt_class_write_##dir##_##pin)
+  __ATTR(dir##_##pin, 0644, NULL, itc_pkt_class_write_##dir##_##pin)
 #define XX(dir) \
   ITC_OUTPUT_PIN_ATTR(dir,TXRDY), \
   ITC_OUTPUT_PIN_ATTR(dir,TXDAT), \
@@ -461,7 +475,7 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
     char buf[10];
     printk(KERN_INFO "BLURGE sending on buf=%p\n",buf);
 
-    ret = send_msg_to_pru(minor_obtained,1,buf,10, "%s",""); /* grr..gcc warns on "" as format string */
+    ret = send_msg_to_pru(minor_obtained,0,buf,10, "%s",""); /* grr..gcc warns on "" as format string */
     printk(KERN_INFO "RECTOBLURGE back with buf='%s'\n",buf);
   }
 
