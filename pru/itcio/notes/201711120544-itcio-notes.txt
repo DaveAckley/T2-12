@@ -1,4 +1,4 @@
-{93}  -*- text -*-
+{103}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -1426,3 +1426,81 @@ I imagine, since that's what we're allocating per minor device number.
 
 :91]
 :90]
+[93:
+
+Tue Dec 12 20:04:53 2017 OK, so we have a '/dev/itc/packets' getting
+built, and torn down, now.  It's not doing much of anything yet, and I
+can't believe this the way I'm doing it is right, but here we are.[94:
+
+Tue Dec 12 23:03:19 2017 Now we'd like to get ET_TXRDY showing up
+under /sys/class/itc_pkt/, instead of under both of
+/sys/class/itc_pkt/itc\!pru[01]
+
+Then we'd like to see a blocking read of ET_TXRDY work, using an 'R'
+packet under the hood.
+
+And on the way to that we think we want to refactor the message
+sending stuff so it isn't so tightly coupled to the fops callbacks, so
+that we can call it internally more easily.
+
+But first sleep.[95:
+
+Wed Dec 13 03:18:15 2017 OK, let's go.[96:
+
+Wed Dec 13 03:44:44 2017 OK, ET_TXRDY was under the itc!pru[01]s
+because I had it being a device attribute.  Now it's a class attribute
+and it's under /sys/class/itc_pkt (for good and for ill).  And we made
+an ITC_PIN_ATTR macro to begin systematizing this crap.  Now we need
+to encode that pin info table we made back.. where.. in :80:, above..
+
+:96]
+
+:95]
+
+:94]
+
+:93]
+[97:
+
+Wed Dec 13 05:47:50 2017 OK, well, it's not really debugged or
+double-checked, but we now have a table of pru pin info in itc_pkt and
+all the pins are showing up (ugly but present):
+
+    root@beaglebone:/home/t2/T2-12# ls /sys/class/itc_pkt/
+    ET_RXDAT  ET_TXRDY     itc!pru1  NE_TXDAT  NW_RXRDY  packet    SE_RXRDY  SW_RXDAT  SW_TXRDY  WT_TXDAT
+    ET_RXRDY  itc!packets  NE_RXDAT  NE_TXRDY  NW_TXDAT  poke      SE_TXDAT  SW_RXRDY  WT_RXDAT  WT_TXRDY
+    ET_TXDAT  itc!pru0     NE_RXRDY  NW_RXDAT  NW_TXRDY  SE_RXDAT  SE_TXRDY  SW_TXDAT  WT_RXRDY
+    root@beaglebone:/home/t2/T2-12# 
+
+I really wish I knew how to push them down to at least
+/sys/class/itc_pkt/pins, But I Don't.
+[98:
+
+Wed Dec 13 05:50:06 2017 So OK, now we have to face sending a packet
+internally and blocking for an answer.  Can we break that down a bit?
+
+ - [100: Wed Dec 13
+   06:31:46 2017 DONE, made changed to S.dev_packet_state[3]  :100]Refactor, or at least understand if we don't need to, to have some
+   way to get to the rpmsg_channels from outside fops interface
+   methods.  Store pointers at create time, presumably.[99:
+   Wed Dec 13 06:18:56 2017 ITCDeviceState has rpmsg_channel * for
+   minor [01].  Just need to get to that from S.. :99]
+
+ - [101: Wed Dec 13 06:32:17 2017 DONE, created send_msg_to_pru
+   (rudy).  Tested only in the existing flow so far.[102: Wed Dec 13
+   08:25:28 2017 Now also in use for itc pin writes.  :102]
+   :101]Refactor so rpmsg_send is accessible outside fops interface
+   methods, using our alternate navigation to the rpmsg_channels
+   produced above.
+
+ - Create a wait queue for each kfifo.  (We don't have that, I think?)
+
+ - Refactor so that the rpmsg callbacks dish off somewhere to store
+   the packet and wake the appropriate waiters.
+
+ - Have the newly-created sysfs pin read/write handlers generate 'R'
+   and 'W' packets to the appropriate PRU and then wait for an answer.
+
+
+:98]
+:97]
