@@ -23,8 +23,67 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
   INIT_KFIFO(s->special1Kfifo);
   mutex_init(&s->read_lock);
   s->open_pru_minors = 0;
-  s->dev_packet_state = 0;
+  {
+    unsigned i;
+    for (i = 0; i < MINOR_DEVICES; ++i) s->dev_packet_state[i] = 0;
+  }
 }
+
+__printf(5,6) int send_msg_to_pru(unsigned prunum,
+                                  unsigned wait,
+                                  char * buf,
+                                  unsigned bufsiz,
+                                  const char * fmt, ...)
+{
+  int ret;
+  unsigned len;
+  va_list args;
+  ITCDeviceState *devstate;
+
+  BUG_ON(prunum > 1);
+
+  devstate = S.dev_packet_state[prunum];
+  BUG_ON(!devstate);
+  BUG_ON(!devstate->rpmsg_dev);
+
+  va_start(args, fmt);
+  len = vsnprintf(buf, bufsiz, fmt, args);
+  va_end(args);
+
+  if (len >= bufsiz) {
+    printk(KERN_WARNING "send_msg_to_pru data (%d) exceeded bufsiz (%d) (type='%c') truncated\n",
+           len, bufsiz, buf[0]);
+  }
+
+  if (len >= MAX_PACKET_SIZE) {
+    printk(KERN_WARNING "send_msg_to_pru overlength (%d) packet (type='%c') truncated\n",
+           len, buf[0]);
+    len = MAX_PACKET_SIZE - 1;
+  }
+
+  if (mutex_lock_interruptible(&devstate->specialLock))
+    return -ERESTARTSYS;
+
+  ret = rpmsg_send(devstate->rpmsg_dev, buf, len);
+
+  /* Wait, if we're supposed to, for a packet in our kfifo */
+  if (wait) {
+    SpecialPacketFIFO *kfifop;
+
+    if (prunum == 0) kfifop = &S.special0Kfifo;
+    else kfifop = &S.special1Kfifo;
+
+    while (kfifo_is_empty(kfifop)) {
+      wait_event_interruptible(devstate->specialWaitQ, !kfifo_is_empty(kfifop));
+    }
+    kfifo_out(kfifop, buf, bufsiz);
+    ret = 0;
+  }
+
+  mutex_unlock(&devstate->specialLock);
+  return ret;
+}
+
 
 /*CLASS ATTRIBUTE STUFF*/
 static ssize_t itc_pkt_class_store_poke(struct class *c,
@@ -62,7 +121,7 @@ static ssize_t itc_pkt_class_store_packet(struct class *c,
 
   dest &= 0x7;
   if (dest == 7) return -ENODEV;
-  
+
   if (sscanf(buf,"%u",&poker) == 1) {
     printk(KERN_INFO "store pop %u\n",poker);
     return count;
@@ -70,11 +129,120 @@ static ssize_t itc_pkt_class_store_packet(struct class *c,
   return -EINVAL;
 }
 
+static ssize_t itc_pin_write_handler(unsigned pru, unsigned prudir, unsigned bit,
+                                     struct class *c,
+                                     struct class_attribute *attr,
+                                     const char *buf,
+                                     size_t count)
+{
+  char msg[MAX_PACKET_SIZE];
+  int ret;
+  unsigned val;
+  if (sscanf(buf,"%u",&val) != 1)
+    return -EINVAL;
+  if (val > 1)
+    return -EINVAL;
+
+
+  printk(KERN_INFO "HI CLASS STORE %p ATTR %p (pru=%u,prudir=%u,bit=%u)(val=%u)\n",
+         c, attr,
+         pru, prudir, bit,
+         val);
+
+  /* We wait for a return just to get it out of the buffer*/
+  ret = send_msg_to_pru(pru, 1, msg, MAX_PACKET_SIZE, "B%c%c-", bit, val);
+  if (ret < 0) return ret;
+
+  return count;
+}
+
+static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
+                                    struct class *c,
+                                    struct class_attribute *attr,
+                                    char *buf)
+{
+  char msg[MAX_PACKET_SIZE];
+  int ret;
+
+  printk(KERN_INFO "HI FROM CLASS %p ATTR %p (pru=%u,prudir=%u,bit=%u)\n",
+         c, attr,
+         pru, prudir, bit);
+
+  ret = send_msg_to_pru(pru, 1, msg, MAX_PACKET_SIZE, "Rxxxx-");
+  if (ret < 0) return ret;
+
+  if (msg[0]!='R' || msg[5] != '-') {
+    printk(KERN_WARNING "Expected 'Rxxxx-' packet got '%s'(pru=%u,prudir=%u,bit=%u)\n",
+           msg, pru, prudir, bit);
+    return -EIO;
+  }
+
+  return sprintf(buf,"I COULD ANALYZE THIS %s(%d)\n",
+                 msg,ret);
+}
+
+#define ITC_INPUT_PIN_FUNC(dir,pin)                                     \
+static ssize_t itc_pkt_class_read_##dir##_##pin(struct class *c,        \
+                                                struct class_attribute *attr, \
+                                                char *buf)              \
+{                                                                       \
+  return itc_pin_read_handler(ITC_DIR_TO_PRU(dir),                      \
+                              ITC_DIR_TO_PRUDIR(dir),                   \
+                              ITC_PIN_NAME_TO_PIN_NUMBER(pin),          \
+                              c,attr,buf);                              \
+}                                                                       \
+
+#define ITC_OUTPUT_PIN_FUNC(dir,pin)                                    \
+static ssize_t itc_pkt_class_write_##dir##_##pin(struct class *c,       \
+                                                 struct class_attribute *attr, \
+                                                 const char *buf,       \
+                                                 size_t count)          \
+{                                                                       \
+  return itc_pin_write_handler(ITC_DIR_TO_PRU(dir),                     \
+                               ITC_DIR_TO_PRUDIR(dir),                  \
+                               ITC_PIN_NAME_TO_PIN_NUMBER(pin),         \
+                               c,attr,buf,count);                       \
+}                                                                       \
+
+
+/* ******
+   GENERATE DISPATCH FUNCTIONS */
+#define XX(dir) \
+  ITC_OUTPUT_PIN_FUNC(dir,TXRDY) \
+  ITC_OUTPUT_PIN_FUNC(dir,TXDAT) \
+  ITC_INPUT_PIN_FUNC(dir,TXRDY) \
+  ITC_INPUT_PIN_FUNC(dir,TXDAT) \
+  ITC_INPUT_PIN_FUNC(dir,RXRDY) \
+  ITC_INPUT_PIN_FUNC(dir,RXDAT) \
+
+FOR_XX_IN_ITC_ALL_DIR
+
+#undef XX
+/* GENERATE DISPATCH FUNCTIONS: DONE*/
+
+/* ******
+   GENERATE SYSFS CLASS ATTRIBUTES FOR ITC PINS */
+/* input pins are read-only */
+#define ITC_INPUT_PIN_ATTR(dir,pin) \
+  __ATTR(dir##_##pin, 0444, itc_pkt_class_read_##dir##_##pin, NULL)
+/* output pins are read-write */
+#define ITC_OUTPUT_PIN_ATTR(dir,pin) \
+  __ATTR(dir##_##pin, 0644, itc_pkt_class_read_##dir##_##pin, itc_pkt_class_write_##dir##_##pin)
+#define XX(dir) \
+  ITC_OUTPUT_PIN_ATTR(dir,TXRDY), \
+  ITC_OUTPUT_PIN_ATTR(dir,TXDAT), \
+  ITC_INPUT_PIN_ATTR(dir,RXRDY), \
+  ITC_INPUT_PIN_ATTR(dir,RXDAT), \
+
 static struct class_attribute itc_pkt_class_attrs[] = {
+  FOR_XX_IN_ITC_ALL_DIR
   __ATTR(poke, 0200, NULL, itc_pkt_class_store_poke),
   __ATTR(packet, 0644, itc_pkt_class_read_packet, itc_pkt_class_store_packet),
   __ATTR_NULL,
 };
+#undef XX
+/* GENERATE SYSFS CLASS ATTRIBUTES FOR ITC PINS: DONE */
+
 
 /** @brief The callback function for when the device is opened
  *  What
@@ -96,7 +264,7 @@ static int itc_pkt_open(struct inode *inode, struct file *filp)
 
   if (ret)
     dev_err(devstate->dev, "Device already open\n");
-  
+
   return ret;
 }
 
@@ -111,7 +279,7 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
 
   devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
   devstate->dev_lock = false;
-  
+
   return 0;
 }
 
@@ -184,7 +352,7 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
   case 1: ret = kfifo_to_user(&S.special1Kfifo, buf, count, &copied); break;
   case 2: ret = kfifo_to_user(&S.itcPacketKfifo, buf, count, &copied); break;
   default: BUG_ON(1);
-  } 
+  }
 
   mutex_unlock(&S.read_lock);
 
@@ -219,11 +387,20 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
                  data, len, true);
 
   if (len > 0) {
+    int wake = -1;
     // ITC data if first byte MSB set
     if ((*(char*)data)&0x80) kfifo_in(&S.itcPacketKfifo, data, len);
-    else if (minor == 0) kfifo_in(&S.special0Kfifo, data, len);
-    else if (minor == 1) kfifo_in(&S.special1Kfifo, data, len);
+    else if (minor == 0) {
+      kfifo_in(&S.special0Kfifo, data, len);
+      wake = 0;
+    } else if (minor == 1) {
+      kfifo_in(&S.special1Kfifo, data, len);
+      wake = 1;
+    }
     else BUG_ON(1);
+    if (wake >= 0) {
+      wake_up_interruptible(&S.dev_packet_state[wake]->specialWaitQ);
+    }
   }
 }
 
@@ -254,28 +431,40 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
 
     BUG_ON(minor_obtained == 2);
 
-    S.dev_packet_state = make_itc_minor(&rpmsg_dev->dev, 2, &ret);
+    S.dev_packet_state[2] = make_itc_minor(&rpmsg_dev->dev, 2, &ret);
 
     printk(KERN_INFO "GROZ made minor 2=%p SLORG\n",S.dev_packet_state);
 
-    if (!S.dev_packet_state)
+    if (!S.dev_packet_state[2])
       return ret;
 
-    S.dev_packet_state->rpmsg_dev = 0;
+    S.dev_packet_state[2]->rpmsg_dev = 0;
     ++S.open_pru_minors;
   }
 
-
+  BUG_ON(S.dev_packet_state[minor_obtained]);
+  
   devstate = make_itc_minor(&rpmsg_dev->dev, minor_obtained, &ret);
+
+  printk(KERN_INFO "BLURGE back with devstate=%p\n",devstate);
 
   if (!devstate)
     return ret;
-  
+
+  S.dev_packet_state[minor_obtained] = devstate;
+
   devstate->rpmsg_dev = rpmsg_dev;
   ++S.open_pru_minors;
 
   /* send empty message to give PRU src & dst info*/
-  ret = rpmsg_send(devstate->rpmsg_dev, "", 0);
+  {
+    char buf[10];
+    printk(KERN_INFO "BLURGE sending on buf=%p\n",buf);
+
+    ret = send_msg_to_pru(minor_obtained,1,buf,10, "%s",""); /* grr..gcc warns on "" as format string */
+    printk(KERN_INFO "RECTOBLURGE back with buf='%s'\n",buf);
+  }
+
   if (ret) {
     dev_err(devstate->dev, "Opening transmission on rpmsg bus failed %d\n",ret);
     ret = PTR_ERR(devstate->dev);
@@ -292,27 +481,6 @@ static const struct rpmsg_device_id rpmsg_driver_itc_pkt_id_table[] = {
 
 MODULE_DEVICE_TABLE(rpmsg, rpmsg_driver_itc_pkt_id_table);
 
-static ssize_t itc_pkt_show_ET_TXRDY(struct device *dev,
-                                     struct device_attribute *attr,
-                                     char * buf)
-{
-  ITCDeviceState *itc = dev_get_drvdata(dev);
-  return sprintf(buf,"HI FROM %p (ET_TXRDY)\n", itc);
-}
-
-static ssize_t itc_pkt_store_ET_TXRDY(struct device *dev,
-                                      struct device_attribute *attr,
-                                      const char * buf,
-                                      size_t size)
-{
-  ITCDeviceState *itc = dev_get_drvdata(dev);
-  printk(KERN_INFO "HI STORE %p (ET_TXRDY)(%s/%u)\n",
-         itc,buf,size);
-  return size;
-}
-    
-static DEVICE_ATTR(ET_TXRDY, 0644, itc_pkt_show_ET_TXRDY, itc_pkt_store_ET_TXRDY);
-
 static ssize_t itc_pkt_read_poop_data(struct file *filp, struct kobject *kobj,
                                       struct bin_attribute *attr,
                                       char *buffer, loff_t offset, size_t count)
@@ -321,7 +489,7 @@ static ssize_t itc_pkt_read_poop_data(struct file *filp, struct kobject *kobj,
   printk(KERN_INFO "read poop data kobject %p\n", kobj);
 
   if (offset) return 0;
-  
+
   snprintf(buffer,count,"P0123456789oop");
 
   return strlen(buffer);
@@ -340,7 +508,6 @@ static BIN_ATTR(poop_data, 0644, itc_pkt_read_poop_data, itc_pkt_write_poop_data
 
 /*DEVICE ATTRIBUTE STUFF*/
 static struct attribute *itc_pkt_attrs[] = {
-  &dev_attr_ET_TXRDY.attr,
   NULL,
 };
 
@@ -350,12 +517,12 @@ static struct bin_attribute * itc_pkt_bin_attrs[] = {
 };
 
 static const struct attribute_group itc_pkt_group = {
-  .attrs = itc_pkt_attrs, 
-  .bin_attrs = itc_pkt_bin_attrs, 
+  .attrs = itc_pkt_attrs,
+  .bin_attrs = itc_pkt_bin_attrs,
 };
 
 static const struct attribute_group * itc_pkt_groups[] = {
-  &itc_pkt_group, 
+  &itc_pkt_group,
   NULL,
 };
 
@@ -376,17 +543,70 @@ ITCDeviceState * make_itc_minor(struct device * dev,
   int ret;
 
   BUG_ON(!err_ret);
-  
+
   if (minor_obtained == 2)
     snprintf(devname,BUFSZ,"itc!packets");
   else
     snprintf(devname,BUFSZ,"itc!pru%d",minor_obtained);
 
-  devstate = devm_kzalloc(dev, sizeof(*devstate), GFP_KERNEL);
+  devstate = devm_kzalloc(dev, sizeof(ITCDeviceState), GFP_KERNEL);
   if (!devstate) {
     ret = -ENOMEM;
     goto fail_kzalloc;
   }
+
+  /* Clearly I don't get mutex_init.  It uses a static local
+     supposedly to associate a 'unique' key with each mutex.  But if
+     mutex_init is called in a loop (as here, implicitly), then we'll
+     only get one key for all the mutexes, right?
+
+     Clearly I don't get mutex_init.  But in my typical paranoid fugue
+     that surrounds any use of locking sutff, I want to arranging that
+     each mutex gets a separate mutex_init invocation, by doing
+     something like:
+
+      switch (minor_obtained) {
+      case 0: mutex_init(&devstate->specialLock); break;
+      case 1: mutex_init(&devstate->specialLock); break;
+      case 2: mutex_init(&devstate->specialLock); break;
+      default: BUG_ON(1);
+      }
+
+     But that's insane, right?  Clearly, I don't get mutex_init.
+
+     Reading Documentation/locking/lockdep-design.txt helps some but
+     still leaves me confused.  The key identifies a 'class' of locks,
+     so with the switch code above I'd generate three lock classes
+     each with one lock instance, while with the code below I'm
+     generating one class with three instances.  On the one hand,
+     lockdep-design says this: 
+
+        For example a lock in the inode struct is one class, while
+        each inode has its own instantiation of that lock class.
+
+     which makes it sound like of course I should have just one class
+     for my pitiful little three lock instances.  But on the other
+     hand lockdep-design also says this:
+
+        The same lock-class must not be acquired twice, because this
+        could lead to lock recursion deadlocks.
+
+     which sounds to me like if I make a single lock class, then when
+     someone's holding the PRU0 lock nobody else can acquire the PRU1
+     lock, since that would be the 'same lock-class' being acquired
+     twice.  
+
+     But that can't be what it means, right, or else having one inode
+     locked would block all the rest?  'Acquiring a lock-class' must
+     mean something other than 'acquiring a lock instance of a given
+     class'.  Or something.  But I'm going with the single shared
+     lock-class here, and May God Have Mercy On Our Heathen Souls.
+
+     And, umm, Clearly I Don't Get mutex_init.
+  */
+
+  mutex_init(&devstate->specialLock); 
+  init_waitqueue_head(&devstate->specialWaitQ); 
 
   devstate->devt = MKDEV(MAJOR(S.major_devt), minor_obtained);
 
@@ -405,7 +625,7 @@ ITCDeviceState * make_itc_minor(struct device * dev,
                                 dev,
                                 devstate->devt, NULL,
                                 devname);
-  
+
   if (IS_ERR(devstate->dev)) {
     dev_err(dev, "Failed to create device file entries\n");
     ret = PTR_ERR(devstate->dev);
@@ -416,7 +636,7 @@ ITCDeviceState * make_itc_minor(struct device * dev,
   dev_info(dev, "pru itc packet device ready at /dev/%s",devname);
 
   return devstate;
-  
+
  fail_device_create:
   cdev_del(&devstate->cdev);
 
@@ -431,7 +651,7 @@ static void itc_pkt_remove(struct rpmsg_channel *rpmsg_dev) {
   ITCDeviceState *devstate;
 
   devstate = dev_get_drvdata(&rpmsg_dev->dev);
-
+  mutex_destroy(&devstate->specialLock); 
   device_destroy(&itc_pkt_class_instance, devstate->devt);
   cdev_del(&devstate->cdev);
 }
@@ -488,8 +708,8 @@ static int __init itc_pkt_init (void)
 
 static void __exit itc_pkt_exit (void)
 {
-  if (S.dev_packet_state) {
-    device_destroy(&itc_pkt_class_instance, S.dev_packet_state->devt);
+  if (S.dev_packet_state[2]) { /* [0] and [1] handled automatically, right? */
+    device_destroy(&itc_pkt_class_instance, S.dev_packet_state[2]->devt);
   }
 
   unregister_rpmsg_driver(&itc_pkt_driver);
@@ -554,5 +774,3 @@ MODULE_VERSION("0.4");            ///< 0.4 for general internal renaming and reo
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-
