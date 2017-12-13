@@ -56,8 +56,8 @@ LINK_PRU0_FW=
 
 
 
-.PHONY: all
-all: $(TARGETS)
+.PHONY: build
+build:	$(TARGETS)
 	@echo '-	Generated firmwares are : $^'
 
 
@@ -93,13 +93,13 @@ $(GEN_DIR)/main_pru1_def.object: main_prux_def.asm
 
 
 
-.PHONY: install install-pru1 install-pru0 copy_pru0_fw copy_pru1_fw reboot_pru_1 reboot_pru_0
+.PHONY: install copy_pru0_fw copy_pru1_fw reboot_pru_1 reboot_pru_0
 
-install: $(patsubst $(GEN_DIR)/main_pru%_fw.out, install-pru%, $(TARGETS))
+install: build copyfw rebootprus
 
+copyfw:	copy_pru0_fw copy_pru1_fw
 
-install-pru1: $(PRU1_FW) copy_pru1_fw reboot_pru1
-install-pru0: $(PRU0_FW) copy_pru0_fw reboot_pru0
+rebootprus:	 reboot_pru0 reboot_pru1
 
 copy_pru1_fw:
 	@echo '-	copying firmware to /lib/firmware/am335x_pru1_fw'
@@ -110,12 +110,16 @@ copy_pru0_fw: $(PRU0_FW)
 	@cp $(PRU0_FW) /lib/firmware/am335x-pru0-fw
 
 reboot_pru1:
+	@echo '-	ensuring itc_pkt module is removed'
+	$(shell modprobe -r itc_pkt || exit 0)
 	@echo '-	rebooting pru core 1'
 	$(shell echo "4a338000.pru1" > /sys/bus/platform/drivers/pru-rproc/unbind 2> /dev/null)
 	$(shell echo "4a338000.pru1" > /sys/bus/platform/drivers/pru-rproc/bind)
 	@echo "-	pru core 1 is now loaded with $(PRU1_FW)"
 
 reboot_pru0:
+	@echo '-	ensuring itc_pkt module is removed'
+	$(shell modprobe -r itc_pkt || exit 0)
 	@echo '-	rebooting pru core 0'
 	$(shell echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/unbind 2> /dev/null)
 	$(shell echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/bind)
