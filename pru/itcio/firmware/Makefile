@@ -95,7 +95,9 @@ $(GEN_DIR)/main_pru1_def.object: main_prux_def.asm
 
 .PHONY: install copy_pru0_fw copy_pru1_fw reboot_pru_1 reboot_pru_0
 
-install: build copyfw rebootprus
+#Let module side do the rebooting
+#WAS:install: build copyfw rebootprus
+install: build copyfw
 
 copyfw:	copy_pru0_fw copy_pru1_fw
 
