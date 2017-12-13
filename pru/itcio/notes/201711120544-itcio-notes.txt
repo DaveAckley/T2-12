@@ -1,4 +1,4 @@
-{80}  -*- text -*- 
+{93}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -57,7 +57,7 @@ running that, it seems that 'modprobe rpmsg_pru_itcio' boots the PRU:
     Nov 12 14:48:34 beaglebone kernel: [52236.282695] virtio_rpmsg_bus virtio0: creating channel rpmsg-pru-itcio addr 0x1f
     Nov 12 14:48:34 beaglebone kernel: [52236.316205] rpmsg_pru_itcio rpmsg0: chnl: 0x400 -> 0x1f
     Nov 12 14:48:34 beaglebone kernel: [52236.346715] rpmsg_pru_itcio rpmsg0: pru_itcio device ready at /dev/rpmsg_pru_itcio
-    root@beaglebone:/home/t2/T2-12/pru/itcio/firmware#                
+    root@beaglebone:/home/t2/T2-12/pru/itcio/firmware#
 
 Committing this as a checkpoint, adding rpmsg_pru_itcio to my
 /etc/modules stuff, and trying a reboot..
@@ -102,7 +102,7 @@ kernel's linked list stuff rather than the kfifo.[7:
 Sun Nov 12 18:07:24 2017 Or we could use skb's from the network
 stack??  That seems like a huge kettle of fish, but then we could
 conceivably be routing more or less genuine network crap between
-tiles, for good and for ill.. 
+tiles, for good and for ill..
 
 :7]
 
@@ -231,7 +231,7 @@ to be Table 6-4 on page 105-106:
      R3.w2     Expression register                     Yes
                 (usually used as Link
                 register to store the
-                return address) 
+                return address)
      R4        Argument pointer (AP)                   Yes
      R5        Expression register                     Yes
      R6        Expression register                     Yes
@@ -279,7 +279,7 @@ T2-local/candidates/beagleboardgreen/BBG-SHR/SymmetricBitstreamTransceiver.inc:
        R30 : direct GPIO output
        R31 : status and direct GPIO input
     */
-                                
+
 
 and I think everything but R30 and R31 are actually movable.  In
 particular, the 8 register context struct just has to be contiguous
@@ -308,7 +308,7 @@ unsigned getOutboundPacket(uint8_t * buffer) {
 }
 void putInboundPacket(uint8_t * buffer, unsigned len)
 {
-   pru_rpmsg_send(&transport, dst, src, buffer, len);					
+   pru_rpmsg_send(&transport, dst, src, buffer, len);
 }
 
 int main() {
@@ -500,7 +500,7 @@ and here's the function:
     addfuncasm:
             ADD R14, R15, R14
             JMP r3.w2
-        
+
 and here's the behavior:
 
     root@beaglebone:/home/t2/T2-12/pru/itcio# echo aaa > /dev/itc/pru1
@@ -513,7 +513,7 @@ and here's the behavior:
     Nov 25 13:58:08 beaglebone kernel: [  879.937989] itc_pkt itc!pru0: Sending 4 starting with a
     Nov 25 13:58:08 beaglebone kernel: [  879.943529] Received 4
     Nov 25 13:58:08 beaglebone kernel: [  879.945947] pkt:63 61 61 0a                                      caa.
-    root@beaglebone:/home/t2/T2-12/pru/itcio# 
+    root@beaglebone:/home/t2/T2-12/pru/itcio#
 
 So there's that.
 
@@ -557,7 +557,7 @@ while not approaching or forgetting the Final Round Questions:
 (6.1) Will our signal integrity start to break down, at speeds our
    initial code will be able to achieve?  Or In Other Words
 
-(6.2) HOW FUCKING FAST WILL ALL THIS GO IN ACTUAL REALITY? 
+(6.2) HOW FUCKING FAST WILL ALL THIS GO IN ACTUAL REALITY?
 
 
 :33]
@@ -605,7 +605,7 @@ Sun Nov 26 07:43:02 2017 Holy crap look at this:
 
     root@beaglebone:/sys/kernel/debug/remoteproc# ls remoteproc1
     name  recovery	regs  single_step  state  version
-    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc1/regs 
+    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc1/regs
     ============== Control Registers ==============
     CTRL      := 0x0000800b
     STS (PC)  := 0x0000003a (0x000000e8)
@@ -627,7 +627,7 @@ Although watch out -- things are not quite all as they seem at first:
 
     root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc0/regs
     cat: remoteproc0/regs: No such file or directory
-    root@beaglebone:/sys/kernel/debug/remoteproc# 
+    root@beaglebone:/sys/kernel/debug/remoteproc#
 
 whaduh?
 
@@ -636,16 +636,16 @@ whaduh?
 
 oh yeah, the little Cortex-M3 in there doing power management..
 
-    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc1/name 
+    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc1/name
     4a338000.pru1
-    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc2/name 
+    root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc2/name
     4a334000.pru0
 
 [36:
 
 Sun Nov 26 07:47:44 2017 And furthermore, look at fricken this:
 
-    root@beaglebone:/sys/kernel/debug/remoteproc# echo 1 > remoteproc1/single_step 
+    root@beaglebone:/sys/kernel/debug/remoteproc# echo 1 > remoteproc1/single_step
     root@beaglebone:/sys/kernel/debug/remoteproc# cat remoteproc1/regs
     ============== Control Registers ==============
     CTRL      := 0x00000109
@@ -690,7 +690,7 @@ Sun Nov 26 07:47:44 2017 And furthermore, look at fricken this:
     GPREG29 := 0x00006563	CT_REG29 := 0x49000000
     GPREG30 := 0x00000ff0	CT_REG30 := 0x40000000
     GPREG31 := 0x00000020	CT_REG31 := 0x80000000
-    root@beaglebone:/sys/kernel/debug/remoteproc# echo 0 > remoteproc1/single_step 
+    root@beaglebone:/sys/kernel/debug/remoteproc# echo 0 > remoteproc1/single_step
 
 So we can actually put the PRUs into single-step mode, read their
 registers (including R30/R31, looks like), and then put it back in
@@ -899,7 +899,7 @@ pile of code...[52:
 Wed Nov 29 07:53:41 2017 OK, so aside from how doh long it took me to
 remember/understand that using clever power-of-2 fifo sizes meant that
 _I_ had to declare my static kfifo with a power-of-2 size, the kfifo
-went in fairly smoothly.  
+went in fairly smoothly.
 
 :52]
 
@@ -954,7 +954,7 @@ In the itc_pkt driver?  How?  Lots of names under /dev/itc?  Like
 # echo 1 > /dev/itc/pin/ET_TXRDY
 # cat /dev/itc/pin/ET_TXRDY
 1
-# 
+#
 
 or
 
@@ -963,7 +963,7 @@ or
 # echo 1 > /dev/itc/pin/ET/TXRDY
 # cat /dev/itc/pin/ET/TXRDY
 1
-# 
+#
 
 [58:
 
@@ -1048,7 +1048,7 @@ Could we quick add a TZ config to our T2-12 repo?)[62:
 Wed Dec  6 09:20:18 2017 OK well attempt #1 didn't work:
 
     root@beaglebone:/home/t2/T2-12# echo 'Etc/Navajo' > /etc/timezone
-    root@beaglebone:/home/t2/T2-12# cat /etc/timezone 
+    root@beaglebone:/home/t2/T2-12# cat /etc/timezone
     Etc/Navajo
     root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
 
@@ -1056,14 +1056,14 @@ Wed Dec  6 09:20:18 2017 OK well attempt #1 didn't work:
     Local time is now:      Wed Dec  6 09:19:51 UTC 2017.
     Universal Time is now:  Wed Dec  6 09:19:51 UTC 2017.
 
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 [63:
 
 Wed Dec  6 09:21:26 2017 Nor attempt #2:
 
     root@beaglebone:/home/t2/T2-12# echo 'Etc/MST7MDT' > /etc/timezone
-    root@beaglebone:/home/t2/T2-12# cat /etc/timezone 
+    root@beaglebone:/home/t2/T2-12# cat /etc/timezone
     Etc/MST7MDT
     root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
 
@@ -1071,7 +1071,7 @@ Wed Dec  6 09:21:26 2017 Nor attempt #2:
     Local time is now:      Wed Dec  6 09:21:05 UTC 2017.
     Universal Time is now:  Wed Dec  6 09:21:05 UTC 2017.
 
-    root@beaglebone:/home/t2/T2-12# cat /etc/timezone 
+    root@beaglebone:/home/t2/T2-12# cat /etc/timezone
     Etc/UTC
     root@beaglebone:/home/t2/T2-12#
 
@@ -1079,20 +1079,20 @@ Wed Dec  6 09:21:26 2017 Nor attempt #2:
 
 Wed Dec  6 09:29:56 2017 Nor attempt #3
 
-    root@beaglebone:/home/t2/T2-12# cp /usr/share/zoneinfo/MST7MDT /etc/localtime 
+    root@beaglebone:/home/t2/T2-12# cp /usr/share/zoneinfo/MST7MDT /etc/localtime
     root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
 
     Current default time zone: 'Etc/UTC'
     Local time is now:      Wed Dec  6 09:29:32 UTC 2017.
     Universal Time is now:  Wed Dec  6 09:29:32 UTC 2017.
 
-    root@beaglebone:/home/t2/T2-12# cat /etc/timezone 
+    root@beaglebone:/home/t2/T2-12# cat /etc/timezone
     Etc/UTC
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 Nor attempt #4
 
-    root@beaglebone:/home/t2/T2-12# cp /usr/share/zoneinfo/MST7MDT /etc/localtime 
+    root@beaglebone:/home/t2/T2-12# cp /usr/share/zoneinfo/MST7MDT /etc/localtime
     root@beaglebone:/home/t2/T2-12# echo 'Etc/MST7MDT' > /etc/timezone
     root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
 
@@ -1100,35 +1100,35 @@ Nor attempt #4
     Local time is now:      Wed Dec  6 09:30:45 UTC 2017.
     Universal Time is now:  Wed Dec  6 09:30:45 UTC 2017.
 
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 [65:
 
 Wed Dec  6 02:33:53 2017 Enfin.   Attempt #5:
 
-    root@beaglebone:/home/t2/T2-12# ln -fs /usr/share/zoneinfo/MST7MDT /etc/localtime 
-    root@beaglebone:/home/t2/T2-12# ls -l /etc/localtime 
+    root@beaglebone:/home/t2/T2-12# ln -fs /usr/share/zoneinfo/MST7MDT /etc/localtime
+    root@beaglebone:/home/t2/T2-12# ls -l /etc/localtime
     lrwxrwxrwx 1 root root 27 Dec  6 02:33 /etc/localtime -> /usr/share/zoneinfo/MST7MDT
-    root@beaglebone:/home/t2/T2-12# rm /etc/timezone 
+    root@beaglebone:/home/t2/T2-12# rm /etc/timezone
     root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
 
     Current default time zone: 'SystemV/MST7MDT'
     Local time is now:      Wed Dec  6 02:33:45 MST 2017.
     Universal Time is now:  Wed Dec  6 09:33:45 UTC 2017.
 
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 Or maybe I like this better:
 
-    root@beaglebone:/home/t2/T2-12# ln -fs /usr/share/zoneinfo/Navajo /etc/localtime 
-    root@beaglebone:/home/t2/T2-12# rm /etc/timezone 
+    root@beaglebone:/home/t2/T2-12# ln -fs /usr/share/zoneinfo/Navajo /etc/localtime
+    root@beaglebone:/home/t2/T2-12# rm /etc/timezone
     root@beaglebone:/home/t2/T2-12# dpkg-reconfigure --frontend noninteractive tzdata
 
     Current default time zone: 'America/Denver'
     Local time is now:      Wed Dec  6 02:35:40 MST 2017.
     Universal Time is now:  Wed Dec  6 09:35:40 UTC 2017.
 
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 since anything SystemV creeps me out.
 [66:
@@ -1153,7 +1153,7 @@ local!  So right!  T2 tiles come from the mountains!  T2!
 
 :61]
 
-:60] 
+:60]
 
 :59]
 
@@ -1188,7 +1188,7 @@ Sat Dec  9 05:59:58 2017 Something like this perhaps:
     static struct class hello_drv =
     { .name = "Dev_Hello", .owner = THIS_MODULE, .class_attrs =
                     (struct class_attribute *) &class_attr, };
-                
+
 plus this
 
 
@@ -1208,7 +1208,7 @@ never write the name of the sysfs entry as a string ourselves?
 [75:
 
 Sat Dec  9 06:26:35 2017 Ah, doh,
-https://www.kernel.org/doc/Documentation/filesystems/sysfs.txt 
+https://www.kernel.org/doc/Documentation/filesystems/sysfs.txt
 
 with a device level example:
 
@@ -1230,7 +1230,7 @@ with a device level example:
        .show = show_foo,
        .store = store_foo,
     };
-                                      
+
 from which we can learn (1) __ATTR does stringify, but (2) This is not
 an attribute _group_ example, which is what we thought we were going
 for.. [76:
@@ -1270,7 +1270,7 @@ from there:
     linux-stable$ git grep add_class_attrs
     drivers/base/class.c:static int add_class_attrs(struct class *cls)
     drivers/base/class.c:       error = add_class_attrs(class_get(cls));
-    linux-stable$ 
+    linux-stable$
 
 so for us it's class_register rather than class_create, I guess.
 
@@ -1287,3 +1287,142 @@ so for us it's class_register rather than class_create, I guess.
 
 :73]
 :72]
+[80:
+
+Mon Dec 11 01:53:27 2017 Well, it's likely not in its final context,
+but we have arrived at the point we need to know:
+
+(1) The mapping of "packet destination numbers" to ITCs, and,[83:
+
+    Mon Dec 11 02:46:00 2017 Which will use the Dirs.h numbering:
+
+                  PRUDIR   TXRDY      TXDAT       RXRDY     RXDAT
+                             0          1           2         3
+    0  NT  (x T2)           ---        ---         ---       ---
+    1  NE  PRU1      2     r30_10     r30_11      r31_4     r31_5
+    2  ET  PRU0      0     r30_3      r30_4       r31_0     r31_1
+    3  SE  PRU0      1     r30_5      r30_6       r31_2     r31_14
+    4  ST  (x T2)           ---        ---         ---       ---
+    5  SW  PRU0      2     r30_7      r30_14      r31_15    r31_16
+    6  WT  PRU1      0     r30_0      r30_1       r31_6     r31_7
+    7  NW  PRU1      1     r30_8      r30_9       r31_2     r31_3
+
+:83]
+(2) The mapping of ITCs to PRUs..[85:
+
+Mon Dec 11 03:41:07 2017 So, which PRUs get which dirs?  I guess the
+pinmap in doc/ should be the source for this?[86:
+
+Mon Dec 11 03:50:19 2017 PRU[01] info from pinmap filled in above!
+
+:86]
+
+:85]
+
+For (1) we are thinking:[82: No we're not, see :81: below.  :82]
+
+[84: NO!  :84]0  ET
+1  SE
+2  SW
+3  WT
+4  NW
+5  NE
+
+So
+
+ - We are counting clockwise from east
+ - So one step clockwise of any direction is (dir+1)%6
+ - And one step counterclockwise of any direciton is (dir+5)%6
+ - The opposite of any direction is (dir+3)%6
+
+[81:
+
+Mon Dec 11 02:39:11 2017 Although we could just go with the eightfold
+direction in MFM's Dirs.h, which puts NORTH at 0, NE at 1, .., NW at
+7.  We are, after all allocating three bits for the direction, so two
+codes are going to be illegal no matter what.  With the :80: scheme
+above, 6 and 7 will be illegal; with the Dirs.h scheme, 0 and 4 will
+be illegal.
+
+It creeps us out having the legal direction values not be contiguous,
+which makes clockwise and counterclockwise a tad more complicated..
+but it's in line with significant uses in the MFM, most especially
+including CacheProcessor.h::m_cacheDir.
+
+So let's go with it.  0 and 4 illegal..
+
+:81]
+
+:80]
+[87:
+
+Mon Dec 11 04:08:19 2017 OK, so given :83: we should be able to sketch
+out what a read on ET_TXRDY would do:
+
+ 1. Standardize the request.  Maybe we should have numbers for the
+    pins as well as the dirs, like TXRDY..RXDAT == 0..3.  Then
+    ET_TXRDY turns into 2,0 and SW_RXDAT turns into 6,3.  Actually
+    let's also have a 0..2 'PRUDIR' for each dir.  [88: Mon Dec 11
+    04:13:02 2017 PRUDIR added to :83:  So the full coordinate for is
+    ET_TXRDY would be (0,0,0) meaning (PRU, PRUDIR, PIN).  And
+    SW_RXRDY would be (0,2,2), and NE_TXDAT would be (1,2,1).[89:
+
+Mon Dec 11 04:21:42 2017 So let's try again.  A read on NW_RXRDY would
+do:
+
+ 1. Find pin coordinate.  NW -> PRU1, DIR1; RXRDY -> PIN2; so full pin
+    coord is (1,1,2).
+
+ 2. Take the (write) lock on specialKfifo1.  Send an 'R' special packet to PRU1 
+
+:89]
+
+    :88]
+
+:87]
+[90:
+
+Mon Dec 11 06:30:25 2017 I think we need some restrictions on
+initiative in using special packets.  In particular, the inclination
+is that Linux->PRU special packets should always be 'commands', and
+PRU->Linux special packets should always be 'responses'.  So in
+particular, the PRUs cannot originate a special packet on their own.
+So a linux process could send a special packet to a pru and block
+waiting for a response on the appropriate special kfifo, and never
+have to contend with an unexpected PRU-origined-packet showing up
+instead.  Linux processes would have to mutex among themselves to get
+the right to wait, and the special packet loop would not be pipelined,
+but at least it makes a blocking read seem imaginable.
+
+Of course here we're talking an evil disgusting remote procedure call,
+with all the fragility that entails.. but at least, in this case, the
+destination isn't _all_that_ remote, and the communications channel
+between us is unlikely to be the weakest link.. although the
+destination failing to respond is certainly a threat, and we'll have
+to have a timeout leading to -EIO or something on the linux side.
+
+OK.  So we're saying max one special request/reply in flight at a time
+per PRU, with a mutex for issuing such a request.  We probably want a
+per-PRU access point for issuing packets.  We probably want to include
+a serial number in the packet and check it on return.
+
+[91:
+
+Mon Dec 11 07:03:57 2017 So.  Do we rise to the level of a little
+struct for this?
+
+struct specialPacketMgr {
+  struct mutex m_cmdLock;
+  unsigned m_serialNumber;
+};
+
+..and where would we stick this?  We certainly have other per-PRU
+stuff to stash linux-side.  [92:
+
+Mon Dec 11 07:27:59 2017 We'd want to stick it in struct itc_pkt_dev,
+I imagine, since that's what we're allocating per minor device number.
+
+:92]
+
+:91]
+:90]
