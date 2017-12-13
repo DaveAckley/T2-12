@@ -85,19 +85,45 @@ static inline void resetCycleCounter() {
   PRUX_CTRL.CTRL_bit.CTR_EN = 1;   /* and re-enable counting */
 }
 
+void fillFail(const char * msg, uint8_t * packet, uint16_t len)
+{
+  uint32_t i;
+  for (i = 1; i < len; ++i) {
+    const char ch = msg[i-1];
+    if (!ch) break;
+    packet[i] = ch;
+  }
+}
+
 unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
 {
   unsigned i;
   if (len == 0) return 0; /* or assert? */
   switch (packet[0]) {
 
+  case 'B': {                        /* PACKET TYPE: write 'B'it of R30 (return old value) */
+    if (len < 3) fillFail("[PKLEN]",packet,len);
+    else {
+      uint32_t bitnum = packet[1];
+      uint32_t mask = 1<<bitnum;
+      uint32_t oldval = (__R30 & mask) ? 1 : 0;
+      uint32_t newval = packet[2];
+      if (bitnum > 31 || newval > 1) fillFail("[INVAL]",packet,len);
+      else {
+        if (newval) __R30 |= mask;
+        else __R30 &= ~mask;
+        packet[2] = oldval;
+      }
+    }
+    break;
+  }
+
   case 'W': {                        /* PACKET TYPE: 'W'rite R30 (and then R31) */
     uint32_t tmp = 0;
     uint32_t tlen = len;
     if (tlen > 5) tlen = 5;
     for (i = 1; i < tlen; ++i) {
-      tmp >>= 8;
-      tmp |= packet[i]<<24;
+      tmp |= packet[i]<<((i-1)<<3);
     }
     __R30 = tmp;
     /* FALL THROUGH INTO CASE 'R' */
@@ -115,11 +141,7 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
 
   default:
     {
-      for (i = 1; i < len; ++i) {
-        const char ch = "![EPKTYP]"[i-1];
-        if (!ch) break;
-        packet[i] = ch;
-      }
+      fillFail("[PKTYP]",packet,len);
       break;
     }
   }
