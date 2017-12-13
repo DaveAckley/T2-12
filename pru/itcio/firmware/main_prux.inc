@@ -203,9 +203,9 @@ void main(void)
       while (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) == PRU_RPMSG_SUCCESS) {
 
         if (firstPacket) {
+          /* linux sends an empty packet to get us going */
           firstSrc = src;
           firstDst = dst;
-          pru_rpmsg_send(&transport, firstDst, firstSrc, PRU_NAME, strlen(PRU_NAME));
           firstPacket = 0;
         }
 
