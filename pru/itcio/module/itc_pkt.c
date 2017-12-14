@@ -27,6 +27,7 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
     unsigned i;
     for (i = 0; i < MINOR_DEVICES; ++i) s->dev_packet_state[i] = 0;
   }
+  s->debugFlags = 0;
 }
 
 __printf(5,6) int send_msg_to_pru(unsigned prunum,
@@ -64,6 +65,11 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
   if (mutex_lock_interruptible(&devstate->specialLock))
     return -ERESTARTSYS;
 
+  DBGPRINT_HEX_DUMP(DBG_PKT_SENT,
+                    KERN_INFO, prunum ? ">pru1: " : ">pru0: ",
+                    DUMP_PREFIX_NONE, 16, 1,
+                    buf, len, true);
+
   ret = rpmsg_send(devstate->rpmsg_dev, buf, len);
 
   /* Wait, if we're supposed to, for a packet in our kfifo */
@@ -73,7 +79,7 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
     if (prunum == 0) kfifop = &S.special0Kfifo;
     else kfifop = &S.special1Kfifo;
 
-    printk(KERN_INFO "waiting for response to '%s' packet\n", buf);
+    //    printk(KERN_INFO "waiting for response to '%s' packet\n", buf);
 
     while (kfifo_is_empty(kfifop)) {
       wait_event_interruptible(devstate->specialWaitQ, !kfifo_is_empty(kfifop));
@@ -102,31 +108,25 @@ static ssize_t itc_pkt_class_store_poke(struct class *c,
   return -EINVAL;
 }
 
-static ssize_t itc_pkt_class_read_packet(struct class *c,
-                                         struct class_attribute *attr,
-                                         char *buf)
+static ssize_t itc_pkt_class_read_debug(struct class *c,
+                                        struct class_attribute *attr,
+                                        char *buf)
 {
-  sprintf(buf,"62&0");
+  sprintf(buf,"%x\n",S.debugFlags);
   return strlen(buf);
 }
 
-static ssize_t itc_pkt_class_store_packet(struct class *c,
-                                          struct class_attribute *attr,
-                                          const char *buf,
-                                          size_t count)
+static ssize_t itc_pkt_class_store_debug(struct class *c,
+                                         struct class_attribute *attr,
+                                         const char *buf,
+                                         size_t count)
 {
-  unsigned poker;
-  char dest;
+  unsigned tmpdbg;
   if (count == 0) return -EINVAL;
 
-  dest = buf[0];
-  if ((dest & 0x80) == 0) return -EINVAL;
-
-  dest &= 0x7;
-  if (dest == 7) return -ENODEV;
-
-  if (sscanf(buf,"%u",&poker) == 1) {
-    printk(KERN_INFO "store pop %u\n",poker);
+  if (sscanf(buf,"%x",&tmpdbg) == 1) {
+    printk(KERN_INFO "set debug %x\n",tmpdbg);
+    S.debugFlags = tmpdbg;
     return count;
   }
   return -EINVAL;
@@ -146,11 +146,12 @@ static ssize_t itc_pin_write_handler(unsigned pru, unsigned prudir, unsigned bit
   if (val > 1)
     return -EINVAL;
 
-
+  /*
   printk(KERN_INFO "HI CLASS STORE %p ATTR %p (pru=%u,prudir=%u,bit=%u)(val=%u)\n",
          c, attr,
          pru, prudir, bit,
          val);
+  */
 
   /* We wait for a return just to get it out of the buffer*/
   ret = send_msg_to_pru(pru, 1, msg, MAX_PACKET_SIZE, "B%c%c-", bit, val);
@@ -176,9 +177,11 @@ static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
   char msg[MAX_PACKET_SIZE];
   int ret;
 
+  /*
   printk(KERN_INFO "HI FROM CLASS %p ATTR %p (pru=%u,prudir=%u,bit=%u)\n",
          c, attr,
          pru, prudir, bit);
+  */
 
   ret = send_msg_to_pru(pru, 1, msg, MAX_PACKET_SIZE, "Rxxxx-");
   if (ret < 0) return ret;
@@ -192,8 +195,8 @@ static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
   {
     uint32_t r31 = extract32(&msg[1]);
     uint32_t val = (r31>>bit)&1;
-    printk(KERN_INFO "R31 0x%08x@%u = %u\n", r31, bit, val);
-    return sprintf(buf,"%u", val);
+    //    printk(KERN_INFO "R31 0x%08x@%u = %u\n", r31, bit, val);
+    return sprintf(buf,"%u\n", val);
   }
 }
 
@@ -251,7 +254,7 @@ FOR_XX_IN_ITC_ALL_DIR
 static struct class_attribute itc_pkt_class_attrs[] = {
   FOR_XX_IN_ITC_ALL_DIR
   __ATTR(poke, 0200, NULL, itc_pkt_class_store_poke),
-  __ATTR(packet, 0644, itc_pkt_class_read_packet, itc_pkt_class_store_packet),
+  __ATTR(debug, 0644, itc_pkt_class_read_debug, itc_pkt_class_store_debug),
   __ATTR_NULL,
 };
 #undef XX
@@ -390,15 +393,17 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
   ITCDeviceState * devstate = dev_get_drvdata(&rpmsg_dev->dev);
   int minor = MINOR(devstate->devt);
 
-  printk(KERN_INFO "Received %d from %d\n",len, minor);
+  //  printk(KERN_INFO "Received %d from %d\n",len, minor);
 
   if (len > 255) {
     printk(KERN_ERR "Truncating overlength (%d) packet\n",len);
     len = 255;
   }
 
-  print_hex_dump(KERN_INFO, "pkt:", DUMP_PREFIX_NONE, 16, 1,
-                 data, len, true);
+  DBGPRINT_HEX_DUMP(DBG_PKT_RCVD,
+                    KERN_INFO, minor ? "<pru1: " : "<pru0: ",
+                    DUMP_PREFIX_NONE, 16, 1,
+                    data, len, true);
 
   if (len > 0) {
     int wake = -1;

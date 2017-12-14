@@ -19,7 +19,7 @@
 
 /* ITC packets are max 255.  Guarantee space for 16 (256*16 == 4,096 == 2**12) */
 #define KFIFO_SIZE (1<<12)
-#define PROC_FIFO "itc-pkt-fifo"
+/*unused? #define PROC_FIFO "itc-pkt-fifo"*/
 
 /* PRU special packets are expected to be smaller and rarer.  Give them 1KB each */
 #define SPECIAL_KFIFO_SIZE (1<<10)
@@ -27,6 +27,15 @@
 /* REC_1 for one byte record lengths is perfect for us.. */
 typedef STRUCT_KFIFO_REC_1(KFIFO_SIZE) ITCPacketFIFO;
 typedef STRUCT_KFIFO_REC_1(SPECIAL_KFIFO_SIZE) SpecialPacketFIFO;
+
+typedef enum debug_flags {
+  DBG_PKT_RCVD = 0x00000001,
+  DBG_PKT_SENT = 0x00000002,
+} DebugFlags;
+
+#define DBGIF(mask) if ((mask)&S.debugFlags)
+#define DBGPRINTK(mask, printkargs...) do { DBGIF(mask) printk(printkargs); } while (0);
+#define DBGPRINT_HEX_DUMP(mask, printhexdumpargs...) do { DBGIF(mask) print_hex_dump(printhexdumpargs); } while (0);
 
 /* per maj,min device -- so in our case, per PRU */
 typedef struct itc_dev_state {
@@ -39,7 +48,9 @@ typedef struct itc_dev_state {
   dev_t devt;
 } ITCDeviceState;
 
+/* 'global' state, so far as we can structify it */
 typedef struct itc_pkt_driver_state {
+  DebugFlags        debugFlags;
   dev_t             major_devt;     /* our dynamically-allocated major device number */
   ITCPacketFIFO     itcPacketKfifo; /* buffer for all inbound standard packets */
   SpecialPacketFIFO special0Kfifo;  /* buffer for inbound special packets from PRU0 */
