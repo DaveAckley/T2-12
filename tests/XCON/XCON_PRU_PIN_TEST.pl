@@ -45,13 +45,14 @@ sub clearOutputs {
 }
 
 sub reportInputs {
-    foreach my $d (@ITCDirsByIndex) {
-        foreach my $p (@PRUIn) {
+    foreach my $p (@PRUIn) {
+        foreach my $d (@ITCDirsByIndex) {
             my $pin = "${d}_${p}";
             my $val = getPin($pin);
             chomp($val);
-            print "$pin = $val\n";
+            print "$pin = $val  ";
         }
+        print "\n";
     }
 }
 
