@@ -553,7 +553,7 @@ int itcThreadRunner(void *arg) {
 
     make_reports();
     set_current_state(TASK_INTERRUPTIBLE);
-    msleep(1);
+    msleep(300);
   }
   printk(KERN_INFO "itcThreadRunner: Stopping by request\n");
   return 0;
@@ -562,7 +562,7 @@ int itcThreadRunner(void *arg) {
 void itcImplInit(void)
 {
   itcInitStructures();
-  printk(KERN_INFO "itcImplInit: zoo=%lu\n",jiffies);
+  printk(KERN_INFO "itcImplInit@jiffies=%lu\n",jiffies);
 }
 
 
