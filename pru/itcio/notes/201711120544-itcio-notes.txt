@@ -1,4 +1,4 @@
-{111}  -*- text -*-
+{118}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -538,7 +538,7 @@ following still-outstanding 'fourth round' questions:
 
 [56: DONE  :56](4.1) Can we really read and write the ITC pins via the PRUs?
 
-(4.2) Can we really control ALL the relevant pins, including the ones
+[117: DONE  :117](4.2) Can we really control ALL the relevant pins, including the ones
    with contested lines and the ones we stole from other low-level
    functions like the cape I2C?
 
@@ -1665,5 +1665,103 @@ that isn't true of, say SW_RXRDY?  SYSBOOT crap or something?
 Well, which pins are those?
 
 Checking later, though.  Time for a nap before the day gets going.
+[111:
 
+Thu Dec 14 12:25:50 2017 OK, back from napping and morning stuff.  So,
+what _are_ those pins?
+
+   SW_RXDAT  P9_24    
+   SW_IGRLK  P8_31    
+   SW_IRQLK  P8_26
+
+wow that's a weird collection of pins.[112:
+
+Thu Dec 14 12:32:20 2017 Ooh look at this:
+
+            P9_24_pruin_pin: pinmux_P9_24_pruin_pin {
+                            pinctrl-single,pins = <0x184  0x36>; };
+                            /* Mode 6, Pull-Up, RxActive */
+                            
+from
+https://github.com/cdsteinkuehler/beaglebone-universal-io/blob/master/cape-universal-00A0.dts#L608-L609
+
+vs, say:
+
+            P9_25_pruin_pin: pinmux_P9_25_pruin_pin {
+                             pinctrl-single,pins = <0x1ac 0x26>; };
+                             /* Mode 6, Pull-Down, RxActive */
+
+Do we have that P9_24 decl?  Could we change it to <.. 0x26>?[113:
+
+Thu Dec 14 12:49:20 2017 Hmm, we did!  Changed:
+
+    --- a/files/firmware/lib/cape-universal2-00A0.dts
+    +++ b/files/firmware/lib/cape-universal2-00A0.dts
+    @@ -843,7 +843,7 @@
+                 P9_24_pru_uart_pin: pinmux_P9_24_pru_uart_pin {
+                     pinctrl-single,pins = <0x184  0x35>; };     /* Mode 5, Pull-Up, RxActive */
+                 P9_24_pruin_pin: pinmux_P9_24_pruin_pin {
+    -                pinctrl-single,pins = <0x184  0x36>; };     /* Mode 6, Pull-Up, RxActive */
+    +                pinctrl-single,pins = <0x184  0x26>; };     /* T2: Mode 6, Pull-Down, RxActive */
+
+                 /* P9_25 (ZCZ ball A14) Audio   */
+                 P9_25_default_pin: pinmux_P9_25_default_pin {
+
+Let's trying rebooting this and see what we get.
+[114:
+
+Thu Dec 14 12:52:46 2017 Doh, perhaps this time we should try a 'make
+install' before rebooting?[115:
+
+Thu Dec 14 12:56:27 2017 OK!  Now we get like:
+
+    ////TESTING NW_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 1  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+
+and so on, instead of 
+
+    ////TESTING NW_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 1  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+
+like before.  That doesn't fix the
+
+   SW_IGRLK  P8_31    
+   SW_IRQLK  P8_26
+
+issue, but it's a nice little clean-up.  Yay.
+
+We do need to recable and make sure the SW<->NE xcon still does work
+when it has the chance..[116:
+
+Thu Dec 14 13:03:08 2017 It does:
+
+ ..
+    ////TESTING SW_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 1  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING SW_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 1  
+ ..
+    ////TESTING NE_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 1  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING NE_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+
+So there.  Claiming 4.2 done!  Moving on!
+
+:116]
+
+:115]
+
+:114]
+:113]
+
+:112]
+
+:111]
 :110]
