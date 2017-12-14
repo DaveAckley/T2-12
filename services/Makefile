@@ -1,4 +1,4 @@
-SERVICES_STOP+=cloud9.service cloud9.socket apache2.service
+SERVICES_STOP+=cloud9.service cloud9.socket apache2.service bonescript-autorun.service
 
 FLAG_FILE:=.flagfile_INSTALL_COMPLETE
 
