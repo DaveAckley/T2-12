@@ -1,4 +1,4 @@
-{103}  -*- text -*-
+{109}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -1493,14 +1493,41 @@ internally and blocking for an answer.  Can we break that down a bit?
    methods, using our alternate navigation to the rpmsg_channels
    produced above.
 
- - Create a wait queue for each kfifo.  (We don't have that, I think?)
+[103: DONE Wed Dec 13 17:59:22 2017   :103] - Create a wait queue for each kfifo.  (We don't have that, I think?)
 
- - Refactor so that the rpmsg callbacks dish off somewhere to store
+[104: DONE (although _cb does it directly)  :104] - Refactor so that the rpmsg callbacks dish off somewhere to store
    the packet and wake the appropriate waiters.
 
- - Have the newly-created sysfs pin read/write handlers generate 'R'
+[105: DONE  :105] - Have the newly-created sysfs pin read/write handlers generate 'R'
    and 'W' packets to the appropriate PRU and then wait for an answer.
 
 
 :98]
 :97]
+[106:
+
+Wed Dec 13 18:01:05 2017 OK so we have blocking read+write of PRU
+pins.  We need a script to test all the pru pins, assuming full cross
+connection, and that will let us finally complete 4.2 from all the
+back in :33:.[107:
+
+Wed Dec 13 18:04:08 2017 In tests/ITC/, I guess? [108:
+
+Wed Dec 13 18:10:25 2017 Although that code seems decidedly rottedy at
+this point, due to device tree changes or something.  checkExports.pl
+is dying because T2tils.pm seems to be expecting pingroups with names
+like 'pinmux_ET_ITC_all_gpio_pins' but that name is currently nowhere
+to be found in /sys/kernel/debug/pinctrl/44e10800.pinmux/pingroups.
+
+So maybe not there.
+
+Actually, let's make a place for tests expect to be run when the ITCs
+are all cross-connected.  If we made a functional tester for this
+thing to use during PCBA, that would be the condition we would go
+for.. 
+
+:108]
+
+:107]
+
+:106]
