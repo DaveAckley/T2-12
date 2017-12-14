@@ -1,4 +1,4 @@
-{109}  -*- text -*-
+{111}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -1525,9 +1525,145 @@ Actually, let's make a place for tests expect to be run when the ITCs
 are all cross-connected.  If we made a functional tester for this
 thing to use during PCBA, that would be the condition we would go
 for.. 
+[109:
 
+Thu Dec 14 04:46:21 2017 OK, so now we're getting (slow, considering)
+output from cross-connection tests at tests/XCON/XCON_PRU_PIN_TEST.pl:
+
+    root@beaglebone:/home/t2/T2-12# time tests/XCON/XCON_PRU_PIN_TEST.pl 
+    ////TESTING ET_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 1  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING ET_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 1  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING SE_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING SE_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING SW_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 1  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING SW_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 1  
+    ////TESTING WT_TXRDY
+    ET_RXRDY = 1  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING WT_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 1  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING NW_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING NW_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING NE_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 1  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING NE_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+
+    real	0m5.430s
+    user	0m0.648s
+    sys	0m1.452s
+    root@beaglebone:/home/t2/T2-12# 
+
+from which we can see that everything 'works' -- except SE and NW, which
+are not cross-connected at the moment.  Because I'm afraid to try
+cross-connecting through the power connector, currently plugged into
+NW, since that requires a M<->F ribbon cable and I've blown an awful
+lot of fuses using them.
+
+But hey, let's shut down quickly, recable, and just confirm that,
+indeed, all PRUs are responding as expected.  That'll get us a check on
+4-point-something, right?
+
+:109]
 :108]
 
 :107]
 
-:106]
+:106][110:
+
+Thu Dec 14 04:58:43 2017 OK, well, now E<->W and NW<->SE are xcon but
+NE and SW are unconnected, and that's giving us:
+
+    root@beaglebone:/home/t2/T2-12# ./tests/XCON/XCON_PRU_PIN_TEST.pl 
+    ////TESTING ET_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 1  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING ET_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 1  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING SE_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 1  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING SE_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 1  NE_RXDAT = 0  
+    ////TESTING SW_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING SW_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING WT_TXRDY
+    ET_RXRDY = 1  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING WT_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 1  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING NW_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 1  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING NW_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 1  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING NE_TXRDY
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ////TESTING NE_TXDAT
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    root@beaglebone:/home/t2/T2-12# 
+
+which isn't so pretty because SW_RXDAT seems to be pulled high for
+some reason.  (I'm actually surprised that seems to be the only one,
+in fact.)
+
+We note that up at itc lock level, SW is also going through its
+endless-but-slow attempts to connect to somebody who's not there:
+
+    [  229.943718] ITC SW: sFAILED->sRESET o11 i11
+    [  229.948021] ITC SW(sRESET): o11 i11, f11, r12, at0, ac0, gr0, co0, it0, em0
+    [  230.051708] ITC SW: sRESET->sSYNC01 o11 i11
+    [  230.056009] ITC SW(sSYNC01): o01 i11, f11, r12, at0, ac0, gr0, co0, it0, em0
+    [  230.159715] ITC SW: sSYNC01->sWAIT o01 i11
+    [  230.163935] ITC SW(sWAIT): o11 i11, f11, r12, at0, ac0, gr0, co0, it0, em0
+    [  336.844328] ITC SW: sWAIT->sFAILED o11 i11
+    [  336.848548] ITC SW(sFAILED): o11 i11, f12, r12, at0, ac0, gr0, co0, it0, em0
+    [  336.952317] ITC SW: sFAILED->sRESET o11 i11
+    [  336.956618] ITC SW(sRESET): o11 i11, f12, r13, at0, ac0, gr0, co0, it0, em0
+    [  337.060328] ITC SW: sRESET->sSYNC01 o11 i11
+    [  337.064637] ITC SW(sSYNC01): o01 i11, f12, r13, at0, ac0, gr0, co0, it0, em0
+    [  337.168327] ITC SW: sSYNC01->sWAIT o01 i11
+    [  337.172548] ITC SW(sWAIT): o11 i11, f12, r13, at0, ac0, gr0, co0, it0, em0
+
+because it's seeing two 1s (i11) on its inputs.
+
+So what's the deal with these three pins:
+
+   SW_RXDAT  SW_IGRLK  SW_IRQLK
+
+that isn't true of, say SW_RXRDY?  SYSBOOT crap or something?
+
+Well, which pins are those?
+
+Checking later, though.  Time for a nap before the day gets going.
+
+:110]
