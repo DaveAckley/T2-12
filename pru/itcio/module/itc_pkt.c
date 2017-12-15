@@ -28,7 +28,7 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
     unsigned i;
     for (i = 0; i < MINOR_DEVICES; ++i) s->dev_packet_state[i] = 0;
   }
-  s->debugFlags = 0;
+  s->debugFlags = 0xf; //XXX default some debugging on
 }
 
 __printf(5,6) int send_msg_to_pru(unsigned prunum,
