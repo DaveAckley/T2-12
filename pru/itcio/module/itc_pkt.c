@@ -21,7 +21,8 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
   INIT_KFIFO(s->itcPacketKfifo);
   INIT_KFIFO(s->special0Kfifo);
   INIT_KFIFO(s->special1Kfifo);
-  mutex_init(&s->read_lock);
+  init_waitqueue_head(&s->itcPacketWaitQ); 
+  mutex_init(&s->standardLock);
   s->open_pru_minors = 0;
   {
     unsigned i;
@@ -36,7 +37,7 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
                                   unsigned bufsiz,
                                   const char * fmt, ...)
 {
-  int ret;
+  int ret = 0;
   unsigned len;
   va_list args;
   ITCDeviceState *devstate;
@@ -79,14 +80,16 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
     if (prunum == 0) kfifop = &S.special0Kfifo;
     else kfifop = &S.special1Kfifo;
 
-    //    printk(KERN_INFO "waiting for response to '%s' packet\n", buf);
-
     while (kfifo_is_empty(kfifop)) {
-      wait_event_interruptible(devstate->specialWaitQ, !kfifo_is_empty(kfifop));
+      if (wait_event_interruptible(devstate->specialWaitQ, !kfifo_is_empty(kfifop))) {
+        ret = -ERESTARTSYS;
+        break;
+      }
     }
-    if (!kfifo_out(kfifop, buf, bufsiz))
-      printk(KERN_WARNING "kfifo was empty\n");
-    ret = 0;
+    
+    if (ret == 0)
+      if (!kfifo_out(kfifop, buf, bufsiz))
+        printk(KERN_WARNING "kfifo was empty\n");
   }
 
   mutex_unlock(&devstate->specialLock);
@@ -268,10 +271,13 @@ static struct class_attribute itc_pkt_class_attrs[] = {
  */
 static int itc_pkt_open(struct inode *inode, struct file *filp)
 {
-  int ret = -EACCES;
+  int ret = -EBUSY;
   ITCDeviceState * devstate;
-
   devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
+
+  printk(KERN_INFO "itc_pkt_open %d:%d\n",
+         MAJOR(devstate->devt),
+         MINOR(devstate->devt));
 
   if (!devstate->dev_lock) {
     devstate->dev_lock = true;
@@ -295,11 +301,28 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   ITCDeviceState *devstate;
 
   devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
+  printk(KERN_INFO "itc_pkt_release %d:%d\n",
+         MAJOR(devstate->devt),
+         MINOR(devstate->devt));
+
   devstate->dev_lock = false;
 
   return 0;
 }
 
+static int routeStandardPacket(const unsigned char * buf, size_t len)
+{
+  if (len == 0) return -EINVAL;
+  if ((buf[0] & 0x80) == 0) return -ENXIO; /* only standard packets can be routed */
+  switch (buf[0] & 0x7) {
+  default: return -ENODEV;
+#define XX(dir) case ITC_DIR_TO_DIR_NUM(dir): return ITC_DIR_TO_PRU(dir);
+FOR_XX_IN_ITC_ALL_DIR    
+#undef XX
+  }
+}
+
+  
 /** @brief This callback used when data is being written to the device
  *  from user space.  This is primarily to be for MFM cache update
  *  packet transfer, but at present at this level, we're just talking
@@ -333,6 +356,19 @@ static ssize_t itc_pkt_write(struct file *filp,
     return -EFAULT;
   }
 
+  if (MINOR(devstate->devt) == 2) {
+    int newMinor = routeStandardPacket(driver_buf, count);
+    printk(KERN_INFO "CONSIDERINGO ROUTINGO\n");
+    if (newMinor < 0)
+      return newMinor;
+    if (newMinor < 2) {
+      DBGPRINTK(DBG_PKT_ROUTE,
+                KERN_INFO "Routing '%x'+%d packet to PRU%d\n",driver_buf[0],count,newMinor);
+      devstate = S.dev_packet_state[newMinor];
+      BUG_ON(!devstate);
+    }
+  }
+
   ret = rpmsg_send(devstate->rpmsg_dev, (void *)driver_buf, count);
   if (ret) {
     dev_err(devstate->dev,
@@ -353,7 +389,7 @@ static ssize_t itc_pkt_write(struct file *filp,
 static ssize_t itc_pkt_read(struct file *file, char __user *buf,
                             size_t count, loff_t *ppos)
 {
-  int ret;
+  int ret = 0;
   unsigned int copied;
 
   ITCDeviceState *devstate = file->private_data;
@@ -361,17 +397,57 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
   int minor = MINOR(devstate->devt);
 
   printk(KERN_INFO "read file * = %p, %d:%d\n", file, major, minor);
-  if (mutex_lock_interruptible(&S.read_lock))
-    return -ERESTARTSYS;
 
   switch (minor) {
-  case 0: ret = kfifo_to_user(&S.special0Kfifo, buf, count, &copied); break;
-  case 1: ret = kfifo_to_user(&S.special1Kfifo, buf, count, &copied); break;
-  case 2: ret = kfifo_to_user(&S.itcPacketKfifo, buf, count, &copied); break;
-  default: BUG_ON(1);
+  case 0:
+  case 1: {
+    SpecialPacketFIFO * devfifo = (minor == 0) ? &S.special0Kfifo : &S.special1Kfifo;
+    if (mutex_lock_interruptible(&devstate->specialLock))
+      return -ERESTARTSYS;
+
+    while (kfifo_is_empty(devfifo)) {
+      if (file->f_flags & O_NONBLOCK) {
+        ret = -EAGAIN;
+        break;
+      }
+      if (wait_event_interruptible(devstate->specialWaitQ, !kfifo_is_empty(devfifo))) {
+        ret = -ERESTARTSYS;
+        break;
+      }
+    }
+    if (ret == 0) 
+      ret = kfifo_to_user(devfifo, buf, count, &copied);
+    mutex_unlock(&devstate->specialLock);
+    break;
   }
 
-  mutex_unlock(&S.read_lock);
+  case 2: {
+    ITCPacketFIFO * devfifo = &S.itcPacketKfifo;
+
+    if (mutex_lock_interruptible(&S.standardLock))
+      return -ERESTARTSYS;
+
+    while (kfifo_is_empty(devfifo)) {
+      if (file->f_flags & O_NONBLOCK) {
+        ret = -EAGAIN;
+        break;
+      }
+      if (wait_event_interruptible(S.itcPacketWaitQ, !kfifo_is_empty(devfifo))) {
+        ret = -ERESTARTSYS;
+        break;
+      }
+        
+    }
+    if (ret == 0) 
+      ret = kfifo_to_user(devfifo, buf, count, &copied);
+
+    mutex_unlock(&S.standardLock);
+
+    break;
+  }
+    
+  default: BUG_ON(1);
+  }
 
   return ret ? ret : copied;
 }
@@ -408,8 +484,10 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
   if (len > 0) {
     int wake = -1;
     // ITC data if first byte MSB set
-    if ((*(char*)data)&0x80) kfifo_in(&S.itcPacketKfifo, data, len);
-    else if (minor == 0) {
+    if ((*(char*)data)&0x80) {
+      kfifo_in(&S.itcPacketKfifo, data, len);
+      wake_up_interruptible(&S.itcPacketWaitQ);
+    } else if (minor == 0) {
       kfifo_in(&S.special0Kfifo, data, len);
       wake = 0;
     } else if (minor == 1) {

@@ -2,6 +2,17 @@
 #define PIN_INFO_MAPS_H
 
 /*PIN INFO MACRO MAPS*/
+/* direction to direction# */
+/*      ITC_DIR_TO_DIR_NUM__NT 0 North non-existent in T2-12*/
+#define ITC_DIR_TO_DIR_NUM__NE 1
+#define ITC_DIR_TO_DIR_NUM__ET 2
+#define ITC_DIR_TO_DIR_NUM__SE 3
+/*      ITC_DIR_TO_DIR_NUM__ST 4 South non-existent in T2-12*/
+#define ITC_DIR_TO_DIR_NUM__SW 5
+#define ITC_DIR_TO_DIR_NUM__WT 6
+#define ITC_DIR_TO_DIR_NUM__NW 7
+#define ITC_DIR_TO_DIR_NUM(dir) ITC_DIR_TO_DIR_NUM__##dir
+
 /* direction to pru# */
 #define ITC_DIR_TO_PRU__NE 1
 #define ITC_DIR_TO_PRU__ET 0

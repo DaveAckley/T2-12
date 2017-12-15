@@ -29,8 +29,9 @@ typedef STRUCT_KFIFO_REC_1(KFIFO_SIZE) ITCPacketFIFO;
 typedef STRUCT_KFIFO_REC_1(SPECIAL_KFIFO_SIZE) SpecialPacketFIFO;
 
 typedef enum debug_flags {
-  DBG_PKT_RCVD = 0x00000001,
-  DBG_PKT_SENT = 0x00000002,
+  DBG_PKT_RCVD      = 0x00000001,
+  DBG_PKT_SENT      = 0x00000002,
+  DBG_PKT_ROUTE     = 0x00000004,
 } DebugFlags;
 
 #define DBGIF(mask) if ((mask)&S.debugFlags)
@@ -53,9 +54,10 @@ typedef struct itc_pkt_driver_state {
   DebugFlags        debugFlags;
   dev_t             major_devt;     /* our dynamically-allocated major device number */
   ITCPacketFIFO     itcPacketKfifo; /* buffer for all inbound standard packets */
+  wait_queue_head_t itcPacketWaitQ; /* for people blocking on standard packets */
   SpecialPacketFIFO special0Kfifo;  /* buffer for inbound special packets from PRU0 */
   SpecialPacketFIFO special1Kfifo;  /* buffer for inbound special packets from PRU1 */
-  struct mutex      read_lock;      /* lock for read access (no lock for write access - rpmsg cb will be only writer) */
+  struct mutex      standardLock;   /* lock for reading standard packets */
   int               open_pru_minors;/* how many of our minors have (ever?) been opened */
   ITCDeviceState    * (dev_packet_state[MINOR_DEVICES]); /* ptrs to all our device states */
 } ITCPacketDriverState;
