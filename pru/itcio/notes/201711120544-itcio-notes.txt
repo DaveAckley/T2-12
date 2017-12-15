@@ -1,4 +1,4 @@
-{153}  -*- text -*-
+{161}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -1793,10 +1793,10 @@ So, let's break down 5.1 a bit here and make life easier for ourselfs.
         they change, increments the appropriate counter, and sends a
         standard packet containing the two counter values.
 
-(5.1.4) Make a linux-side script that catches those packets and
+[155: Fri Dec 15 08:40:33 2017 DONE  :155](5.1.4) Make a linux-side script that catches those packets and
         reports them.
 
-(5.1.5) Come back and make some more steps here.
+[156: Fri Dec 15 08:40:39 2017 DONE, see :154:  :156](5.1.5) Come back and make some more steps here.
 
 
 :120]
@@ -2200,3 +2200,76 @@ Claiming 5.1.3.[152: and committing. :152]
 :149]
 
 :148]
+[153:
+
+Fri Dec 15 04:12:53 2017 OK, well, on to 5.1.4.  The 'only'
+challenging part of that is we'll be dealing with 'standard' packets
+for the first time.  We'd like to have a blocking option for
+/dev/itc/packets -- right now it just returns 0 bytes if there's no
+packets available.  Which is also a good option, but let's get it to
+block unless O_NONBLOCK or whatever is set on the fd..
+
+:153][154:
+
+Fri Dec 15 07:25:59 2017 OK, with our new tests/PKT/PacketReporter.pl,
+I think we can claim 5.1.4.  We're running out of to-do fast, but I
+think the next stop, call it
+
+[159: DONE  :159](5.1.6) Demo writing and reading standard packets on the same file
+handle,
+
+is pretty clear.  And then my gob it'll be time for the text of 5.1..
+
+:154]
+[157:
+
+Fri Dec 15 10:39:07 2017 OK, after way too many stupid page faults due
+to saying 'buf' instead of 'driver_buf' all over itc_pkt_write, we
+appear to be routing outbound standard packets from /dev/itc/packets
+appropriately:
+
+    root@beaglebone:/home/t2/T2-12# echo f >/sys/class/itc_pkt/debug 
+    root@beaglebone:/home/t2/T2-12# echo 'ÁZORG' > /dev/itc/packets 
+    root@beaglebone:/home/t2/T2-12# echo 'ÂZORGEAST' > /dev/itc/packets 
+    root@beaglebone:/home/t2/T2-12# 
+
+getting
+
+    [14999.182574] set debug f
+    [15001.866458] itc_pkt_open 246:2
+    [15001.875824] CONSIDERINGO ROUTINGO
+    [15001.879325] Routing 'c1'+6 packet to PRU1
+    [15001.900433] itc_pkt itc!pru1: Sending length 6 type 0xc1 packet
+    [15001.906547] <pru1: c4 5a 4f 52 47 0a                                .ZORG.
+    [15001.927678] itc_pkt_release 246:2
+    [15103.814205] itc_pkt_open 246:2
+    [15103.823676] CONSIDERINGO ROUTINGO
+    [15103.827151] Routing 'c2'+10 packet to PRU0
+    [15103.848183] itc_pkt itc!pru0: Sending length 10 type 0xc2 packet
+    [15103.854442] <pru0: c5 5a 4f 52 47 45 41 53 54 0a                    .ZORGEAST.
+    [15103.881667] itc_pkt_release 246:2
+
+Not sure how to demo going both ways in a perl script.[158:
+
+Fri Dec 15 10:47:51 2017 Well, that wasn't so hard:
+
+    root@beaglebone:/home/t2/T2-12# /home/t2/T2-12/tests/PKT/PacketReporter.pl -nb 'ÁZORGOPERL' 'ÂZORGEAST'
+    I GOT(10)='ÄZORGOPERL'
+    I GOT(9)='ÅZORGEAST'
+    root@beaglebone:/home/t2/T2-12# 
+
+with the optional first arg -nb meaning non-blocking, and any
+remaining args being packets to send, after which the script reads
+either forever (no -nb) or until there's nothing left to read (with
+-nb).
+
+Claiming 5.1.6.[160:
+
+Fri Dec 15 10:54:52 2017 Committing.  Then consider how we might spike
+the state machine development some.
+
+:160]
+
+:158]
+
+:157]
