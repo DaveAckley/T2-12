@@ -1,4 +1,4 @@
-{161}  -*- text -*-
+{169}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -1373,7 +1373,7 @@ do:
  1. Find pin coordinate.  NW -> PRU1, DIR1; RXRDY -> PIN2; so full pin
     coord is (1,1,2).
 
- 2. Take the (write) lock on specialKfifo1.  Send an 'R' special packet to PRU1 
+ 2. Take the (write) lock on specialKfifo1.  Send an 'R' special packet to PRU1
 
 :89]
 
@@ -1470,7 +1470,7 @@ all the pins are showing up (ugly but present):
     ET_RXDAT  ET_TXRDY     itc!pru1  NE_TXDAT  NW_RXRDY  packet    SE_RXRDY  SW_RXDAT  SW_TXRDY  WT_TXDAT
     ET_RXRDY  itc!packets  NE_RXDAT  NE_TXRDY  NW_TXDAT  poke      SE_TXDAT  SW_RXRDY  WT_RXDAT  WT_TXRDY
     ET_TXDAT  itc!pru0     NE_RXRDY  NW_RXDAT  NW_TXRDY  SE_RXDAT  SE_TXRDY  SW_TXDAT  WT_RXRDY
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 I really wish I knew how to push them down to at least
 /sys/class/itc_pkt/pins, But I Don't.
@@ -1524,54 +1524,54 @@ So maybe not there.
 Actually, let's make a place for tests expect to be run when the ITCs
 are all cross-connected.  If we made a functional tester for this
 thing to use during PCBA, that would be the condition we would go
-for.. 
+for..
 [109:
 
 Thu Dec 14 04:46:21 2017 OK, so now we're getting (slow, considering)
 output from cross-connection tests at tests/XCON/XCON_PRU_PIN_TEST.pl:
 
-    root@beaglebone:/home/t2/T2-12# time tests/XCON/XCON_PRU_PIN_TEST.pl 
+    root@beaglebone:/home/t2/T2-12# time tests/XCON/XCON_PRU_PIN_TEST.pl
     ////TESTING ET_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 1  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 1  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING ET_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 1  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 1  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING SE_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING SE_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING SW_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 1  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 1
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING SW_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 1  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 1
     ////TESTING WT_TXRDY
-    ET_RXRDY = 1  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 1  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING WT_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 1  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 1  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING NW_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING NW_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING NE_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 1  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 1  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING NE_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
 
     real	0m5.430s
     user	0m0.648s
     sys	0m1.452s
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 from which we can see that everything 'works' -- except SE and NW, which
 are not cross-connected at the moment.  Because I'm afraid to try
@@ -1593,44 +1593,44 @@ indeed, all PRUs are responding as expected.  That'll get us a check on
 Thu Dec 14 04:58:43 2017 OK, well, now E<->W and NW<->SE are xcon but
 NE and SW are unconnected, and that's giving us:
 
-    root@beaglebone:/home/t2/T2-12# ./tests/XCON/XCON_PRU_PIN_TEST.pl 
+    root@beaglebone:/home/t2/T2-12# ./tests/XCON/XCON_PRU_PIN_TEST.pl
     ////TESTING ET_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 1  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 1  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING ET_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 1  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 1  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING SE_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 1  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 1  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING SE_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 1  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 1  NE_RXDAT = 0
     ////TESTING SW_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING SW_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING WT_TXRDY
-    ET_RXRDY = 1  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 1  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING WT_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 1  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 1  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING NW_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 1  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 1  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING NW_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 1  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 1  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING NE_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING NE_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
-    root@beaglebone:/home/t2/T2-12# 
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
+    root@beaglebone:/home/t2/T2-12#
 
 which isn't so pretty because SW_RXDAT seems to be pulled high for
 some reason.  (I'm actually surprised that seems to be the only one,
@@ -1670,8 +1670,8 @@ Checking later, though.  Time for a nap before the day gets going.
 Thu Dec 14 12:25:50 2017 OK, back from napping and morning stuff.  So,
 what _are_ those pins?
 
-   SW_RXDAT  P9_24    
-   SW_IGRLK  P8_31    
+   SW_RXDAT  P9_24
+   SW_IGRLK  P8_31
    SW_IRQLK  P8_26
 
 wow that's a weird collection of pins.[112:
@@ -1681,7 +1681,7 @@ Thu Dec 14 12:32:20 2017 Ooh look at this:
             P9_24_pruin_pin: pinmux_P9_24_pruin_pin {
                             pinctrl-single,pins = <0x184  0x36>; };
                             /* Mode 6, Pull-Up, RxActive */
-                            
+
 from
 https://github.com/cdsteinkuehler/beaglebone-universal-io/blob/master/cape-universal-00A0.dts#L608-L609
 
@@ -1716,18 +1716,18 @@ install' before rebooting?[115:
 Thu Dec 14 12:56:27 2017 OK!  Now we get like:
 
     ////TESTING NW_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 1  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 1  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
 
-and so on, instead of 
+and so on, instead of
 
     ////TESTING NW_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 1  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 1  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
 
 like before.  That doesn't fix the
 
-   SW_IGRLK  P8_31    
+   SW_IGRLK  P8_31
    SW_IRQLK  P8_26
 
 issue, but it's a nice little clean-up.  Yay.
@@ -1739,18 +1739,18 @@ Thu Dec 14 13:03:08 2017 It does:
 
  ..
     ////TESTING SW_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 1  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 1
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING SW_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 1  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 1
  ..
     ////TESTING NE_TXRDY
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 1  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 1  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 0  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
     ////TESTING NE_TXDAT
-    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0  
-    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0  
+    ET_RXRDY = 0  SE_RXRDY = 0  SW_RXRDY = 0  WT_RXRDY = 0  NW_RXRDY = 0  NE_RXRDY = 0
+    ET_RXDAT = 0  SE_RXDAT = 0  SW_RXDAT = 1  WT_RXDAT = 0  NW_RXDAT = 0  NE_RXDAT = 0
 
 So there.  Claiming 4.2 done!  Moving on!
 
@@ -1809,8 +1809,8 @@ Thu Dec 14 13:42:46 2017 OK, into 5.1.1.  Looks like we have
 
 Thu Dec 14 14:06:34 2017 OK!  Looks like we ran it:
 
-    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo f > /sys/class/itc_pkt/debug 
-    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo '*ab-----' > /dev/itc/pru0 
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo f > /sys/class/itc_pkt/debug
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo '*ab-----' > /dev/itc/pru0
 
 which (after turning up the debugging) asks addfuncasm to add (the
 ASCII values of) 'a' and 'b' and report back the result using the
@@ -1823,7 +1823,7 @@ SEND_VAL macro that calls C's sendVal.  And we saw:
     [ 3787.125787] <pru0: 74 68 65 20 6d 6f 6f 6e 20 61 6c 69 63 65 00     the moon alice.
     [ 3787.133523] <pru0: 2a 61 62 c3 2d 2d 2d 2d 0a                       *ab.----.
 
-and in fact the sum of 'a' and 'b' is actually 0xc3.  SO THERE. 
+and in fact the sum of 'a' and 'b' is actually 0xc3.  SO THERE.
 
 [125:
 
@@ -1835,8 +1835,8 @@ clogging up read side of /dev/itc/pru0 and/or /dev/itc/packets:
     *abÃ----
     *abÃ----
     *----                           (<< that's really ^A^B^C I think..)
-    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /dev/itc/packets 
-    Á000000c3 first char to send to the moon alice Á000000c3 first char to send to the moon alice Á00000003 first char to send to the moon alice root@beaglebone:/home/t2/T2-12/pru/itcio/module# 
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /dev/itc/packets
+    Á000000c3 first char to send to the moon alice Á000000c3 first char to send to the moon alice Á00000003 first char to send to the moon alice root@beaglebone:/home/t2/T2-12/pru/itcio/module#
 
 Now, we're expecting to have some userspace listener thread sitting on
 /dev/itc/packets, ready to deal with whatever shows up whenever, so
@@ -1962,7 +1962,7 @@ Thu Dec 14 15:17:42 2017 OK well we have gotten to this:
       28           0000000000000E  bINPDATA:       .ubyte  ; current bits being shifted in
       29           0000000000000F  bINPBCNT:       .ubyte  ; count of bits remaining to shift in
       30
-      31           00000000000010  bPREVOUT:       .ubyte  ; last bit sent 
+      31           00000000000010  bPREVOUT:       .ubyte  ; last bit sent
       32           00000000000011  bTHISOUT:       .ubyte  ; current bit to sent
       33           00000000000012  wRSRV2:         .ushort ; reserved
       34
@@ -2074,7 +2074,7 @@ have a first glimmer of function!
 Like, doing
 
     root@beaglebone:/sys/kernel/debug/remoteproc# echo 1 >/sys/class/itc_pkt/NW_TXDAT
-    root@beaglebone:/sys/kernel/debug/remoteproc# 
+    root@beaglebone:/sys/kernel/debug/remoteproc#
 
 got me this
 
@@ -2105,8 +2105,8 @@ SENDVAL), is _not_.
 Fri Dec 15 01:38:53 2017 OK!  We have our little demo 'working'!  We
 do like:
 
-    # echo 0 >/sys/class/itc_pkt/NW_TXRDY; echo 0 >/sys/class/itc_pkt/NW_TXDAT ; echo 1 >/sys/class/itc_pkt/NW_TXDAT; echo 1 >/sys/class/itc_pkt/NW_TXRDY 
-    # 
+    # echo 0 >/sys/class/itc_pkt/NW_TXRDY; echo 0 >/sys/class/itc_pkt/NW_TXDAT ; echo 1 >/sys/class/itc_pkt/NW_TXDAT; echo 1 >/sys/class/itc_pkt/NW_TXRDY
+    #
 
 and we see like:
 
@@ -2154,8 +2154,8 @@ prux.h, using the prudir abstraction.[150:
 Fri Dec 15 03:11:00 2017 OK did that, and our spike is now working on
 both prus ad lib:
 
-        # echo 0 >/sys/class/itc_pkt/SE_TXRDY; echo 0 >/sys/class/itc_pkt/NW_TXDAT ; echo 1 >/sys/class/itc_pkt/NW_TXDAT; echo 1 >/sys/class/itc_pkt/SE_TXRDY 
-        # 
+        # echo 0 >/sys/class/itc_pkt/SE_TXRDY; echo 0 >/sys/class/itc_pkt/NW_TXDAT ; echo 1 >/sys/class/itc_pkt/NW_TXDAT; echo 1 >/sys/class/itc_pkt/SE_TXRDY
+        #
 
     gets like
 
@@ -2228,10 +2228,10 @@ to saying 'buf' instead of 'driver_buf' all over itc_pkt_write, we
 appear to be routing outbound standard packets from /dev/itc/packets
 appropriately:
 
-    root@beaglebone:/home/t2/T2-12# echo f >/sys/class/itc_pkt/debug 
-    root@beaglebone:/home/t2/T2-12# echo 'ÁZORG' > /dev/itc/packets 
-    root@beaglebone:/home/t2/T2-12# echo 'ÂZORGEAST' > /dev/itc/packets 
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12# echo f >/sys/class/itc_pkt/debug
+    root@beaglebone:/home/t2/T2-12# echo 'ÁZORG' > /dev/itc/packets
+    root@beaglebone:/home/t2/T2-12# echo 'ÂZORGEAST' > /dev/itc/packets
+    root@beaglebone:/home/t2/T2-12#
 
 getting
 
@@ -2256,7 +2256,7 @@ Fri Dec 15 10:47:51 2017 Well, that wasn't so hard:
     root@beaglebone:/home/t2/T2-12# /home/t2/T2-12/tests/PKT/PacketReporter.pl -nb 'ÁZORGOPERL' 'ÂZORGEAST'
     I GOT(10)='ÄZORGOPERL'
     I GOT(9)='ÅZORGEAST'
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 with the optional first arg -nb meaning non-blocking, and any
 remaining args being packets to send, after which the script reads
@@ -2273,3 +2273,191 @@ the state machine development some.
 :158]
 
 :157]
+[161:
+
+Fri Dec 15 11:18:32 2017 How about we go after the IOThreads and
+context switching, first?
+
+[168: DONE Fri Dec 15 16:33:01 2017   :168]5.1.7 Get the three threads initializing and then reporting with
+      SENDVAL during initialization, if that's possible given
+      ontogeny.
+
+5.1.8 Get context switching going and have each thread do nothing
+      except report with SENDVAL like every 1000th time they are
+      advanced.  10,000th?  That'll be some data right there.
+
+Just those two are already substantial.  So then
+
+5.1.9 Return here and make more spikes.
+
+:161][162:
+
+Fri Dec 15 11:30:20 2017 Looks like initStateMachine time might be too
+early.  Are we sure to have seen firstPacket by then?  Could we
+be?[163:
+
+Fri Dec 15 11:39:43 2017 OK, reorged to delay initStateMachine until
+firstPacket is done.  Can I claim 5.1.7?  Well, no, because at present
+all we're initializing is the LiveCounts struct, not the CT struct,
+doh.
+
+Real CT initialization is something more like this:
+
+ - Loop i in 0..2
+   = Zero all of CT
+   = set CT.bTHIS_ID = i
+   = set CT.bNEXT_ID = (i+1)%2
+   = set CT.bPREV_ID = (i+2)%2
+   = set CT.TXRDY_PN, bTXDAT_PN, bRXRDY_PN, bRXDAT_PN from the prux.h defs
+   = set CT.rTXDAT_MASK from bTXDAT_PN or the prux.h def
+   = set CT.wRES_ADDR = advanceStateMachine, or whatever the
+     appropriate label is
+   = XOUT the whole CT struct to the scratchpad, shifted by 8*i
+
+But then as I look at that, it seems like what we really ought to do
+is initialize each thread as in 'disabled' mode or something, so that
+it would not have a next or prev.  And we should have an official
+one-byte 'head of thread list' outside of CT that would initially
+point at nothing (somehow).  And then we should enable each thread one
+by one, and the process of enabling would automatically set the next
+and prev appropriately for a circular doubly-linked list.
+
+That will take us a long way towards being clean enough to enable a
+direction based on, for example, having gotten to sIDLE in the
+corresponding lock negotiation.  (And to disable based on having
+reached sRESET or something.)
+
+((And We could use a 'special standard' packet for changing enable
+status.))
+
+(((But we really need a name for those packets that doesn't include
+'special'!  Please!  'local standard'?  'standard immediate'?
+'unrouted standard'?  'control standard'?  'control packet', with the
+'standard' implied?  'local packet' maybe?  'internal packet'?
+Urgh.  Let's go with 'local standard' for now.)))
+
+So.  To review:
+
+ - Zero length packets are illegal except during PRU boot, so
+   (virtually) every packet has at least one byte.
+
+ - The first byte of a packet is its _type_.
+
+ - In a 'standard' packet, by definition, (type&0x80)==0x80.
+
+ - In a 'routed standard' packet, by definition, (type&0xc0)==0x80.
+   The structure of a routed standard packet type is this:
+
+      7   6   5   4    3   2   1   0
+    +---+---+---+---++---+---+---+---+
+    | 1 | 0 |RSV|OVR||ERR|SD2|SD1|SD0|
+    +---+---+---+---++---+---+---+---+
+
+     RSV - Reserved: Should be 0 on output, should be ignored on input
+     OVR - Overrun: Packet data was lost due to exhausted buffer space
+     ERR - Error: Some packet data corruption or other problem was detected
+     SD[2..0] - Three bit source/destination direction code.  
+
+ - In a 'local standard' packet, by definition, (type&0xc0)==0xc0.
+   The structure of a local standard packet type is this:
+
+      7   6   5   4    3   2   1   0
+    +---+---+---+---++---+---+---+---+
+    | 1 | 1 |LS2|LS1||LS0|SD2|SD1|SD0|
+    +---+---+---+---++---+---+---+---+
+
+     LS[2..0] - Three bit local standard packet subtype.
+     SD[2..0] - Three bit source/destination direction code.
+
+ - The interpretation of SD[2..0] varies with context:
+   = Linux->PRU: Packet destination direction
+   = PRU->Linux: Packet source direction
+   = PRU->PRU (in-flight intertile): Packet source direction
+
+[164:
+
+Fri Dec 15 12:46:32 2017 Ahem.  Well clearly :163: got away from me a
+little, there, heh heh.  Has some useful stuff, though, if very likely
+overdesigned for these exact space-time coordinates in the universe..
+
+So, uh, where were we?  
+
+ORite: initting IOThreads -> enabling/disabling IOThreads -> whoopsie
+
+So forget about runtime enabling/disabling.  But let's think about the
+circular doubly-linked list with a list head we need to put somewhere.
+We'll have to review the cargo-cult pseudocode we did months ago,
+because I suspect it addressed some/much of this already.
+
+I'm tempted to say that thread ids, instead of being 0..2, should be
+whatever the necessary XFR register shift to load or save them..  But
+I think it'll probably be the same number of instructions either way.  
+Assuming the necessary shifts will be 0, 8, and 16, then doing
+
+   LSL R0.b0, CT.bNEXT_ID, 3
+
+is no slower than doing
+
+   MOV R0.b0, CT.bNEXT_ID
+
+or whatever, since we have to set up R0.b0 for every XFR anyway.
+Or.. could we make R0.b0 be our fogging thread list head?  And not use
+it for _anything_ else?  [166: Fri Dec 15 13:27:31 2017 Urm except
+that R0 is save-on-call donchano, so we'd have to copy it elsewhere
+around every function call.. but there really might not be that many
+of those, so.. :166]So then the guts of a context switch would be
+something like this:
+
+CONTEXT_SWITCH:
+   XOUT PRUX_SCRATCH, CT, IOThread_LEN  ; Save suspending thread
+   MOV R0.b0, CT.bNEXT_ID               ; Update list head
+   XIN PRUX_SCRATCH, CT,  IOThread_LEN  ; Load resuming thread
+   JMP CT.wRESADDR                      ; Resume it
+
+and we have switched threads in 20ns flat.  Or say 25ns to count the
+
+  JAL CT.wRESADDR, CONTEXT_SWITCH
+
+that happened somewhere to initiate the switch.[165:
+
+Fri Dec 15 13:15:30 2017 Could we have a demo of some asm with
+XIN/XOUT that compiles, please?  It doesn't have to do anything.. 
+
+:165]
+
+  :164]:163]
+
+:162]
+[167:
+
+Fri Dec 15 16:28:05 2017 OK, lots more foggindoh learning fun for me,
+but now we have special packet 'S', which returns some or all of the
+scratchpad used for thread storage, and we can see our three threads
+now _minimally_ initialized.  With
+
+    # echo SSSSSSssSSSSSSSSSSSSSSSSSSssSSSSSSSSSSSSSSSSSSSssSSSSSSSSSSSSSSSSSSssSSSSSSSSSSSSSSSSSS-------ddzabcx > /dev/itc/pru1
+    # 
+
+we get:
+
+    [39467.752993] itc_pkt_open 246:1
+    [39467.763064] itc_pkt itc!pru1: Sending length 102 type 'S' packet
+    [39467.769323] <pru1: 53 53 53 53 00 00 00 00 00 00 00 00 00 00 00 00  SSSS............
+    [39467.777203] <pru1: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+    [39467.785021] <pru1: 00 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00  ................
+    [39467.792984] <pru1: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+    [39467.800817] <pru1: 00 00 00 00 02 00 00 00 00 00 00 00 00 00 00 00  ................
+    [39467.808631] <pru1: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+    [39467.816438] <pru1: 00 00 00 00 78 0a                                ....x.
+    [39467.838803] itc_pkt_release 246:1
+
+and it's the 01 and 02 in there that are salient.
+
+I'm going to claim 5.1.7 now, even though the initialization we have
+is totally bogus.  I'm going to leave better initialization as a 5.1.8
+task, when we'll actually be using a bit more of the state in the
+struct.
+
+But getting toward time to cook.
+
+:167]
