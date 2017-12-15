@@ -79,7 +79,7 @@ $(GEN_DIR)/main_pru0.object: main_pru0.c main_prux.inc prux.h
 $(GEN_DIR)/main_pru0_def.object: main_prux_def.asm
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$<'
-	@$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+	$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 $(GEN_DIR)/main_pru1.object: main_pru1.c main_prux.inc prux.h
 	@mkdir -p $(GEN_DIR)
