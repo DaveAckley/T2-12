@@ -34,6 +34,8 @@ install_files:	all
 
 insmod:	FORCE
 	modprobe -r $(MNAME) || exit 0
+	modprobe -r pru_rproc || exit 0
+	modprobe pru_rproc || exit 0
 	modprobe $(MNAME)
 
 .PHONY:	FORCE
