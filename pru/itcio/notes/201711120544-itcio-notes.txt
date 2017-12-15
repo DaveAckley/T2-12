@@ -1,4 +1,4 @@
-{118}  -*- text -*-
+{153}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -542,7 +542,7 @@ following still-outstanding 'fourth round' questions:
    with contested lines and the ones we stole from other low-level
    functions like the cape I2C?
 
-(4.3) Do the signals appear reliable at essentially DC clocking rates?
+[119: DONE (enough for now)  :119](4.3) Do the signals appear reliable at essentially DC clocking rates?
 
 while leaving open the big money Fifth Round Questions:
 
@@ -1765,3 +1765,438 @@ So there.  Claiming 4.2 done!  Moving on!
 
 :111]
 :110]
+[118:
+
+Thu Dec 14 13:21:40 2017 So.  Given the slowness of my current
+debug-access to the PRU pins, I'm going to claim/forgo 4.3 without any
+further ado.  Yes: We have eyeballed 0 failures in PRU signal pins
+that weren't due to understood issues.[120:
+
+Thu Dec 14 13:23:54 2017 So that means we're in THE BIG MONEY ROUND!
+
+Technically speaking we have not yet failed at 5.1, which has a time
+limit on it, although we are precious close to doing so.  But it's the
+next stop even if we arrive late.
+
+So, let's break down 5.1 a bit here and make life easier for ourselfs.
+
+[123: DONE :123](5.1.1) Refresh where we are in main_prux.inc regarding calling C from
+        asm.  We'll need that for shipping packets and stuff.
+        (Re)demo calling C from asm.
+
+[136: DONE, mostly  :136](5.1.2) Get some spikes on the register sets and context switching
+        going.  Demo using the 'struct over registers' that clpru is
+        supposed to give us.  Say: Make a struct that has a counter
+        for some of our RX pins -- like for prudir==1 say.
+
+[151: Fri Dec 15 03:26:06 2017 DONE  :151](5.1.3) Make asm loop that watches those two RX pins, and whenever
+        they change, increments the appropriate counter, and sends a
+        standard packet containing the two counter values.
+
+(5.1.4) Make a linux-side script that catches those packets and
+        reports them.
+
+(5.1.5) Come back and make some more steps here.
+
+
+:120]
+
+:118]
+[121:
+
+Thu Dec 14 13:42:46 2017 OK, into 5.1.1.  Looks like we have
+'addfuncasm' existing.  How do we run that?[122:
+
+Thu Dec 14 14:06:34 2017 OK!  Looks like we ran it:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo f > /sys/class/itc_pkt/debug 
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo '*ab-----' > /dev/itc/pru0 
+
+which (after turning up the debugging) asks addfuncasm to add (the
+ASCII values of) 'a' and 'b' and report back the result using the
+SEND_VAL macro that calls C's sendVal.  And we saw:
+
+    [ 3785.487228] set debug f
+    [ 3787.103935] itc_pkt itc!pru0: Sending length 9 type '*' packet
+    [ 3787.110082] <pru0: c1 30 30 30 30 30 30 63 33 20 66 69 72 73 74 20  .000000c3 first
+    [ 3787.117971] <pru0: 63 68 61 72 20 74 6f 20 73 65 6e 64 20 74 6f 20  char to send to
+    [ 3787.125787] <pru0: 74 68 65 20 6d 6f 6f 6e 20 61 6c 69 63 65 00     the moon alice.
+    [ 3787.133523] <pru0: 2a 61 62 c3 2d 2d 2d 2d 0a                       *ab.----.
+
+and in fact the sum of 'a' and 'b' is actually 0xc3.  SO THERE. 
+
+[125:
+
+Thu Dec 14 14:12:53 2017 Actually, note, though, that these kind of
+slimy 'echo foo > pru0' tests are bad because they leave the results
+clogging up read side of /dev/itc/pru0 and/or /dev/itc/packets:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /dev/itc/pru0
+    *ab√----
+    *ab√----
+    *----                           (<< that's really ^A^B^C I think..)
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /dev/itc/packets 
+    ¡000000c3 first char to send to the moon alice ¡000000c3 first char to send to the moon alice ¡00000003 first char to send to the moon alice root@beaglebone:/home/t2/T2-12/pru/itcio/module# 
+
+Now, we're expecting to have some userspace listener thread sitting on
+/dev/itc/packets, ready to deal with whatever shows up whenever, so
+that's not an issue right now.  But for special packets it would be
+nice to have some kind of round-trip interface, wouldn't it?  But
+how.. the existing ET_TXRDY guys get away with it because the outbound
+packet is completely determined by the sysfs attribute name.. That
+just doesn't generalize..  So.. leave it for now, I guess.  Just try
+to remember about clogged input buffers.
+
+:125]
+Claiming 5.1.1.[124:
+
+Thu Dec 14 14:10:35 2017 OK, 5.1.2 isn't quite so quick.[126:
+
+Thu Dec 14 14:19:01 2017 Let's start by going for a standalone asm
+program for struct over registers and get it building, just that.[127:
+
+Thu Dec 14 14:24:32 2017 Ooh, holy crap, there's a 'new spru'..  I'd
+been using spruhv7a.pdf from Nov 2014, but I just see now there's
+spruhv7b.pdf from Oct 2017!  Fresh!  Let's hope it's better![128:
+
+Thu Dec 14 14:29:24 2017 Alllllllthough, of course, that's the C/C++
+manual.  Right now we need the asm stuff..  And spruhv6b.pdf is
+already Oct 2017..[129:
+
+Thu Dec 14 14:34:45 2017 So, Table 5-9 says we have .struct and .union
+to play with, as well as .enum (without considering C compatibility,
+which has other things).  And we'll want '.sassign' to map our .struct
+onto PRU registers.  Let's see how we do that.[130:
+
+Thu Dec 14 14:42:46 2017 OK, something like this perhaps, for our
+spike demo..
+
+STATE_INFO .struct
+RXRDY_COUNT     .int
+RXDAT_COUNT     .int
+STATE_INFO_LEN  .endstruct
+
+[131:
+
+Thu Dec 14 14:46:26 2017 And then it would be like
+
+LiveCounts .sassign R4, STATE_INFO
+
+and then, I guess, LiveCounts.RXRDY_COUNT would be R4 and
+LiveCounts.RXDAT_COUNT would be R4..
+
+Let's see if we can just get this to compile, without being used,
+inside main_prux_def.asm..
+
+:131]
+
+:130]
+
+:129]
+
+:128]
+
+:127]
+
+:126]
+
+:124]
+
+:122]
+
+:121]
+[132:
+
+Thu Dec 14 14:51:59 2017 OK well this compiles:
+
+            ;; STRUCTURE DECLARATIONS
+    STATE_INFO:     .struct
+    RXRDY_COUNT:    .int
+    RXDAT_COUNT:    .int
+    STATE_INFO_LEN: .endstruct
+
+    LiveCounts:     .sassign R4, STATE_INFO
+
+along with like this:
+
+            ADD LiveCounts.RXRDY_COUNT, LiveCounts.RXRDY_COUNT, 1
+
+producing stuff like this:
+
+           3        ;; STRUCTURE DECLARATIONS
+           4STATE_INFO:     .struct
+           5           00000000000000  RXRDY_COUNT:    .int
+           6           00000000000004  RXDAT_COUNT:    .int
+           7           00000000000008  STATE_INFO_LEN: .endstruct
+           8
+           9LiveCounts:     .sassign R4, STATE_INFO
+
+and this:
+
+          36 00000030 0000000101E4E4          ADD LiveCounts.RXRDY_COUNT, LiveCounts.RXRDY_COUNT, 1
+
+so I guess we're more or less in business.  Let's try a struct with
+some stuff that's smaller than a full register, though..  Actually,
+fog, let's try to translate our 'real' (ho ho) IOThread struct from
+SymmetricBitstreamTransport.inc.. [133:
+
+Thu Dec 14 15:17:42 2017 OK well we have gotten to this:
+
+      11IOThread:       .struct
+      12           00000000000000  bTHIS_ID:       .ubyte   ; this context id (0..2)
+      13           00000000000001  bNEXT_ID:       .ubyte   ; next context id (0..2)
+      14           00000000000002  bPREV_ID:       .ubyte   ; prev context id (0..2)
+      15           00000000000003  bFLAGS:         .ubyte   ; flags
+      16
+      17           00000000000004  bTXRDY_PN:      .ubyte  ; Transmit Ready R30 Pin Number
+      18           00000000000005  bTXDAT_PN:      .ubyte  ; Transmit Data  R30 Pin Number
+      19           00000000000006  bRXRDY_PN:      .ubyte  ; Receive Ready  R31 Pin Number
+      20           00000000000007  bRXDAT_PN:      .ubyte  ; Receive Data   R31 Pin Number
+      21
+      22           00000000000008  wRES_ADDR:      .ushort ; Resume address after context switch
+      23           0000000000000A  bOUT1CNT:       .ubyte  ; current count of output 1s sent
+      24           0000000000000B  bINP1CNT:       .ubyte  ; current count of input 1s received
+      25
+      26           0000000000000C  bOUTDATA:       .ubyte  ; current bits being shifted out
+      27           0000000000000D  bOUTBCNT:       .ubyte  ; count of bits remaining to shift out
+      28           0000000000000E  bINPDATA:       .ubyte  ; current bits being shifted in
+      29           0000000000000F  bINPBCNT:       .ubyte  ; count of bits remaining to shift in
+      30
+      31           00000000000010  bPREVOUT:       .ubyte  ; last bit sent 
+      32           00000000000011  bTHISOUT:       .ubyte  ; current bit to sent
+      33           00000000000012  wRSRV2:         .ushort ; reserved
+      34
+      35           00000000000014  rTXDAT_MASK:    .uint   ; 1<<TXDAT_PN
+      36           00000000000018  rRSRV3:         .uint   ; reserved
+      37           0000000000001C  rRSRV4:         .uint   ; reserved
+      38           00000000000020  IOThread_LEN:   .endstruct
+
+which appears plausible as far as it goes.  Looks like 32 bytes == 8
+registers, as planned.  (Even the last two registers are reserved!)
+
+My next question is: Given the C calling conventions, which registers
+are we going to use?  A likely key bit of information there is that we
+will be expecting to save our context with XOUT before calling any C
+function anyway..  Right?  Or there really eight whole callee-saves
+registers available?[134:
+
+Thu Dec 14 15:25:04 2017 Well, spruhv7b section 6.4 says:
+
+    Save-on-entry registers. Registers R3.w2 through R13. It is the
+    called function's responsibility to preserve the values in these
+    registers. If the called function modifies these registers, it
+    saves them when it gains control and preserves them when it
+    returns control to the calling function.
+
+So it really seems like we could do like
+
+    CT: .sassign R6, IOThread  ; R6-R13 is the current thread
+
+[147: set up in mainLoop, and respected by all funcs below,  :147]
+and still have R4 and R5 for 'preserved scratch' values, plus say,
+R14-R19 for passing like six arguments, and still have R20-R29 for
+'scratch scratch' values.  Man we love register space!
+[135:
+
+Thu Dec 14 15:34:33 2017 OK, well, all that assembled, but thinking
+about IOThread is really getting ahead of ourselves.  Let's claim
+5.1.2..[137: and then and narrow focus back to 5.1.3: Getting a loop
+that actually watches pins and reports stuff.
+
+Now, how actually is that going to work?  At first we had planned on
+the main loop being in asm, and having it call out to C to check for
+packets from time to time.  But at the moment C is owning the main
+loop...[138:
+
+Thu Dec 14 15:40:18 2017 Well, let's try writing initStateMachines()
+and advanceStateMachines() in asm to do our pin-watch spike, and leave
+C with the main loop, and see how it goes..[139:
+
+Thu Dec 14 16:51:12 2017 Well, we have gotten a cut at them to
+assemble.  And I came here to announce that before actually trying the
+code, because I'm chicken.  It's supposed to use sendVal whenever
+SE_RXRDY or SE_RXDAT (on PRU0) change state.  It's got macros and byte
+fields oh my.
+
+Well here we go.
+[140:
+
+Thu Dec 14 16:54:14 2017 Well, the world didn't end yet.  The PRUs
+came back up and all.  Let's try toggling NW_TXDAT, here..[141:
+
+Thu Dec 14 16:56:40 2017 Oooooookay, well so far no sign of any
+packets getting sent back, although the PRUs are still responding to
+my special packets.  Let's try the xcon test and see if anything might
+trigger a reaction..[142:
+
+Thu Dec 14 16:58:50 2017 Nope.  So here we are debugging, blurge.
+Pretty much exactly what we were scared of.. But we know about
+stopping the PRUs and reading the registers..  Let's do that and see
+if we can learn anything.
+
+:142]
+
+:141]
+
+:140]
+:139]
+
+:138]
+
+
+:137]
+
+:135]
+
+:134]
+
+:133]
+
+:132]
+[143:
+
+Thu Dec 14 17:08:41 2017 Wait.  So I'm completely fogged up here,
+right?  I can't use R4 and R5 for my LiveCounts struct, not in this
+setup, because the asm code keeps returning.  Doh oh oh oh.  All my
+arguments back in :134: only make sense IF ASM OWNS THE MAIN LOOP, so
+we can set our stuff up there and everything else -- including
+processing special packets and etc etc etc -- is functions called from
+asm.  So we're going to have to turn this code inside out and give asm
+the main loop before expecting it to go anywhere.
+
+But it's time to check mail and etc and break for the evening, I
+  think.[144:
+
+Thu Dec 14 18:24:23 2017 Well, took a short break but got back for a
+minute, here.  Turning the code inside out wasn't so hard, and now we
+have a first glimmer of function!
+
+Like, doing
+
+    root@beaglebone:/sys/kernel/debug/remoteproc# echo 1 >/sys/class/itc_pkt/NW_TXDAT
+    root@beaglebone:/sys/kernel/debug/remoteproc# 
+
+got me this
+
+    [19340.891594] <pru0: c1 30 30 30 30 30 30 30 31 20 52 58 44 41 54 00  .00000001 RXDAT.
+
+but only once..  Debugging still needed, but from a functioning
+  start![145:
+
+Fri Dec 15 00:51:10 2017 OK, let's take a crack at debugging
+  here.[146:
+
+Fri Dec 15 00:54:30 2017 Oooh, umm yeah, I'd been ignoring that part
+about how R3.w2 is a callee-saved register.  R3.w2 is the fogging
+return address!  If we aren't a leaf routine we really do have to
+store that somewhere, don't we.  Which, for example, addfuncasm is
+already doing, but advanceStateMachines (which may call sendVal via
+SENDVAL), is _not_.
+
+:146]
+
+:145]
+
+:144]
+
+:143]
+[148:
+
+Fri Dec 15 01:38:53 2017 OK!  We have our little demo 'working'!  We
+do like:
+
+    # echo 0 >/sys/class/itc_pkt/NW_TXRDY; echo 0 >/sys/class/itc_pkt/NW_TXDAT ; echo 1 >/sys/class/itc_pkt/NW_TXDAT; echo 1 >/sys/class/itc_pkt/NW_TXRDY 
+    # 
+
+and we see like:
+
+    [45139.634435] <pru0: c1 30 30 30 30 30 30 34 38 20 52 58 52 44 59 00  .00000048 RXRDY.
+    [45139.644542] >pru1: 42 09 00 2d                                      B..-
+    [45139.667489] <pru1: 42 09 01 2d                                      B..-
+    [45139.674425] <pru0: c1 30 30 30 30 30 30 34 38 20 52 58 44 41 54 00  .00000048 RXDAT.
+    [45139.684150] >pru1: 42 09 01 2d                                      B..-
+    [45139.707949] <pru1: 42 09 00 2d                                      B..-
+    [45139.715030] <pru0: c1 30 30 30 30 30 30 34 39 20 52 58 44 41 54 00  .00000049 RXDAT.
+    [45139.725847] >pru1: 42 08 01 2d                                      B..-
+    [45139.741360] <pru1: 42 08 00 2d                                      B..-
+    [45139.748282] <pru0: c1 30 30 30 30 30 30 34 39 20 52 58 52 44 59 00  .00000049 RXRDY.
+
+I thought I'd seen a case where a count was missed, apparently due to
+multiple B packets being processed in a single call to
+processPackets(), but scrolling back through dmesg and *shell* I see
+it was just my misunderstanding.
+
+So anyway cool!  And learned a lot pretty quickly!  Yay spike!
+
+Let's get this working in the opposite direction -- requiring a little
+PRU-specific customization -- and then claim our progress and move
+on.[149:
+
+Fri Dec 15 02:34:04 2017 OK, so the PRU-specific stuff is taking a
+little time because I was trying to avoid repeating code between the
+itcio/firmware and itcio/module sides of things.  The '.cdecls' asm
+statement lets you include a C header file into asm, so I was thinking
+a '.cdecls "itc_pkt.h"' might be useful.. and it might be, somewhat,
+but it's definitely not the fantasy.  In particular, it appears that
+any macros with arguments are simply ignored on the asm side.  Where
+'macros without arguments' is my interpretation of the phrase
+'non-function-like macro' in spruhv6b.pdf.
+
+So I'm getting close to timing out on doing this without duplication.
+My rationalization is that the T2 ITC pin assignments aren't going to
+change any time soon, and if they do, it's going to be a huge major
+upset all over the place anyway, and so 'one more place' that has to
+be updated isn't that big as an incremental cost.
+
+Fog it.  Cotton Paist.  Putting the r30/r31 pin number info into
+prux.h, using the prudir abstraction.[150:
+
+Fri Dec 15 03:11:00 2017 OK did that, and our spike is now working on
+both prus ad lib:
+
+        # echo 0 >/sys/class/itc_pkt/SE_TXRDY; echo 0 >/sys/class/itc_pkt/NW_TXDAT ; echo 1 >/sys/class/itc_pkt/NW_TXDAT; echo 1 >/sys/class/itc_pkt/SE_TXRDY 
+        # 
+
+    gets like
+
+    [50732.198423] >pru0: 42 05 00 2d                                      B..-
+    [50732.217939] <pru0: 42 05 01 2d                                      B..-
+    [50732.224887] <pru1: c1 30 30 30 30 30 30 30 34 20 52 58 52 44 59 00  .00000004 RXRDY.
+    [50732.235310] >pru1: 42 09 00 2d                                      B..-
+    [50732.262603] <pru1: 42 09 01 2d                                      B..-
+    [50732.269538] <pru0: c1 30 30 30 30 30 30 30 39 20 52 58 44 41 54 00  .00000009 RXDAT.
+    [50732.279834] >pru1: 42 09 01 2d                                      B..-
+    [50732.301971] <pru1: 42 09 00 2d                                      B..-
+    [50732.308882] <pru0: c1 30 30 30 30 30 30 30 61 20 52 58 44 41 54 00  .0000000a RXDAT.
+    [50732.319214] >pru0: 42 05 01 2d                                      B..-
+    [50732.334108] <pru0: 42 05 00 2d                                      B..-
+    [50732.341033] <pru1: c1 30 30 30 30 30 30 30 35 20 52 58 52 44 59 00  .00000005 RXRDY.
+
+where now we see both <pru0 and <pru1 on the c1 packets.
+
+Honesty makes me confess I found a typo in itc_pkt.h that may not be
+that obvious in the diffs, because it turned up in the process of
+moving the pin definitions out to a separate pin_info_maps.h file.
+What's wrong with this picture:
+
+    /* pru# + prudir# to direction */
+    #define ITC_PRU_PRU_DIR_TO_DIR__0_0 ET
+    #define ITC_PRU_PRU_DIR_TO_DIR__0_1 SE
+    #define ITC_PRU_PRU_DIR_TO_DIR__0_2 NW
+    #define ITC_PRU_PRU_DIR_TO_DIR__1_0 WT
+    #define ITC_PRU_PRU_DIR_TO_DIR__1_1 NW
+    #define ITC_PRU_PRU_DIR_TO_DIR__1_2 NE
+    #define ITC_PRU_PRU_DIR_TO_DIR(pru,prudir) ITC_PRU_PRU_DIR_TO_DIR__##pru##_##prudir
+
+Yes Jane, once again demonstrating reality's anti-southwest bias..
+
+At present, those defs weren't in use anywhere, but still, foggindoh.
+Dodged a bullet there perhaps.
+
+Claiming 5.1.3.[152: and committing. :152]
+
+:150]
+
+:149]
+
+:148]
