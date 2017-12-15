@@ -26,6 +26,7 @@ uint8_t payload[RPMSG_BUF_SIZE];
 
 extern int addfuncasm(int a, int b);
 extern void initStateMachines();
+extern void mainLoop();
 extern void advanceStateMachines();
 extern unsigned processITCPacket(uint8_t * packet, uint16_t len);
 
@@ -41,7 +42,7 @@ int sendVal(const char * str, uint32_t val)
   int i;
 
   if (firstPacket) return 0; /* Not ready yet */
-  buf[len++] = 'V'; /* here comes a debug Value */
+  buf[len++] = 0xc1; /* here comes a 'special standard' packet type 1 */
 
   /* First the value in hex */
   for (i = 0; i < 8; ++i) {
@@ -101,7 +102,21 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
   if (len == 0) return 0; /* or assert? */
   switch (packet[0]) {
 
-  case 'B': {                        /* PACKET TYPE: write 'B'it of R30 (return old value) */
+  /* PACKET TYPE: '*' Wildcard debug, content non-standardized, can change at will */
+  case '*': {                        
+    if (len < 4) fillFail("[PKLEN]",packet,len);
+    else {
+      int32_t a = packet[1];
+      int32_t b = packet[2];
+      int32_t ret = addfuncasm(a,b);
+      packet[3] = (uint8_t) ret;
+    }
+    break;
+  }
+
+
+  /* PACKET TYPE: write 'B'it of R30 (return old value) */
+  case 'B': {                        
     if (len < 3) fillFail("[PKLEN]",packet,len);
     else {
       uint32_t bitnum = packet[1];
@@ -118,7 +133,8 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
     break;
   }
 
-  case 'W': {                        /* PACKET TYPE: 'W'rite R30 (and then R31) */
+  /* PACKET TYPE: 'W'rite R30 (and then R31) */
+  case 'W': {                        
     uint32_t tmp = 0;
     uint32_t tlen = len;
     if (tlen > 5) tlen = 5;
@@ -129,7 +145,8 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
     /* FALL THROUGH INTO CASE 'R' */
   }
 
-  case 'R': {                        /* PACKET TYPE: 'R'ead R31 */
+  /* PACKET TYPE: 'R'ead R31 */
+  case 'R': {                        
     uint32_t r31 = __R31;
     if (len > 5) len = 5;
     for (i = 1; i < len; ++i) {
@@ -153,7 +170,6 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
 */
 void main(void)
 {
-  uint16_t src, dst, len;
   volatile uint8_t *status,number;
 
   /* allow OCP master port access by the PRU so the PRU can read external memories */
@@ -181,43 +197,41 @@ void main(void)
   /* Create the RPMsg channel between the PRU and ARM user space using the transport structure. */
   while (pru_rpmsg_channel(RPMSG_NS_CREATE, &transport, CHAN_NAME, CHAN_DESC, CHAN_PORT) != PRU_RPMSG_SUCCESS);
 
-  /* Fire up the bit bangers for the packet comms */
-  initStateMachines();
+  /* Never look back */
+  mainLoop();
+}
 
-  while (1) {
-
-    /* Move them bits!  Push them out!  Pull them in! */
-    advanceStateMachines();
+void processPackets() {
+  uint16_t src, dst, len;
     
-    /* Check bit 30 or 31 of register R31 to see if the ARM has kicked us */
-    /* Also check once per second if no kicks -- some interrupts get missed? grr */
-    if ((__R31 & HOST_INT) || PRUX_CTRL.CYCLE > 200000000) { 
+  /* Check bit 30 or 31 of register R31 to see if the ARM has kicked us */
+  /* Also check once per second if no kicks -- some interrupts get missed? grr */
+  if ((__R31 & HOST_INT) || PRUX_CTRL.CYCLE > 200000000) { 
+    
+    /* Clear the event status */
+    CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
 
-      /* Clear the event status */
-      CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
+    /* Reset timeout clock */
+    resetCycleCounter();
 
-      /* Reset timeout clock */
-      resetCycleCounter();
+    /* Receive all available messages, multiple messages can be sent per kick */
+    while (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) == PRU_RPMSG_SUCCESS) {
 
-      /* Receive all available messages, multiple messages can be sent per kick */
-      while (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) == PRU_RPMSG_SUCCESS) {
+      if (firstPacket) {
+        /* linux sends an empty packet to get us going */
+        firstSrc = src;
+        firstDst = dst;
+        firstPacket = 0;
+      }
 
-        if (firstPacket) {
-          /* linux sends an empty packet to get us going */
-          firstSrc = src;
-          firstDst = dst;
-          firstPacket = 0;
-        }
+      if (len > 0) {
+        unsigned ret;
+        if (payload[0]&0x80) ret = processITCPacket(payload,len);
+        else ret = processSpecialPacket(payload,len);
 
-        if (len > 0) {
-          unsigned ret;
-          if (payload[0]&0x80) ret = processITCPacket(payload,len);
-          else ret = processSpecialPacket(payload,len);
-
-          if (ret) {
-            /* Return the processed packet back to where it came from */
-            pru_rpmsg_send(&transport, dst, src, payload, len);
-          }
+        if (ret) {
+          /* Return the processed packet back to where it came from */
+          pru_rpmsg_send(&transport, dst, src, payload, len);
         }
       }
     }
