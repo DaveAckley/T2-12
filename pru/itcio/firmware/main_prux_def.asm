@@ -50,12 +50,14 @@ CT:     .sassign R6, IOThread
 	;int sendVal(const char * str, uint32_t val)
 	.ref sendVal            
 		
-SENDVAL:        .macro STR, REGVAL
+SENDVAL:        .macro STR1, STR2, REGVAL
 	.sect ".rodata:.string"
-$MSG?:  .cstring STR
+$M1?:  .cstring STR1
+$M2?:  .cstring STR2
 	.text
-        LDI32 R14, $MSG?        ; Get string
-        MOV R15, REGVAL         ; And value to report
+        LDI32 R14, $M1?         ; Get string1
+        LDI32 R15, $M2?         ; Get string2
+        MOV R16, REGVAL         ; And value to report
         JAL R3.w2, sendVal      ; Call sendVal (ignore return)
         .endm
 
@@ -79,10 +81,7 @@ addfuncasm:
 	SUB R2, R2, 6           ; Get six bytes on stack
         SBBO &R3.w2, R2, 0, 6   ; Store R3.w2 and R4 on stack
         ADD R4, R15, R14        ; Compute function, result to R4
-	MOV R15, R4             ; Get value to report
-;	LDI32 R15, 0x56789abc   
-	SENDVAL """first char to send to the moon alice""",R15 ; Report it
-	MOV R14, R4             ; Get return value
+	SENDVAL PRUX_STR,""" addfuncasm sum""",R4 ; Report it
         LBBO &R3.w2, R2, 0, 6   ; Restore R3.w2 and R4
         ADD R2, R2, 6           ; Pop stack
         JMP r3.w2               ; Return
@@ -107,14 +106,14 @@ advanceStateMachines:
         QBEQ asm1, r4, LiveCounts.RXRDY_STATE ; jump if no change
 	MOV LiveCounts.RXRDY_STATE, r4        ; else update retained state,
         ADD LiveCounts.RXRDY_COUNT, LiveCounts.RXRDY_COUNT, 1 ; increment, and
-	SENDVAL """RXRDY""",LiveCounts.RXRDY_COUNT           ; report change
+	SENDVAL PRUX_STR,""" RXRDY""",LiveCounts.RXRDY_COUNT ; report change
 
 asm1:
         LOADBIT r4, r31, 14    ; rxdat (r31.t14) to r4
         QBEQ asm2, r4, LiveCounts.RXDAT_STATE ; jump if no change
 	MOV LiveCounts.RXDAT_STATE, r4        ; else update retained state
         ADD LiveCounts.RXDAT_COUNT, LiveCounts.RXDAT_COUNT, 1 ; increment, and
-	SENDVAL """RXDAT""",LiveCounts.RXDAT_COUNT           ; report change
+	SENDVAL PRUX_STR,""" RXDAT""",LiveCounts.RXDAT_COUNT ; report change
 
 asm2:
 	LBBO &R3.w2, R2, 0, 6   ; Restore R3.w2 and R4

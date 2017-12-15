@@ -34,7 +34,7 @@ static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
 static uint16_t firstSrc, firstDst;
 
-int sendVal(const char * str, uint32_t val)
+int sendVal(const char * str1, const char * str2, uint32_t val)
 {
   enum { BUF_LEN = 50 };
   char buf[BUF_LEN];
@@ -53,12 +53,9 @@ int sendVal(const char * str, uint32_t val)
   /* Then a space */
   buf[len++] = ' ';
 
-  /* Then the string if any */
-  if (str) {
-    /* Take as much string as we can hold */
-    while (len < BUF_LEN-2 && *str) buf[len++] = *str++;
-  }
-  buf[len++] = '\0';
+  /* Then as much of the strings, if any, that fit */
+  if (str1) while (len < BUF_LEN-1 && *str1) buf[len++] = *str1++;
+  if (str2) while (len < BUF_LEN-1 && *str2) buf[len++] = *str2++;
 
   /* Send it */
   pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);

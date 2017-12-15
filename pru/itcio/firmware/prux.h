@@ -15,6 +15,7 @@
 #if ON_PRU==0
 
 #define PRUX PRU0
+#define PRUX_STR "PRU0"
 #define PRUX_CTRL PRU0_CTRL
 #define TO_ARM_HOST	16	
 #define FROM_ARM_HOST	17
@@ -46,6 +47,7 @@
 #elif ON_PRU==1
 
 #define PRUX PRU1
+#define PRUX_STR "PRU1"
 #define PRUX_CTRL PRU1_CTRL
 #define TO_ARM_HOST	18	
 #define FROM_ARM_HOST	19
