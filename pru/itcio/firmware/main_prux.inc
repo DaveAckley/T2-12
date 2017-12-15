@@ -28,7 +28,8 @@ extern int addfuncasm(int a, int b);
 extern void initStateMachines();
 extern void mainLoop();
 extern void advanceStateMachines();
-extern unsigned processITCPacket(uint8_t * packet, uint16_t len);
+extern unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len);
+extern void copyOutScratchPad(uint8_t * packet, uint16_t len);
 
 static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
@@ -42,7 +43,7 @@ int sendVal(const char * str1, const char * str2, uint32_t val)
   int i;
 
   if (firstPacket) return 0; /* Not ready yet */
-  buf[len++] = 0xc1; /* here comes a 'special standard' packet type 1 */
+  buf[len++] = 0xc1; /* here comes a 'local standard' packet type 1 */
 
   /* First the value in hex */
   for (i = 0; i < 8; ++i) {
@@ -139,8 +140,8 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
       tmp |= packet[i]<<((i-1)<<3);
     }
     __R30 = tmp;
-    /* FALL THROUGH INTO CASE 'R' */
   }
+  /* FALL THROUGH INTO CASE 'R' */
 
   /* PACKET TYPE: 'R'ead R31 */
   case 'R': {                        
@@ -150,6 +151,15 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
       packet[i] = r31&0xff;
       r31 >>=8;
     }
+    break;
+  }
+
+    /* PACKET TYPE: 'S'cratchpad memory read */
+  case 'S': {                        
+    if (len > 4)
+      copyOutScratchPad(&packet[4], len-4);
+    else
+      fillFail("[PKLEN]",packet,len);
     break;
   }
 
@@ -198,7 +208,7 @@ void main(void)
   mainLoop();
 }
 
-void processPackets() {
+int processPackets() {
   uint16_t src, dst, len;
     
   /* Check bit 30 or 31 of register R31 to see if the ARM has kicked us */
@@ -223,7 +233,7 @@ void processPackets() {
 
       if (len > 0) {
         unsigned ret;
-        if (payload[0]&0x80) ret = processITCPacket(payload,len);
+        if (payload[0]&0x80) ret = processOutboundITCPacket(payload,len);
         else ret = processSpecialPacket(payload,len);
 
         if (ret) {
@@ -233,5 +243,6 @@ void processPackets() {
       }
     }
   }
+  return firstPacket;
 }
 

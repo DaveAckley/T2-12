@@ -43,9 +43,8 @@ rRSRV4:         .uint   ; reserved
 IOThread_LEN:   .endstruct
         
 ;;; CT is the Current Thread!  It lives in R6-R13!
-CT:     .sassign R6, IOThread
-	
-
+	.asg R6, CTReg
+CT:     .sassign CTReg, IOThread
 
 	;int sendVal(const char * str, uint32_t val)
 	.ref sendVal            
@@ -55,10 +54,14 @@ SENDVAL:        .macro STR1, STR2, REGVAL
 $M1?:  .cstring STR1
 $M2?:  .cstring STR2
 	.text
+	SUB R2, R2, 2           ; Two bytes on stack
+	SBBO &R3.w2, R2, 0, 2   ; Save current R3.w2
         LDI32 R14, $M1?         ; Get string1
         LDI32 R15, $M2?         ; Get string2
         MOV R16, REGVAL         ; And value to report
         JAL R3.w2, sendVal      ; Call sendVal (ignore return)
+	LBBO &R3.w2, R2, 0, 2   ; Restore R3.w2 
+        ADD R2, R2, 2           ; Pop stack
         .endm
 
 LOADBIT:        .macro DESTREG, SRCREG, BITNUM
@@ -69,9 +72,11 @@ LOADBIT:        .macro DESTREG, SRCREG, BITNUM
 	.text
         .def mainLoop
 mainLoop:
+	.ref processPackets
+        JAL R3.w2, processPackets ; Return == 0 if firstPacket done
+	QBNE mainLoop, R14, 0     ; Wait for that before initting state machines
 	JAL R3.w2, initStateMachines
 l1:     JAL R3.w2, advanceStateMachines
-	.ref processPackets
         JAL R3.w2, processPackets
         jmp l1
 	
@@ -95,6 +100,19 @@ initStateMachines:
         ;; Read initial pin states
 	LOADBIT LiveCounts.RXRDY_STATE, r31, PRUDIR1_RXRDY_R31_BIT  ; pru0 SE, pru1 NW
 	LOADBIT LiveCounts.RXDAT_STATE, r31, PRUDIR1_RXDAT_R31_BIT  ; pru0 SE, pru1 NW
+
+	;; Clear CT
+	ZERO &CT,IOThread_LEN
+	LOOP el1, 3             ; three times around
+	LSL R0.b0, CT.bTHIS_ID, 3 ; R0.b0 = this_id*8
+        XOUT PRUX_SCRATCH, &CT, IOThread_LEN ; Save 'initted' context
+	ADD CT.bTHIS_ID, CT.bTHIS_ID, 1     ; ++this_id
+el1:    
+        ;; Load thread 1
+        LDI R0.b0, 1<<3
+        XIN PRUX_SCRATCH, &CT, IOThread_LEN
+        
+        SENDVAL PRUX_STR,""" initStateMachines""", R0.b0 ; Report in
         JMP r3.w2               ; Return
 
         .def advanceStateMachines
@@ -121,11 +139,38 @@ asm2:
         JMP r3.w2               ; Return
 	
 
-	;; unsigned processITCPacket(uint8_t * packet, uint16_t len);
+	;; void copyOutScratchPad(uint8_t * packet, uint16_t len)
+        ;; R14: ptr to destination start
+        ;; R15: bytes to copy
+	;; CTReg: buffer for XIN data
+        ;; R17: index
+        .def copyOutScratchPad
+copyOutScratchPad:
+	SUB R2, R2, 4           ; Get room for first reg of CT
+        SBBO &CTReg, R2, 0, 4   ; Store first reg of CT on stack
+
+        LDI R17,0               ; index = 0
+        MIN R15, R15, 3*IOThread_LEN ; don't read beyond the three threads
+cosp1:
+	QBGE cosp2, R15, R17     ; Done when idx reaches len
+	LSR R0.b0, R17, 2        ; Get reg of byte: at idx/4
+	XIN PRUX_SCRATCH, &CTReg, 4 ; Scratchpad to CT, shifted 
+	AND R0.b0, R17, 3        ; Get byte within reg at idx % 4
+	LSL R0.b0, R0.b0, 3      ; b0 = (idx%4)*8
+	LSR CTReg,CTReg,R0.b0    ; CT >>= b0
+	SBBO &CTReg, R14, R17, 1 ; Stash next byte at R14[R17]
+        ADD R17, R17, 1          ; One more byte to shift bits after
+        JMP cosp1
+cosp2:
+        LBBO &CTReg, R2, 0, 4   ; Restore first reg of CT
+        ADD R2, R2, 4           ; Pop stack
+        JMP r3.w2               ; Return
+
+	;; unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len);
 	;; R14: packet
         ;; R15: len
-        .def processITCPacket
-processITCPacket:
+        .def processOutboundITCPacket
+processOutboundITCPacket:
         QBNE hasLen, r15, 0
         LDI R14, 0
         JMP r3.w2               ; Return 0

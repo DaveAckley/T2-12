@@ -16,6 +16,7 @@
 
 #define PRUX PRU0
 #define PRUX_STR "PRU0"
+#define PRUX_SCRATCH 10
 #define PRUX_CTRL PRU0_CTRL
 #define TO_ARM_HOST	16	
 #define FROM_ARM_HOST	17
@@ -48,6 +49,7 @@
 
 #define PRUX PRU1
 #define PRUX_STR "PRU1"
+#define PRUX_SCRATCH 11
 #define PRUX_CTRL PRU1_CTRL
 #define TO_ARM_HOST	18	
 #define FROM_ARM_HOST	19
@@ -79,8 +81,6 @@
 #else
 #error Must define symbol ON_PRU to be either 0 or 1
 #endif
-
-#define PRU_NAME xstr(PRUX)
 
 /*
  * Using the name 'itc-pkt' does seemingly probe the itc_pkt driver
