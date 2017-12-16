@@ -1,4 +1,16 @@
-/* -*- c -*- */
+/*
+ * Copyright (C) 2017 The Regents of the University of New Mexico
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
 #include "prux.h"
 
 #include <stdint.h>
@@ -64,19 +76,33 @@ int sendVal(const char * str1, const char * str2, uint32_t val)
 }
 
 /**
-   Reset and re-enable the cycle counter.  According to SPRU8FHA,
+   Reset and re-enable the cycle counter.  According to SPRUHF8A,
    Table 29, page 80, the cycle counter (1) Does not wrap at
    0xffffffff, but instead disables counting, and (2) Can be cleared
    when it is disabled.
 
-   On the other hand, though, two points: (A) It should be highly
-   unlikely for the cycle counter to hit the max in the loop below,
-   and (B) I have code that, apparently, was successfully clearing the
-   cycle counter without disabling it first.
+   On the other hand, though, two points: (A) Unless the PRU gets
+   wedged due to a bug or something, it should be pretty unlikely for
+   the cycle counter to hit the max between successive calls to
+   processPackets (below), and (B) I have code that, apparently, was
+   successfully clearing the cycle counter without disabling it first.
 
    So given (A) and (b) we 'ought to be fine' just clearing the
    counter on the fly, but out of an abundance of caution we are
    writing and using this routine instead anyway.
+
+   Also: Because we are resetting CYCLES regularly, an easy way to
+   check if PRUs still seem alive is do this a couple times:
+
+    # grep CYCLE /sys/kernel/debug/remoteproc/remoteproc?/regs
+    /sys/kernel/debug/remoteproc/remoteproc1/regs:CYCLE     := 0x0b97162d
+    /sys/kernel/debug/remoteproc/remoteproc2/regs:CYCLE     := 0x04c41075
+    # 
+
+   If either of those numbers is 0xffffffff or anything unchanging,
+   something has likely gone off the rails.  (Note that 'remoteproc*'
+   in the grep is fine too, vs 'remoteproc?', but I couldn't write it
+   that way here without unintentionally closing this comment!)
  */
 static inline void resetCycleCounter() {
   PRUX_CTRL.CTRL_bit.CTR_EN = 0;   /* disable cycle counter */
