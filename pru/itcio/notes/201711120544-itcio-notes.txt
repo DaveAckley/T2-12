@@ -1,4 +1,4 @@
-{169}  -*- text -*-
+{172}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2461,3 +2461,28 @@ struct.
 But getting toward time to cook.
 
 :167]
+[169:
+
+Sat Dec 16 04:58:10 2017 So, focusing on implementing the thread
+list.  Actually let's review the SymmetricBitstreamTransceiver.inc
+pseudocode from.. May 2017.. Seven months ago.
+[170:
+
+Sat Dec 16 07:05:32 2017 OK, well I got distracted by all the SHOUTING
+in the asm code and decided to go back and change capitalization
+conventions.  Also made some more macros for function prologue and
+stuff and just generally cleaned up the dump a bit.
+
+So that hit just about everything in main_pru_def.asm, and we should
+commit before also doing anything much functional.
+
+Actually, maybe now's the time to reorg the filenames too, ditch
+main_prux.inc and so on.  Since we cleaning anyway.[171:
+
+Sat Dec 16 07:57:48 2017 OK, renamed files and added GPL stuff and now
+getting ready to commit.
+
+:171]
+
+:170]
+:169]
