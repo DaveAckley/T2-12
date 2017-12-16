@@ -18,30 +18,46 @@
 
 	;; STRUCTURE DECLARATIONS
 
+;;XXX The training wheels come off your bike
 ;;; Demo struct: STATE_INFO
-STATE_INFO:     .struct
-RXRDY_COUNT:    .ubyte
-RXDAT_COUNT:    .ubyte
-RXRDY_STATE:    .ubyte
-RXDAT_STATE:    .ubyte
-StateInfoLen:   .endstruct
+;; STATE_INFO:     .struct
+;; RXRDY_COUNT:    .ubyte
+;; RXDAT_COUNT:    .ubyte
+;; RXRDY_STATE:    .ubyte
+;; RXDAT_STATE:    .ubyte
+;; StateInfoLen:   .endstruct
 	
-LiveCounts:     .sassign R5, STATE_INFO
+;; LiveCounts:     .sassign R5, STATE_INFO 
         
-;;;;;;
-;;; IOThread: Everything needed for a prudir state machine
+;;;;;;;;
+;;;: struct GlobalContext: Info for managing all threads
+GlobalContext:  .struct
+bEnabledHeadID:  .ubyte   ; ID of head of enabled thread list or 0 if none
+bDisabledHeadID: .ubyte   ; ID of head of disabled thread list or 0 if none
+wRSRV:          .ushort   ; Unused reserved
+GlobalContextStructLen:       .endstruct
+        
+GC:     .sassign R5, GlobalContext
+
+;;;;;;;;
+;;;: struct ThreadContext: IOThread linking info and flags
+ThreadContext:  .struct
+bThisID:        .ubyte  ; this context id (1..3) 
+bNextID:        .ubyte  ; next context id (1..3)
+bRSRVD:         .ubyte  ; Reserved (for bPrevID if needed)
+bFlags:         .ubyte  ; flags
+ThreadContextStructLen: .endstruct              
+
 	
+;;;;;;;;
+;;;: struct IOThread: Everything needed for an IOThread(==prudir) state machine
 	;; 3 bits of regs == 8 regs per IOTHREAD
 	.eval 3, IOThreadBits
         .eval (1<<IOThreadBits), IOThreadRegs
         .eval (4*IOThreadRegs), IOThreadBytes
 
 IOThread:       .struct
-bThisID:        .ubyte  ; this context id (0..2) 
-bNextID:        .ubyte  ; next context id (0..2)
-bPrevID:        .ubyte  ; prev context id (0..2)
-bFlags:         .ubyte  ; flags
-
+rCxt:           .tag ThreadContext  
 bTXRDYPin:      .ubyte  ; Transmit Ready R30 Pin Number
 bTXDATPin:      .ubyte  ; Transmit Data  R30 Pin Number
 bRXRDYPin:      .ubyte  ; Receive Ready  R31 Pin Number
@@ -71,17 +87,15 @@ IOThreadStructLen:   .endstruct
 
         
 ;;; CT is the Current Thread!  It lives in R6-R13!
+	.asg 6, CTRegNum
 	.asg R6, CTReg
 CT:     .sassign CTReg, IOThread
 
 	;int sendVal(const char * str, uint32_t val)
 	.ref sendVal            
 
-;;;;;;
-;;; MACROS
-
-;;;
-;;; SENDVAL: Print two strings and a value
+;;;;;;;;
+;;;: macro SENDVAL: Print two strings and a value
 ;;;  INPUTS:
 ;;;    STR1: First string to print
 ;;;    STR2: Second string to print
@@ -101,8 +115,8 @@ $M2?:  .cstring STR2
         jal r3.w2, sendVal      ; Call sendVal (ignore return)
         .endm
 
-;;;	
-;;; LOADBIT: Copy SRCREG bit BITNUM to bottom of DESTREG
+;;;;;;;;
+;;;: macro LOADBIT: Copy SRCREG bit BITNUM to bottom of DESTREG
 ;;;  INPUTS:
 ;;;    SRCREG: Source register field; REG
 ;;;    BITNUM: Number of bit (0 == LSB) to copy; OP(31)
@@ -114,8 +128,9 @@ LOADBIT:        .macro DESTREG, SRCREG, BITNUM
         and DESTREG, DESTREG, 1     ; Flush the rest
         .endm
 
-;;;	
-;;; SUSPEND: Sleep current thread 
+
+;;;;;;;;
+;;;: macro SUSPEND: Sleep current thread 
 ;;;  INPUTS: NONE
 ;;;  OUTPUTS: NONE
 ;;;  NOTES:
@@ -124,9 +139,37 @@ LOADBIT:        .macro DESTREG, SRCREG, BITNUM
 SUSPEND:        .macro
         jal CT.wResAddr, contextSwitch
         .endm
-        
-;;;
-;;; ENTERFUNC: Function prologue
+
+	
+;;;;;;;;
+;;;: macro LOADCXTR1: Read ThreadContext of thread THREADID into R1
+;;;  INPUTS:
+;;;    THREADID: IOThread to access, must be in 1..3
+;;;  OUTPUTS:
+;;;    R1 gets a copy ThreadContext of IOThread THREADID
+;;;  NOTES:
+;;;  - Trashes r0.b0 and r1
+;;;  - Accesses the last-saved IOThread scratchpad data
+;;;  - Works on any thread's saved state but intended for other than CT. 
+LOADCXTR1:     .macro THREADID
+        lsl r0.b0, THREADID, IOThreadBits ; Get CT->THREADID register shift
+        add r0.b0, r0.b0, CTRegNum-1      ; Adjust for read to r1 instead of CT
+        xin PRUX_SCRATCH, &r1, 4          ; r1 = THREADID's saved rCxt
+        .endm
+
+	
+;;;;;;;;
+;;;: macro SAVECXTR1: Write R1 back to ThreadContext previously loaded by LOADCXTR1
+;;;  INPUTS: NONE
+;;;  OUTPUTS: NONE
+;;;  NOTES:
+;;;  - r0.b0 must be unchanged from the prior LOADCXTR1
+SAVECXTR1:     .macro THREADID
+        xout PRUX_SCRATCH, &r1, 4          ; THREADID's saved rCxt = r1
+        .endm
+
+;;;;;;;;
+;;;: macro ENTERFUNC: Function prologue
 ;;;  INPUTS:
 ;;;    BYTES: Number of bytes to save on stack, starting with r3.w2
 ;;;  OUTPUTS: NONE
@@ -141,8 +184,8 @@ ENTERFUNC:      .macro BYTES
         .endif
         .endm
         
-;;;
-;;; EXITFUNC: Function epilogue
+;;;;;;;;
+;;;: macro EXITFUNC: Function epilogue
 ;;;  INPUTS:
 ;;;    BYTES: Number of bytes to restore from stack, starting with r3.w2
 ;;;  OUTPUTS: NONE
@@ -156,20 +199,20 @@ EXITFUNC:      .macro BYTES
 	jmp r3.w2                 ; And return
         .endm
 
-;;;;;;
-;;; ASSEMBLER MAIN LOOP
-	.text
+;;;;;;;;
+;;;: function mainLoop: Assembler-level whole-program main loop
         .def mainLoop
 mainLoop:
 	.ref processPackets       ; C function
-        jal r3.w2, processPackets ; Return == 0 if firstPacket done
+        jal r3.w2, processPackets ; Return == 0 means firstPacket done
 	qbne mainLoop, r14, 0     ; Wait for that before initting state machines
 	jal r3.w2, initStateMachines
 l1:     jal r3.w2, advanceStateMachines
         jal r3.w2, processPackets
         jmp l1
 	
-        .text
+;;;;;;;;
+;;;: function addfuncasm: Demo function to be called from C
         .def addfuncasm
 addfuncasm:     ENTERFUNC 2     ; Store r3.w2 (so we can use SENDVAL)
         add r14, r15, r14       ; Compute function, result to r14
@@ -178,67 +221,89 @@ addfuncasm:     ENTERFUNC 2     ; Store r3.w2 (so we can use SENDVAL)
         jmp r3.w2               ; Return
         
         
-;;;;;;
-;;; STATE MACHINE SUPPORT
-	
+;;;;;;;;
+;;;: function initStateMachines: Initialize the three threads
 initStateMachines:      ENTERFUNC 2 ; Save r3.w2 (for SENDVAL)
-	;; Clear counts
-	zero &LiveCounts,StateInfoLen
+;; ;;; XXX
+;; 	;; Clear counts
+;; 	zero &LiveCounts,StateInfoLen
 	
-        ;; Read initial pin states
-	LOADBIT LiveCounts.RXRDY_STATE, r31, PRUDIR1_RXRDY_R31_BIT  ; pru0 SE, pru1 NW
-	LOADBIT LiveCounts.RXDAT_STATE, r31, PRUDIR1_RXDAT_R31_BIT  ; pru0 SE, pru1 NW
+;;         ;; Read initial pin states
+;; 	LOADBIT LiveCounts.RXRDY_STATE, r31, PRUDIR1_RXRDY_R31_BIT  ; pru0 SE, pru1 NW
+;; 	LOADBIT LiveCounts.RXDAT_STATE, r31, PRUDIR1_RXDAT_R31_BIT  ; pru0 SE, pru1 NW
+
+        ;; Init GlobalContext
+        zero &GC,GlobalContextStructLen ; Clear global context
 
 	;; Clear CT
-	zero &CT,IOThreadBytes             ; so e.g. this_id = next_id = prev_id = 0
-	loop el1, 3                        ; three times around
-        ;; XXX ADDITIONAL INITS HERE
-	lsl r0.b0, CT.bThisID, IOThreadBits ; r0.b0 = this_id*8
-        xout PRUX_SCRATCH, &CT, IOThreadBytes ; Save 'initted' context
-	add CT.bThisID, CT.bThisID, 1     ; ++this_id
-	mov CT.bNextID, CT.bThisID        ; next_id = this_id
-	mov CT.bPrevID, CT.bThisID        ; prev_id = this_id
+	zero &CT,IOThreadStructLen      ; Start all empty
+	ldi CT.rCxt.bThisID, 1          ; First thread is #1
+	ldi r2, pruDirToPinNumbers      ; Get info table base address
+	loop el2, 3                     ; three times around
+el0:
+        ;; Init bNextID
+        add CT.rCxt.bNextID, CT.rCxt.bThisID, 1    ; next_id = this_id + 1
+        qbne el1, CT.rCxt.bNextID, 4               ; check if wrapped
+        ldi CT.rCxt.bNextID, 0                     ; yes, next_id = 0
 el1:    
-        ;; Load thread 1
-        ldi r0.b0, 1<<3
-        xin PRUX_SCRATCH, &CT, IOThreadBytes
+        ;; Init bTXRDYPin..bRXDATPin
+        lbbo &CT.bTXRDYPin, r2, 0, 4      ; Get pin info into CT.bTXRDYPin..CT.bRXDATPin
+	add r2, r2, 4                     ; Move on to next table entry
+
+        ;; Init wResAddr
+	ldi CT.wResAddr, getNextOutputByte ; Thread initially resumes looking for output
         
+        ;; Init done, save iothread 
+	lsl r0.b0, CT.rCxt.bThisID, IOThreadBits ; r0.b0 = this_id*8
+        xout PRUX_SCRATCH, &CT, IOThreadBytes ; Save 'initted' context
+	add CT.rCxt.bThisID, CT.rCxt.bThisID, 1     ; ++this_id
+el2:    ;; end loop
+
+        ;; Announce initted
         SENDVAL PRUX_STR,""" initStateMachines""", r0.b0 ; Report in
+
 	EXITFUNC 2                        ; Return
 
 ;;;;;;;;;;;;;;;
 ;;; SCHEDULER
 
+;;;;;;;;
+;;;: function contextSwitch: Switch to next thread
 contextSwitch:
-        lsl r0.b0, CT.bThisID, IOThreadBits ; Get our reg shift
+        lsl r0.b0, CT.rCxt.bThisID, IOThreadBits ; Get our reg shift
         xout PRUX_SCRATCH, &CT, IOThreadBytes ; Stash current thread
         ;; FALL THROUGH
 	
+;;;;;;;;
+;;;: function nextContext: Load next thread and resume it
 nextContext:
-        lsl r0.b0, CT.bNextID, IOThreadBits ; Get next reg shift
+        lsl r0.b0, CT.rCxt.bNextID, IOThreadBits ; Get next reg shift
         xin PRUX_SCRATCH, &CT, IOThreadBytes ; Load next thread
 	jmp CT.wResAddr                      ; and resume it
         
-        .def advanceStateMachines
+;;;;;;;;
+;;;: function advanceStateMachines: 
 advanceStateMachines:   ENTERFUNC 6
-	
-	LOADBIT r4, r31, 2                    ; rxrdy (r31.t2) to r4
-        qbeq asm1, r4, LiveCounts.RXRDY_STATE ; jump if no change
-	mov LiveCounts.RXRDY_STATE, r4        ; else update retained state,
-        add LiveCounts.RXRDY_COUNT, LiveCounts.RXRDY_COUNT, 1 ; increment, and
-	SENDVAL PRUX_STR,""" RXRDY""",LiveCounts.RXRDY_COUNT ; report change
+;; ;;; XXX
+;; 	LOADBIT r4, r31, 2                    ; rxrdy (r31.t2) to r4
+;;         qbeq asm1, r4, LiveCounts.RXRDY_STATE ; jump if no change
+;; 	mov LiveCounts.RXRDY_STATE, r4        ; else update retained state,
+;;         add LiveCounts.RXRDY_COUNT, LiveCounts.RXRDY_COUNT, 1 ; increment, and
+;; 	SENDVAL PRUX_STR,""" RXRDY""",LiveCounts.RXRDY_COUNT ; report change
 
-asm1:
-        LOADBIT r4, r31, 14                   ; rxdat (r31.t14) to r4
-        qbeq asm2, r4, LiveCounts.RXDAT_STATE ; jump if no change
-	mov LiveCounts.RXDAT_STATE, r4        ; else update retained state
-        add LiveCounts.RXDAT_COUNT, LiveCounts.RXDAT_COUNT, 1 ; increment, and
-	SENDVAL PRUX_STR,""" RXDAT""",LiveCounts.RXDAT_COUNT ; report change
+;; asm1:
+;;         LOADBIT r4, r31, 14                   ; rxdat (r31.t14) to r4
+;;         qbeq asm2, r4, LiveCounts.RXDAT_STATE ; jump if no change
+;; 	mov LiveCounts.RXDAT_STATE, r4        ; else update retained state
+;;         add LiveCounts.RXDAT_COUNT, LiveCounts.RXDAT_COUNT, 1 ; increment, and
+;; 	SENDVAL PRUX_STR,""" RXDAT""",LiveCounts.RXDAT_COUNT ; report change
 
-asm2:
+;; asm2:
         EXITFUNC 6
 	
 
+;;;;;;;;
+;;;: function copyOutScratchPad: Access stored threads for debugging
 	;; void copyOutScratchPad(uint8_t * packet, uint16_t len)
         ;; R14: ptr to destination start
         ;; R15: bytes to copy
@@ -268,6 +333,9 @@ cosp2:
         add r2, r2, 4           ; Pop stack
         jmp r3.w2               ; Return
 
+	
+;;;;;;;;
+;;;: function processOutboundITCPacket: Add packet to outbound buffer if possible
 	;; unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len);
 	;; R14: packet
         ;; R15: len
@@ -283,3 +351,31 @@ hasLen:
         ldi r14, 1
         jmp r3.w2               ; Return 1
        
+
+;;;;;;;;
+;;;: target getNextOutputByte: Fetch next outbound byte if any
+getNextOutputByte:   
+        add CT.wRSRV2, CT.wRSRV2, 1 ; increment in reserved space for testing
+        lsl r1.w0, CT.wRSRV2, 8     ; shift out left 8 bits of count
+        qbne gnob1, r1.w0, 0        ; skip right 8 bits aren't zero
+        ENTERFUNC 2     
+        SENDVAL PRUX_STR, """GNOB timeout""", CT.wRSRV2
+	EXITFUNC 2
+gnob1:  SUSPEND                 ; Done for now
+        jmp getNextOutputByte
+	
+;;;;;;;;
+;;;: data pruDirToPinNumbers: The positions of the ITC pins for each prudir 0..2
+        .data
+pruDirToPinNumbers:
+        ;; prudir0 (IOThread1)
+        .byte PRUDIR0_TXRDY_R30_BIT, PRUDIR0_TXDAT_R30_BIT
+        .byte PRUDIR0_RXRDY_R31_BIT, PRUDIR0_RXDAT_R31_BIT 
+        ;; prudir1 (IOThread2)
+        .byte PRUDIR1_TXRDY_R30_BIT, PRUDIR1_TXDAT_R30_BIT
+        .byte PRUDIR1_RXRDY_R31_BIT, PRUDIR1_RXDAT_R31_BIT 
+        ;; prudic2 (IOThread3)
+        .byte PRUDIR2_TXRDY_R30_BIT, PRUDIR2_TXDAT_R30_BIT
+        .byte PRUDIR2_RXRDY_R31_BIT, PRUDIR2_RXDAT_R31_BIT 
+        .text
+        
