@@ -1,4 +1,4 @@
-{172}  -*- text -*-
+{180}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2356,7 +2356,7 @@ So.  To review:
      RSV - Reserved: Should be 0 on output, should be ignored on input
      OVR - Overrun: Packet data was lost due to exhausted buffer space
      ERR - Error: Some packet data corruption or other problem was detected
-     SD[2..0] - Three bit source/destination direction code.  
+     SD[2..0] - Three bit source/destination direction code.
 
  - In a 'local standard' packet, by definition, (type&0xc0)==0xc0.
    The structure of a local standard packet type is this:
@@ -2380,7 +2380,7 @@ Fri Dec 15 12:46:32 2017 Ahem.  Well clearly :163: got away from me a
 little, there, heh heh.  Has some useful stuff, though, if very likely
 overdesigned for these exact space-time coordinates in the universe..
 
-So, uh, where were we?  
+So, uh, where were we?
 
 ORite: initting IOThreads -> enabling/disabling IOThreads -> whoopsie
 
@@ -2391,7 +2391,7 @@ because I suspect it addressed some/much of this already.
 
 I'm tempted to say that thread ids, instead of being 0..2, should be
 whatever the necessary XFR register shift to load or save them..  But
-I think it'll probably be the same number of instructions either way.  
+I think it'll probably be the same number of instructions either way.
 Assuming the necessary shifts will be 0, 8, and 16, then doing
 
    LSL R0.b0, CT.bNEXT_ID, 3
@@ -2421,7 +2421,7 @@ and we have switched threads in 20ns flat.  Or say 25ns to count the
 that happened somewhere to initiate the switch.[165:
 
 Fri Dec 15 13:15:30 2017 Could we have a demo of some asm with
-XIN/XOUT that compiles, please?  It doesn't have to do anything.. 
+XIN/XOUT that compiles, please?  It doesn't have to do anything..
 
 :165]
 
@@ -2436,7 +2436,7 @@ scratchpad used for thread storage, and we can see our three threads
 now _minimally_ initialized.  With
 
     # echo SSSSSSssSSSSSSSSSSSSSSSSSSssSSSSSSSSSSSSSSSSSSSssSSSSSSSSSSSSSSSSSSssSSSSSSSSSSSSSSSSSS-------ddzabcx > /dev/itc/pru1
-    # 
+    #
 
 we get:
 
@@ -2480,7 +2480,133 @@ Actually, maybe now's the time to reorg the filenames too, ditch
 main_prux.inc and so on.  Since we cleaning anyway.[171:
 
 Sat Dec 16 07:57:48 2017 OK, renamed files and added GPL stuff and now
-getting ready to commit.
+getting ready to commit.[172:
+
+Sat Dec 16 08:11:04 2017 OK committed.  Where were we?  Pop pop.
+
+..Reviewing SymmetricBitStreamTransceiver to see what we could learn.
+Let's not do more of that, since it seems to encourage day dreaming
+and fantasy, and instead see about enabling and disabling IOThreads.
+
+Hmm, note that changing next or prev pointers on _other_ threads
+requires writing into the scratchpad.  Can we make a little macro to
+help with that?  Give me another thread id and a byte offset or
+something, and I read or write that byte for you?[173:
+
+Sat Dec 16 09:23:18 2017 OK, well not quite that flexible, but I made
+'LOADCXTR1 threadid', that reads the (new) ThreadContext struct of the
+given threadid into R1.  And 'SAVECXTR1' which writes R1 back to the
+threadid from the LOADCXTR1, relying on r0.b0 to still be good.  A
+'WRITECXTR1 threadid' would be easy to add, but let's need it first.
+
+So.  Can we write some thread enable/disable routines?  Signatures?
+
+[174:
+
+Sat Dec 16 09:51:24 2017 Well, did more cleanup, but I'm having
+trouble with the next/this/prev_id linked list concept.  Starting to
+design it, it seems like a lot of overhead for three threads.  If we
+kept some kind of thread enabling info in the (newly-created struct
+GlobalContext) GC, we could perhaps just iterate over all the thread
+info and skip anything that's disabled at the cost of maybe one
+instruction, rather than actually switching contexts just to discover
+the new current is disabled, at a cost of like five or six
+instructions anyway.
+
+Now, the old pseudocode seemed to be playing it both ways -- having
+both nextID and prevID ptrs as well as a enable bit -- but it never
+actually changes the next ptr after init, and it never uses the prev
+ptr at all..
+
+So let's go just halfway on this.  Let's ditch the prev ptr, and init
+the next ptr to (this+1)%3, and expect to just cycle through all of
+them all the time in advancestatemachines.  We'll do the enable bit
+and take the five instructions hit per disabled thread advance.
+That'll get us going and we'll still theoretically be able to consider
+changing the linking in the future if we get to that level of need and
+competence.[175:
+
+Sat Dec 16 10:28:56 2017 Hmm hmm hmm..  Here's a pretty evil
+possibility.  If we reduce the IOThread size to six regs instead of
+eight, by ditching rRSRV3 and rRSRV4, 'which we aren't using anyway',
+then we could use 1..3 for thread ids instead of 0..2, and have 0
+available down the road to mean null.  The idea would be to have the
+register address in the XFR instructions be &R0 instead of &CT, and
+then thread id 1 would have a shift of 6 which would take us to
+R6==CT, and so on.  And then we're completely hosed when we need more
+space in IOThread then the current wRSRV1 can provide.
+
+But writing that paragraph I got the obvious next step: Who says the
+XFR register address can only be &CT or &R0?  The XFRs all wrap around
+in register space, so we can stay with our eight reg IOThread, AND
+have thread ids of 1..3 so 0 can be OoB, by having the XFR register
+address be the one that's eight before CT with wrap-around.  And which
+register would that be, exactly?  Checking wrap rules..  [176:
+
+Sat Dec 16 10:37:47 2017 The scratchpad banks are R0..R29, so
+presumably wrap is %30..  Confirming..  [177:
+
+Sat Dec 16 10:40:28 2017 Yeah, the second example in section 5.2.4.2.2
+of spruhf8a implies %30.  So.  That means something like
+
+   lsl r0.b0, THREADID, 3   ; get 8*threadid
+   xin ..  foggindoh
+
+Oh man I'm crazy.  The shift only applies to the scratchpad addresses,
+not the register address!  The register address _is_ where the data
+transfer will start in the register file.  None of this makes sense.
+
+..But oh man I'm not crazy.  Who said the stored IOThreads have to
+start in 8*threadid in the scratchpad?  We can put them anywhere we
+want, have them half-wrapping around, or whatever.  So if we have
+threadid 1..3 and we store at CT+8*threadid then we'll just have this
+mapping:
+
+  thread id  shift by    scratchpad regs
+      1          8          R14-R21    (CT=6)+(8*1=8)=14
+      2         16          R22-R29    (CT=6)+(8*2=16)=22
+      3         24          R0-R7      (CT=6)+(8*3=24)=30%30=0
+
+and hmm none of the structs actually gets wrapped, not that that would
+matter.
+[178:
+
+Sat Dec 16 10:53:09 2017 Hmm!  Sitting here, that still seems
+plausible!  Now, at the moment we don't really need 0 to be null in a
+thread list, because we're just going to set it up at init and never
+change it, but it feels better having it available.
+
+Going for it.
+[179:
+
+Sat Dec 16 11:57:46 2017 OK, time to break for lunch and stuff.  Have
+made progress though mostly just built yet untested.  During the
+break, need to think through the interactions of the asm main loop
+with the state machine execution.  Right now the overall state machine
+is designed to just run hell for leather as soon as it's started,
+context switching its brains out til universal heat death.  How does
+the main loop ever get control again, or doesn't it?  If not, we need
+to move the processPackets call to somewhere inside the state machine
+so that we'll have a prayer of the pru listening to us.
+
+Later.
+
+:179]
+:178]
+
+
+:177]
+
+:176]
+
+:175]
+
+
+:174]
+
+:173]
+
+:172]
 
 :171]
 
