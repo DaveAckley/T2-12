@@ -21,8 +21,8 @@ PRU_CGT:=/usr/share/ti/cgt-pru
 LINKER_COMMAND_FILE=./AM335x_PRU.cmd
 LIBS=--library=../../lib/rpmsg_lib.lib
 INCLUDE=--include_path=../../include --include_path=../../include/am335x
-STACK_SIZE=0x100
-HEAP_SIZE=0x100
+STACK_SIZE=0x200
+HEAP_SIZE=0x200
 
 ALL_DEP:=Makefile
 C_DEP:=main_prux.c prux.h resource_table_x.h
@@ -64,12 +64,12 @@ build:	$(TARGETS)
 	@echo '-	Firmware generated : $^'
 
 
-$(PRU1_FW): $(GEN_DIR)/main_pru1.object $(GEN_DIR)/main_pru1_def.object $(LINK_PRU1_FW)
+$(PRU1_FW): $(GEN_DIR)/main_pru1.object $(GEN_DIR)/pru1_sbst3.object $(LINK_PRU1_FW)
 	@echo '(PRU1) LD	$^'
 	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
 
 
-$(PRU0_FW): $(GEN_DIR)/main_pru0.object $(GEN_DIR)/main_pru0_def.object $(LINK_PRU0_FW)
+$(PRU0_FW): $(GEN_DIR)/main_pru0.object $(GEN_DIR)/pru0_sbst3.object $(LINK_PRU0_FW)
 	@echo '(PRU0) LD	$^' 
 	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
 
@@ -77,22 +77,22 @@ $(PRU0_FW): $(GEN_DIR)/main_pru0.object $(GEN_DIR)/main_pru0_def.object $(LINK_P
 $(GEN_DIR)/main_pru0.object: $(C_DEP) $(ALL_DEP)
 	@mkdir -p $(GEN_DIR)
 	@echo '(PRU0) CC	$<'
-	@$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+	$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
-$(GEN_DIR)/main_pru0_def.object: $(ASM_DEP) $(ALL_DEP)
+$(GEN_DIR)/pru0_sbst3.object: $(ASM_DEP) $(ALL_DEP)
 	@mkdir -p $(GEN_DIR)
 	@echo '(PRU0) CC	$<'
-	@$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+	$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 $(GEN_DIR)/main_pru1.object: $(C_DEP) $(ALL_DEP)
 	@mkdir -p $(GEN_DIR)
 	@echo '(PRU1) CC	$<'
-	@$(PRU_CGT)/bin/clpru -DON_PRU=1 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+	$(PRU_CGT)/bin/clpru -DON_PRU=1 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
-$(GEN_DIR)/main_pru1_def.object: $(ASM_DEP) $(ALL_DEP)
+$(GEN_DIR)/pru1_sbst3.object: $(ASM_DEP) $(ALL_DEP)
 	@mkdir -p $(GEN_DIR)
 	@echo '(PRU1) CC	$<'
-	@$(PRU_CGT)/bin/clpru -DON_PRU=1 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+	$(PRU_CGT)/bin/clpru -DON_PRU=1 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 
 .PHONY: install copy_pru0_fw copy_pru1_fw reboot_pru_1 reboot_pru_0
@@ -105,13 +105,13 @@ copyfw:	copy_pru0_fw copy_pru1_fw
 
 rebootprus:	 reboot_pru0 reboot_pru1
 
-copy_pru1_fw:
-	@echo '-	copying $(PRU1_FW) to /lib/firmware/am335x_pru1_fw'
-	@cp $(PRU1_FW) /lib/firmware/am335x-pru1-fw
+copy_pru1_fw:	 $(PRU1_FW)
+	@echo '-	copying $^ to /lib/firmware/am335x_pru1_fw'
+	@cp $^ /lib/firmware/am335x-pru1-fw
 
 copy_pru0_fw: $(PRU0_FW)
-	@echo '-	copying $(PRU1_FW) to /lib/firmware/am335x_pru0_fw'
-	@cp $(PRU0_FW) /lib/firmware/am335x-pru0-fw
+	@echo '-	copying $^ to /lib/firmware/am335x_pru0_fw'
+	@cp $^ /lib/firmware/am335x-pru0-fw
 
 reboot_pru1:
 	@echo '-	ensuring itc_pkt module is removed'

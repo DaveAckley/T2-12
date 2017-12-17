@@ -469,7 +469,7 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
   ITCDeviceState * devstate = dev_get_drvdata(&rpmsg_dev->dev);
   int minor = MINOR(devstate->devt);
 
-  //  printk(KERN_INFO "Received %d from %d\n",len, minor);
+  printk(KERN_INFO "Received %d from %d\n",len, minor);
 
   if (len > 255) {
     printk(KERN_ERR "Truncating overlength (%d) packet\n",len);
@@ -543,7 +543,7 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
   
   devstate = make_itc_minor(&rpmsg_dev->dev, minor_obtained, &ret);
 
-  printk(KERN_INFO "BLURGE back with devstate=%p\n",devstate);
+  printk(KERN_INFO "BORGO back with devstate=%p\n",devstate);
 
   if (!devstate)
     return ret;
@@ -559,7 +559,7 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
     printk(KERN_INFO "BLURGE sending on buf=%p\n",buf);
 
     ret = send_msg_to_pru(minor_obtained,0,buf,10, "%s",""); /* grr..gcc warns on "" as format string */
-    printk(KERN_INFO "RECTOBLURGE back with buf='%s'\n",buf);
+    printk(KERN_INFO "RECTOBLURGE back with ret=%d\n",ret);
   }
 
   if (ret) {

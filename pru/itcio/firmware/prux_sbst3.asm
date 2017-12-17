@@ -203,13 +203,16 @@ EXITFUNC:      .macro BYTES
 ;;;: function mainLoop: Assembler-level whole-program main loop
         .def mainLoop
 mainLoop:
+        ENTERFUNC 2               ; Store r3.w2 (so we can use SENDVAL)
 	.ref processPackets       ; C function
         jal r3.w2, processPackets ; Return == 0 means firstPacket done
 	qbne mainLoop, r14, 0     ; Wait for that before initting state machines
+	SENDVAL PRUX_STR,""" HEWO""",r14 ; Speak!
 	jal r3.w2, initStateMachines
 l1:     jal r3.w2, advanceStateMachines
         jal r3.w2, processPackets
         jmp l1
+	EXITFUNC 2              ; NOT REACHED..
 	
 ;;;;;;;;
 ;;;: function addfuncasm: Demo function to be called from C
@@ -235,6 +238,10 @@ initStateMachines:      ENTERFUNC 2 ; Save r3.w2 (for SENDVAL)
         ;; Init GlobalContext
         zero &GC,GlobalContextStructLen ; Clear global context
 
+;;; HACK TEST
+        SENDVAL PRUX_STR,""" initStateMachines""", r0.b0 ; Report in
+	EXITFUNC 2                        ; Return
+	
 	;; Clear CT
 	zero &CT,IOThreadStructLen      ; Start all empty
 	ldi CT.rCxt.bThisID, 1          ; First thread is #1

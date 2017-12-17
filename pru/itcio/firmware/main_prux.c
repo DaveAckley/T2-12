@@ -47,6 +47,14 @@ static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
 static uint16_t firstSrc, firstDst;
 
+int deliverInboundPacket(const uint8_t *packet, uint16_t len)
+{
+  if (firstPacket) return 0; /* Not ready yet */
+  if (len) pru_rpmsg_send(&transport, firstDst, firstSrc, (void*) packet, len);
+  return 1;                  /* Packet is out for delivery */
+}
+
+
 int sendVal(const char * str1, const char * str2, uint32_t val)
 {
   enum { BUF_LEN = 50 };
@@ -233,6 +241,50 @@ void main(void)
   /* Never look back */
   mainLoop();
 }
+
+#if 0
+struct my_pru_rpmsg_hdr {
+  uint32_t src;
+  uint32_t dst;
+  uint32_t reserved;
+  uint16_t len;
+  uint16_t flags;
+  uint8_t data[0];
+};
+
+int16_t my_pru_rpmsg_receive(struct pru_rpmsg_transport *transport,
+                             uint16_t *src, uint16_t *dst,
+                             void *data, uint16_t *len)
+{
+  int16_t head;
+  struct my_pru_rpmsg_hdr *msg;
+  uint32_t msg_len;
+  struct pru_virtqueue *virtqueue;
+
+  virtqueue = &transport->virtqueue1;
+
+  /* Get an available buffer */
+  head = pru_virtqueue_get_avail_buf(virtqueue, (void **)&msg, &msg_len);
+
+  if (head < 0)
+    return PRU_RPMSG_NO_BUF_AVAILABLE;
+
+  /* Copy the message payload to the local data buffer provided */
+  memcpy(data, msg->data, msg->len);
+  *src = msg->src;
+  *dst = msg->dst;
+  *len = msg->len;
+  
+  /* Add the used buffer */
+  if (pru_virtqueue_add_used_buf(virtqueue, head, msg_len) < 0)
+    return PRU_RPMSG_INVALID_HEAD;
+
+  /* Kick the ARM host */
+  pru_virtqueue_kick(virtqueue);
+  
+  return PRU_RPMSG_SUCCESS;
+}
+#endif
 
 int processPackets() {
   uint16_t src, dst, len;
