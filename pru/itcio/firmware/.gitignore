@@ -1,2 +1,2 @@
 # We need cmd files for firmware linking doh!
- ! *.cmd
+!*.cmd
