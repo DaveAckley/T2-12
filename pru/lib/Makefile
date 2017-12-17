@@ -14,14 +14,11 @@ clean:
 	rm -f $(LIBFILE)
 
 check_bin:
-	@mkdir -p /usr/share/ti/cgt-pru/bin || exit 99 ;\
-	if [ ! -L /usr/share/ti/cgt-pru/bin/clpru ] ; then \
-	  ln -s /usr/bin/clpru /usr/share/ti/cgt-pru/bin/clpru ;\
-	  echo Linked /usr/bin/clpru to /usr/share/ti/cgt-pru/bin/clpru ;\
-	fi
-
-
-
+	@if [ ! -L /usr/share/ti/cgt-pru/bin ] ; then \
+	  ln -s /usr/bin /usr/share/ti/cgt-pru/bin ;\
+	  echo Linked /usr/bin to /usr/share/ti/cgt-pru/bin ;\
+	fi ;\
+	done
 
 install:	build
 
