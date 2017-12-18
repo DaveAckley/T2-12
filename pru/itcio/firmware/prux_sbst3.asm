@@ -112,7 +112,7 @@ el1:
         LDI R0.b0, 1<<3
         XIN PRUX_SCRATCH, &CT, IOThread_LEN
         
-        SENDVAL PRUX_STR,""" initStateMachines""", R0.b0 ; Report in
+        SENDVAL PRUX_STR,""" hi from prux_sbst3.asm""", R0.b0 ; Report in
         JMP r3.w2               ; Return
 
         .def advanceStateMachines
