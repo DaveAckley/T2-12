@@ -1,4 +1,4 @@
-{193}  -*- text -*-
+{194}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2853,7 +2853,35 @@ the thought is we should be like:
 	LDI CT.sTH.wRES_ADDR,$CODE(IdleThreadRunner)
 
 to convert the 'IdleThreadRunner' symbol from a byte address to a word
-address.  We Shall See.
+address.  We Shall See.[193:
+
+Mon Dec 18 12:14:28 2017 And We Are Still Alive!  It looks like we're
+actually switching threads!  The 'S' packet header stuff still isn't
+working but based on sampling the registers via the kernel debugging
+interface, we are actually changing threads while still responding to
+packets!
+
+Foggin finally!
+
+Let's make the prudir threads report in every several thousand calls
+or so and see what happens.  Any bets?  How many context switches per
+second will we be showing?  We have four threads now, and it's still
+six instructions or 30ns to switch, all in.  The idle threadrunner
+only adds one more instruction to that.  If all four threads were idle
+we'd be taking 28 instructions to switch through all of them, which
+would mean each guy would get over 7M context switches a second.
+200MIPS/28 == 7,142,857..  But we'll start burning that up fast fast
+fast.  If each thread did nothing but increment a counter that would
+take us down to 6,250,000.  An increment plus quick branch makes
+5,555,555.  If the branch hits one in every 65K
+calls, and takes perhaps 8K instructions when it hits, that's a
+quarter instruction amortized per thread, or one more instruction for
+all threads together, and that's 5M.  And that's of course just the
+beginning.
+
+Let's call sendval each 10M advances and see if it ever hits!
+
+:193]
 
 :192]
 
