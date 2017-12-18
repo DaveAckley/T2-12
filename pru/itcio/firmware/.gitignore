@@ -1,2 +1,5 @@
 # We need cmd files for firmware linking doh!
 !*.cmd
+
+# Ignore gen dir
+gen/
