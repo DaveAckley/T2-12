@@ -3,16 +3,6 @@
 ;;;;;;
 ;;; STRUCTURE DECLARATIONS
 
-;;; Demo struct: STATE_INFO
-STATE_INFO:     .struct
-RXRDY_COUNT:    .ubyte
-RXDAT_COUNT:    .ubyte
-RXRDY_STATE:    .ubyte
-RXDAT_STATE:    .ubyte
-STATE_INFOLen: .endstruct
-	
-LiveCounts:     .sassign R5, STATE_INFO
-        
 ;;; ThreadCoord: A length (in bytes) and an offset (in registers)
 ThreadCoord:      .struct
 bOffsetRegs:    .ubyte      ; offset in registers  (to load in r0.b0)
@@ -151,7 +141,7 @@ exitFunc:      .macro BYTES
 ;;;  INPUTS:
 ;;;  - THISSHIFT: How many regs between CT and where this guy's stored in scratchpad
 ;;;  - THISBYTES: How many bytes of state starting at CT are in this guy's state
-;;;  - ID: The ID number of this thread
+;;;  - ID: The ID number of this thread (0..3)
 ;;;  - RESUMEADDR: Where this thread should start executing when it is first resumed
 ;;;  OUTPUTS: NONE
 ;;;  NOTES:
@@ -164,6 +154,29 @@ initThis: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         ldi CT.sTH.bID, ID
         ldi CT.sTH.bFlags, 0
 	ldi CT.sTH.wResAddr,$CODE(RESUMEADDR)
+	
+	.if ID == 0             ;PRUDIR 0
+        ldi CT.bTXRDYPin, PRUDIR0_TXRDY_R30_BIT
+        ldi CT.bTXDATPin, PRUDIR0_TXDAT_R30_BIT
+        ldi CT.bRXRDYPin, PRUDIR0_RXRDY_R31_BIT
+        ldi CT.bRXDATPin, PRUDIR0_RXDAT_R31_BIT
+        ldi CT.rTXDATMask, 1<<PRUDIR0_TXDAT_R30_BIT
+	
+        .elseif ID == 1         ;PRUDIR 1
+        ldi CT.bTXRDYPin, PRUDIR1_TXRDY_R30_BIT
+        ldi CT.bTXDATPin, PRUDIR1_TXDAT_R30_BIT
+        ldi CT.bRXRDYPin, PRUDIR1_RXRDY_R31_BIT
+        ldi CT.bRXDATPin, PRUDIR1_RXDAT_R31_BIT
+        ldi CT.rTXDATMask, 1<<PRUDIR1_TXDAT_R30_BIT
+	
+        .elseif ID == 2         ;PRUDIR 2
+	ldi CT.bTXRDYPin, PRUDIR2_TXRDY_R30_BIT
+        ldi CT.bTXDATPin, PRUDIR2_TXDAT_R30_BIT
+        ldi CT.bRXRDYPin, PRUDIR2_RXRDY_R31_BIT
+        ldi CT.bRXDATPin, PRUDIR2_RXDAT_R31_BIT
+        ldi CT.rTXDATMask, 1<<PRUDIR1_TXDAT_R30_BIT
+
+        .endif
 	.endm
 
 ;;;;;;;;
@@ -274,13 +287,6 @@ addfuncasm:
         
 startStateMachines:
 	enterFunc 2
-        ;; DEMO CODE INIT
-	;; Clear counts
-	zero &LiveCounts,STATE_INFOLen
-        ;; Read initial pin states
-	loadBit LiveCounts.RXRDY_STATE, r31, PRUDIR1_RXRDY_R31_BIT  ; pru0 SE, pru1 NW
-	loadBit LiveCounts.RXDAT_STATE, r31, PRUDIR1_RXDAT_R31_BIT  ; pru0 SE, pru1 NW
-        ;; END DEMO CODE INIT
 	
 	;; Init threads by hand
         initThis 0*CTRegs, IOThreadLen, 0, IdleThreadRunner ; Thread ID 0 at shift 0
@@ -315,20 +321,7 @@ startStateMachines:
 advanceStateMachines:
 	enterFunc 6             ; Save R3.w2 and R4 on stack
 	
-	loadBit r4, r31, 2     ; rxrdy (r31.t2) to r4
-        qbeq asm1, r4, LiveCounts.RXRDY_STATE ; jump if no change
-	mov LiveCounts.RXRDY_STATE, r4        ; else update retained state,
-        add LiveCounts.RXRDY_COUNT, LiveCounts.RXRDY_COUNT, 1 ; increment, and
-	sendVal PRUX_STR,""" RXRDY""",LiveCounts.RXRDY_COUNT ; report change
-
-asm1:
-        loadBit r4, r31, 14    ; rxdat (r31.t14) to r4
-        qbeq asm2, r4, LiveCounts.RXDAT_STATE ; jump if no change
-	mov LiveCounts.RXDAT_STATE, r4        ; else update retained state
-        add LiveCounts.RXDAT_COUNT, LiveCounts.RXDAT_COUNT, 1 ; increment, and
-	sendVal PRUX_STR,""" RXDAT""",LiveCounts.RXDAT_COUNT ; report change
-
-asm2:   exitFunc 6              ; Done
+        exitFunc 6              ; Done
 
 	;; void copyOutScratchPad(uint8_t * packet, uint16_t len)
         ;; R14: ptr to destination start
