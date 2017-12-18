@@ -1,4 +1,4 @@
-{201}  -*- text -*-
+{205}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2968,3 +2968,18 @@ horribly.  It could be better but it is much quieter.  Committing.
 :199]
 
 :197]
+[201:
+
+Mon Dec 18 14:22:35 2017 OK.  Two more steps
+
+[202: DONE Mon Dec 18 14:26:54 2017   :202] - Get rid of the state_info demo.
+
+[203: DONE Mon Dec 18 14:48:23 2017 Pretty gross and brute force, but,
+done and looks right in the 'S' packet returns.. :203] - Extend the initialization to set up the prudir pins as well.
+
+:201]
+[204:
+
+Mon Dec 18 14:49:02 2017 OK, committing again.
+
+:204]
