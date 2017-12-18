@@ -91,9 +91,9 @@ $M2?:  .cstring STR2
 	.text
 	SUB R2, R2, 2           ; Two bytes on stack
 	SBBO &R3.w2, R2, 0, 2   ; Save current R3.w2
+        MOV R16, REGVAL         ; Get value to report before trashing anything else
         LDI32 R14, $M1?         ; Get string1
         LDI32 R15, $M2?         ; Get string2
-        MOV R16, REGVAL         ; And value to report
         JAL R3.w2, sendVal      ; Call sendVal (ignore return)
 	LBBO &R3.w2, R2, 0, 2   ; Restore R3.w2 
         ADD R2, R2, 2           ; Pop stack
@@ -208,6 +208,16 @@ IdleThreadRunner:
         JMP IdleThreadRunner    ; Then try again
 
 
+;;; Timing thread runner: Sends a 'timer' packet every 128M iterations
+ttr0:   SENDVAL PRUX_STR,""" timer """,CT.rRSRV3 ; Report counter value
+ttr1:   SUSPEND_THREAD          ; Now context switch
+TimingThreadRunner:
+	ADD CT.rRSRV3, CT.rRSRV3, 1 ; Increment secret counter
+	LSL R0, CT.rRSRV3, 5       ; Keep low order 27 bits
+	QBEQ ttr0, R0, 0           ; Report in if they're all zero
+        JMP ttr1                   ; Either way then sleep
+
+
         .text
         .def mainLoop
 mainLoop:
@@ -252,7 +262,7 @@ startStateMachines:
         INITNEXT 1*CTRegs, IOThread_LEN            ; Info for thread 1
         SAVETHISTHREAD                             ; Stash thread 0
 	
-        INITTHIS 1*CTRegs, IOThread_LEN, 1, IdleThreadRunner ; Thread ID 1 at shift CTRegs
+        INITTHIS 1*CTRegs, IOThread_LEN, 1, TimingThreadRunner ; Thread ID 1 at shift CTRegs
 	INITNEXT 2*CTRegs, IOThread_LEN            ; Info for thread 2
         SAVETHISTHREAD                             ; Stash thread 1
 	
@@ -268,11 +278,10 @@ startStateMachines:
         ;; Report in             
         SENDVAL PRUX_STR,""" Releasing the hounds""", CT.sTH.wRES_ADDR ; Report in
 
-l99:
-        jal r3.w2, processPackets
-        jmp l99
+;; l99:
+;;         jal r3.w2, processPackets
+;;         jmp l99
 
-;;; DONT RESUME THREADS YET
         ;; Thread 3 is still loaded
         JMP CT.sTH.wRES_ADDR    ; Resume it
 	EXITFUNC 2
