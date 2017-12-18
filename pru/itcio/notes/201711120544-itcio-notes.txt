@@ -1,4 +1,4 @@
-{188}  -*- text -*-
+{193}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2812,6 +2812,57 @@ be switching the main loop over to threaded control..
 
 Mon Dec 18 09:30:38 2017 OK, well I think we've done most of what we
 could do sensibly before letting the threads have control and see what
-happens.  Let's commit and push this first.
+happens.  Let's commit and push this first.[188:
+
+Mon Dec 18 09:36:38 2017 Did that.  Let's try the threads..[189:
+
+Mon Dec 18 09:47:11 2017 OK.. well.. I should have prayed harder for
+mercy..  We got endless high-speed repetitions of:
+
+    Dec 18 09:43:20 beaglebone kernel: [20890.575148] <pru0: c1 30 30 30 30 30 30 32 38 20 50 52 55 30 20 52  .00000028 PRU0 R
+    Dec 18 09:43:20 beaglebone kernel: [20890.582974] <pru0: 65 6c 65 61 73 69 6e 67 20 74 68 65 20 68 6f 75  eleasing the hou
+    Dec 18 09:43:20 beaglebone kernel: [20890.590780] <pru0: 6e 64 73                                         nds
+    Dec 18 09:43:20 beaglebone kernel: [20890.597465] <pru0: c1 30 30 30 30 30 30 32 38 20 50 52 55 30 20 52  .00000028 PRU0 R
+    Dec 18 09:43:20 beaglebone kernel: [20890.605275] <pru0: 65 6c 65 61 73 69 6e 67 20 74 68 65 20 68 6f 75  eleasing the hou
+    Dec 18 09:43:20 beaglebone kernel: [20890.613080] <pru0: 6e 64 73                                         nds
+
+that I barely managed to recover from..  modprobe -r itc_pkt hung, but
+eventually I managed to get the pru0 unbind command run --
+
+		echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/unbind 2>/dev/null
+
+and then things quieted down..[190:
+
+Mon Dec 18 09:51:03 2017 Now, that 28 at the beginning is supposed to
+be thread 3's resume address..  But, before we think about anything,
+let's get safer fw into position in case we reboot or whatever..[191:
+
+Mon Dec 18 09:58:31 2017 OK now we put a processPacket loop at the end
+of startStateMachines and we seem to be alive again..[192:
+
+Mon Dec 18 11:59:06 2017 Well, we finally have a theory good enough to
+be worth testing, so setting up to commit and push first again here.
+
+The theory is we were setting up the resume addresses wrong.  Instead
+of doing the moral equivalent of this:
+
+	LDI CT.sTH.wRES_ADDR, IdleThreadRunner
+
+the thought is we should be like:
+
+	LDI CT.sTH.wRES_ADDR,$CODE(IdleThreadRunner)
+
+to convert the 'IdleThreadRunner' symbol from a byte address to a word
+address.  We Shall See.
+
+:192]
+
+:191]
+
+:190]
+
+:189]
+
+:188]
 
 :187]
