@@ -112,25 +112,59 @@ LOADBIT:        .macro DESTREG, SRCREG, BITNUM
         AND DESTREG, DESTREG, 1     ; Flush the rest
         .endm
 
+;;;;;;;;
+;;;: macro ENTERFUNC: Function prologue
+;;;  INPUTS:
+;;;    BYTES: Number of bytes to save on stack, starting with r3.w2
+;;;  OUTPUTS: NONE
+;;;  NOTES:
+;;;  - BYTES can be 0 or 2+
+;;;  - BYTES == 0 means this is a 'leaf' function that will not
+;;;    call any other functions
+ENTERFUNC:      .macro BYTES
+        .if BYTES > 0
+        sub r2, r2, BYTES
+        sbbo &r3.w2, r2, 0, BYTES
+        .endif
+        .endm
+
+;;;;;;;;
+;;;: macro EXITFUNC: Function epilogue
+;;;  INPUTS:
+;;;    BYTES: Number of bytes to restore from stack, starting with
+;;;r3.w2
+;;;  OUTPUTS: NONE
+;;;  NOTES:
+;;;  - BYTES better damn match that in the associated ENTERFUNC
+EXITFUNC:      .macro BYTES
+        .if BYTES > 0
+        lbbo &r3.w2, r2, 0, BYTES ; Restore regs
+        add r2, r2, BYTES         ; Pop stack
+        .endif
+        jmp r3.w2                 ; And return
+        .endm
+
+
 INITTHIS: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         ZERO &CT,IOThread_LEN                      ; Clear CT to start
         LDI CT.sTH.sTHIS.sTC.bOffsetRegs, THISSHIFT
         LDI CT.sTH.sTHIS.sTC.bLenBytes, THISBYTES
         LDI CT.sTH.bID, ID
         LDI CT.sTH.bFLAGS, 0
-	LDI CT.sTH.wRES_ADDR,RESUMEADDR
+	LDI CT.sTH.wRES_ADDR,$CODE(RESUMEADDR)
 	.endm
+
 INITNEXT:  .macro NEXTSHIFT,NEXTBYTES
 	LDI CT.sTH.sNEXT.sTC.bOffsetRegs, NEXTSHIFT
         LDI CT.sTH.sNEXT.sTC.bLenBytes, NEXTBYTES
         .endm
 
-SAVETHISCT: .macro
+SAVETHISTHREAD: .macro
         mov r0.w0, CT.sTH.sTHIS.w  ; r0.b0 <- this bOffsetRegs, r0.b1 <- this bLenBytes
         xout PRUX_SCRATCH, &CT, b1 ; store this thread
         .endm
 
-LOADNEXTCT: .macro
+LOADNEXTTHREAD: .macro
         mov r0.w0, CT.sTH.sNEXT.w ; r0.b0 <- next bOffsetRegs, r0.b1 <- next bLenBytes
         xin PRUX_SCRATCH, &CT, b1 ; load next thread
         .endm
@@ -141,12 +175,12 @@ LOADNEXTCT: .macro
 ;;;;;;;;
 ;;;: target contextSwitch: Switch to next thread
 contextSwitch:
-        SAVETHISCT
+        SAVETHISTHREAD
         ;; FALL THROUGH
 ;;;;;;;;
 ;;;: target nextContext: Load next thread and resume it
 nextContext:
-	LOADNEXTCT              ; Pull in next thread
+	LOADNEXTTHREAD              ; Pull in next thread
         jmp CT.sTH.wRES_ADDR    ; and resume it
                 
 
@@ -177,15 +211,21 @@ IdleThreadRunner:
         .text
         .def mainLoop
 mainLoop:
+	SUB R2, R2, 6           ; Get six bytes on stack
+        SBBO &R3.w2, R2, 0, 6   ; Store R3.w2 and R4 on stack
+
+        SENDVAL PRUX_STR,""" entering main loop""",R2 ; Say hi
 	.ref processPackets
 l0:     
         JAL R3.w2, processPackets ; Return == 0 if firstPacket done
-	QBNE l0, R14, 0 ; Wait for that before initting state machines
-	JAL R3.w2, initStateMachines
-l1:     JAL R3.w2, advanceStateMachines
-        JAL R3.w2, processPackets
-        jmp l1
+	QBNE l0, R14, 0           ; Wait for that before initting state machines
+	JAL R3.w2, startStateMachines ; Not expected to return
 	
+        SENDVAL PRUX_STR,""" unexpected return to main loop""",R2 ; Say bye
+	LBBO &R3.w2, R2, 0, 6   ; Restore R3.w2 and R4
+        ADD R2, R2, 6           ; Pop stack
+        JMP r3.w2               ; Return
+
         .text
         .def addfuncasm
 addfuncasm:
@@ -197,8 +237,8 @@ addfuncasm:
         ADD R2, R2, 6           ; Pop stack
         JMP r3.w2               ; Return
         
-        .def initStateMachines
-initStateMachines:
+startStateMachines:
+	ENTERFUNC 2
         ;; DEMO CODE INIT
 	;; Clear counts
 	ZERO &LiveCounts,STATE_INFO_LEN
@@ -210,30 +250,36 @@ initStateMachines:
 	;; Init threads by hand
         INITTHIS 0*CTRegs, IOThread_LEN, 0, IdleThreadRunner ; Thread ID 0 at shift 0
         INITNEXT 1*CTRegs, IOThread_LEN            ; Info for thread 1
-        SAVETHISCT                                 ; Stash thread 0
+        SAVETHISTHREAD                             ; Stash thread 0
 	
         INITTHIS 1*CTRegs, IOThread_LEN, 1, IdleThreadRunner ; Thread ID 1 at shift CTRegs
 	INITNEXT 2*CTRegs, IOThread_LEN            ; Info for thread 2
-        SAVETHISCT                                 ; Stash thread 1
+        SAVETHISTHREAD                             ; Stash thread 1
 	
         INITTHIS 2*CTRegs, IOThread_LEN, 2, IdleThreadRunner ; Thread ID 2 at shift 2*CTRegs
 	INITNEXT 3*CTRegs, LinuxThread_LEN         ; Info for thread 3
-        SAVETHISCT                                 ; Stash thread 2
+        SAVETHISTHREAD                             ; Stash thread 2
 	
         INITTHIS 3*CTRegs, LinuxThread_LEN, 3,LinuxThreadRunner ; Thread ID 3 at shift 3*CTRegs
         INITNEXT 0*CTRegs, IOThread_LEN            ; Next is back to thread 0
-        SAVETHISCT                                 ; Stash thread 3
+        SAVETHISTHREAD                             ; Stash thread 3
         ;; Done with by-hand thread inits
-	
-	LOADNEXTCT              ; Pull thread 0 back in
-	
-        SENDVAL PRUX_STR,""" hi from prux_sbst3.asm""", R0.b0 ; Report in
-        JMP r3.w2               ; Return
+
+        ;; Report in             
+        SENDVAL PRUX_STR,""" Releasing the hounds""", CT.sTH.wRES_ADDR ; Report in
+
+l99:
+        jal r3.w2, processPackets
+        jmp l99
+
+;;; DONT RESUME THREADS YET
+        ;; Thread 3 is still loaded
+        JMP CT.sTH.wRES_ADDR    ; Resume it
+	EXITFUNC 2
 
         .def advanceStateMachines
 advanceStateMachines:
-	SUB R2, R2, 6           ; Get six bytes on stack
-        SBBO &R3.w2, R2, 0, 6   ; Store R3.w2 and R4 on stack
+	ENTERFUNC 6             ; Save R3.w2 and R4 on stack
 	
 	LOADBIT r4, r31, 2     ; rxrdy (r31.t2) to r4
         QBEQ asm1, r4, LiveCounts.RXRDY_STATE ; jump if no change
@@ -248,37 +294,39 @@ asm1:
         ADD LiveCounts.RXDAT_COUNT, LiveCounts.RXDAT_COUNT, 1 ; increment, and
 	SENDVAL PRUX_STR,""" RXDAT""",LiveCounts.RXDAT_COUNT ; report change
 
-asm2:
-	LBBO &R3.w2, R2, 0, 6   ; Restore R3.w2 and R4
-        ADD R2, R2, 6           ; Pop stack
-        JMP r3.w2               ; Return
-	
+asm2:   EXITFUNC 6              ; Done
 
 	;; void copyOutScratchPad(uint8_t * packet, uint16_t len)
         ;; R14: ptr to destination start
         ;; R15: bytes to copy
-	;; CTReg: buffer for XIN data
         ;; R17: index
         .def copyOutScratchPad
 copyOutScratchPad:
-	SUB R2, R2, 4           ; Get room for first reg of CT
-        SBBO &CTReg, R2, 0, 4   ; Store first reg of CT on stack
+        ;; NON-STANDARD PROLOGUE
+	SUB R2, R2, 8           ; Get room for first two regs of CT
+        SBBO &R6, R2, 0, 8      ; Store R6 & R7 on stack
+	SBBO &R7, R14, 1, 1     ; Store ID at packet[1]
+	LSR R7, R7, 16          ; Right justify resume address
+	SBBO &R7, R14, 2, 2     ; Store resume address at packet[2..3]
+	ADD R14, R14, 4         ; Move up to start of scratchpad save area
+        SUB R15, R15, 4         ; Adjust for room we used
 
         LDI R17,0               ; index = 0
         MIN R15, R15, 4*30      ; can the xfr shift, itself, wrap?
 cosp1:
 	QBGE cosp2, R15, R17     ; Done when idx reaches len
 	LSR R0.b0, R17, 2        ; Get reg of byte: at idx/4
-	XIN PRUX_SCRATCH, &CTReg, 4 ; Scratchpad to CT, shifted 
+	XIN PRUX_SCRATCH, &R6, 4 ; Scratchpad to R6, shifted 
 	AND R0.b0, R17, 3        ; Get byte within reg at idx % 4
 	LSL R0.b0, R0.b0, 3      ; b0 = (idx%4)*8
-	LSR CTReg,CTReg,R0.b0    ; CT >>= b0
-	SBBO &CTReg, R14, R17, 1 ; Stash next byte at R14[R17]
+	LSR R6,R6,R0.b0          ; CT >>= b0
+	SBBO &R6, R14, R17, 1    ; Stash next byte at R14[R17]
         ADD R17, R17, 1          ; One more byte to shift bits after
         JMP cosp1
 cosp2:
-        LBBO &CTReg, R2, 0, 4   ; Restore first reg of CT
-        ADD R2, R2, 4           ; Pop stack
+        ;; NON-STANDARD EPILOGUE
+        LBBO &R6, R2, 0, 8      ; Restore R6 and R7
+        ADD R2, R2, 8           ; Pop stack
         JMP r3.w2               ; Return
 
 	;; unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len);
