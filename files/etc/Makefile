@@ -16,7 +16,7 @@ EMACS_OUTPUTS:=$(patsubst %,$(EMACS_DIR)/%,$(EMACS_INPUTS))
 
 SUDOER_INPUTS:=sdl
 SUDOER_DIR:=/etc/sudoers.d
-SUDOER_OUTPUTS:=$(patsubst %,$(SUDOER_DIR)/%,$(SUDOER_INPUTS))
+SUDOER_OUTPUTS:=$(SUDOER_DIR)/sdl
 
 all:
 	@echo $(CONF_INPUTS) - $(CONF_OUTPUTS)
