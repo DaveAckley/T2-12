@@ -1,4 +1,4 @@
-{194}  -*- text -*-
+{197}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2879,7 +2879,60 @@ quarter instruction amortized per thread, or one more instruction for
 all threads together, and that's 5M.  And that's of course just the
 beginning.
 
-Let's call sendval each 10M advances and see if it ever hits!
+Let's call sendval each 10M advances and see if it ever hits![194:
+
+Mon Dec 18 12:56:14 2017 It does!  Lookee:
+
+    [32426.875881] <pru1: c1 30 30 30 30 30 30 30 61 20 50 52 55 31 20 52  .0000000a PRU1 R
+    [32426.883762] <pru1: 65 6c 65 61 73 69 6e 67 20 74 68 65 20 68 6f 75  eleasing the hou
+    [32426.891576] <pru1: 6e 64 73                                         nds
+    [32429.333159] <pru0: c1 30 30 38 30 30 30 30 30 20 50 52 55 30 20 74  .00800000 PRU0 t
+    [32429.341055] <pru0: 69 6d 65 72 20                                   imer
+    [32429.472276] <pru1: c1 30 30 38 30 30 30 30 30 20 50 52 55 31 20 74  .00800000 PRU1 t
+    [32429.480165] <pru1: 69 6d 65 72 20                                   imer
+    [32431.933620] <pru0: c1 30 31 30 30 30 30 30 30 20 50 52 55 30 20 74  .01000000 PRU0 t
+    [32431.941516] <pru0: 69 6d 65 72 20                                   imer
+    [32432.072778] <pru1: c1 30 31 30 30 30 30 30 30 20 50 52 55 31 20 74  .01000000 PRU1 t
+    [32432.080672] <pru1: 69 6d 65 72 20                                   imer
+
+That's 0x01000000 - 0x00800000 == 0x00800000 context switches -- say
+8M and change -- in 32431.933620-32429.333159 == 2.6 sec.  So with
+that minimal load we're at like 3.2M counts/sec with just one thread
+counting (I made thread 1, thread 0 & 2 and still idle.)
+
+[195:
+
+Mon Dec 18 13:05:27 2017 Upped it to 25 bits == 32M iterations per
+report:
+
+    [32975.202409] <pru1: c1 30 30 30 30 30 30 30 61 20 50 52 55 31 20 52  .0000000a PRU1 R
+    [32975.210291] <pru1: 65 6c 65 61 73 69 6e 67 20 74 68 65 20 68 6f 75  eleasing the hou
+    [32975.218106] <pru1: 6e 64 73                                         nds
+    [32985.466562] <pru0: c1 30 32 30 30 30 30 30 30 20 50 52 55 30 20 74  .02000000 PRU0 t
+    [32985.474456] <pru0: 69 6d 65 72 20                                   imer
+    [32985.600185] <pru1: c1 30 32 30 30 30 30 30 30 20 50 52 55 31 20 74  .02000000 PRU1 t
+    [32985.608072] <pru1: 69 6d 65 72 20                                   imer
+    [32995.868439] <pru0: c1 30 34 30 30 30 30 30 30 20 50 52 55 30 20 74  .04000000 PRU0 t
+    [32995.876351] <pru0: 69 6d 65 72 20                                   imer
+    [32996.002078] <pru1: c1 30 34 30 30 30 30 30 30 20 50 52 55 31 20 74  .04000000 PRU1 t
+    [32996.009997] <pru1: 69 6d 65 72 20                                   imer
+    [33006.270338] <pru0: c1 30 36 30 30 30 30 30 30 20 50 52 55 30 20 74  .06000000 PRU0 t
+    [33006.278245] <pru0: 69 6d 65 72 20                                   imer
+    [33006.403961] <pru1: c1 30 36 30 30 30 30 30 30 20 50 52 55 31 20 74  .06000000 PRU1 t
+    [33006.411881] <pru1: 69 6d 65 72 20                                   imer
+
+and that's still too often :)..[196:
+
+Mon Dec 18 13:09:52 2017 Went up to 128M iterations per report..  That
+should be most of a minute per.   ..Yep.  Committing this.
+
+:196]
+
+
+:195]
+
+
+:194]
 
 :193]
 
