@@ -63,12 +63,12 @@ build:	$(TARGETS)
 
 $(PRU1_FW): $(GEN_DIR)/main_pru1.object $(GEN_DIR)/main_pru1_def.object $(LINK_PRU1_FW)
 	@echo 'LD	$^'
-	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
+	$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
 
 
 $(PRU0_FW): $(GEN_DIR)/main_pru0.object $(GEN_DIR)/main_pru0_def.object $(LINK_PRU0_FW)
 	@echo 'LD	$^' 
-	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
+	$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
 
 
 $(GEN_DIR)/main_pru0.object: main_pru0.c main_prux.inc prux.h
