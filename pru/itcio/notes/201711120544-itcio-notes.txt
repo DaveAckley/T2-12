@@ -1,4 +1,4 @@
-{177}  -*- text -*-
+{188}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2624,7 +2624,194 @@ that could be a problem somehow.
 
 Mon Dec 18 04:42:44 2017 We're going to see if we can change the name
 of the asm file.  Not the main_pru[01].c files, just the
-main_prux_def.asm file..
+main_prux_def.asm file..[177:
+
+Mon Dec 18 04:57:18 2017 Well, that seemed to go okay.  Also took a
+moment to trim up .gitignore files so we're actually clean clean clean
+now in git status.  Let's try to hang on to that shall we.
+
+So, what next.[178:
+
+Mon Dec 18 05:01:33 2017 Here's another thought or two about context
+switching:
+
+Suppose we
+(1) Ditched the whole idea of sequential threadids.  Instead of 0..2
+    or 1..3, suppose we just used the register shift as the id.  And
+(2) Suppose we also ditched both next_id and prev_id, and instead have
+    a global register giving the sequence of threads to run.
+
+And the way we context switch would be something like this:
+
+    xout PRUX_SCRATCH, &CT, IOTHREAD_LEN  ; Save us
+    lsr threadSeq, threadSeq, 8           ; Move on to next thread
+    mov r0.b0, threadSeq.b0               ; Get shift
+    xin PRUX_SCRATCH, &CT, IOTHREAD_LEN   ; Load next guy
+    jmp CT.wResAddr                       ; Resume him
+
+And you ask: But what happens when threadSeq gets all shifted out?
+And the answer is: That never happens, because we have a secret fourth
+thread that just reloads threadSeq and resumes.  But there aren't
+enough registers to have a fourth IOThread, if they're eight regs
+each!  But our secret thread doesn't have to be eight regs each!  It
+could be just one!  And we'd do it like this:
+
+    ThreadHeader:   .struct
+    bTHIS_SHIFT:    .ubyte   ; shift to storage for this thread (0..29)
+    bSIZE_BYTES:    .ubyte   ; size of this thread (4..30*4)
+    wResAddr:       .ushort  ; thread resume address
+                    .endstruct
+
+    IOThread:       .struct
+    rTH:            .tag ThreadHeader
+    bTXRDY_PN:      .ubyte  ; Transmit Ready R30 Pin Number
+..etc..
+                    .endstruct
+
+and then also have
+
+    ThreadControl:  .struct
+    rTH:            .tag ThreadHeader
+                    .endstruct
+                    
+and there's the fourth thread, taking just one scratchpad reg.  And
+the context switch would really be more like this:
+
+    mov r0.b0, CT.bTHIS_SHIFT               ; Get shift
+    xout PRUX_SCRATCH, &CT, CT.bSIZE_BYTES  ; Save ourselves
+    lsr threadSeq, threadSeq, 8           ; Move on to next thread
+    mov r0.b0, threadSeq.b0               ; Get shift
+    xin PRUX_SCRATCH, &CT, ..oops..       ; chicken and egg on the length
+    jmp CT.wResAddr                       ; Resume him
+
+We'd need to have the length in the threadSeq register.  But then the
+unpacking starts costing even more..  Plus of course the cost of
+switching to this fourth thread when most of the time it will change
+nothing.  OK, I'm officially less excited about this idea.
+
+So let's go back to ID==shift and try that with a thread header..
+
+    ThreadHeader:   .struct
+    bTHIS_SHIFT:    .ubyte   ; shift to storage for this thread (0..29)
+    bNEXT_SHIFT:    .ubyte   ; shift to storage for next thread (0..29)
+    wResAddr:       .ushort  ; thread resume address
+                    .endstruct
+
+    IOThread:       .struct
+    rTH:            .tag ThreadHeader
+
+and
+
+    mov r0.b0, CT.rTH.bTHIS_SHIFT         ; Get our shift
+    xout PRUX_SCRATCH, &CT, IOTHREAD_LEN  ; Save us
+    mov r0.b0, CT.rTH.bNEXT_SHIFT         ; Get next guy's shift
+    xin PRUX_SCRATCH, &CT, IOTHREAD_LEN   ; Load next guy
+    jmp CT.wResAddr                       ; Resume him
+
+which is still five instructions, but now we're no longer limited to
+power-of-two IOTHREAD_LENs, because we're storing shifts instead of
+IDs.  So we could take IOThread down to seven, or even six regs, at
+least for now, and only pay a smidge more for thread initialization,
+if that.[179: 
+
+Mon Dec 18 05:33:16 2017 If we did a two reg header
+
+    ThreadHeader:   .struct
+    bTHIS_SHIFT:    .ubyte   ; shift to storage for this thread (0..29)
+    bTHIS_BYTES:    .ubyte   ; size of this struct (4..30*4)
+    bNEXT_SHIFT:    .ubyte   ; shift to storage for next thread (0..29)
+    bNEXT_BYTES:    .ubyte   ; size of next struct (4..30*4)
+    wResAddr:       .ushort  ; thread resume address
+    bFLAGS:         .ubyte
+    bRSRV1:         .ubyte
+                    .endstruct
+
+then we could have variable-length threads:
+
+    mov r0.b0, CT.rTH.bTHIS_SHIFT               ; Get our shift
+    xout PRUX_SCRATCH, &CT, CT.rTH.bTHIS_BYTES  ; Save ourselves
+    mov r0.b0, CT.rTH.bNEXT_SHIFT               ; Get next shift
+    xin PRUX_SCRATCH, &CT, CT.rTH.bNEXT_BYTES   ; Load him
+    jmp CT.wResAddr                             ; Resume him
+
+and here we'd pay a little more for thread initialization and a little
+more for thread reordering.
+
+Would it be worth considering a fourth thread to be shipping stuff up
+to linux, rather than running that into the regular prudir state
+machines?  It would be only for managing code complexity rather than
+performance.  But it's more complexity up front, and that we don't
+need.
+
+[180:
+
+Mon Dec 18 05:43:09 2017 OK, let's execute here.  We really can't
+spent the whole day on this since we have to finish up the course work
+and ship that RSN, but let's get something done here.
+
+Let's go with a one reg header and just run in it IOThread as we were
+doing before.  Go from IDs to shifts, but include a prudir in 0..2
+[181:
+
+Mon Dec 18 06:00:32 2017 (Working on the context switching stuff, but:
+Man we lost a bunch of stuff -- like the table of pinInfo for initting
+the structs..  Grrrr.)
+
+:181]
+:180]
+
+:179]
+
+:178]
+
+:177]
 
 :176]
 :175]
+[182:
+
+Mon Dec 18 06:07:27 2017 Having a fourth thread would be a natural
+place to do checking for packets arriving from linux, though..  We
+need to do that somewhere..
+
+Part of the development trickiness here is about when and how do we
+switch over from main loop control to threaded execution control.
+Once we release the hounds they go straight to each other, they never
+return.   So maybe we should think of a fourth thread, and have the
+goal be to have all the IOThreads be idling, for now, and have the
+fourth thread do the packetProcessing that the mainLoop is currently
+doing.. [183:
+
+Mon Dec 18 07:58:40 2017 OK, it seems we may have our now four threads
+getting initialized plausibly.  And the fact that they're laid out
+plausibly in the S-packet reply suggests we got the size and len stuff
+into r0.w0, to use as b0 and b1, correctly.  So it would seem a next
+stop could be to try to get thread 3 only working, with threads 0..2
+set to immediately reschedule.  This would be a big step, because we'd
+be switching the main loop over to threaded control..
+
+[184: Mon Dec 18 09:29:05 2017 DONE, IdleThreadRunner.  :184] - Make an IDLE target that just does a context-switch and then jumps
+   to IDLE.  (Later we'll expand that to check a flag but first things
+   first.)
+
+[185: DONE  :185] - Init threads 0..2 to resume at IDLE.
+
+[186: DONE, LinuxThreadRunner.  :186] - Make an LINUX target that calls processPackets, does a
+   context-switch, and then jumps to LINUX.
+
+ - Change initStateMachines to startStateMachines, and
+
+ - Have mainLoop jump to startStateMachines instead of calling it, and
+
+ - Pray for mercy.
+
+:183]
+
+:182]
+[187:
+
+Mon Dec 18 09:30:38 2017 OK, well I think we've done most of what we
+could do sensibly before letting the threads have control and see what
+happens.  Let's commit and push this first.
+
+:187]
