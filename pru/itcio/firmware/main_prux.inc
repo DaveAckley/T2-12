@@ -173,7 +173,7 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
     /* PACKET TYPE: 'S'cratchpad memory read */
   case 'S': {                        
     if (len > 4)
-      copyOutScratchPad(&packet[4], len-4);
+      copyOutScratchPad(&packet[0], len);
     else
       fillFail("[PKLEN]",packet,len);
     break;
