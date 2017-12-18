@@ -56,10 +56,15 @@ LINK_PRU0_FW=
 
 
 
-.PHONY: build
+.PHONY: build abslist
 build:	$(TARGETS)
 	@echo '-	Generated firmwares are : $^'
 
+abslist:	$(TARGETS)
+	rm -f *.abs *.lst ; \
+	$(PRU_CGT)/bin/abspru gen/main_pru0_fw.out ; \
+	$(PRU_CGT)/bin/clpru --absolute_listing -DON_PRU=0 prux_sbst3.abs ; \
+	$(PRU_CGT)/bin/clpru --absolute_listing -DON_PRU=0 args_main.abs ; \
 
 $(PRU1_FW): $(GEN_DIR)/main_pru1.object $(GEN_DIR)/main_pru1_def.object $(LINK_PRU1_FW)
 	@echo 'LD	$^'
@@ -131,4 +136,5 @@ reboot_pru0:
 .PHONY: clean
 clean:
 	@echo 'CLEAN	.'
+	@rm -f *.abs *.lst
 	@rm -rf $(GEN_DIR)
