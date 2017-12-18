@@ -1,4 +1,4 @@
-{197}  -*- text -*-
+{201}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2282,7 +2282,7 @@ context switching, first?
       SENDVAL during initialization, if that's possible given
       ontogeny.
 
-5.1.8 Get context switching going and have each thread do nothing
+[198: DONE Mon Dec 18 13:14:06 2017   :198]5.1.8 Get context switching going and have each thread do nothing
       except report with SENDVAL like every 1000th time they are
       advanced.  10,000th?  That'll be some data right there.
 
@@ -2947,3 +2947,24 @@ should be most of a minute per.   ..Yep.  Committing this.
 :188]
 
 :187]
+[197:
+
+Mon Dec 18 13:12:43 2017 OK, well, it's very close to time to branch
+back to other business for a day or so, grr, but what can we claim
+here?  Checking..  We can claim 5.1.8![199: Claimed.  Heh, it was
+suggesting reporting every 10,000th iteration..
+
+Mon Dec 18 13:24:15 2017 I feel like I want to redo some of the
+cleanup that got lost in the weekend disk-creaming event.  Stop the
+shouting in the opcodes and labels and such.  Let's try just that,
+with no functional changes allowed..[200:
+
+Mon Dec 18 14:18:49 2017 OK, so here are the symbolic 200th note, we
+think we've cleaned up prux_sbst3.asm without breaking anything too
+horribly.  It could be better but it is much quieter.  Committing.
+
+:200]
+
+:199]
+
+:197]
