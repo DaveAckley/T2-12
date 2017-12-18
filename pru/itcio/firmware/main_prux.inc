@@ -51,7 +51,7 @@ static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
 static uint16_t firstSrc, firstDst;
 
-int sendVal(const char * str1, const char * str2, uint32_t val)
+int CSendVal(const char * str1, const char * str2, uint32_t val)
 {
   enum { BUF_LEN = 50 };
   char buf[BUF_LEN];
