@@ -66,12 +66,12 @@ abslist:	$(TARGETS)
 	$(PRU_CGT)/bin/clpru --absolute_listing -DON_PRU=0 prux_sbst3.abs ; \
 	$(PRU_CGT)/bin/clpru --absolute_listing -DON_PRU=0 args_main.abs ; \
 
-$(PRU1_FW): $(GEN_DIR)/main_pru1.object $(GEN_DIR)/main_pru1_def.object $(LINK_PRU1_FW)
+$(PRU1_FW): $(GEN_DIR)/main_pru1.object $(GEN_DIR)/pru1_sbst3.object $(LINK_PRU1_FW)
 	@echo 'LD	$^'
 	$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
 
 
-$(PRU0_FW): $(GEN_DIR)/main_pru0.object $(GEN_DIR)/main_pru0_def.object $(LINK_PRU0_FW)
+$(PRU0_FW): $(GEN_DIR)/main_pru0.object $(GEN_DIR)/pru0_sbst3.object $(LINK_PRU0_FW)
 	@echo 'LD	$^' 
 	$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
 
@@ -81,20 +81,20 @@ $(GEN_DIR)/main_pru0.object: main_pru0.c main_prux.inc prux.h
 	@echo 'CC	$<'
 	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
-$(GEN_DIR)/main_pru0_def.object: prux_sbst3.asm
+$(GEN_DIR)/pru0_sbst3.object: pru0_sbst3.asm prux_sbst3.inc prux.h
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$<'
-	$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 $(GEN_DIR)/main_pru1.object: main_pru1.c main_prux.inc prux.h
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$<'
 	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
-$(GEN_DIR)/main_pru1_def.object: prux_sbst3.asm
+$(GEN_DIR)/pru1_sbst3.object: pru1_sbst3.asm prux_sbst3.inc prux.h
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$<'
-	$(PRU_CGT)/bin/clpru -DON_PRU=1 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 
 

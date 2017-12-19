@@ -1,4 +1,4 @@
-	.cdecls "prux.h"
+;;; -*- asm -*-
 	
 ;;;;;;
 ;;; STRUCTURE DECLARATIONS
@@ -45,8 +45,11 @@ bOut1Cnt:       .ubyte  ; current count of output 1s sent
 bInp1Cnt:       .ubyte  ; current count of input 1s received
 
 rTXDATMask:     .uint   ; 1<<TXDAT_PN
-rRSRV3:         .uint   ; reserved
-rRSRV4:         .uint   ; reserved
+rRunCount:      .uint   ; Number of times this thread has run (free running, wrapping)
+bRSRV40:        .ubyte   ; reserved
+bRSRV41:        .ubyte   ; reserved
+bRSRV42:        .ubyte   ; reserved
+bRSRV43:        .ubyte   ; reserved
 IOThreadLen:   .endstruct
         
 ;;; LinuxThread: Everything needed for packet processing
@@ -174,7 +177,7 @@ initThis: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         ldi CT.bTXDATPin, PRUDIR2_TXDAT_R30_BIT
         ldi CT.bRXRDYPin, PRUDIR2_RXRDY_R31_BIT
         ldi CT.bRXDATPin, PRUDIR2_RXDAT_R31_BIT
-        ldi CT.rTXDATMask, 1<<PRUDIR1_TXDAT_R30_BIT
+        ldi CT.rTXDATMask, 1<<PRUDIR2_TXDAT_R30_BIT
 
         .endif
 	.endm
@@ -254,13 +257,31 @@ IdleThreadRunner:
 
 
 ;;; Timing thread runner: Sends a 'timer' packet every 128M iterations
-ttr0:   sendVal PRUX_STR,""" timer """,CT.rRSRV3 ; Report counter value
+ttr0:   sendVal PRUX_STR,""" timer """,CT.rRunCount ; Report counter value
 ttr1:   suspendThread                            ; Now context switch
 TimingThreadRunner:
-	add CT.rRSRV3, CT.rRSRV3, 1 ; Increment secret counter
-	lsl r0, CT.rRSRV3, 5       ; Keep low order 27 bits
+	add CT.rRunCount, CT.rRunCount, 1 ; Increment run count
+	lsl r0, CT.rRunCount, 5       ; Keep low order 27 bits
 	qbeq ttr0, R0, 0           ; Report in if they're all zero
         jmp ttr1                   ; Either way then sleep
+
+;;; RX Watcher thread runner: Report on changing RX bits
+RXWatcherThreadRunner:
+        loadBit r0.b0, r31, CT.bRXRDYPin
+	qbeq rxwr1, r0.b0, CT.bRSRV40
+        mov CT.bRSRV40, r0.b0
+	mov r0.b1, CT.sTH.bID 
+        sendVal PRUX_STR,""" RXRDY """,r0.w0 ; Report prudir and new value
+rxwr1:  
+        loadBit r0.b0, r31, CT.bRXDATPin
+	qbeq rxwr2, r0.b0, CT.bRSRV41
+        mov CT.bRSRV41, r0.b0
+	mov r0.b1, CT.sTH.bID 
+        sendVal PRUX_STR,""" RXDAT """,r0.w0 ; Report prudir and new value
+rxwr2:  
+        suspendThread           ; Just context switch
+        jmp IdleThreadRunner    ; Then try again
+
 
         .text
         .def mainLoop
@@ -289,7 +310,7 @@ startStateMachines:
 	enterFunc 2
 	
 	;; Init threads by hand
-        initThis 0*CTRegs, IOThreadLen, 0, IdleThreadRunner ; Thread ID 0 at shift 0
+        initThis 0*CTRegs, IOThreadLen, 0, RXWatcherThreadRunner ; Thread ID 0 at shift 0
         initNext 1*CTRegs, IOThreadLen             ; Info for thread 1
         saveThisThread                             ; Stash thread 0
 	
@@ -297,7 +318,7 @@ startStateMachines:
 	initNext 2*CTRegs, IOThreadLen             ; Info for thread 2
         saveThisThread                             ; Stash thread 1
 	
-        initThis 2*CTRegs, IOThreadLen, 2, IdleThreadRunner ; Thread ID 2 at shift 2*CTRegs
+        initThis 2*CTRegs, IOThreadLen, 2, RXWatcherThreadRunner ; Thread ID 2 at shift 2*CTRegs
 	initNext 3*CTRegs, LinuxThreadLen          ; Info for thread 3
         saveThisThread                             ; Stash thread 2
 	
@@ -331,10 +352,7 @@ advanceStateMachines:
 copyOutScratchPad:
         ;; NOTE NON-STANDARD PROLOGUE
 	sub r2, r2, 8           ; Get room for first two regs of CT
-        sbbo &r6, r2, 0, 8      ; Store r6 & r7 on stack
-	sbbo &r7, r14, 1, 1     ; Store ID at packet[1]
-	lsr r7, r7, 16          ; Right justify resume address
-	sbbo &r7, r14, 2, 2     ; Store resume address at packet[2..3]
+        sbbo &CT, r2, 0, 8      ; Store CT & CT+1 on stack
 	add r14, r14, 4         ; Move up to start of scratchpad save area
         sub r15, r15, 4         ; Adjust for room we used
 
@@ -352,7 +370,7 @@ cosp1:
         jmp cosp1
 cosp2:
         ;; NOTE NON-STANDARD EPILOGUE
-        lbbo &r6, r2, 0, 8      ; Restore r6 and r7
+        lbbo &CT, r2, 0, 8      ; Restore CT and CT+1
         add r2, r2, 8           ; Pop stack
         JMP r3.w2               ; Return
 
