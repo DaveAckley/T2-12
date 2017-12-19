@@ -1,4 +1,4 @@
-{205}  -*- text -*-
+{207}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2982,4 +2982,17 @@ done and looks right in the 'S' packet returns.. :203] - Extend the initializati
 
 Mon Dec 18 14:49:02 2017 OK, committing again.
 
-:204]
+:204][205:
+
+Mon Dec 18 14:54:27 2017 OK, let's make a handler that looks for
+reports changes on its RX bits, like advanceStateMachine used to do as
+a special case.
+[206:
+
+Tue Dec 19 00:41:04 2017 Well, took a few tries at that but so far it
+hasn't started working.  Committing alleged cleanup in the filenames,
+primarily so we'll end up with separate .lst files for the .asm
+destined for each PRU.
+
+:206]
+:205]
