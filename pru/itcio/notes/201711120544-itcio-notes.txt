@@ -1,4 +1,4 @@
-{207}  -*- text -*-
+{213}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2799,11 +2799,11 @@ be switching the main loop over to threaded control..
 [186: DONE, LinuxThreadRunner.  :186] - Make an LINUX target that calls processPackets, does a
    context-switch, and then jumps to LINUX.
 
- - Change initStateMachines to startStateMachines, and
+[208: DONE Tue Dec 19 04:20:12 2017   :208] - Change initStateMachines to startStateMachines, and
 
- - Have mainLoop jump to startStateMachines instead of calling it, and
+[209: DONE Tue Dec 19 04:20:15 2017   :209] - Have mainLoop jump to startStateMachines instead of calling it, and
 
- - Pray for mercy.
+[210: DONETue Dec 19 04:20:20 2017 Dintmuchheptho  :210] - Pray for mercy.
 
 :183]
 
@@ -2984,7 +2984,7 @@ Mon Dec 18 14:49:02 2017 OK, committing again.
 
 :204][205:
 
-Mon Dec 18 14:54:27 2017 OK, let's make a handler that looks for
+[211: DONE  :211]Mon Dec 18 14:54:27 2017 OK, let's make a handler that looks for
 reports changes on its RX bits, like advanceStateMachine used to do as
 a special case.
 [206:
@@ -2992,7 +2992,53 @@ a special case.
 Tue Dec 19 00:41:04 2017 Well, took a few tries at that but so far it
 hasn't started working.  Committing alleged cleanup in the filenames,
 primarily so we'll end up with separate .lst files for the .asm
-destined for each PRU.
+destined for each PRU.[207:
+
+Tue Dec 19 03:48:17 2017 Foggin finally.  OK, RXWatcherThreadRunner is
+finally doing what I asked of it.  Last bug was that OK I was doing
+loadBit with a DESTREG of r0.b0, but then was doing the ensuing qbeq
+on r0, so garbage in r0.b1-b3 kept the qbeq from ever being true..
+Fix is to do the loadBit on r0, or better, do the qbeq on r0.b0.
+
+:207]
 
 :206]
 :205]
+[212:
+
+Tue Dec 19 04:22:02 2017 OK, so we're finally facing sending some bits
+on the wire.  And we're definitely going to need some spiking to get
+us through that.  Early goals might be:
+
+(5.1.10) Get the interclocking going, with no data at all, and report
+         every 'n' shared clocks.
+
+(5.1.11) Get the interclocking handling disconnection and
+         reconnection; see the reports stopping and then starting
+         again as we pull connectors.
+
+         Draft a flag for clock-live -- even if we don't use it
+         internally, because we'll keep track based on execution
+         flow?, we should be able to report it asynchronously.
+
+         (We will probably need to use a counter here for timing out;
+         could one byte be enough?  Two bytes really ought to be,
+         right, even at high clocking speed?  Well, maybe not, if the
+         delay is caused by the far side going to linux and we're
+         idle, we could easily do many thousands of iterations anyway,
+         I'd think.  Might have to be a whole reg.)
+
+(5.1.12) Get the beginnings of bitstuffing going.  When clock-live
+         rises (maybe we will use the flags internally, so we can
+         'fall towards' communication robustly), we send a minimum of
+         14 zeros (countdown counter).  And then for now just start
+         sending a single byte over and over, like 0x87 perhaps --
+         high order bit set for standard packet, illegal destination.
+         Actually I guess it would be better to send 0x80 or 0xff --
+         something that would trigger bitstuffing.
+
+         Draft a flag for byte-lock
+
+Again, getting to that would be major.  Then make more spikes.
+
+:212]
