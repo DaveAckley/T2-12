@@ -100,7 +100,11 @@ $M2?:  .cstring STR2
 ;;;    BITNUM: Number of bit (0 == LSB) to copy; OP(31)
 ;;;    DSTREG: Destination register field; REG
 ;;;  OUTPUTS:
-;;;    DESTREG is cleared except its bottom bit is SRCREG[BITNUM]
+;;;    Field DESTREG is cleared except its bottom bit is SRCREG[BITNUM]
+;;;  NOTES:
+;;;  - Note that supplying a register field -- e.g., r0.b0 -- for DSTREG
+;;;    means that the rest of DSTREG remains unchanged!
+
 loadBit:        .macro DESTREG, SRCREG, BITNUM
         lsr DESTREG, SRCREG, BITNUM ; Position desired bit at bottom of destreg
         and DESTREG, DESTREG, 1     ; Flush the rest
@@ -266,22 +270,27 @@ TimingThreadRunner:
         jmp ttr1                   ; Either way then sleep
 
 ;;; RX Watcher thread runner: Report on changing RX bits
+rxr0:   sendVal PRUX_STR,"""CT""",CT.rRunCount ; Report counter value
+rxr1:   suspendThread                            ; Now context switch
 RXWatcherThreadRunner:
-        loadBit r0.b0, r31, CT.bRXRDYPin
-	qbeq rxwr1, r0.b0, CT.bRSRV40
-        mov CT.bRSRV40, r0.b0
-	mov r0.b1, CT.sTH.bID 
-        sendVal PRUX_STR,""" RXRDY """,r0.w0 ; Report prudir and new value
+        loadBit r0.b0, r31, CT.bRXRDYPin ; read pin to b0
+	qbeq rxwr1, r0.b0, CT.bRSRV40    ; check if b0 has changed
+        mov CT.bRSRV40, r0.b0            ; update if so
+	mov r0.b3, CT.sTH.bID            ; id in top byte
+	mov r0.w1, CT.bRXRDYPin          ; 0 then pin # in next two bytes
+        sendVal PRUX_STR,"""RY""",r0     ; Report prudir and new value
 rxwr1:  
         loadBit r0.b0, r31, CT.bRXDATPin
 	qbeq rxwr2, r0.b0, CT.bRSRV41
         mov CT.bRSRV41, r0.b0
-	mov r0.b1, CT.sTH.bID 
-        sendVal PRUX_STR,""" RXDAT """,r0.w0 ; Report prudir and new value
+	mov r0.b3, CT.sTH.bID 
+	mov r0.w1, CT.bRXDATPin
+        sendVal PRUX_STR,"""DT""",r0 ; Report prudir and new value
 rxwr2:  
-        suspendThread           ; Just context switch
-        jmp IdleThreadRunner    ; Then try again
-
+	add CT.rRunCount, CT.rRunCount, 1 ; Increment run count
+	lsl r0, CT.rRunCount, 5       ; Keep low order 27 bits
+	qbeq rxr0, r0, 0           ; Report in if they're all zero
+        jmp rxr1                   ; Either way then sleep
 
         .text
         .def mainLoop
@@ -314,7 +323,7 @@ startStateMachines:
         initNext 1*CTRegs, IOThreadLen             ; Info for thread 1
         saveThisThread                             ; Stash thread 0
 	
-        initThis 1*CTRegs, IOThreadLen, 1, TimingThreadRunner ; Thread ID 1 at shift CTRegs
+        initThis 1*CTRegs, IOThreadLen, 1, RXWatcherThreadRunner ; Thread ID 1 at shift CTRegs
 	initNext 2*CTRegs, IOThreadLen             ; Info for thread 2
         saveThisThread                             ; Stash thread 1
 	
