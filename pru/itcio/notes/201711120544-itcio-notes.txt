@@ -1,4 +1,4 @@
-{235}  -*- text -*-
+{236}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -3547,4 +3547,29 @@ perl -e 'printf("%f\n",(0x06000000-0x04000000)/(339925.760182 - 339903.614115))'
 
 OK.  It's still just a start, but I feel better.)
 
-:234]
+:234][235:
+
+Fri Dec 22 13:28:09 2017 OK well 'The Last Jedi' did have some
+problems but overall it went okay enough, with recliners and popcorn.
+
+So, more data:
+
+[379946.540451] <pru0: c1 30 53 57 3a 30 34 30 30 30 30 30 30 20 43 54  .0SW:04000000 CT
+[379967.975509] <pru1: c1 31 57 54 3a 30 36 30 30 30 30 30 30 20 43 54  .1WT:06000000 CT<
+[379967.983491] <pru1: c1 31 4e 57 3a 30 36 30 30 30 30 30 30 20 43 54  .1NW:06000000 CT
+[379967.991474] <pru1: c1 31 4e 45 3a 30 36 30 30 30 30 30 30 20 43 54  .1NE:06000000 CT
+[379967.999433] <pru0: c1 30 45 54 3a 30 36 30 30 30 30 30 30 20 43 54  .0ET:06000000 CT
+[379968.007353] <pru0: c1 30 53 45 3a 30 36 30 30 30 30 30 30 20 43 54  .0SE:06000000 CT
+[379968.015261] <pru0: c1 30 53 57 3a 30 36 30 30 30 30 30 30 20 43 54  .0SW:06000000 CT
+[379989.450391] <pru1: c1 31 57 54 3a 30 38 30 30 30 30 30 30 20 43 54  .1WT:08000000 CT<
+[379989.458382] <pru1: c1 31 4e 57 3a 30 38 30 30 30 30 30 30 20 43 54  .1NW:08000000 CT
+
+perl -e 'printf("%f\n",(0x08000000-0x06000000)/(379989.450391 - 379967.975509))'
+1562496.687990 -> 1.56Mbps / 156KBps.
+
+Once again that was by shaving instructions in the linux thread.
+After moving the flag later today we'll figure out how to migrate the
+main if-condition from processPackets into asm and save a bunch more
+instructions that way.
+
+:235]
