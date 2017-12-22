@@ -1,4 +1,4 @@
-{236}  -*- text -*-
+{237}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -3572,4 +3572,33 @@ After moving the flag later today we'll figure out how to migrate the
 main if-condition from processPackets into asm and save a bunch more
 instructions that way.
 
-:235]
+:235][236:
+
+Fri Dec 22 14:10:47 2017 Also tried pulling cables as an experiment.
+Data is:
+
+x 4
+[380462.187524] <pru0: c1 30 53 45 3a 33 34 30 30 30 30 30 30 20 43 54  .0SE:34000000 CT
+[380465.817597] <pru1: c1 31 4e 45 3a 33 32 30 30 30 30 30 30 20 43 54  .1NE:32000000 CT<
+[380465.825678] <pru0: c1 30 53 57 3a 33 32 30 30 30 30 30 30 20 43 54  .0SW:32000000 CT
+[380481.641091] <pru1: c1 31 4e 57 3a 33 36 30 30 30 30 30 30 20 43 54  .1NW:36000000 CT
+[380481.649130] <pru0: c1 30 53 45 3a 33 36 30 30 30 30 30 30 20 43 54  .0SE:36000000 CT
+[380485.279208] <pru1: c1 31 4e 45 3a 33 34 30 30 30 30 30 30 20 43 54  .1NE:34000000 CT<
+[380485.287278] <pru0: c1 30 53 57 3a 33 34 30 30 30 30 30 30 20 43 54  .0SW:34000000 CT
+
+perl -e 'printf("%f\n",(0x34000000-0x32000000)/(380485.279208 - 380465.817597))'
+1724134.348384 -> 1.72Mbps / 172KBps
+
+x 2
+[382290.649347] <pru0: c1 30 53 45 3a 65 61 30 30 30 30 30 30 20 43 54  .0SE:ea000000 CT
+[382309.004761] <pru1: c1 31 4e 57 3a 65 63 30 30 30 30 30 30 20 43 54  .1NW:ec000000 CT<
+[382309.012822] <pru0: c1 30 53 45 3a 65 63 30 30 30 30 30 30 20 43 54  .0SE:ec000000 CT
+[382326.453077] <pru1: c1 31 4e 57 3a 65 65 30 30 30 30 30 30 20 43 54  .1NW:ee000000 CT<
+[382326.461111] <pru0: c1 30 53 45 3a 65 65 30 30 30 30 30 30 20 43 54  .0SE:ee000000 CT
+
+perl -e 'printf("%f\n",(0xee000000-0xec000000)/(382326.453077 - 382309.004761))'
+1923075.671028 -> 1.92Mbps / 192KBps
+
+and of course we can't test odd numbers using cross-connections.
+
+:236]
