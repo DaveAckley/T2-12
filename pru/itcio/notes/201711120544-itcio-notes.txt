@@ -1,4 +1,4 @@
-{213}  -*- text -*-
+{224}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -3010,7 +3010,7 @@ Tue Dec 19 04:22:02 2017 OK, so we're finally facing sending some bits
 on the wire.  And we're definitely going to need some spiking to get
 us through that.  Early goals might be:
 
-(5.1.10) Get the interclocking going, with no data at all, and report
+[223: DONE Thu Dec 21 18:19:48 2017   :223](5.1.10) Get the interclocking going, with no data at all, and report
          every 'n' shared clocks.
 
 (5.1.11) Get the interclocking handling disconnection and
@@ -3042,3 +3042,191 @@ us through that.  Early goals might be:
 Again, getting to that would be major.  Then make more spikes.
 
 :212]
+[213:
+
+Thu Dec 21 04:16:40 2017 OK, well grades are finally done and we have
+a bit of time here.  Although we're going to need to sleep more and
+have an early appointment so maybe we can't engage right now.
+[214:
+
+Thu Dec 21 10:23:17 2017 So appointments are done but sleep
+beckons.. but thinking about 5.1.10 and facing the sync and startup
+issue, PRU-style.  Same old issue: Who toggles first?  New twist: We
+don't have random numbers here unless we make them or get them from
+linux..  Would be nice to have our startup packet from linux give us a
+seed maybe.  Could in fact dual purpose some random bytes -- as
+additional entropy from linux to the pru, and as a random packet tag
+for linux to match against in the returned packet.
+
+Anyway, let's say we have some minimal PRU-PRNG availability.  So when
+we enter START_INTERCLOCKING, we do like this:
+
+START_INTERCLOCKING
+(1) Set TXRDY low
+(2) If RXRDY is high, go to START_OUR_CLOCK
+(3) Otherwise, set random timeout
+(4) Suspend
+(5) Decrement timer.  If expired go to TIMEOUT
+(6) If RXRDY is high, go to START_OUR_CLOCK
+(7) Goto 4
+
+[215:
+
+Thu Dec 21 10:35:43 2017 You know, any way we do this, we're going to
+end up with like a quadrature encoding in the two TXRDY lines -- which
+of course and by design is inherently asymmetric.  So we really don't
+want to be calling this 'symmetric' bit stream transport.
+
+It's okay, because we can declare that, say, PRU0 toggles first and
+PRU1 lags behind, because we have previously ensured that every ITC
+connection will go between one PRU0 and one PRU1..  It does make the
+transport less 'revolutionary' but that's fundamentally good -- this
+was far too low-level to have been at all significantly new.  This is
+like some kind of SPI where the 'slave' can stretch the clock.. but we
+won't think about it that way..
+
+Oh but wait.  Did we have a thought that we were going to let the
+clocking stop when neither side had anything to say?  If so then
+either side needs to be able to start the clock, and the symmetry
+comes back.  But that seems of extremely limited value.  Once the
+clock is stopped both sides are still going to have to watch for an
+edge from the other side, so it's not like we save context switches or
+anything.
+
+Vs clocking continuously, but with independent byte and packet syncs
+going in either direction, so either side can be idle while the other
+side is transmitting.  With the point being that if no valid bytes are
+being recognized, is 'watching for other side edge' really all that
+much faster than 'watching for other side edge then toggling our
+edge'?
+[216:
+
+Thu Dec 21 14:21:14 2017 If we can do the send and recv fully
+independently, except for the shared clock, that could be pretty
+cool, and it would partly justify the 'symmetric' name.  We make a
+shared clock so either side can initiate a packet regardless of what
+the other side is doing..
+
+Well anyway that's pretty far down the road at this point.  Let's just
+focus on ticking a shared clock right now.  We'll have per-PRU code
+saying whether we are the 'matcher' or the 'mismatcher', and we set
+our TXRDY relative to the far side RXRDY according to our role.
+
+That gives us essentially a distributed self-connected NOT gate, and
+when both sides are playing their roles, it oscillates: Shared clock.
+
+Do it do it do it.[217:
+
+
+Thu Dec 21 15:26:35 2017 Well, kind of, to a first approximation:
+
+Did it did it did it.
+
+The match/mismatch framing is so much nicer than the 'who goes first'
+framing!  I'm not sure why we're getting double reports, but here's
+the first results, with the 'InterClockThreadRunner' running only on
+ET (PRU0) and WT (PRU1):
+
+ ..
+    [300427.155694] <pru1: c1 30 38 30 30 30 30 30 30 20 50 52 55 31 43 54  .08000000 PRU1CT
+    [300427.163757] <pru1: c1 30 38 30 30 30 30 30 30 20 50 52 55 31 43 54  .08000000 PRU1CT
+    [300428.355289] <pru0: c1 30 38 30 30 30 30 30 30 20 50 52 55 30 43 54  .08000000 PRU0CT
+    [300428.363284] <pru0: c1 30 38 30 30 30 30 30 30 20 50 52 55 30 43 54  .08000000 PRU0CT
+    [300479.500649] <pru1: c1 31 30 30 30 30 30 30 30 20 50 52 55 31 43 54  .10000000 PRU1CT
+    [300479.508676] <pru1: c1 31 30 30 30 30 30 30 30 20 50 52 55 31 43 54  .10000000 PRU1CT
+    [300482.042398] <pru0: c1 31 30 30 30 30 30 30 30 20 50 52 55 30 43 54  .10000000 PRU0CT
+    [300482.050397] <pru0: c1 31 30 30 30 30 30 30 30 20 50 52 55 30 43 54  .10000000 PRU0CT
+    [300531.845615] <pru1: c1 31 38 30 30 30 30 30 30 20 50 52 55 31 43 54  .18000000 PRU1CT
+    [300531.853623] <pru1: c1 31 38 30 30 30 30 30 30 20 50 52 55 31 43 54  .18000000 PRU1CT
+    [300535.729541] <pru0: c1 31 38 30 30 30 30 30 30 20 50 52 55 30 43 54  .18000000 PRU0CT
+    [300535.737540] <pru0: c1 31 38 30 30 30 30 30 30 20 50 52 55 30 43 54  .18000000 PRU0CT
+ ...
+
+So let's see!  I believe we're incrementing on rising clock edges
+only, and we're reporting at 24 bit intervals, so that's, what, 134M
+clock cycles per report??  And the reports are coming in at like
+300535.737540 - 300482.050397 ~ 54 seconds apart?  So we're talking
+like almost exactly 2.5MHz in our so-far-single shared clock?  Now,
+we're expecting to handle one bit in each direction per shared clock,
+so best case we 'could see' 5Mbps total over both directions.
+
+Which is perhaps 312KBps, not taking bit-stuffing into account.  If
+that cost at worst perhaps 20% we could still hope for 250KBps
+bidirectional.
+
+Which is all neither extremely good nor extremely bad.
+
+But it is, increasingly, extremely real.
+
+[218:
+
+Thu Dec 21 16:25:35 2017 So!  I'm claiming 5.1.10!  Actually first,
+let's try interclocking in six directions and see what that timing
+looks like.[219:
+
+Thu Dec 21 17:30:28 2017 OK, well, this somehow seems typical of my
+PRU efforts here, but now I can't get the damn interclocks to tick
+anymore.  Can't even get just the ET-WT pair to do it now; something
+has changed and I don't know what.  Been screwing around on this most
+of the past hour, I guess.  Getting ready to push this in its busted
+state and try a reboot.[220: Thu Dec 21 17:36:06 2017 Wait.. I have
+one more idea of a thing to try..[221:
+
+Thu Dec 21 17:49:59 2017 And it wasn't that at all, it was truly and
+solely just my shooting myself backwards in the foot head ass hat.
+Now we're interclocking in six directions.  And the data looks like
+
+[309808.974628] <pru0: c1 30 66 30 30 30 30 30 30 20 50 52 55 30 43 54  .0f000000 PRU0CT
+[309821.098408] <pru1: c1 31 30 30 30 30 30 30 30 20 50 52 55 31 43 54  .10000000 PRU1CT
+[309821.106392] <pru1: c1 31 30 30 30 30 30 30 30 20 50 52 55 31 43 54  .10000000 PRU1CT
+[309821.114341] <pru1: c1 31 30 30 30 30 30 30 30 20 50 52 55 31 43 54  .10000000 PRU1CT
+[309821.122293] <pru0: c1 31 30 30 30 30 30 30 30 20 50 52 55 30 43 54  .10000000 PRU0CT
+[309821.130235] <pru0: c1 31 30 30 30 30 30 30 30 20 50 52 55 30 43 54  .10000000 PRU0CT
+[309821.138146] <pru0: c1 31 30 30 30 30 30 30 30 20 50 52 55 30 43 54  .10000000 PRU0CT
+[309833.261891] <pru1: c1 31 31 30 30 30 30 30 30 20 50 52 55 31 43 54  .11000000 PRU1CT
+[309833.269882] <pru1: c1 31 31 30 30 30 30 30 30 20 50 52 55 31 43 54  .11000000 PRU1CT
+[309833.277837] <pru1: c1 31 31 30 30 30 30 30 30 20 50 52 55 31 43 54  .11000000 PRU1CT
+[309833.285791] <pru0: c1 31 31 30 30 30 30 30 30 20 50 52 55 30 43 54  .11000000 PRU0CT
+[309833.293713] <pru0: c1 31 31 30 30 30 30 30 30 20 50 52 55 30 43 54  .11000000 PRU0CT
+[309833.301620] <pru0: c1 31 31 30 30 30 30 30 30 20 50 52 55 30 43 54  .11000000 PRU0CT
+[309845.889648] <pru1: c1 31 32 30 30 30 30 30 30 20 50 52 55 31 43 54  .12000000 PRU1CT
+
+which means something like
+
+perl -e 'printf("%f\n",1.0*(0x11000000-0x10000000)/(309833.261891 - 309821.098408)/1)'
+
+== 1379310.186076 == 1.38Mbps as raw bits or
+
+perl -e 'printf("%f\n",0.8*(0x11000000-0x10000000)/(309833.261891 - 309821.098408)/8)'
+
+== 137931.018608 == 138KBps as 20% stuffed bytes.
+
+Now, given that UARTs typically claim at least 1.5Mbps, that's not
+very encouraging.  And the SFBs defaulted to 115200 baud, which we're
+hardly beating, by this estimate.
+
+But again again again: Step by step.  This shid just started working..
+We will find moves to make as we gain experience.  Crawl before fly.
+
+Claiming 5.1.10.
+
+[222:
+
+Thu Dec 21 18:19:54 2017 Committing and pushing.
+
+:222]
+
+:221]  :220]
+
+:219]
+
+:218]
+:217]
+
+:216]
+
+:215]
+
+
+:214]
+:213]
