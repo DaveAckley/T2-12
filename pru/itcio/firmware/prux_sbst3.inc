@@ -15,6 +15,20 @@ sTC:    .tag ThreadCoord
 w:      .ushort                     
         .endunion
 
+;;; B4: A struct of four bytes
+B4:     .struct
+b0:        .ubyte
+b1:        .ubyte
+b2:        .ubyte
+b3:        .ubyte
+        .endstruct
+	
+;;; UB4: A union of a unsigned int and a B4
+UB4:    .union
+b:      .tag B4                  
+w:      .uint
+        .endunion
+        
 ;;; ThreadHeader: Enough info to save, load, and context switch a thread
 ThreadHeader:   .struct
 sThis:          .tag ThreadLoc  ; Our thread storage location
@@ -45,7 +59,8 @@ bOut1Cnt:       .ubyte  ; current count of output 1s sent
 bInp1Cnt:       .ubyte  ; current count of input 1s received
 
 rTXDATMask:     .uint   ; 1<<TXDAT_PN
-rRunCount:      .uint   ; Number of times this thread has run (free running, wrapping)
+rRunCount:      .tag UB4
+        
 bRSRV40:        .ubyte   ; reserved
 bRSRV41:        .ubyte   ; reserved
 bRSRV42:        .ubyte   ; reserved
@@ -76,7 +91,7 @@ CT:     .sassign CTReg, IOThread
 ;;;  NOTES:
 ;;;  - WARNING: MUST NOT BE USED IN LEAF FUNCTIONS!
 ;;;  - TRASHES CALLER-SAVE REGS
-	;int CSendVal(const char * str, uint32_t val)
+	;int CSendVal(const char * str1, const char * str2, uint32_t val)
 	.ref CSendVal
 sendVal:        .macro STR1, STR2, REGVAL
 	.sect ".rodata:.string"
@@ -89,6 +104,31 @@ $M2?:  .cstring STR2
         ldi32 r14, $M1?         ; Get string1
         ldi32 r15, $M2?         ; Get string2
         jal r3.w2, CSendVal     ; Call CSendVal (ignore return)
+	lbbo &r3.w2, r2, 0, 2   ; Restore r3.w2 
+        add r2, r2, 2           ; Pop stack
+        .endm
+
+;;;;;;;;
+;;;: macro sendValFromThread: Print a string and a value, with thread identified
+;;;  INPUTS:
+;;;    STR: First string to print
+;;;    VAL: Value to print (reg or imm)
+;;;  OUTPUTS: None
+;;;  NOTES:
+;;;  - WARNING: MUST NOT BE USED IN LEAF FUNCTIONS!
+;;;  - TRASHES CALLER-SAVE REGS
+	;int CSendFromThread(uint_32t prudir, const char * str, uint32_t val)
+	.ref CSendFromThread
+sendFromThread:        .macro STR, REGVAL
+	.sect ".rodata:.string"
+$M1?:  .cstring STR
+	.text
+	sub r2, r2, 2           ; Two bytes on stack
+	sbbo &r3.w2, r2, 0, 2   ; Save current R3.w2
+        mov r16, REGVAL         ; Get value to report before trashing anything else
+        mov r14, CT.sTH.bID     ; First arg is prudir
+        ldi32 r15, $M1?         ; Get string
+        jal r3.w2, CSendFromThread 
 	lbbo &r3.w2, r2, 0, 2   ; Restore r3.w2 
         add r2, r2, 2           ; Pop stack
         .endm
@@ -224,6 +264,53 @@ loadNextThread: .macro
         xin PRUX_SCRATCH, &CT, b1 ; load next thread
         .endm
 
+;;;;;;;;
+;;;: macro resumeTo: Context switch and continue at RESUMEADDR when next run
+;;;  INPUTS: 
+;;;  - RESUMEADDR: Label at which to continue execution 
+;;;  OUTPUTS: NONE
+;;;  NOTES:
+;;;  - Slightly faster than suspendThread but uses more instruction space
+resumeTo:       .macro RESUMEADDR
+        ldi CT.sTH.wResAddr,$CODE(RESUMEADDR) ; Set our resume point
+	resumeAgain                           ; And resume to that point
+	.endm
+
+;;;;;;;;
+;;;: macro saveResumePoint: Jump to RESUMEADDR when current thread is resumed
+;;;  INPUTS: 
+;;;  - RESUMEADDR: Label at which to continue execution 
+;;;  OUTPUTS: NONE
+;;;  NOTES:
+;;;  - Slightly faster than suspendThread but uses more instruction space
+saveResumePoint:       .macro RESUMEADDR
+        ldi CT.sTH.wResAddr,$CODE(RESUMEADDR) ; Set our resume point
+	saveThisThread                        ; And save current state
+	.endm
+
+;;;;;;;;
+;;;: macro resumeAgain: Context switch and continue at same place as last time
+;;;  INPUTS: NONE
+;;;  OUTPUTS: NONE
+;;;  NOTES:
+;;;  - Currently fastest context switch if looping to same spot
+resumeAgain:       .macro
+        saveThisThread                        ; Stash
+        loadNextThread                        ; Load next guy
+        jmp CT.sTH.wResAddr                   ; Resume him
+	.endm
+
+;;;;;;;;
+;;;: macro resumeNextThread: Load and continue next thread without saving current
+;;;  INPUTS: NONE
+;;;  OUTPUTS: NONE
+;;;  NOTES:
+;;;  - Currently fastest context switch if looping to same spot
+resumeNextThread:       .macro
+        loadNextThread                        ; Load next guy
+        jmp CT.sTH.wResAddr                   ; Resume him
+	.endm
+
 ;;;;;;;;;;;;;;;
 ;;; SCHEDULER
 
@@ -250,30 +337,27 @@ suspendThread: .macro
         jal CT.sTH.wResAddr, contextSwitch
         .endm
                 
-
 ;;; LINUX thread runner 
 LinuxThreadRunner:
         jal r3.w2, processPackets ; Surface to C level, check for linux action
-        suspendThread             ; Then context switch
-        jmp LinuxThreadRunner     ; Then try again
+	resumeAgain               ; Context switch and resume at LinuxThreadRunner
 
 ;;; Idle thread runner 
 IdleThreadRunner:
-        suspendThread           ; Just context switch
-        jmp IdleThreadRunner    ; Then try again
+	resumeAgain               ; Context switch and resume at IdleThreadRunner
 
 
 ;;; Timing thread runner: Sends a 'timer' packet every 256M iterations
-ttr0:   sendVal PRUX_STR,""" timer """,CT.rRunCount ; Report counter value
+ttr0:   sendVal PRUX_STR,""" timer """,CT.rRunCount.w ; Report counter value
 ttr1:   suspendThread                            ; Now context switch
 TimingThreadRunner:
-	add CT.rRunCount, CT.rRunCount, 1 ; Increment run count
-	lsl r0, CT.rRunCount, 4       ; Keep low order 28 bits
+	add CT.rRunCount.w, CT.rRunCount.w, 1 ; Increment run count
+	lsl r0, CT.rRunCount.w, 4       ; Keep low order 28 bits
 	qbeq ttr0, R0, 0           ; Report in if they're all zero
         jmp ttr1                   ; Either way then sleep
 
 ;;; RX Watcher thread runner: Report on changing RX bits
-rxr0:   sendVal PRUX_STR,"""CT""",CT.rRunCount ; Report counter value
+rxr0:   sendVal PRUX_STR,"""CT""",CT.rRunCount.w ; Report counter value
 rxr1:   suspendThread                            ; Now context switch
 RXWatcherThreadRunner:
         loadBit r0.b0, r31, CT.bRXRDYPin ; read pin to b0
@@ -290,41 +374,45 @@ rxwr1:
 	mov r0.w1, CT.bRXDATPin
         sendVal PRUX_STR,"""DT""",r0 ; Report prudir and new value
 rxwr2:  
-	add CT.rRunCount, CT.rRunCount, 1 ; Increment run count
-	lsl r0, CT.rRunCount, 5       ; Keep low order 27 bits
+	add CT.rRunCount.w, CT.rRunCount.w, 1 ; Increment run count
+	lsl r0, CT.rRunCount.w, 5       ; Keep low order 27 bits
 	qbeq rxr0, r0, 0           ; Report in if they're all zero
         jmp rxr1                   ; Either way then sleep
 
 	
 ;;; Interclocking thread runner: Report every N shared ticks
-ictr0:  add CT.rRunCount, CT.rRunCount, 1 ; Increment run count
-	lsl r0, CT.rRunCount, 8       ; Keep low order 24 bits
-	qbne ictr1, r0, 0           ; Jump ahead if not zero
-        sendVal PRUX_STR,"""CT""",CT.rRunCount ; Report counter value
-ictr1:   suspendThread                            ; Now context switch
+;;; This version forces a context switch after each edge
+;;; and seems to show about 1.47Mbps x 6 free-running
 InterClockThreadRunner:
-	qbbs ictr2, r31, CT.bRXRDYPin    ; jump if their clock is set
-        ;; Their clock is clear
-        .if ON_PRU == 0
-          qbbc ictr1, r30, CT.bTXRDYPin  ; PRU0 is MATCHER: if me 0, you 0, done
-	  clr r30, r30, CT.bTXRDYPin     ; Otherwise make a falling edge
-          jmp ictr1                      ; And we're done
-        .else
-          qbbs ictr1, r30, CT.bTXRDYPin  ; PRU1 is MISMATCHER: if me 1, you 0, done
-	  set r30, r30, CT.bTXRDYPin     ; Otherwise make a rising edge
-          jmp ictr0                      ; And count a full clock cycle
-        .endif  
+        clr r30, r30, CT.bTXDATPin     ; Init to output 0
+	;; Here to make a falling edge
+ictr1:  clr r30, r30, CT.bTXRDYPin     ; TXRDY falls
+	saveResumePoint ictr3
 	
-ictr2:  ;; Their clock is set
-        .if ON_PRU == 0
-          qbbs ictr1, r30, CT.bTXRDYPin  ; PRU0 is MATCHER: if me 1, you 1, done
-	  set r30, r30, CT.bTXRDYPin     ; Otherwise make a rising edge
-          jmp ictr0                      ; And count a full clock cycle
-        .else
-          qbbc ictr1, r30, CT.bTXRDYPin  ; PRU1 is MISMATCHER: if me 0, you 1, done
-	  clr r30, r30, CT.bTXRDYPin     ; Otherwise make a falling edge
-          jmp ictr1                      ; And we're done
+	;; Our clock low loop
+ictr2:  resumeNextThread               ; To pause or wait after falling edge
+ictr3:  .if ON_PRU == 0
+          qbbc ictr2, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 0, you 0, we're good
+        .else                            ; ON_PRU == 1
+	  qbbs ictr2, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 0, you 1, we're good
         .endif  
+
+	;; Here to make a rising edge
+        set r30, r30, CT.bTXRDYPin        ; TXRDY rises
+        add CT.rRunCount.w, CT.rRunCount.w, 1 ; Increment shared clock count
+	lsl r0, CT.rRunCount.w, 7           ; Keep low order 25 bits
+	qbne ictr4, r0, 0                 ; Jump ahead if not zero
+        sendFromThread """CT""",CT.rRunCount.w ; Report counter value
+ictr4:  saveResumePoint ictr6
+	
+	;; Our clock high loop
+ictr5:  resumeNextThread                 ; To wait, or wait more, after rising edge
+ictr6:  .if ON_PRU == 0 
+          qbbs ictr5, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 1, you 1, we're good
+        .else                            ; ON_PRU == 1
+	  qbbc ictr5, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 1, you 0, we're good
+        .endif  
+        jmp ictr1               
 
         .text
         .def mainLoop
@@ -365,7 +453,7 @@ startStateMachines:
 	initNext 3*CTRegs, LinuxThreadLen          ; Info for thread 3
         saveThisThread                             ; Stash thread 2
 	
-        initThis 3*CTRegs, LinuxThreadLen, 3,LinuxThreadRunner ; Thread ID 3 at shift 3*CTRegs
+        initThis 3*CTRegs, LinuxThreadLen, 3, LinuxThreadRunner ; Thread ID 3 at shift 3*CTRegs
         initNext 0*CTRegs, IOThreadLen             ; Next is back to thread 0
         saveThisThread                             ; Stash thread 3
         ;; Done with by-hand thread inits
