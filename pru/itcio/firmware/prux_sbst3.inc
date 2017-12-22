@@ -162,21 +162,24 @@ initThis: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         ldi CT.sTH.bFlags, 0
 	ldi CT.sTH.wResAddr,$CODE(RESUMEADDR)
 	
-	.if ID == 0             ;PRUDIR 0
+	.if ID == 0
+        ;; PRUDIR 0
         ldi CT.bTXRDYPin, PRUDIR0_TXRDY_R30_BIT
         ldi CT.bTXDATPin, PRUDIR0_TXDAT_R30_BIT
         ldi CT.bRXRDYPin, PRUDIR0_RXRDY_R31_BIT
         ldi CT.bRXDATPin, PRUDIR0_RXDAT_R31_BIT
         ldi CT.rTXDATMask, 1<<PRUDIR0_TXDAT_R30_BIT
 	
-        .elseif ID == 1         ;PRUDIR 1
+        .elseif ID == 1
+        ;; PRUDIR 1
         ldi CT.bTXRDYPin, PRUDIR1_TXRDY_R30_BIT
         ldi CT.bTXDATPin, PRUDIR1_TXDAT_R30_BIT
         ldi CT.bRXRDYPin, PRUDIR1_RXRDY_R31_BIT
         ldi CT.bRXDATPin, PRUDIR1_RXDAT_R31_BIT
         ldi CT.rTXDATMask, 1<<PRUDIR1_TXDAT_R30_BIT
 	
-        .elseif ID == 2         ;PRUDIR 2
+        .elseif ID == 2
+        ;;PRUDIR 2
 	ldi CT.bTXRDYPin, PRUDIR2_TXRDY_R30_BIT
         ldi CT.bTXDATPin, PRUDIR2_TXDAT_R30_BIT
         ldi CT.bRXRDYPin, PRUDIR2_RXRDY_R31_BIT
@@ -260,12 +263,12 @@ IdleThreadRunner:
         jmp IdleThreadRunner    ; Then try again
 
 
-;;; Timing thread runner: Sends a 'timer' packet every 128M iterations
+;;; Timing thread runner: Sends a 'timer' packet every 256M iterations
 ttr0:   sendVal PRUX_STR,""" timer """,CT.rRunCount ; Report counter value
 ttr1:   suspendThread                            ; Now context switch
 TimingThreadRunner:
 	add CT.rRunCount, CT.rRunCount, 1 ; Increment run count
-	lsl r0, CT.rRunCount, 5       ; Keep low order 27 bits
+	lsl r0, CT.rRunCount, 4       ; Keep low order 28 bits
 	qbeq ttr0, R0, 0           ; Report in if they're all zero
         jmp ttr1                   ; Either way then sleep
 
@@ -291,6 +294,37 @@ rxwr2:
 	lsl r0, CT.rRunCount, 5       ; Keep low order 27 bits
 	qbeq rxr0, r0, 0           ; Report in if they're all zero
         jmp rxr1                   ; Either way then sleep
+
+	
+;;; Interclocking thread runner: Report every N shared ticks
+ictr0:  add CT.rRunCount, CT.rRunCount, 1 ; Increment run count
+	lsl r0, CT.rRunCount, 8       ; Keep low order 24 bits
+	qbne ictr1, r0, 0           ; Jump ahead if not zero
+        sendVal PRUX_STR,"""CT""",CT.rRunCount ; Report counter value
+ictr1:   suspendThread                            ; Now context switch
+InterClockThreadRunner:
+	qbbs ictr2, r31, CT.bRXRDYPin    ; jump if their clock is set
+        ;; Their clock is clear
+        .if ON_PRU == 0
+          qbbc ictr1, r30, CT.bTXRDYPin  ; PRU0 is MATCHER: if me 0, you 0, done
+	  clr r30, r30, CT.bTXRDYPin     ; Otherwise make a falling edge
+          jmp ictr1                      ; And we're done
+        .else
+          qbbs ictr1, r30, CT.bTXRDYPin  ; PRU1 is MISMATCHER: if me 1, you 0, done
+	  set r30, r30, CT.bTXRDYPin     ; Otherwise make a rising edge
+          jmp ictr0                      ; And count a full clock cycle
+        .endif  
+	
+ictr2:  ;; Their clock is set
+        .if ON_PRU == 0
+          qbbs ictr1, r30, CT.bTXRDYPin  ; PRU0 is MATCHER: if me 1, you 1, done
+	  set r30, r30, CT.bTXRDYPin     ; Otherwise make a rising edge
+          jmp ictr0                      ; And count a full clock cycle
+        .else
+          qbbc ictr1, r30, CT.bTXRDYPin  ; PRU1 is MISMATCHER: if me 0, you 1, done
+	  clr r30, r30, CT.bTXRDYPin     ; Otherwise make a falling edge
+          jmp ictr1                      ; And we're done
+        .endif  
 
         .text
         .def mainLoop
@@ -319,15 +353,15 @@ startStateMachines:
 	enterFunc 2
 	
 	;; Init threads by hand
-        initThis 0*CTRegs, IOThreadLen, 0, RXWatcherThreadRunner ; Thread ID 0 at shift 0
+        initThis 0*CTRegs, IOThreadLen, 0, InterClockThreadRunner ; Thread ID 0 at shift 0
         initNext 1*CTRegs, IOThreadLen             ; Info for thread 1
         saveThisThread                             ; Stash thread 0
 	
-        initThis 1*CTRegs, IOThreadLen, 1, RXWatcherThreadRunner ; Thread ID 1 at shift CTRegs
+        initThis 1*CTRegs, IOThreadLen, 1, InterClockThreadRunner ; Thread ID 1 at shift CTRegs
 	initNext 2*CTRegs, IOThreadLen             ; Info for thread 2
         saveThisThread                             ; Stash thread 1
 	
-        initThis 2*CTRegs, IOThreadLen, 2, RXWatcherThreadRunner ; Thread ID 2 at shift 2*CTRegs
+        initThis 2*CTRegs, IOThreadLen, 2, InterClockThreadRunner ; Thread ID 2 at shift 2*CTRegs
 	initNext 3*CTRegs, LinuxThreadLen          ; Info for thread 3
         saveThisThread                             ; Stash thread 2
 	

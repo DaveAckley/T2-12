@@ -159,18 +159,24 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
   }
   /* FALL THROUGH INTO CASE 'R' */
 
-  /* PACKET TYPE: 'R'ead R31 */
+  /* PACKET TYPE: 'R'ead R31 (and R30 if room) */
   case 'R': {                        
     uint32_t r31 = __R31;
-    if (len > 5) len = 5;
+    uint32_t r30 = __R30;
     for (i = 1; i < len; ++i) {
-      packet[i] = r31&0xff;
-      r31 >>=8;
+      if (i < 5) {
+        packet[i] = r31&0xff;
+        r31 >>=8;
+      } else if (i == 5) packet[i] = 0xff; /* pallette cleanser */
+      else if (i < 10) {
+        packet[i] = r30&0xff;
+        r30 >>=8;
+      } else break;
     }
     break;
   }
 
-    /* PACKET TYPE: 'S'cratchpad memory read */
+  /* PACKET TYPE: 'S'cratchpad memory read */
   case 'S': {                        
     if (len > 4)
       copyOutScratchPad(&packet[0], len);
