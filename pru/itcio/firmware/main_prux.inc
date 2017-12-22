@@ -79,6 +79,51 @@ int CSendVal(const char * str1, const char * str2, uint32_t val)
   return 1;  
 }
 
+static const char * (prudirnames[3]) = {
+#if ON_PRU == 0
+  "ET","SE","SW"
+#else
+  "WT","NW","NE"
+#endif
+};
+
+int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
+{
+  enum { BUF_LEN = 50 };
+  char buf[BUF_LEN];
+  int len = 0;
+  int i;
+
+  if (firstPacket) return 0; /* Not ready yet */
+
+  buf[len++] = 0xc1; /* here comes a 'local standard' packet type 1 */
+
+  buf[len++] = '0'+ON_PRU;
+  if (prudir < 3) {
+    buf[len++] = prudirnames[prudir][0];
+    buf[len++] = prudirnames[prudir][1];
+  } else {
+    buf[len++] = 'a'+prudir;
+  }
+  buf[len++] = ':';
+  
+  /* Next the value in hex */
+  for (i = 0; i < 8; ++i) {
+    buf[len++] = "0123456789abcdef"[val>>28];
+    val <<= 4;
+  }
+
+  /* Then a space */
+  buf[len++] = ' ';
+
+  /* Then as much of the string that fits */
+  if (str) while (len < BUF_LEN-1 && *str) buf[len++] = *str++;
+
+  /* Send it */
+  pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);
+  return 1;  
+}
+
 /**
    Reset and re-enable the cycle counter.  According to SPRU8FHA,
    Table 29, page 80, the cycle counter (1) Does not wrap at
