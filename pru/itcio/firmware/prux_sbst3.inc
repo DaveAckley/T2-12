@@ -340,7 +340,7 @@ suspendThread: .macro
 ;;; LINUX thread runner 
 LinuxThreadRunner:
         jal r3.w2, processPackets ; Surface to C level, check for linux action
-	resumeAgain               ; Context switch and resume at LinuxThreadRunner
+	resumeNextThread          ; Switch without save then resume at LinuxThreadRunner
 
 ;;; Idle thread runner 
 IdleThreadRunner:
