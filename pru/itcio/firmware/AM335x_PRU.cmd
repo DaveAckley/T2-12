@@ -21,10 +21,12 @@ MEMORY
 
 	/* RAM */
 
-        /* Let's try reserving the first 0x200 bytes of our PRU DRAM (PRU_DMEM_0_1).  (And also
+        /* Let's try reserving the first 0xA00 bytes (2.5KB) of our PRU DRAM (PRU_DMEM_0_1).  (And also
            the other PRU's DRAM (PRU_DMEM_1_0), which we don't use for anything in this linker script.) */
-      	PRU_DMEM_0_1	: org = 0x00000200 len = 0x00001E00 CREGISTER=24  /* 8kB PRU Data RAM 0_1 */
-	PRU_DMEM_1_0	: org = 0x00002200 len = 0x00001E00 CREGISTER=25 /* 8kB PRU Data RAM 1_0 */
+#define ASMBUFSIZ 0xA00
+        ASMBUF (RW) : org = 0x00000000 len = ASMBUFSIZ  /* ASMBUFSIZ memory range for packet buffers */
+      	PRU_DMEM_0_1	: org = 0x00000000+ASMBUFSIZ len = 0x00002000-ASMBUFSIZ CREGISTER=24  /* 8kB PRU Data RAM 0_1 */
+	PRU_DMEM_1_0	: org = 0x00002000+ASMBUFSIZ len = 0x00002000-ASMBUFSIZ CREGISTER=25 /* 8kB PRU Data RAM 1_0 */
 
         /* instead of this:
 	PRU_DMEM_0_1	: org = 0x00000000 len = 0x00002000 CREGISTER=24 /* 8kB PRU Data RAM 0_1 *-/
@@ -90,6 +92,7 @@ SECTIONS {
 	.rofardata	>  PRU_DMEM_0_1, PAGE 1
 	.farbss		>  PRU_DMEM_0_1, PAGE 1
 	.fardata	>  PRU_DMEM_0_1, PAGE 1
+        .asmbuf         >  ASMBUF, PAGE 1
 
 	.resource_table > PRU_DMEM_0_1, PAGE 1
 }
