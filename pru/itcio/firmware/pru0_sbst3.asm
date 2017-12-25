@@ -1,4 +1,4 @@
-        .cdecls
+        .cdecls C,LIST
         %{
 #define ON_PRU 0
 #include "prux.h"
