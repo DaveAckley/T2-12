@@ -27,4 +27,7 @@ configure-timezone:	FORCE
 	fi \
 	fi \
 
+clean:	all
+
+
 .PHONY:	FORCE
