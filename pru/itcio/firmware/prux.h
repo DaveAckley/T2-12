@@ -18,6 +18,7 @@
 #define PRUX_STR "PRU0"
 #define PRUX_SCRATCH 10
 #define PRUX_CTRL PRU0_CTRL
+#define PRUX_CTRL_ADDR 0x22000
 #define TO_ARM_HOST	16	
 #define FROM_ARM_HOST	17
 #define HOST_INT_BIT    30
@@ -51,6 +52,7 @@
 #define PRUX_STR "PRU1"
 #define PRUX_SCRATCH 11
 #define PRUX_CTRL PRU1_CTRL
+#define PRUX_CTRL_ADDR 0x24000
 #define TO_ARM_HOST	18	
 #define FROM_ARM_HOST	19
 #define HOST_INT_BIT    31
@@ -89,5 +91,30 @@
 #define CHAN_NAME  "itc-pkt"
 #define CHAN_DESC  "Channel " xstr(HOST_INT_BIT) 
 #define CHAN_PORT  (HOST_INT_BIT)
+
+#define RING_BUFFER_BITS 9
+#define RING_BUFFER_SIZE (1<<RING_BUFFER_BITS)
+struct OutboundRingBuffer {
+  unsigned short writePtr;
+  unsigned short readPtr;
+  unsigned char buffer[RING_BUFFER_SIZE];
+};
+
+#define MAX_PACKET_SIZE 255
+
+struct InboundPacketBuffer {
+  unsigned char written;
+  unsigned char buffer[MAX_PACKET_SIZE];
+};
+
+struct PruDirBuffers {
+  struct OutboundRingBuffer out;
+  struct InboundPacketBuffer in;
+};
+
+struct PruDirs {
+  struct PruDirBuffers pruDirBuffers[3];
+};
+extern struct PruDirs pruDirData;
 
 #endif /* PRUX_H */

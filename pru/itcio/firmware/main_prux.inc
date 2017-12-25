@@ -51,6 +51,9 @@ static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
 static uint16_t firstSrc, firstDst;
 
+#pragma DATA_SECTION(pruDirData, ".asmbuf")
+struct PruDirs pruDirData;
+
 int CSendVal(const char * str1, const char * str2, uint32_t val)
 {
   enum { BUF_LEN = 50 };
@@ -105,7 +108,7 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
   } else {
     buf[len++] = 'a'+prudir;
   }
-  buf[len++] = ':';
+  buf[len++] = 'a' + pruDirData.pruDirBuffers[prudir].in.written; /*XXX detect something about the asmbuf shared state */
   
   /* Next the value in hex */
   for (i = 0; i < 8; ++i) {
@@ -280,7 +283,8 @@ int processPackets() {
     
   /* Check bit 30 or 31 of register R31 to see if the ARM has kicked us */
   /* Also check once per second if no kicks -- some interrupts get missed? grr */
-  if ((__R31 & HOST_INT) || PRUX_CTRL.CYCLE > 200000000) { 
+  /* ..except caller has now done that checking.. */
+  /*if ((__R31 & HOST_INT) || PRUX_CTRL.CYCLE > 200000000) */ { 
     
     /* Clear the event status */
     CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;

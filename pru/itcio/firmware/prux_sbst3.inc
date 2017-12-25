@@ -70,6 +70,9 @@ IOThreadLen:   .endstruct
 ;;; LinuxThread: Everything needed for packet processing
 LinuxThread:    .struct        
 sTH:            .tag ThreadHeader ; sTH takes two regs
+rCTRLAddress:   .uint             ; precompute PRUX_CTRL_ADDR
+wResumeCount:   .ushort           ; Use resumes instead of CYCLEs for time base
+wRSRV1:         .ushort           ; reserved
 LinuxThreadLen: .endstruct     
 
 ;;; CT is the Current Thread!  It lives in R6-R13!
@@ -77,6 +80,8 @@ LinuxThreadLen: .endstruct
 	.eval 6, CTBaseReg
 	.asg R6, CTReg
 CT:     .sassign CTReg, IOThread
+
+LT:     .sassign CTReg, LinuxThread
 
 ;;;;;;
 ;;; MACRO DEFINITIONS
@@ -293,7 +298,7 @@ saveResumePoint:       .macro RESUMEADDR
 ;;;  INPUTS: NONE
 ;;;  OUTPUTS: NONE
 ;;;  NOTES:
-;;;  - Currently fastest context switch if looping to same spot
+;;;  - Currently fastest context switch if current thread must be save but looping to same spot
 resumeAgain:       .macro
         saveThisThread                        ; Stash
         loadNextThread                        ; Load next guy
@@ -339,12 +344,15 @@ suspendThread: .macro
                 
 ;;; LINUX thread runner 
 LinuxThreadRunner:
-        jal r3.w2, processPackets ; Surface to C level, check for linux action
-	resumeNextThread          ; Switch without save then resume at LinuxThreadRunner
+	qbbs ltr1, r31, HOST_INT_BIT   ; Process packets if host int from linux is set..
+        add LT.wResumeCount,  LT.wResumeCount, 1 ; Otherwise, bump resume count
+        qbne ltr2, LT.wResumeCount, 0  ; And do processing if it wrapped
+ltr1:   jal r3.w2, processPackets      ; Surface to C level, check for linux action
+ltr2:   resumeAgain                    ; Save, switch, resume at LinuxThreadRunner
 
 ;;; Idle thread runner 
 IdleThreadRunner:
-	resumeAgain               ; Context switch and resume at IdleThreadRunner
+	resumeNextThread               ; Switch without save then resume at IdleThreadRunner
 
 
 ;;; Timing thread runner: Sends a 'timer' packet every 256M iterations
@@ -400,7 +408,7 @@ ictr3:  .if ON_PRU == 0
 	;; Here to make a rising edge
         set r30, r30, CT.bTXRDYPin        ; TXRDY rises
         add CT.rRunCount.w, CT.rRunCount.w, 1 ; Increment shared clock count
-	lsl r0, CT.rRunCount.w, 7           ; Keep low order 25 bits
+	lsl r0, CT.rRunCount.w, 6           ; Keep low order 26 bits
 	qbne ictr4, r0, 0                 ; Jump ahead if not zero
         sendFromThread """CT""",CT.rRunCount.w ; Report counter value
 ictr4:  saveResumePoint ictr6
@@ -454,6 +462,7 @@ startStateMachines:
         saveThisThread                             ; Stash thread 2
 	
         initThis 3*CTRegs, LinuxThreadLen, 3, LinuxThreadRunner ; Thread ID 3 at shift 3*CTRegs
+	ldi32 LT.rCTRLAddress, PRUX_CTRL_ADDR      ; Precompute per-PRU CTRL regs base address
         initNext 0*CTRegs, IOThreadLen             ; Next is back to thread 0
         saveThisThread                             ; Stash thread 3
         ;; Done with by-hand thread inits
