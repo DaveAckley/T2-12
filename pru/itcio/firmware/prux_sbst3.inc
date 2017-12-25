@@ -26,7 +26,7 @@ b3:        .ubyte
 ;;; UB4: A union of a unsigned int and a B4
 UB4:    .union
 b:      .tag B4                  
-w:      .uint
+r:      .uint
         .endunion
         
 ;;; ThreadHeader: Enough info to save, load, and context switch a thread
@@ -356,16 +356,16 @@ IdleThreadRunner:
 
 
 ;;; Timing thread runner: Sends a 'timer' packet every 256M iterations
-ttr0:   sendVal PRUX_STR,""" timer """,CT.rRunCount.w ; Report counter value
+ttr0:   sendVal PRUX_STR,""" timer """,CT.rRunCount.r ; Report counter value
 ttr1:   suspendThread                            ; Now context switch
 TimingThreadRunner:
-	add CT.rRunCount.w, CT.rRunCount.w, 1 ; Increment run count
-	lsl r0, CT.rRunCount.w, 4       ; Keep low order 28 bits
+	add CT.rRunCount.r, CT.rRunCount.r, 1 ; Increment run count
+	lsl r0, CT.rRunCount.r, 4       ; Keep low order 28 bits
 	qbeq ttr0, R0, 0           ; Report in if they're all zero
         jmp ttr1                   ; Either way then sleep
 
 ;;; RX Watcher thread runner: Report on changing RX bits
-rxr0:   sendVal PRUX_STR,"""CT""",CT.rRunCount.w ; Report counter value
+rxr0:   sendVal PRUX_STR,"""CT""",CT.rRunCount.r ; Report counter value
 rxr1:   suspendThread                            ; Now context switch
 RXWatcherThreadRunner:
         loadBit r0.b0, r31, CT.bRXRDYPin ; read pin to b0
@@ -382,8 +382,8 @@ rxwr1:
 	mov r0.w1, CT.bRXDATPin
         sendVal PRUX_STR,"""DT""",r0 ; Report prudir and new value
 rxwr2:  
-	add CT.rRunCount.w, CT.rRunCount.w, 1 ; Increment run count
-	lsl r0, CT.rRunCount.w, 5       ; Keep low order 27 bits
+	add CT.rRunCount.r, CT.rRunCount.r, 1 ; Increment run count
+	lsl r0, CT.rRunCount.r, 5       ; Keep low order 27 bits
 	qbeq rxr0, r0, 0           ; Report in if they're all zero
         jmp rxr1                   ; Either way then sleep
 
@@ -407,10 +407,19 @@ ictr3:  .if ON_PRU == 0
 
 	;; Here to make a rising edge
         set r30, r30, CT.bTXRDYPin        ; TXRDY rises
-        add CT.rRunCount.w, CT.rRunCount.w, 1 ; Increment shared clock count
-	lsl r0, CT.rRunCount.w, 6           ; Keep low order 26 bits
+        add CT.rRunCount.r, CT.rRunCount.r, 1 ; Increment shared clock count
+	lsl r0, CT.rRunCount.r, 6           ; Keep low order 26 bits
 	qbne ictr4, r0, 0                 ; Jump ahead if not zero
-        sendFromThread """CT""",CT.rRunCount.w ; Report counter value
+	.ref pruDirData
+	ldi r28, $sizeof(PruDirBuffers)   ; First operand to multiply
+	mov r29, CT.sTH.bID               ; Second operand to multiply
+        ldi r1, pruDirData + PruDirBuffers.in + InboundPacketBuffer.written ; Set up base address in multiply delay slot
+        xin 0, &r26, 4                    ; Read 32 bit multiplication result
+        add r0,r1,r26                     ; Add to base address
+        lsr r1, CT.rRunCount.r, 28        ; Get left four bits of count
+        sbbo &r1, r0, 0, 1                ; Stash in pruDirData.pruDirBuffers[prudir].in.written
+        sendFromThread """CT""",CT.rRunCount.r ; Report counter value
+;        sendFromThread """CA""",r0 ; Report computed address
 ictr4:  saveResumePoint ictr6
 	
 	;; Our clock high loop

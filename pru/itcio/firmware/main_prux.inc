@@ -108,11 +108,12 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
   } else {
     buf[len++] = 'a'+prudir;
   }
-  buf[len++] = 'a' + pruDirData.pruDirBuffers[prudir].in.written; /*XXX detect something about the asmbuf shared state */
+  buf[len++] = 'a' + pruDirData.pruDirBuffers[prudir].in.written; /* read something written by asm in asmbuf */
   
   /* Next the value in hex */
   for (i = 0; i < 8; ++i) {
-    buf[len++] = "0123456789abcdef"[val>>28];
+    uint8_t h = val>>28;
+    buf[len++] = h < 10 ? '0' + h : 'a' - 10 + h;
     val <<= 4;
   }
 
@@ -215,7 +216,7 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
       if (i < 5) {
         packet[i] = r31&0xff;
         r31 >>=8;
-      } else if (i == 5) packet[i] = 0xff; /* pallette cleanser */
+      } else if (i == 5) continue; /* leave [5] untouched; itc_pin_read_handler checks it */
       else if (i < 10) {
         packet[i] = r30&0xff;
         r30 >>=8;
