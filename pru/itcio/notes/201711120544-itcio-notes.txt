@@ -1,4 +1,4 @@
-{237}  -*- text -*-
+{268}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -2356,7 +2356,7 @@ So.  To review:
      RSV - Reserved: Should be 0 on output, should be ignored on input
      OVR - Overrun: Packet data was lost due to exhausted buffer space
      ERR - Error: Some packet data corruption or other problem was detected
-     SD[2..0] - Three bit source/destination direction code.  
+     SD[2..0] - Three bit source/destination direction code.
 
  - In a 'local standard' packet, by definition, (type&0xc0)==0xc0.
    The structure of a local standard packet type is this:
@@ -2380,7 +2380,7 @@ Fri Dec 15 12:46:32 2017 Ahem.  Well clearly :163: got away from me a
 little, there, heh heh.  Has some useful stuff, though, if very likely
 overdesigned for these exact space-time coordinates in the universe..
 
-So, uh, where were we?  
+So, uh, where were we?
 
 ORite: initting IOThreads -> enabling/disabling IOThreads -> whoopsie
 
@@ -2391,7 +2391,7 @@ because I suspect it addressed some/much of this already.
 
 I'm tempted to say that thread ids, instead of being 0..2, should be
 whatever the necessary XFR register shift to load or save them..  But
-I think it'll probably be the same number of instructions either way.  
+I think it'll probably be the same number of instructions either way.
 Assuming the necessary shifts will be 0, 8, and 16, then doing
 
    LSL R0.b0, CT.bNEXT_ID, 3
@@ -2421,7 +2421,7 @@ and we have switched threads in 20ns flat.  Or say 25ns to count the
 that happened somewhere to initiate the switch.[165:
 
 Fri Dec 15 13:15:30 2017 Could we have a demo of some asm with
-XIN/XOUT that compiles, please?  It doesn't have to do anything.. 
+XIN/XOUT that compiles, please?  It doesn't have to do anything..
 
 :165]
 
@@ -2436,7 +2436,7 @@ scratchpad used for thread storage, and we can see our three threads
 now _minimally_ initialized.  With
 
     # echo SSSSSSssSSSSSSSSSSSSSSSSSSssSSSSSSSSSSSSSSSSSSSssSSSSSSSSSSSSSSSSSSssSSSSSSSSSSSSSSSSSS-------ddzabcx > /dev/itc/pru1
-    # 
+    #
 
 we get:
 
@@ -2504,7 +2504,7 @@ posterity at least -- and there's some I suspect significant design
 discussions in them -- I'm placing the missing entries immediately
 below here in :174:, with all their note numbers stripped out.
 
-[173: ====BEGIN EXTRA NOTES FROM THE busted_firmware BRANCH==== [174: 
+[173: ====BEGIN EXTRA NOTES FROM THE busted_firmware BRANCH==== [174:
 
 Sat Dec 16 08:11:04 2017 OK committed.  Where were we?  Pop pop.
 
@@ -2563,10 +2563,10 @@ XFR register address can only be &CT or &R0?  The XFRs all wrap around
 in register space, so we can stay with our eight reg IOThread, AND
 have thread ids of 1..3 so 0 can be OoB, by having the XFR register
 address be the one that's eight before CT with wrap-around.  And which
-register would that be, exactly?  Checking wrap rules..  
+register would that be, exactly?  Checking wrap rules..
 
 Sat Dec 16 10:37:47 2017 The scratchpad banks are R0..R29, so
-presumably wrap is %30..  Confirming..  
+presumably wrap is %30..  Confirming..
 
 Sat Dec 16 10:40:28 2017 Yeah, the second example in section 5.2.4.2.2
 of spruhf8a implies %30.  So.  That means something like
@@ -2673,7 +2673,7 @@ and then also have
     ThreadControl:  .struct
     rTH:            .tag ThreadHeader
                     .endstruct
-                    
+
 and there's the fourth thread, taking just one scratchpad reg.  And
 the context switch would really be more like this:
 
@@ -2712,7 +2712,7 @@ which is still five instructions, but now we're no longer limited to
 power-of-two IOTHREAD_LENs, because we're storing shifts instead of
 IDs.  So we could take IOThread down to seven, or even six regs, at
 least for now, and only pay a smidge more for thread initialization,
-if that.[179: 
+if that.[179:
 
 Mon Dec 18 05:33:16 2017 If we did a two reg header
 
@@ -3323,7 +3323,7 @@ OK, now the data is:
 perl -e 'printf("%f\n",0.8*(0x0c000000-0x08000000)/(325081.776471 - 325052.397665)/8)'
 
 for 228426.110986 -> hmm worse?  Is my data collection wrong?  Let's
-get a longer sample..  
+get a longer sample..
 
  [325153.031859] <pru0: c1 31 38 30 30 30 30 30 30 20 50 52 55 30 43 54  .18000000 PRU0CT
  [325169.139223] <pru0: c1 31 34 30 30 30 30 30 30 20 50 52 55 30 43 54  .14000000 PRU0CT
@@ -3402,11 +3402,11 @@ Fri Dec 22 00:50:01 2017 Another try.  Don't context switch until we
 [334507.396459] <pru1: c1 31 4e 57 3a 30 63 30 30 30 30 30 30 20 43 54  .1NW:0c000000 CT
 
 perl -e 'printf("%f\n",0.8*(0x0c000000-0x08000000)/(334507.388464 - 334457.691558)/8)'
-for 135036.301857 -> 1.35Mbps and again yet worse, of course.. 
+for 135036.301857 -> 1.35Mbps and again yet worse, of course..
 
 :229]
 :228]
- 
+
 :227]
 
 :226]
@@ -3602,3 +3602,961 @@ perl -e 'printf("%f\n",(0xee000000-0xec000000)/(382326.453077 - 382309.004761))'
 and of course we can't test odd numbers using cross-connections.
 
 :236]
+[237:
+
+Sat Dec 23 02:22:21 2017 OK, let's try to speed up the linux thread a
+bit more by doing the register checking stuff in asm, and then get
+serious about trying to send a byte or something.
+[238:
+
+Sat Dec 23 04:19:58 2017 OK, new data:
+
+[   61.083383] <pru0: c1 30 53 57 3a 30 32 30 30 30 30 30 30 20 43 54  .0SW:02000000 CT
+[   74.130261] <pru1: c1 31 57 54 3a 30 34 30 30 30 30 30 30 20 43 54  .1WT:04000000 CT<
+[   74.138170] <pru1: c1 31 4e 57 3a 30 34 30 30 30 30 30 30 20 43 54  .1NW:04000000 CT
+[   74.146082] <pru1: c1 31 4e 45 3a 30 34 30 30 30 30 30 30 20 43 54  .1NE:04000000 CT
+[   74.153954] <pru0: c1 30 45 54 3a 30 34 30 30 30 30 30 30 20 43 54  .0ET:04000000 CT
+[   74.161804] <pru0: c1 30 53 45 3a 30 34 30 30 30 30 30 30 20 43 54  .0SE:04000000 CT
+[   74.169643] <pru0: c1 30 53 57 3a 30 34 30 30 30 30 30 30 20 43 54  .0SW:04000000 CT
+[   87.216514] <pru1: c1 31 57 54 3a 30 36 30 30 30 30 30 30 20 43 54  .1WT:06000000 CT<
+[   87.224457] <pru1: c1 31 4e 57 3a 30 36 30 30 30 30 30 30 20 43 54  .1NW:06000000 CT
+
+perl -e 'printf("%f\n",(0x06000000-0x04000000)/(87.216514 - 74.130261))'
+2564097.759687 -> 2.56Mbps / 256KBps
+
+Yowza.  Now we're getting closer to clock speeds we could stand to
+degrade with some functionality!
+
+[  461.053617] <pru1: c1 31 4e 45 3a 30 34 30 30 30 30 30 30 20 43 54  .1NE:04000000 CT
+[  487.186766] <pru0: c1 30 45 54 3a 30 38 30 30 30 30 30 30 20 43 54  .0ET:08000000 CT<
+[  487.194682] <pru0: c1 30 53 45 3a 30 38 30 30 30 30 30 30 20 43 54  .0SE:08000000 CT
+[  487.202550] <pru0: c1 30 53 57 3a 30 38 30 30 30 30 30 30 20 43 54  .0SW:08000000 CT
+[  487.210421] <pru1: c1 31 57 54 3a 30 38 30 30 30 30 30 30 20 43 54  .1WT:08000000 CT
+[  487.218254] <pru1: c1 31 4e 57 3a 30 38 30 30 30 30 30 30 20 43 54  .1NW:08000000 CT
+[  487.226076] <pru1: c1 31 4e 45 3a 30 38 30 30 30 30 30 30 20 43 54  .1NE:08000000 CT
+[  513.359258] <pru0: c1 30 45 54 3a 30 63 30 30 30 30 30 30 20 43 54  .0ET:0c000000 CT<
+[  513.367169] <pru0: c1 30 53 45 3a 30 63 30 30 30 30 30 30 20 43 54  .0SE:0c000000 CT
+
+perl -e 'printf("%f\n",(0x0c000000-0x08000000)/(513.359258 - 487.186766))'
+2564099.131256
+
+..yep.
+
+:238]
+:237]
+[239:
+
+Sat Dec 23 04:31:03 2017 If we get a clock-live flag bit going, could
+we save any time on clock-dead threads?  Unless we change the thread
+linking on dead/live, it's hard to see how -- given an unchanging
+clock input, the existing loop is 'jmp to resumeNextThread'.
+
+How hard would changing the thread iteration be?  It would be a pain
+at our current level of understanding and code maturity, for an at
+best uncertain win -- especially given that we'd have to check back in
+on dead threads reasonably regularly to see if they'd awakened.
+
+Hey what if we brought forward all the input bit changes we were
+waiting for -- across all the threads -- and did some parallel xor-ish
+op on r31 and then did left-most bit detect on the result?  That ought
+to allow us to skip even resuming threads that will still just be
+waiting anyway.
+
+We could have a mask of (up to) the three RXRDY bits, and a register
+of the current values of each of those bits as last seen by the
+thread.  Each thread sets its mask bit and prior value when beginning
+to wait on an input change, and then we do like
+
+l1: and r1, r31, watchedbits
+    xor r0, r1, priorvalues
+    lmbd r0, r0, 1
+    qbeq l1, r0, 32
+    ..something happened..
+
+which gets us idle checks across the threads every 20ns, which is
+faster than even a single context-switch.
+
+And if the fucking host interrupt was actually reliable, then the
+linux thread could go in there too.
+
+Or we could do it like this:
+
+l1: loop l2, 256
+    and r1, r31, watchedbits
+    xor r0, r1, priorvalues
+    lmbd r0, r0, 1
+    qbne l3, r0, 32  ; jmp if something happened
+l2: ;; here on loop done
+    ;; check cycle counter, any other time-based crap
+    jmp l1   ; and reenter wait loop
+
+l3: ..deal with stuff..
+    jmp l1
+
+which is also four cycles around the loop, but unlike the first
+approach this lets us time out of the loop and do other stuff.
+
+I'm concerned by the hard-to-eliminate anisotropy of lmbd, but we
+ought to be able to ameliorate that somehow outside the main loop.
+[240:
+
+Sat Dec 23 05:19:55 2017 Anyway, that would take a bunch of work but I
+think it could be made to work.. but let's not do it now.  Let's
+figure a way to send a fogging bit, now.
+[241:
+
+Sat Dec 23 05:37:56 2017 OK, a bitstuffing plan.  'Normal' bitstuffing
+happens after 5 one-bits, but that's at least in part to facilitate
+clock recovery on a single line, and we don't need that.  If we
+increase the 'stuff count' we can reduce the overhead, but increase
+the size of the escape codes..  So maybe not worth it, if we want to
+keep one byte packet delimiters.
+
+Our thought was to stuff 1s rather than 0s, and have packet start
+require the leftmost bit to be set.  Let's say stuff after the seventh
+0, and if we see eight or more 0s, that's a packet delimiter and we
+reestablish byte-sync and start a packet on the next 1 bit.
+
+[242:
+
+Sat Dec 23 05:54:47 2017 Now, how is all this going to interact with
+the PRU0/1 MATCH/MISMATCH asymmetry?  We'd like, if we could, to make
+sending and receiving be completely independent, so they can be in
+different places within their bytes or protocols.
+
+So the basic idea is that when the other side has a rising edge, that
+means their TXDAT is also valid and we should process that before
+raising our own TXDAT.
+
+  (1) Wait for PRU_COND (TXRDY match (pru0) or mismatch (pru1))
+  (2) Capture their TXDAT
+  (3) Toggle our TXRDY
+  (4) Wait for PRU_COND (TXRDY match (pru0) or mismatch (pru1))
+  (5) Prepare our TXDAT
+  (6) Toggle our TXRDY
+  (7) Go to (1)
+
+or is it
+
+  (1) Wait for PRU_COND (TXRDY match (pru0) or mismatch (pru1))
+  (2) Capture their TXDAT
+  (3) Prepare our TXDAT
+  (4) Toggle our TXRDY
+  (5) Go to (1)
+
+which I think means one side does all its work on rising edges and the
+other does it all on falling edges?
+
+Tired.[243:
+
+Sat Dec 23 10:47:00 2017 Slept.  Can we express it in terms of high
+and low?
+
+  (0) Init: Clear receive sync, prepare to send packet delimiter
+  (2) Present next TXDAT
+  (1) Set TXRDY=0
+  (3) Wait for RXDAT_VALID (RXRDY low (pru0) or high (pru1))
+  (5) Capture and process their RXDAT
+  (4) Set TXRDY=1
+  (3) Wait for RXDAT_VALID (RXRDY high (pru0) or low (pru1))
+  (6) Go to (1)
+
+[244:
+
+Sat Dec 23 16:22:54 2017 Back from Santa work.  This is still very
+confusing.  Is it maybe easier to think that we have two phases, a
+match phase and a mismatch phase, that both side goes through -- but
+pru0 is trying to match on high and pru1 is trying to match on low?
+
+Fog it let's write a perl script to demo our current interclocking
+behavior, and then add data to that.  Straight to asm first we don't
+need. [245:
+
+Sun Dec 24 03:14:51 2017 Well, so 'interclockdemo10.pl' sent a byte in
+both directions without a whole lot of trouble, other than one extra
+zero that needs to be discarded at the beginning.  For each pru,
+output format is:
+
+ 0 0 0 [1010101010][]  
+  \ \ \      \      \--prux input buffer
+   \ \ \      \--------prux output buffer
+    \ \ \--------------prux txdat
+     \ \---------------prux txrdy
+      \----------------prux 'state'
+
+where the 'state' was to distinguish the txrdy low loop from the txrdy
+high loop, and thus appears to actually be identical to txrdy..
+
+    root@beaglebone:/home/t2/T2-12# ./pru/itcio/notes/interclockdemo10.pl
+    0 0 0 [1010101010][]  1 1 0 [1110001100][0]
+    1 1 0 [1010101010][0] 1 1 0 [1110001100][0]
+    1 1 0 [1010101010][0] 0 0 1 [110001100][0]
+    0 0 1 [010101010][0]  0 0 1 [110001100][0]
+    0 0 1 [010101010][0]  1 1 1 [110001100][01]
+    1 1 1 [010101010][01] 1 1 1 [110001100][01]
+    1 1 1 [010101010][01] 0 0 1 [10001100][01]
+    0 0 0 [10101010][01]  0 0 1 [10001100][01]
+    0 0 0 [10101010][01]  1 1 1 [10001100][010]
+    1 1 0 [10101010][011] 1 1 1 [10001100][010]
+    1 1 0 [10101010][011] 0 0 1 [0001100][010]
+    0 0 1 [0101010][011]  0 0 1 [0001100][010]
+    0 0 1 [0101010][011]  1 1 1 [0001100][0101]
+    1 1 1 [0101010][0111] 1 1 1 [0001100][0101]
+    1 1 1 [0101010][0111] 0 0 0 [001100][0101]
+    0 0 0 [101010][0111]  0 0 0 [001100][0101]
+    0 0 0 [101010][0111]  1 1 0 [001100][01010]
+    1 1 0 [101010][01110] 1 1 0 [001100][01010]
+    1 1 0 [101010][01110] 0 0 0 [01100][01010]
+    0 0 1 [01010][01110]  0 0 0 [01100][01010]
+    0 0 1 [01010][01110]  1 1 0 [01100][010101]
+    1 1 1 [01010][011100] 1 1 0 [01100][010101]
+    1 1 1 [01010][011100] 0 0 0 [1100][010101]
+    0 0 0 [1010][011100]  0 0 0 [1100][010101]
+    0 0 0 [1010][011100]  1 1 0 [1100][0101010]
+    1 1 0 [1010][0111000] 1 1 0 [1100][0101010]
+    1 1 0 [1010][0111000] 0 0 1 [100][0101010]
+    0 0 1 [010][0111000]  0 0 1 [100][0101010]
+    0 0 1 [010][0111000]  1 1 1 [100][01010101]
+    1 1 1 [010][01110001] 1 1 1 [100][01010101]
+    1 1 1 [010][01110001] 0 0 1 [00][01010101]
+    0 0 0 [10][01110001]  0 0 1 [00][01010101]
+    0 0 0 [10][01110001]  1 1 1 [00][010101010]
+    1 1 0 [10][011100011] 1 1 1 [00][010101010]
+    1 1 0 [10][011100011] 0 0 0 [0][010101010]
+    0 0 1 [0][011100011]  0 0 0 [0][010101010]
+    0 0 1 [0][011100011]  1 1 0 [0][0101010101]
+    1 1 1 [0][0111000110] 1 1 0 [0][0101010101]
+    1 1 1 [0][0111000110] 0 0 0 [][0101010101]
+    0 0 0 [][0111000110]  0 0 0 [][0101010101]
+    0 0 0 [][0111000110]  1 1 0 [][01010101010]
+    1 1 0 [][01110001100] 1 1 0 [][01010101010]
+    1 1 0 [][01110001100] 0 0 0 [][01010101010]
+    0 0 0 [][01110001100]  0 0 0 [][01010101010]
+    0 0 0 [][01110001100]  1 1 0 [][010101010100]
+    1 1 0 [][011100011000] 1 1 0 [][010101010100]
+    1 1 0 [][011100011000] 0 0 0 [][010101010100]
+    0 0 0 [][011100011000]  0 0 0 [][010101010100]
+    0 0 0 [][011100011000]  1 1 0 [][0101010101000]
+    1 1 0 [][0111000110000] 1 1 0 [][0101010101000]
+    1 1 0 [][0111000110000] 0 0 0 [][0101010101000]
+    root@beaglebone:/home/t2/T2-12#
+
+where at the end there the input buffers continue to grow after the
+output buffers are empty because there's no byte-level operations in
+this example..
+
+So, could we translate this to an asm spike?  Nah we really need some
+kind of byte-level logic first, I think.  So let's do ordinary
+bitstuffing in this demo and then see where we are?[246:
+
+Sun Dec 24 10:09:32 2017 OK, well we're getting there.  Modulo some
+bugs yet to be diagnosed, we are sending and receiving packets now,
+with packet delimiters and everything.  Extracts from the trace:
+
+    root@beaglebone:/home/t2/T2-12# ./pru/itcio/notes/interclockdemo11.pl 
+      1 s0 r0 d0 o00000000@8 i00000000@8 [ h ooh][] s1 r1 d0 o00000000@8 i00000000@0 [ ÿzo! norg][]
+      2 s1 r1 d0 o00000000@8 i00000000@0 [ h ooh][] s1 r1 d0 o00000000@8 i00000000@0 [ ÿzo! norg][]
+      3 s1 r1 d0 o00000000@8 i00000000@0 [ h ooh][] s0 r0 d0 o01111110@1 i00000000@0 [ÿzo! norg][]
+      4 s0 r0 d0 o01111110@1 i00000000@0 [h ooh][] s0 r0 d0 o01111110@1 i00000000@0 [ÿzo! norg][]
+      5 s0 r0 d0 o01111110@1 i00000000@0 [h ooh][] s1 r1 d0 o01111110@1 i00000000@1 [ÿzo! norg][]
+      6 s1 r1 d0 o01111110@1 i00000000@1 [h ooh][] s1 r1 d0 o01111110@1 i00000000@1 [ÿzo! norg][]
+ ..
+     31 s1 r1 d1 o01111110@7 i00111110@6 [h ooh][] s0 r0 d0 o01111110@8 i00111110@6 [ÿzo! norg][]
+     32 s0 r0 d0 o01111110@8 i00111110@6 [h ooh][] s0 r0 d0 o01111110@8 i00111110@6 [ÿzo! norg][]
+    pru1: ACHIEVED PACKET SYNC
+     33 s0 r0 d0 o01111110@8 i00111110@6 [h ooh][] s1 r1 d0 o01111110@8 i00000000@0 [ÿzo! norg][]
+    pru0: ACHIEVED PACKET SYNC
+     34 s1 r1 d0 o01111110@8 i00000000@0 [h ooh][] s1 r1 d0 o01111110@8 i00000000@0 [ÿzo! norg][]
+     35 s1 r1 d0 o01111110@8 i00000000@0 [h ooh][] s0 r0 d1 o11111111@1 i00000000@0 [zo! norg][]
+     36 s0 r0 d0 o01101000@1 i00000000@0 [ ooh][] s0 r0 d1 o11111111@1 i00000000@0 [zo! norg][]
+ ..
+     95 s1 r1 d1 o01111110@7 i00111010@6 [ooh][ÿ] s0 r0 d1 o01111010@7 i00111110@6 [o! norg][h]
+     96 s0 r0 d0 o01111110@8 i00111010@6 [ooh][ÿ] s0 r0 d1 o01111010@7 i00111110@6 [o! norg][h]
+    pru1: RECEIVED PACKET 'h'
+     97 s0 r0 d0 o01111110@8 i00111010@6 [ooh][ÿ] s1 r1 d1 o01111010@7 i00000000@0 [o! norg][]
+     98 s1 r1 d0 o01111110@8 i01111010@7 [ooh][ÿ] s1 r1 d1 o01111010@7 i00000000@0 [o! norg][]
+     99 s1 r1 d0 o01111110@8 i01111010@7 [ooh][ÿ] s0 r0 d0 o01111010@8 i00000000@0 [o! norg][]
+    100 s0 r0 d1 o01101111@1 i01111010@7 [oh][ÿ] s0 r0 d0 o01111010@8 i00000000@0 [o! norg][]
+ ..
+    192 s0 r0 d0 o01101000@8 i00011111@5 [][ÿzo!] s0 r0 d1 o01111110@7 i01101000@7 [norg][oo]
+    193 s0 r0 d0 o01101000@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01111110@7 i00000000@0 [norg][ooh]
+    pru0: HANDLE PACKET FRAMING ERROR
+    194 s1 r1 d0 o01101000@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01111110@7 i00000000@0 [norg][ooh]
+    195 s1 r1 d0 o01101000@8 i00011111@5 [][ÿzo!] s0 r0 d0 o01111110@8 i00000000@0 [norg][ooh]
+    196 s0 r0 d0 o01111110@1 i00011111@5 [][ÿzo!] s0 r0 d0 o01111110@8 i00000000@0 [norg][ooh]
+    197 s0 r0 d0 o01111110@1 i00011111@5 [][ÿzo!] s1 r1 d0 o01111110@8 i00000000@1 [norg][ooh]
+    pru0: HANDLE PACKET FRAMING ERROR
+    198 s1 r1 d0 o01111110@1 i00011111@5 [][ÿzo!] s1 r1 d0 o01111110@8 i00000000@1 [norg][ooh]
+    199 s1 r1 d0 o01111110@1 i00011111@5 [][ÿzo!] s0 r0 d0 o01101110@1 i00000000@1 [org][ooh]
+    200 s0 r0 d1 o01111110@2 i00011111@5 [][ÿzo!] s0 r0 d0 o01101110@1 i00000000@1 [org][ooh]
+ ..
+    221 s0 r0 d1 o01111110@7 i00011111@5 [][ÿzo!] s1 r1 d1 o01101110@6 i00111110@6 [org][ooh]
+    pru0: HANDLE PACKET FRAMING ERROR
+    222 s1 r1 d1 o01111110@7 i00011111@5 [][ÿzo!] s1 r1 d1 o01101110@6 i00111110@6 [org][ooh]
+    223 s1 r1 d1 o01111110@7 i00011111@5 [][ÿzo!] s0 r0 d1 o01101110@7 i00111110@6 [org][ooh]
+    224 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d1 o01101110@7 i00111110@6 [org][ooh]
+    pru1: RECEIVED PACKET 'ooh'
+    225 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01101110@7 i00000000@0 [org][]
+    pru0: HANDLE PACKET FRAMING ERROR
+    226 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01101110@7 i00000000@0 [org][]
+    227 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d0 o01101110@8 i00000000@0 [org][]
+ ..
+    252 s0 r0 d1 o01111110@7 i00011111@5 [][ÿzo!] s0 r0 d1 o01101111@6 i00111110@6 [rg][]
+    253 s0 r0 d1 o01111110@7 i00011111@5 [][ÿzo!] s1 r1 d1 o01101111@6 i00111110@6 [rg][]
+    pru0: HANDLE PACKET FRAMING ERROR
+    254 s1 r1 d1 o01111110@7 i00011111@5 [][ÿzo!] s1 r1 d1 o01101111@6 i00111110@6 [rg][]
+    255 s1 r1 d1 o01111110@7 i00011111@5 [][ÿzo!] s0 r0 d1 o01101111@7 i00111110@6 [rg][]
+    256 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d1 o01101111@7 i00111110@6 [rg][]
+    pru1: RECEIVED PACKET ''
+    257 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01101111@7 i00000000@0 [rg][]
+    pru0: HANDLE PACKET FRAMING ERROR
+    258 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01101111@7 i00000000@0 [rg][]
+    259 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d0 o01101111@8 i00000000@0 [rg][]
+ ..
+    287 s1 r1 d1 o01111110@7 i00011111@5 [][ÿzo!] s0 r0 d1 o01110010@7 i00111110@6 [g][]
+    288 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d1 o01110010@7 i00111110@6 [g][]
+    pru1: RECEIVED PACKET ''
+    289 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01110010@7 i00000000@0 [g][]
+    pru0: HANDLE PACKET FRAMING ERROR
+    290 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01110010@7 i00000000@0 [g][]
+    291 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d0 o01110010@8 i00000000@0 [g][]
+    292 s0 r0 d0 o01111110@1 i00011111@5 [][ÿzo!] s0 r0 d0 o01110010@8 i00000000@0 [g][]
+    293 s0 r0 d0 o01111110@1 i00011111@5 [][ÿzo!] s1 r1 d0 o01110010@8 i00000000@1 [g][]
+    pru0: HANDLE PACKET FRAMING ERROR
+    294 s1 r1 d0 o01111110@1 i00011111@5 [][ÿzo!] s1 r1 d0 o01110010@8 i00000000@1 [g][]
+    295 s1 r1 d0 o01111110@1 i00011111@5 [][ÿzo!] s0 r0 d1 o01100111@1 i00000000@1 [][]
+ ..
+    319 s1 r1 d1 o01111110@7 i00011111@5 [][ÿzo!] s0 r0 d1 o01100111@7 i00111110@6 [][]
+    320 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d1 o01100111@7 i00111110@6 [][]
+    pru1: RECEIVED PACKET ''
+    321 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01100111@7 i00000000@0 [][]
+    pru0: HANDLE PACKET FRAMING ERROR
+    322 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01100111@7 i00000000@0 [][]
+    323 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d0 o01100111@8 i00000000@0 [][]
+ ..
+    351 s1 r1 d1 o01111110@7 i00011111@5 [][ÿzo!] s0 r0 d1 o01111110@7 i00111110@6 [][]
+    352 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d1 o01111110@7 i00111110@6 [][]
+    pru1: RECEIVED PACKET ''
+    353 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01111110@7 i00000000@0 [][]
+    pru0: HANDLE PACKET FRAMING ERROR
+    354 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01111110@7 i00000000@0 [][]
+    355 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d0 o01111110@8 i00000000@0 [][]
+ ..
+    383 s1 r1 d1 o01111110@7 i00011111@5 [][ÿzo!] s0 r0 d1 o01111110@7 i00111110@6 [][]
+    384 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d1 o01111110@7 i00111110@6 [][]
+    pru1: RECEIVED PACKET ''
+    385 s0 r0 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01111110@7 i00000000@0 [][]
+    pru0: HANDLE PACKET FRAMING ERROR
+    386 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s1 r1 d1 o01111110@7 i00000000@0 [][]
+    387 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d0 o01111110@8 i00000000@0 [][]
+ ..
+    495 s1 r1 d1 o01111110@3 i00011111@5 [][ÿzo!] s0 r0 d1 o01111110@3 i00000110@3 [][]
+    root@beaglebone:/home/t2/T2-12# 
+[247:
+
+Sun Dec 24 11:18:58 2017 OK, got that fixed and now things are looking
+plausible.  Annotated extracts from our second generation perl demo
+script, showing packet sync, bitstuffing at various points within a
+byte, bitstuffing across bytes, transmitting the packet delimiter as
+data, and empty packet dropping:
+
+    ./pru/itcio/notes/interclockdemo11.pl 
+      1 s0 r0 d0 o00000000@8[ h ü??] i00000000@8[] s1 r1 d0 o00000000@8[ ÿz!  ~norg] i00000000@0[]
+
+PRU0->PRU1: packet 'h', then packet '\374??'.
+PRU1->PRU0: packet'\377z!', then empty packet, then packet '~norg'.
+(Note that '~' is 0x7e, which, if sent unstuffed, is the packet delimiter.)
+(Note also that using a null byte on input to represent end-of-packet
+is just for this demo.  In the real thing we have genuinely OoB packet
+framing provided.)
+
+      2 s1 r1 d0 o00000000@8[ h ü??] i00000000@0[] s1 r1 d0 o00000000@8[ ÿz!  ~norg] i00000000@0[]
+      3 s1 r1 d0 o00000000@8[ h ü??] i00000000@0[] s0 r0 d0 o01111110@1[ÿz!  ~norg] i00000000@0[]
+      4 s0 r0 d0 o01111110@1[h ü??] i00000000@0[] s0 r0 d0 o01111110@1[ÿz!  ~norg] i00000000@0[]
+ ..
+     31 s1 r1 d1 o01111110@7[h ü??] i00111110@6[] s0 r0 d0 o01111110@8[ÿz!  ~norg] i00111110@6[]
+     32 s0 r0 d0 o01111110@8[h ü??] i00111110@6[] s0 r0 d0 o01111110@8[ÿz!  ~norg] i00111110@6[]
+    pru1: ACHIEVED PACKET SYNC
+     33 s0 r0 d0 o01111110@8[h ü??] i00111110@6[] s1 r1 d0 o01111110@8[ÿz!  ~norg] i00000000@0[]
+    pru0: ACHIEVED PACKET SYNC
+     34 s1 r1 d0 o01111110@8[h ü??] i00000000@0[] s1 r1 d0 o01111110@8[ÿz!  ~norg] i00000000@0[]
+     35 s1 r1 d0 o01111110@8[h ü??] i00000000@0[] s0 r0 d1 o11111111@1[z!  ~norg] i00000000@0[]
+     36 s0 r0 d0 o01101000@1[ ü??] i00000000@0[] s0 r0 d1 o11111111@1[z!  ~norg] i00000000@0[]
+ ..
+     64 s0 r0 d0 o01101000@8[ ü??] i00111111@6[] s0 r0 d1 o11111111@7[z!  ~norg] i01101000@7[]
+     65 s0 r0 d0 o01101000@8[ ü??] i00111111@6[] s1 r1 d1 o11111111@7[z!  ~norg] i00000000@0[h]
+                                                                                                  ^^^
+PRU0 accepts the 'h'
+
+     66 s1 r1 d0 o01101000@8[ ü??] i01111111@7[] s1 r1 d1 o11111111@7[z!  ~norg] i00000000@0[h]
+     67 s1 r1 d0 o01101000@8[ ü??] i01111111@7[] s0 r0 d1 o11111111@8[z!  ~norg] i00000000@0[h]
+     68 s0 r0 d0 o01111110@1[ü??] i01111111@7[] s0 r0 d1 o11111111@8[z!  ~norg] i00000000@0[h]
+                 ^^^^^^^^^^^
+PRU0 has set up to send the packet delimiter
+
+     69 s0 r0 d0 o01111110@1[ü??] i01111111@7[] s1 r1 d1 o11111111@8[z!  ~norg] i00000000@1[h]
+     70 s1 r1 d0 o01111110@1[ü??] i00000000@0[ÿ] s1 r1 d1 o11111111@8[z!  ~norg] i00000000@1[h]
+     71 s1 r1 d0 o01111110@1[ü??] i00000000@0[ÿ] s0 r0 d0 o01111010@1[!  ~norg] i00000000@1[h]
+     72 s0 r0 d1 o01111110@2[ü??] i00000000@0[ÿ] s0 r0 d0 o01111010@1[!  ~norg] i00000000@1[h]
+     73 s0 r0 d1 o01111110@2[ü??] i00000000@0[ÿ] s1 r1 d0 o01111010@1[!  ~norg] i00000010@2[h]
+     74 s1 r1 d1 o01111110@2[ü??] i00000000@1[ÿ] s1 r1 d0 o01111010@1[!  ~norg] i00000010@2[h]
+     75 s1 r1 d1 o01111110@2[ü??] i00000000@1[ÿ] s0 r0 d1 o01111010@2[!  ~norg] i00000010@2[h]
+     76 s0 r0 d1 o01111110@3[ü??] i00000000@1[ÿ] s0 r0 d1 o01111010@2[!  ~norg] i00000010@2[h]
+     77 s0 r0 d1 o01111110@3[ü??] i00000000@1[ÿ] s1 r1 d1 o01111010@2[!  ~norg] i00000110@3[h]
+     78 s1 r1 d1 o01111110@3[ü??] i00000010@2[ÿ] s1 r1 d1 o01111010@2[!  ~norg] i00000110@3[h]
+     79 s1 r1 d1 o01111110@3[ü??] i00000010@2[ÿ] s0 r0 d0 o01111010@3[!  ~norg] i00000110@3[h]
+     80 s0 r0 d1 o01111110@4[ü??] i00000010@2[ÿ] s0 r0 d0 o01111010@3[!  ~norg] i00000110@3[h]
+     81 s0 r0 d1 o01111110@4[ü??] i00000010@2[ÿ] s1 r1 d0 o01111010@3[!  ~norg] i00001110@4[h]
+     82 s1 r1 d1 o01111110@4[ü??] i00000010@3[ÿ] s1 r1 d0 o01111010@3[!  ~norg] i00001110@4[h]
+     83 s1 r1 d1 o01111110@4[ü??] i00000010@3[ÿ] s0 r0 d1 o01111010@4[!  ~norg] i00001110@4[h]
+     84 s0 r0 d1 o01111110@5[ü??] i00000010@3[ÿ] s0 r0 d1 o01111010@4[!  ~norg] i00001110@4[h]
+     85 s0 r0 d1 o01111110@5[ü??] i00000010@3[ÿ] s1 r1 d1 o01111010@4[!  ~norg] i00011110@5[h]
+     86 s1 r1 d1 o01111110@5[ü??] i00001010@4[ÿ] s1 r1 d1 o01111010@4[!  ~norg] i00011110@5[h]
+     87 s1 r1 d1 o01111110@5[ü??] i00001010@4[ÿ] s0 r0 d1 o01111010@5[!  ~norg] i00011110@5[h]
+     88 s0 r0 d1 o01111110@6[ü??] i00001010@4[ÿ] s0 r0 d1 o01111010@5[!  ~norg] i00011110@5[h]
+     89 s0 r0 d1 o01111110@6[ü??] i00001010@4[ÿ] s1 r1 d1 o01111010@5[!  ~norg] i00111110@6[h]
+     90 s1 r1 d1 o01111110@6[ü??] i00011010@5[ÿ] s1 r1 d1 o01111010@5[!  ~norg] i00111110@6[h]
+     91 s1 r1 d1 o01111110@6[ü??] i00011010@5[ÿ] s0 r0 d1 o01111010@6[!  ~norg] i00111110@6[h]
+     92 s0 r0 d1 o01111110@7[ü??] i00011010@5[ÿ] s0 r0 d1 o01111010@6[!  ~norg] i00111110@6[h]
+     93 s0 r0 d1 o01111110@7[ü??] i00011010@5[ÿ] s1 r1 d1 o01111010@6[!  ~norg] i00111110@6[h]
+     94 s1 r1 d1 o01111110@7[ü??] i00111010@6[ÿ] s1 r1 d1 o01111010@6[!  ~norg] i00111110@6[h]
+     95 s1 r1 d1 o01111110@7[ü??] i00111010@6[ÿ] s0 r0 d1 o01111010@7[!  ~norg] i00111110@6[h]
+              ^^
+PRU0 has sent the six 1s without stuffing.
+
+     96 s0 r0 d0 o01111110@8[ü??] i00111010@6[ÿ] s0 r0 d1 o01111010@7[!  ~norg] i00111110@6[h]
+    pru1: RECEIVED PACKET 'h'
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+And the delimiter has been processed on PRU1.
+
+     97 s0 r0 d0 o01111110@8[ü??] i00111010@6[ÿ] s1 r1 d1 o01111010@7[!  ~norg] i00000000@0[]
+     98 s1 r1 d0 o01111110@8[ü??] i01111010@7[ÿ] s1 r1 d1 o01111010@7[!  ~norg] i00000000@0[]
+     99 s1 r1 d0 o01111110@8[ü??] i01111010@7[ÿ] s0 r0 d0 o01111010@8[!  ~norg] i00000000@0[]
+    100 s0 r0 d0 o11111100@1[??] i01111010@7[ÿ] s0 r0 d0 o01111010@8[!  ~norg] i00000000@0[]
+    101 s0 r0 d0 o11111100@1[??] i01111010@7[ÿ] s1 r1 d0 o01111010@8[!  ~norg] i00000000@1[]
+    102 s1 r1 d0 o11111100@1[??] i00000000@0[ÿz] s1 r1 d0 o01111010@8[!  ~norg] i00000000@1[]
+    103 s1 r1 d0 o11111100@1[??] i00000000@0[ÿz] s0 r0 d1 o00100001@1[  ~norg] i00000000@1[]
+ ..
+    126 s1 r1 d1 o11111100@7[??] i00100001@6[ÿz] s1 r1 d1 o00100001@6[  ~norg] i01111100@7[]
+    127 s1 r1 d1 o11111100@7[??] i00100001@6[ÿz] s0 r0 d0 o00100001@7[  ~norg] i01111100@7[]
+    128 s0 r0 d0 o11111100@7[??] i00100001@6[ÿz] s0 r0 d0 o00100001@7[  ~norg] i01111100@7[]
+    129 s0 r0 d0 o11111100@7[??] i00100001@6[ÿz] s1 r1 d0 o00100001@7[  ~norg] i01111100@7[]
+    130 s1 r1 d0 o11111100@7[??] i00100001@7[ÿz] s1 r1 d0 o00100001@7[  ~norg] i01111100@7[]
+    131 s1 r1 d0 o11111100@7[??] i00100001@7[ÿz] s0 r0 d0 o00100001@8[  ~norg] i01111100@7[]
+              ^^
+PRU0 bitstuffs near end of byte
+
+    132 s0 r0 d1 o11111100@8[??] i00100001@7[ÿz] s0 r0 d0 o00100001@8[  ~norg] i01111100@7[]
+    133 s0 r0 d1 o11111100@8[??] i00100001@7[ÿz] s1 r1 d0 o00100001@8[  ~norg] i00000000@0[ü]
+                                                                                               ^^^^^^
+PRU1 receives byte okay
+
+    134 s1 r1 d1 o11111100@8[??] i00000000@0[ÿz!] s1 r1 d0 o00100001@8[  ~norg] i00000000@0[ü]
+    135 s1 r1 d1 o11111100@8[??] i00000000@0[ÿz!] s0 r0 d0 o01111110@1[ ~norg] i00000000@0[ü]
+                                                              ^^^^^^^^^^^
+PRU1 sets up packet delimiter
+
+    136 s0 r0 d1 o00111111@1[?] i00000000@0[ÿz!] s0 r0 d0 o01111110@1[ ~norg] i00000000@0[ü]
+    137 s0 r0 d1 o00111111@1[?] i00000000@0[ÿz!] s1 r1 d0 o01111110@1[ ~norg] i00000001@1[ü]
+    138 s1 r1 d1 o00111111@1[?] i00000000@1[ÿz!] s1 r1 d0 o01111110@1[ ~norg] i00000001@1[ü]
+ ..
+    162 s1 r1 d1 o00111111@6[?] i00111110@6[ÿz!] s1 r1 d1 o01111110@7[ ~norg] i00111111@6[ü]
+    163 s1 r1 d1 o00111111@6[?] i00111110@6[ÿz!] s0 r0 d0 o01111110@8[ ~norg] i00111111@6[ü]
+    164 s0 r0 d0 o00111111@7[?] i00111110@6[ÿz!] s0 r0 d0 o01111110@8[ ~norg] i00111111@6[ü]
+    165 s0 r0 d0 o00111111@7[?] i00111110@6[ÿz!] s1 r1 d0 o01111110@8[ ~norg] i00111111@7[ü]
+    pru0: RECEIVED PACKET 'ÿz!'
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PRU0 recognizes full packet
+
+    166 s1 r1 d0 o00111111@7[?] i00000000@0[] s1 r1 d0 o01111110@8[ ~norg] i00111111@7[ü]
+    167 s1 r1 d0 o00111111@7[?] i00000000@0[] s0 r0 d0 o01111110@1[~norg] i00111111@7[ü]
+                                                       ^^^^^^^^^^^
+PRU1 has set up the packet delimiter again -- an empty packet..
+
+    168 s0 r0 d0 o00111111@8[?] i00000000@0[] s0 r0 d0 o01111110@1[~norg] i00111111@7[ü]
+    169 s0 r0 d0 o00111111@8[?] i00000000@0[] s1 r1 d0 o01111110@1[~norg] i00000000@0[ü?]
+    170 s1 r1 d0 o00111111@8[?] i00000000@1[] s1 r1 d0 o01111110@1[~norg] i00000000@0[ü?]
+    171 s1 r1 d0 o00111111@8[?] i00000000@1[] s0 r0 d1 o01111110@2[~norg] i00000000@0[ü?]
+    172 s0 r0 d1 o00111111@1[] i00000000@1[] s0 r0 d1 o01111110@2[~norg] i00000000@0[ü?]
+ ..
+    194 s1 r1 d0 o00111111@5[] i00111110@6[] s1 r1 d1 o01111110@7[~norg] i00011111@5[ü?]
+    195 s1 r1 d0 o00111111@5[] i00111110@6[] s0 r0 d0 o01111110@8[~norg] i00011111@5[ü?]
+    196 s0 r0 d1 o00111111@6[] i00111110@6[] s0 r0 d0 o01111110@8[~norg] i00011111@5[ü?]
+    197 s0 r0 d1 o00111111@6[] i00111110@6[] s1 r1 d0 o01111110@8[~norg] i00111111@6[ü?]
+    pru0: DISCARDING EMPTY PACKET
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..which PRU0 duly tosses.
+
+    198 s1 r1 d1 o00111111@6[] i00000000@0[] s1 r1 d0 o01111110@8[~norg] i00111111@6[ü?]
+    199 s1 r1 d1 o00111111@6[] i00000000@0[] s0 r0 d0 o01111110@1[norg] i00111111@6[ü?]
+                                                      ^^^^^^^^^^^
+Now, it _looks like_ PRU1 has set up the packet delimiter yet again,
+but NO!  This time it's merely data..
+
+    200 s0 r0 d0 o00111111@7[] i00000000@0[] s0 r0 d0 o01111110@1[norg] i00111111@6[ü?]
+    201 s0 r0 d0 o00111111@7[] i00000000@0[] s1 r1 d0 o01111110@1[norg] i00111111@7[ü?]
+    202 s1 r1 d0 o00111111@7[] i00000000@1[] s1 r1 d0 o01111110@1[norg] i00111111@7[ü?]
+    203 s1 r1 d0 o00111111@7[] i00000000@1[] s0 r0 d1 o01111110@2[norg] i00111111@7[ü?]
+ ..
+    221 s0 r0 d1 o01111110@4[] i00011110@5[] s1 r1 d1 o01111110@6[norg] i00001110@4[ü??]
+    222 s1 r1 d1 o01111110@4[] i00111110@6[] s1 r1 d1 o01111110@6[norg] i00001110@4[ü??]
+    223 s1 r1 d1 o01111110@4[] i00111110@6[] s0 r0 d0 o01111110@6[norg] i00001110@4[ü??]
+                                                   ^^
+..which gets bitstuffed appropriately..
+
+    224 s0 r0 d1 o01111110@5[] i00111110@6[] s0 r0 d0 o01111110@6[norg] i00001110@4[ü??]
+    225 s0 r0 d1 o01111110@5[] i00111110@6[] s1 r1 d0 o01111110@6[norg] i00011110@5[ü??]
+    226 s1 r1 d1 o01111110@5[] i00111110@6[] s1 r1 d0 o01111110@6[norg] i00011110@5[ü??]
+    227 s1 r1 d1 o01111110@5[] i00111110@6[] s0 r0 d1 o01111110@7[norg] i00011110@5[ü??]
+    228 s0 r0 d1 o01111110@6[] i00111110@6[] s0 r0 d1 o01111110@7[norg] i00011110@5[ü??]
+    229 s0 r0 d1 o01111110@6[] i00111110@6[] s1 r1 d1 o01111110@7[norg] i00111110@6[ü??]
+    230 s1 r1 d1 o01111110@6[] i01111110@7[] s1 r1 d1 o01111110@7[norg] i00111110@6[ü??]
+    231 s1 r1 d1 o01111110@6[] i01111110@7[] s0 r0 d0 o01111110@8[norg] i00111110@6[ü??]
+    232 s0 r0 d1 o01111110@7[] i01111110@7[] s0 r0 d0 o01111110@8[norg] i00111110@6[ü??]
+    233 s0 r0 d1 o01111110@7[] i01111110@7[] s1 r1 d0 o01111110@8[norg] i00111110@6[ü??]
+    234 s1 r1 d1 o01111110@7[] i00000000@0[~] s1 r1 d0 o01111110@8[norg] i00111110@6[ü??]
+                                          ^^^
+..and received by PRU0 literally.
+
+    235 s1 r1 d1 o01111110@7[] i00000000@0[~] s0 r0 d0 o01101110@1[org] i00111110@6[ü??]
+    236 s0 r0 d0 o01111110@8[] i00000000@0[~] s0 r0 d0 o01101110@1[org] i00111110@6[ü??]
+    pru1: RECEIVED PACKET 'ü??'
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Meanwhile, PRU0->PRU1 transmission has been operating completely
+independently, above the level of the shared clock.
+
+    237 s0 r0 d0 o01111110@8[] i00000000@0[~] s1 r1 d0 o01101110@1[org] i00000000@0[]
+    238 s1 r1 d0 o01111110@8[] i00000000@1[~] s1 r1 d0 o01101110@1[org] i00000000@0[]
+    239 s1 r1 d0 o01111110@8[] i00000000@1[~] s0 r0 d1 o01101110@2[org] i00000000@0[]
+    240 s0 r0 d0 o01111110@1[] i00000000@1[~] s0 r0 d1 o01101110@2[org] i00000000@0[]
+                 ^^^^^^^^^^^
+But now PRU0 has nothing more to send, and so has set up the packet
+delimiter again.
+
+    241 s0 r0 d0 o01111110@1[] i00000000@1[~] s1 r1 d1 o01101110@2[org] i00000000@1[]
+    242 s1 r1 d0 o01111110@1[] i00000010@2[~] s1 r1 d1 o01101110@2[org] i00000000@1[]
+ ..
+    267 s1 r1 d1 o01111110@7[] i00000000@0[~n] s0 r0 d1 o01101111@1[rg] i00111110@6[]
+    268 s0 r0 d0 o01111110@8[] i00000000@0[~n] s0 r0 d1 o01101111@1[rg] i00111110@6[]
+    pru1: DISCARDING EMPTY PACKET
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Which PRU1 tosses.
+
+    269 s0 r0 d0 o01111110@8[] i00000000@0[~n] s1 r1 d1 o01101111@1[rg] i00000000@0[]
+    270 s1 r1 d0 o01111110@8[] i00000001@1[~n] s1 r1 d1 o01101111@1[rg] i00000000@0[]
+ ..
+    299 s1 r1 d1 o01111110@7[] i00000000@0[~no] s0 r0 d0 o01110010@1[g] i00111110@6[]
+    300 s0 r0 d0 o01111110@8[] i00000000@0[~no] s0 r0 d0 o01110010@1[g] i00111110@6[]
+    pru1: DISCARDING EMPTY PACKET
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Regularly.
+
+    301 s0 r0 d0 o01111110@8[] i00000000@0[~no] s1 r1 d0 o01110010@1[g] i00000000@0[]
+    302 s1 r1 d0 o01111110@8[] i00000000@1[~no] s1 r1 d0 o01110010@1[g] i00000000@0[]
+ ..
+    392 s0 r0 d1 o01111110@7[] i00111110@6[~norg] s0 r0 d0 o01111110@8[] i00111110@6[]
+    393 s0 r0 d1 o01111110@7[] i00111110@6[~norg] s1 r1 d0 o01111110@8[] i00111110@6[]
+    pru0: RECEIVED PACKET '~norg'
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PRU0 recognizes a big old five byte packet.
+
+    394 s1 r1 d1 o01111110@7[] i00000000@0[] s1 r1 d0 o01111110@8[] i00111110@6[]
+    395 s1 r1 d1 o01111110@7[] i00000000@0[] s0 r0 d0 o01111110@1[] i00111110@6[]
+    396 s0 r0 d0 o01111110@8[] i00000000@0[] s0 r0 d0 o01111110@1[] i00111110@6[]
+    pru1: DISCARDING EMPTY PACKET
+    397 s0 r0 d0 o01111110@8[] i00000000@0[] s1 r1 d0 o01111110@1[] i00000000@0[]
+    398 s1 r1 d0 o01111110@8[] i00000000@1[] s1 r1 d0 o01111110@1[] i00000000@0[]
+                 ^^^^^^^^^^^                          ^^^^^^^^^^^
+Now both sides have become idle
+
+    399 s1 r1 d0 o01111110@8[] i00000000@1[] s0 r0 d1 o01111110@2[] i00000000@0[]
+    400 s0 r0 d0 o01111110@1[] i00000000@1[] s0 r0 d1 o01111110@2[] i00000000@0[]
+ ..
+    488 s0 r0 d1 o01111110@7[] i00111110@6[] s0 r0 d0 o01111110@8[] i00111110@6[]
+    489 s0 r0 d1 o01111110@7[] i00111110@6[] s1 r1 d0 o01111110@8[] i00111110@6[]
+    pru0: DISCARDING EMPTY PACKET
+    490 s1 r1 d1 o01111110@7[] i00000000@0[] s1 r1 d0 o01111110@8[] i00111110@6[]
+    491 s1 r1 d1 o01111110@7[] i00000000@0[] s0 r0 d0 o01111110@1[] i00111110@6[]
+    492 s0 r0 d0 o01111110@8[] i00000000@0[] s0 r0 d0 o01111110@1[] i00111110@6[]
+    pru1: DISCARDING EMPTY PACKET
+    493 s0 r0 d0 o01111110@8[] i00000000@0[] s1 r1 d0 o01111110@1[] i00000000@0[]
+    494 s1 r1 d0 o01111110@8[] i00000000@1[] s1 r1 d0 o01111110@1[] i00000000@0[]
+    root@beaglebone:/home/t2/T2-12# 
+
+And they both discarded empty packets happily ever after.
+
+:247]
+:246]
+
+:245]
+
+:244]
+:243]
+
+:242]
+
+:241]
+:240]
+:239]
+[248:
+
+Sun Dec 24 11:58:18 2017 OK, so one more thing I want out of our perl
+spikes is to show it byte aligns correctly when it sees the frame
+delimiter at an arbitrary position.  If we do not have packet sync,
+the frame delimiter should be accepted in any position, and we reset
+our byte boundary based on that.  If we do have packet sync, the frame
+delimiter must be aligned to our existing byte boundaries, else we
+should blow the current packet, drop packet sync, and declare an
+error.[249:
+
+Sun Dec 24 12:10:33 2017 Well, made interclockdemo12.pl for this, but
+the first part -- aligning when we don't have packet sync -- appears
+to 'just work' already.  It's going to take a bit more work to make
+the code cause a sync alignment error..
+[250:
+
+Sun Dec 24 12:32:34 2017 OK, well we seem to have that working.
+Heavily edited trace:
+
+     ./pru/itcio/notes/interclockdemo12.pl 
+      1 s0 r0 d0 o00000000@8[ Q DM NG hi] i00000000@2[] s1 r1 d0 o00000000@8[ ÿz! ~norg] i00000000@1[]
+0->1: "Q", "DAM" but with a bit missing in the A, "NG", "hi"
+1->0: "\377z!", "~norg"
+ ..  32 s0 r0 d0 o01111110@8[Q DM NG hi] i00000001@1[] s0 r0 d0 o01111110@8[ÿz! ~norg] i01111100@7[]
+    pru1: ACHIEVED PACKET SYNC
+     33 s0 r0 d0 o01111110@8[Q DM NG hi] i00000001@1[] s1 r1 d0 o01111110@8[ÿz! ~norg] i00000000@0[]
+    pru0: ACHIEVED PACKET SYNC
+     34 s1 r1 d0 o01111110@8[Q DM NG hi] i00000000@0[] s1 r1 d0 o01111110@8[ÿz! ~norg] i00000000@0[]
+ ..  96 s0 r0 d0 o01111110@8[DM NG hi] i00111010@6[ÿ] s0 r0 d1 o01111010@7[! ~norg] i00111110@6[Q]
+    pru1: RECEIVED PACKET 'Q'
+     97 s0 r0 d0 o01111110@8[DM NG hi] i00111010@6[ÿ] s1 r1 d1 o01111010@7[! ~norg] i00000000@0[]
+ .. 128 s0 r0 d0 o01000100@8[M NG hi] i00100001@6[ÿz] s0 r0 d0 o00100001@7[ ~norg] i01000100@7[]
+    129 s0 r0 d0 o01000100@8[M NG hi] i00100001@6[ÿz] s1 r1 d0 o00100001@7[ ~norg] i00000000@0[D]
+First byte of 'DAM' recognized..
+ .. 160 s0 r0 d1 o01001101@1[ NG hi] i00111110@6[ÿz!] s0 r0 d1 o01111110@7[~norg] i00100000@7[D]
+    161 s0 r0 d1 o01001101@1[ NG hi] i00111110@6[ÿz!] s1 r1 d1 o01111110@7[~norg] i00000000@0[D ]
+Second byte corrupted by loss of bit, but nothing detected yet..
+ .. 192 s0 r0 d0 o01111110@1[NG hi] i00111110@6[] s0 r0 d0 o01111110@6[norg] i00100110@7[D ]
+    193 s0 r0 d0 o01111110@1[NG hi] i00111110@6[] s1 r1 d0 o01111110@6[norg] i00000000@0[D &]
+Third byte also corrupted..
+ .. 219 s1 r1 d1 o01111110@7[NG hi] i00001110@4[~] s0 r0 d0 o01101110@5[org] i00011111@5[D &]
+    220 s0 r0 d0 o01111110@8[NG hi] i00001110@4[~] s0 r0 d0 o01101110@5[org] i00011111@5[D &]
+    pru1: FRAMING ERROR; DROPPING PACKET & SYNC
+Finally an unaligned frame delimiter is detected and an error declared.
+ .. 251 s1 r1 d1 o01001110@7[G hi] i00001111@4[~n] s0 r0 d0 o01101111@5[rg] i01001110@7[]
+    252 s0 r0 d0 o01001110@8[G hi] i00001111@4[~n] s0 r0 d0 o01101111@5[rg] i01001110@7[]
+    253 s0 r0 d0 o01001110@8[G hi] i00001111@4[~n] s1 r1 d0 o01101111@5[rg] i00000000@0[]
+The received 'N' is discarded because PRU1 doesn't have sync.
+ .. 283 s1 r1 d1 o01000111@7[ hi] i00000010@4[~no] s0 r0 d1 o01110010@5[g] i01000111@7[]
+    284 s0 r0 d0 o01000111@8[ hi] i00000010@4[~no] s0 r0 d1 o01110010@5[g] i01000111@7[]
+    285 s0 r0 d0 o01000111@8[ hi] i00000010@4[~no] s1 r1 d1 o01110010@5[g] i00000000@0[]
+The received 'G' also..
+ .. 286 s1 r1 d0 o01000111@8[ hi] i00010010@5[~no] s1 r1 d1 o01110010@5[g] i00000000@0[]
+    287 s1 r1 d0 o01000111@8[ hi] i00010010@5[~no] s0 r0 d1 o01110010@6[g] i00000000@0[]
+    288 s0 r0 d0 o01111110@1[hi] i00010010@5[~no] s0 r0 d1 o01110010@6[g] i00000000@0[]
+PRU0 sets up the frame delimiter ending "NG".
+ .. 316 s0 r0 d0 o01111110@8[hi] i00000111@4[~nor] s0 r0 d0 o01100111@5[] i00111110@6[]
+    pru1: ACHIEVED PACKET SYNC
+But PRU1 just uses it to resync.
+ .. 361 s0 r0 d0 o01101001@3[] i00111110@6[~norg] s1 r1 d0 o01111110@8[] i00000001@3[h]
+    pru0: RECEIVED PACKET '~norg'
+Now it is kind of weird that one direction can lose sync while the
+other direction soldiers on fine, but that's what we're looking at,
+for the moment anyway, with these oh-so-nearly independent channels.
+ .. 412 s0 r0 d0 o01111110@8[] i00001110@4[] s0 r0 d1 o01111110@5[] i00111110@6[hi]
+    pru1: RECEIVED PACKET 'hi'
+And packets are now flowing again..
+ .. 510 s1 r1 d0 o01111110@8[] i00011110@5[] s1 r1 d1 o01111110@5[] i00000000@0[]
+    root@beaglebone:/home/t2/T2-12# 
+
+:250]
+:249]
+
+:248]
+[251:
+
+Sun Dec 24 12:53:24 2017 So okay, I think we've gotten to where we
+need some spiking for translating this in asm..[252:
+     
+Sun Dec 24 13:05:58 2017 Actually, there's another error path that we
+haven't tested, right -- getting a 7th 1 in a row.  We need to blow
+sync then too.[253:
+
+Sun Dec 24 13:40:57 2017 OK, now have that too:
+
+     ./pru/itcio/notes/interclockdemo12.pl 
+  ..219 s1 r1 d1 o01111110@7[NG hi] i00011111@5[L] s0 r0 d1 o11111111@6[$ ^ ~norg] i00011111@5[D &]
+    220 s0 r0 d0 o01111110@8[NG hi] i00011111@5[L] s0 r0 d1 o11111111@6[$ ^ ~norg] i00011111@5[D &]
+    pru1: FRAME ALIGNMENT ERROR; DROPPING PACKET & SYNC
+Here PRU1 saw a frame delimiter not on a byte boundary
+ .. 224 s0 r0 d0 o01001110@1[G hi] i00011111@5[L] s0 r0 d1 o11111111@7[$ ^ ~norg] i00000000@0[]
+    225 s0 r0 d0 o01001110@1[G hi] i00011111@5[L] s1 r1 d1 o11111111@7[$ ^ ~norg] i00000000@1[]
+    pru0: BIT SEQUENCE ERROR; DROPPING PACKET & SYNC
+While here PRU0 saw a seventh one in a row.
+ .. 296 s0 r0 d1 o01111110@3[hi] i00000000@0[] s0 r0 d0 o01111110@8[^ ~norg] i00000010@2[]
+    297 s0 r0 d1 o01111110@3[hi] i00000000@0[] s1 r1 d0 o01111110@8[^ ~norg] i00000110@3[]
+    pru0: ACHIEVED PACKET SYNC
+PRU1 died first but PRU0 resyncs first because the bit sequence error
+was detected during a packet, so resync occurred on that packet's delimiter.
+ .. 315 s1 r1 d1 o01111110@7[hi] i00001110@4[] s0 r0 d1 o01011110@5[ ~norg] i00111110@6[]
+    316 s0 r0 d0 o01111110@8[hi] i00001110@4[] s0 r0 d1 o01011110@5[ ~norg] i00111110@6[]
+    pru1: ACHIEVED PACKET SYNC
+But PRU1 gets there too.
+ .. 361 s0 r0 d0 o01101001@3[] i00111110@6[^] s1 r1 d0 o01111110@8[~norg] i00000001@3[h]
+    pru0: RECEIVED PACKET '^'
+    362 s1 r1 d0 o01101001@3[] i00000000@0[] s1 r1 d0 o01111110@8[~norg] i00000001@3[h]
+And packets again flow
+ .. 412 s0 r0 d0 o01111110@8[] i00000110@3[~] s0 r0 d1 o01101110@4[org] i00111110@6[hi]
+    pru1: RECEIVED PACKET 'hi'
+both ways.
+ .. root@beaglebone:/home/t2/T2-12# 
+
+:253]
+
+:252]
+
+:251]
+[254:
+
+Sun Dec 24 13:46:36 2017 OK, back to translation-to-asm spiking.
+
+(5.1.13) Decide on buffer space for incoming and outgoing packets.  We
+were thinking 128 256byte max packet size -- but is there maybe room
+to go 256?
+
+(5.1.14) Make a special packet -- call it 'P'? -- that queries the
+state of the packet engine in a given direction.  Pack up pretty much
+all everything we could want to know.
+
+(5.1.15) Make a packet sync flag and try sending the packet delimiter
+all the time and achieving packet sync.  Observe the arrival of sync
+using the 'P' packet.
+
+:254][255:
+
+Sun Dec 24 13:53:11 2017 OK, how do we find out how much local RAM we
+have available given our current code?  [256:
+
+Sun Dec 24 14:03:18 2017 Well hoodafognose.  But let's just think what
+we might want.  If we talk 256 byte packets that's 1.5KB for three in
+and three out per PRU.  Right now we're reserving 512 bytes in each
+pru without apparent ill effect.  Suppose we just up that to, say, 1KB
+and see if things still seem to run.[257:
+
+Sun Dec 24 14:29:44 2017 Seems okay..  Got sidetracked cleaning up the
+linking commands in firmware/Makefile, which weren't depending on the
+linker script.  Actually let's commit that.
+
+:257]
+
+:256]
+
+:255]
+[258:
+
+Sun Dec 24 14:33:40 2017 OK, so it seems we have 1KB reserved okay.
+
+I've been thinking: What about a ring buffer for outbound packets,
+plus a single fixed buffer for inbound, both per prudir?  We're going
+to ship our completed inbound packets immediately, right?  Because
+we're relying on rpmsg framing to tell linux were a packet ends, so
+it's not like we could buffer up a bunch of inbound packets and send
+them all at once.
+
+But we could buffer on the outbound side, which might help us deal
+with our current inability to handle vring buffers competently without
+completely trashing our communications with linux.  So suppose we took
+like 512B outbound + 256B inbound = 768 per prudir, or 2.3KB total.
+Could we do that?  And the point would be that the 512B would be in a
+ring buffer within which we'd only consume actual packet sizes rather
+than 256 per.
+
+[259:
+
+Sun Dec 24 14:43:16 2017 Another / additional approach would be to
+have the prudir threads be able to 'kick' the linux thread by setting
+some flag when they're unable to buffer an outbound packet.  That
+would a third way to get the linux thread to check for packets:
+(1) Kick from ARM
+(2) Timeout
+(3) Kick from prudir thread
+
+A prudir thread could set that bit when it sees the next packet from
+linux is destined for it, but it hasn't got ring buffer space for it,
+so it just leaves it in the rpmsg queue.  Now, doing that will block
+further outbound packet buffering for _all_ the prudirs, not just the
+one that's gone full, but if it's a rare, brief situation it might be
+tolerable, and if not, it will cause the error condition to propagate
+up naturally, when the LKM starts seeing rpmsg buffer exhaustion.
+
+I guess really the linux thread would be setting that bit, because
+that's what'll be running when we discover we can't dump an outbound
+packet in a prudir's queue.  If we blow packet sync on a thread we'll
+need to dump its whole outbound queue too.. or no?  I think probably
+yes..  Because if we don't have packet sync we certainly don't want to
+be adding outbound packets to its queue..  We want to return an error
+message to linux asap, telling it we dumped this packet due to lack of
+sync and WTF did you send it down to us.
+
+I guess we will also want local standard packets to announce packet
+sync gained and lost, so linux can know, modulo timing, who the prus
+are currently talking with.  So linux could mostly avoid sending stuff
+to unsynced destinations.
+
+Anyway, so could we do this?  Could we reserve say 2.5KB for packet
+buffers and get away with it?[260:
+
+Sun Dec 24 15:06:09 2017 Well it dint asplode right away, anyway.
+[261:
+
+Sun Dec 24 15:08:10 2017 Can we figure out how to place a C struct
+into that space, like we did back in IXM-land with BODYRAM and so
+forth? [262:
+
+Sun Dec 24 15:15:02 2017 spruhv7b 5.9.5 pg 82 seems to say the way is:
+
+    #pragma DATA_SECTION(bufferB, "my_sect")
+    char bufferA[512];
+    char bufferB[512];
+
+Now how do we declare my_sect in the linker script..[263:
+
+Sun Dec 24 16:06:10 2017 First a memory region:
+
+        ASMBUF (RW) : org = 0x00000000 len = ASMBUFSIZ  /* ASMBUFSIZ memory range for packet buffers */
+
+then a section:
+
+        .asmbuf         >  ASMBUF, PAGE 1
+
+[264:
+
+Then a pragma, I guess..
+
+:264]
+
+:263]
+
+:262]
+
+:261]
+:260]
+
+:259]
+
+:258]
+[265:
+
+Sun Dec 24 17:06:34 2017 OK well I took a little side track, because I
+was seeing really large (I thought) values for the STALL register --
+with it running at like 5%+ of the CYCLE register, which seems totally
+awful.  Numbers like this:
+
+    CYCLE     := 0x0bfd7f50
+    STALL     := 0x00ec1dc7
+
+and these:
+
+    CYCLE     := 0x0c76cb47
+    STALL     := 0x00f57260
+
+
+where STALL was basically running one hex digit behind CYCLE..
+
+I now currently suspect that maybe I was reading the CYCLE register
+wrong, but in any case I ditched that and I'm now counting 16 bits
+worth LinuxThreadRunner resume counts and forcing packet processing
+whenever the count turns over.
+
+And now I'm seeing numbers like these:
+
+    CYCLE     := 0x0e0ebed5
+    STALL     := 0x00000047
+
+and these
+
+    CYCLE     := 0xf8607b66
+    STALL     := 0x0000004a
+
+and even these
+
+    CYCLE     := 0xffffffff
+    STALL     := 0x00000048
+
+because it seems 65K LinuxThreadRunner resumes takes rather longer
+than 21.47ish seconds.  I'd rather do it like every few seconds, but
+anything but testing for wrapping to 0 seems to cost at least an
+instruction..  If we start losing ARM kicks when the system gets more
+loaded, we'll need to be polling a lot more frequently than that..
+
+But anyway, just saying, this reorg did speed things up a bit.  New
+data: 
+
+[132122.551187] <pru1: c1 31 4e 45 61 30 38 30 30 30 30 30 30 20 43 54  .1NEa08000000 CT
+[132146.670633] <pru0: c1 30 45 54 61 30 63 30 30 30 30 30 30 20 43 54  .0ETa0c000000 CT<
+[132146.678617] <pru0: c1 30 53 45 61 30 63 30 30 30 30 30 30 20 43 54  .0SEa0c000000 CT
+[132146.686607] <pru0: c1 30 53 57 61 30 63 30 30 30 30 30 30 20 43 54  .0SWa0c000000 CT
+[132146.694563] <pru1: c1 31 57 54 61 30 63 30 30 30 30 30 30 20 43 54  .1WTa0c000000 CT
+[132146.702483] <pru1: c1 31 4e 57 61 30 63 30 30 30 30 30 30 20 43 54  .1NWa0c000000 CT
+[132146.710389] <pru1: c1 31 4e 45 61 30 63 30 30 30 30 30 30 20 43 54  .1NEa0c000000 CT
+[132170.829838] <pru0: c1 30 45 54 61 31 30 30 30 30 30 30 30 20 43 54  .0ETa10000000 CT<
+[132170.837845] <pru0: c1 30 53 45 61 31 30 30 30 30 30 30 30 20 43 54  .0SEa10000000 CT
+perl -e 'printf("%f\n",(0x10000000-0x0c000000)/(132170.829838 - 132146.670633))'
+2777776.172684 -> 2.77Mbps / 277KBps
+
+which is an 8.3% speedup over our 2564097 sample back in :238:
+
+So that's nice.  2.77Mbps x 6 isn't so embarrassing against UARTs.
+[266:
+
+Sun Dec 24 17:39:08 2017 Except, well that was a little too good to be
+true.  I was using resumeNextThread for linuxThreadRunner, so my
+incrementing counter wasn't getting saved.  Oops.  That's why the
+CYCLE count was getting so large.  So now, forcing packet processing
+every 65K resumes is showing numbers like:
+
+    CYCLE     := 0x0023037f
+    STALL     := 0x0000004a
+
+and
+
+    CYCLE     := 0x000c861f
+    STALL     := 0x0000004a
+
+and
+
+    CYCLE     := 0x001d7368
+    STALL     := 0x00000047
+
+and our bitrate is off a bit:
+
+[134261.133058] <pru1: c1 31 4e 45 61 30 34 30 30 30 30 30 30 20 43 54  .1NEa04000000 CT
+[134286.597908] <pru0: c1 30 45 54 61 30 38 30 30 30 30 30 30 20 43 54  .0ETa08000000 CT<
+[134286.605922] <pru0: c1 30 53 45 61 30 38 30 30 30 30 30 30 20 43 54  .0SEa08000000 CT
+[134286.613875] <pru0: c1 30 53 57 61 30 38 30 30 30 30 30 30 20 43 54  .0SWa08000000 CT
+[134286.621843] <pru1: c1 31 57 54 61 30 38 30 30 30 30 30 30 20 43 54  .1WTa08000000 CT
+[134286.629796] <pru1: c1 31 4e 57 61 30 38 30 30 30 30 30 30 20 43 54  .1NWa08000000 CT
+[134286.637707] <pru1: c1 31 4e 45 61 30 38 30 30 30 30 30 30 20 43 54  .1NEa08000000 CT
+[134312.102612] <pru0: c1 30 45 54 61 30 63 30 30 30 30 30 30 20 43 54  .0ETa0c000000 CT<
+[134312.110647] <pru0: c1 30 53 45 61 30 63 30 30 30 30 30 30 20 43 54  .0SEa0c000000 CT
+perl -e 'printf("%f\n",(0x0c000000-0x08000000)/(134312.102612 - 134286.597908))'
+2631234.771438
+
+But still.
+
+I wonder if this is an example of the 'write posting' win?  When we
+clear the CYCLE register that's just a rare write being issued, and it
+posts and then we continue, but when we read it we (have to) block
+until the data is available.
+
+But I didn't think we would have to hit the busy city streets just to
+read a hardware counter..  Anyway.[267:
+
+Sun Dec 24 17:53:07 2017 Time to take a break for Christmas Eve
+cocktails or something.  One resume point for whenever is: Try to
+refer to pruDirData somehow from prux_sbst3.inc.
+
+:267]
+
+:266]
+:265]
