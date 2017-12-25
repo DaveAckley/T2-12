@@ -1,4 +1,4 @@
-{268}  -*- text -*-
+{272}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -3986,7 +3986,7 @@ framing provided.)
      64 s0 r0 d0 o01101000@8[ ü??] i00111111@6[] s0 r0 d1 o11111111@7[z!  ~norg] i01101000@7[]
      65 s0 r0 d0 o01101000@8[ ü??] i00111111@6[] s1 r1 d1 o11111111@7[z!  ~norg] i00000000@0[h]
                                                                                                   ^^^
-PRU0 accepts the 'h'
+PRU1 accepts the 'h'
 
      66 s1 r1 d0 o01101000@8[ ü??] i01111111@7[] s1 r1 d1 o11111111@7[z!  ~norg] i00000000@0[h]
      67 s1 r1 d0 o01101000@8[ ü??] i01111111@7[] s0 r0 d1 o11111111@8[z!  ~norg] i00000000@0[h]
@@ -4320,7 +4320,7 @@ both ways.
 
 Sun Dec 24 13:46:36 2017 OK, back to translation-to-asm spiking.
 
-(5.1.13) Decide on buffer space for incoming and outgoing packets.  We
+[270: DONE Mon Dec 25 04:51:21 2017   :270](5.1.13) Decide on buffer space for incoming and outgoing packets.  We
 were thinking 128 256byte max packet size -- but is there maybe room
 to go 256?
 
@@ -4560,3 +4560,51 @@ refer to pruDirData somehow from prux_sbst3.inc.
 
 :266]
 :265]
+[268:
+
+Mon Dec 25 04:34:59 2017 OK, well we finally have this:
+
+[173982.134450] <pru1: c1 31 57 54 67 36 34 30 30 30 30 30 30 20 43 54  .1WTg64000000 CT
+[174003.298921] <pru0: c1 30 53 45 68 37 34 30 30 30 30 30 30 20 43 54  .0SEh74000000 CT
+[174003.306964] <pru1: c1 31 4e 57 68 37 34 30 30 30 30 30 30 20 43 54  .1NWh74000000 CT
+[174003.548942] <pru1: c1 31 4e 45 68 37 34 30 30 30 30 30 30 20 43 54  .1NEh74000000 CT
+[174003.557016] <pru0: c1 30 53 57 68 37 34 30 30 30 30 30 30 20 43 54  .0SWh74000000 CT
+[174007.631081] <pru0: c1 30 45 54 67 36 38 30 30 30 30 30 30 20 43 54  .0ETg68000000 CT
+[174007.639191] <pru1: c1 31 57 54 67 36 38 30 30 30 30 30 30 20 43 54  .1WTg68000000 CT
+[174028.803636] <pru0: c1 30 53 45 68 37 38 30 30 30 30 30 30 20 43 54  .0SEh78000000 CT
+                                                                            ^
+where the marked byte, appearing after the direction, depends on this C code:
+
+  buf[len++] = 'a' + pruDirData.pruDirBuffers[prudir].in.written; /* read something written by asm in asmbuf */
+
+with the second operand the + having been written by this asm code:
+
+	ldi r28, $sizeof(PruDirBuffers)   ; First operand to multiply
+	mov r29, CT.sTH.bID               ; Second operand to multiply
+        ldi r1, pruDirData + PruDirBuffers.in + InboundPacketBuffer.written ; Set up base address in multiply delay slot
+        xin 0, &r26, 4                    ; Read 32 bit multiplication result
+        add r0,r1,r26                     ; Add to base address
+        lsr r1, CT.rRunCount.r, 28        ; Get left four bits of count
+        sbbo &r1, r0, 0, 1                ; Stash in pruDirData.pruDirBuffers[prudir].in.written
+
+and I deliberately unplugged the ET-WT cable for awhile to throw its
+count behind the diagonals.[269:
+
+Mon Dec 25 04:50:45 2017 So.  Claiming 5.1.13, at least
+provisionally.  And I'd claim the C<->ASM buffer sharing from :267:,
+but I didn't give it a number..
+
+And I learned how to use the multiplier.. which isn't that easy to
+figure out just googling around for it.  The key is in spruhf8a Figure
+11 page 32 and surrounding: r28 and r29 are AUTOMATICALLY SAMPLED
+every cycle, and their product can be read by an 'XIN 0' on r26 (low
+32 bits) and/or r27 (high 32 bits) after a one cycle delay.
+
+[271:
+
+Mon Dec 25 05:12:51 2017 Committing.
+
+:271]
+:269]
+
+:268]
