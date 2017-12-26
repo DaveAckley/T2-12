@@ -1,4 +1,4 @@
-{287}  -*- text -*-
+{288}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -4790,6 +4790,11 @@ for Buffers.[hc] to use without mucking in main_pru0 etc.
 Tue Dec 26 16:14:41 2017 Well, redid the Makefile workflow
 considerably, and ditched main_prux.inc entirely.  More could be done
 but this is a nice start, and everything still seems to be working.
-Claiming 5.1.26 and committing.
+Claiming 5.1.26 and committing.[287:
+
+Tue Dec 26 16:43:54 2017 OK, standardized the asm side as well, so we
+have no remaining '.inc' files on either side.  Committing again.
+
+:287]
 
 :285]
