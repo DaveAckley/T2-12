@@ -1,4 +1,4 @@
-{283}  -*- text -*-
+{287}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -4732,8 +4732,64 @@ So.
 
 Let's start translating interclockdemo12.pl into asm, shall we?
 
-Well let's checkpoint where we are first.
+Well let's checkpoint where we are first.[283:
+
+Tue Dec 26 14:50:43 2017 Well, attempting a straight convert of
+interclockdemo12.pl into assembler is getting rather more ugly and
+bugly than my comfort level allows.  Thinking we need to save this
+off, make some kind of finer-grained interspikes, and restart from
+last commit..
+
+A couple things already surfaced:
+
+ - What's the deal with r3.w2 inside threadrunner code?  Do we really
+   need to save it or not?  Is the point that we can go one level of
+   function call deep for free, but not two?  Because threadrunner is
+   never going to return, it doesn't need r3.w2, so it can trash it by
+   calling a function.. but that function can't call any other
+   function on r3.w2.
+
+ - It seems like it would be better for the bytesininputpacket field
+   to be in the IOThread context, rather than in the
+   InboundPacketBuffer.  We can take a reserved byte for it.  It does
+   mean that all ipb-related routines will have to be told what the
+   current length is, but I think that's not too terrible.
+
+
+
+:283]
 
 :282]
 
 :281]
+[284:
+
+Tue Dec 26 15:02:47 2017 Minispikes (nails?) ahead of retrying the
+wire protocol translation:
+
+(5.1.22) Clean up use of r3.w2 inside thread code.  Goal is to not
+have to save/restore it as much as possible, while still being
+reasonably robust against trashing execution flow during development.
+
+(5.1.23) Draft a thread context byte for bytesInInboundPacket.
+
+(5.1.24) Drop 'written' from InboundPacketBuffer and modify ipb
+interface functions accordingly.
+
+(5.1.25) Split regsave and restore macros from entryfunc and exitfunc,
+so we can, if necessary, do that without returning from the function.
+Certain low-level debugging macros like sendVal will use that so they
+can be called from anywhere.
+
+[286: DONE Tue Dec 26 16:15:46 2017 :286](5.1.26) Break LinuxIO.[hc] out of main_prux.inc so there's an .h file
+for Buffers.[hc] to use without mucking in main_pru0 etc.
+
+:284]
+[285:
+
+Tue Dec 26 16:14:41 2017 Well, redid the Makefile workflow
+considerably, and ditched main_prux.inc entirely.  More could be done
+but this is a nice start, and everything still seems to be working.
+Claiming 5.1.26 and committing.
+
+:285]
