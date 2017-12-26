@@ -16,6 +16,7 @@
  */
 
 #include "prux.h"
+#include "Buffers.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -44,15 +45,34 @@ extern int addfuncasm(int a, int b);
 extern void initStateMachines();
 extern void mainLoop();
 extern void advanceStateMachines();
-extern unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len);
 extern void copyOutScratchPad(uint8_t * packet, uint16_t len);
+
+/*Given packet!=0 && len > 0.  Return 0 if OK */
+unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len) {
+  unsigned type = packet[0];
+  unsigned dircode = type & 0x7;
+  unsigned prudir;
+  switch (dircode) {
+  case DIRCODE_FOR_PRUDIR0: prudir = 0; break;
+  case DIRCODE_FOR_PRUDIR1: prudir = 1; break;
+  case DIRCODE_FOR_PRUDIR2: prudir = 2; break;
+  default:
+    packet[0] |= PKT_STD_ERROR_VALUE;
+    return 1; /*this packet doesn't belong here*/
+  }
+  {
+    struct OutboundRingBuffer * orb = &pruDirData.pruDirBuffers[prudir].out;
+    if (orbAddPacket(orb, packet, len)) {
+      packet[0] |= PKT_STD_OVERRUN_VALUE;
+      return 1; /*no room at the inn*/
+    }
+    return 0;
+  }
+}
 
 static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
 static uint16_t firstSrc, firstDst;
-
-#pragma DATA_SECTION(pruDirData, ".asmbuf")
-struct PruDirs pruDirData;
 
 int CSendVal(const char * str1, const char * str2, uint32_t val)
 {
@@ -305,8 +325,10 @@ int processPackets() {
 
       if (len > 0) {
         unsigned ret;
-        if (payload[0]&0x80) ret = processOutboundITCPacket(payload,len);
-        else ret = processSpecialPacket(payload,len);
+        if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE)
+          ret = processOutboundITCPacket(payload,len);
+        else
+          ret = processSpecialPacket(payload,len);
 
         if (ret) {
           /* Return the processed packet back to where it came from */

@@ -523,18 +523,18 @@ cosp2:
         add r2, r2, 8           ; Pop stack
         JMP r3.w2               ; Return
 
-	;; unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len);
-	;; R14: packet
-        ;; R15: len
-        .def processOutboundITCPacket
-processOutboundITCPacket:
-        qbne hasLen, r15, 0
-        ldi r14, 0
-        jmp r3.w2               ; Return 0
-hasLen:
-        lbbo &r15, r14, 0, 1    ; R15 = packet[0]
-        add r15, r15, 3         ; Add 3 to show we were here
-        sbbo &r15, r14, 0, 1    ; packet[0] = R15
-        ldi r14, 1
-        jmp r3.w2               ; Return 1
+;; 	;; unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len);
+;; 	;; R14: packet
+;;         ;; R15: len
+;;         .def processOutboundITCPacket
+;; processOutboundITCPacket:
+;;         qbne hasLen, r15, 0
+;;         ldi r14, 0
+;;         jmp r3.w2               ; Return 0
+;; hasLen:
+;;         lbbo &r15, r14, 0, 1    ; R15 = packet[0]
+;;         add r15, r15, 3         ; Add 3 to show we were here
+;;         sbbo &r15, r14, 0, 1    ; packet[0] = R15
+;;         ldi r14, 1
+;;         jmp r3.w2               ; Return 1
         

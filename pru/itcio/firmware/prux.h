@@ -31,6 +31,10 @@
 #define FROM_ARM_CHANNEL PRU0_FROM_ARM_CHANNEL
 
 /* on PRU0, prudirs 0,1,2 are ET,SE,SW */
+#define DIRCODE_FOR_PRUDIR0 2
+#define DIRCODE_FOR_PRUDIR1 3
+#define DIRCODE_FOR_PRUDIR2 5
+
 #define PRUDIR0_TXRDY_R30_BIT 3
 #define PRUDIR0_TXDAT_R30_BIT 4
 #define PRUDIR0_RXRDY_R31_BIT 0
@@ -65,6 +69,10 @@
 #define FROM_ARM_CHANNEL PRU1_FROM_ARM_CHANNEL
 
 /* on PRU1, prudirs 0,1,2 are WT,NW,NE */
+#define DIRCODE_FOR_PRUDIR0 6
+#define DIRCODE_FOR_PRUDIR1 7
+#define DIRCODE_FOR_PRUDIR2 1
+
 #define PRUDIR0_TXRDY_R30_BIT 0
 #define PRUDIR0_TXDAT_R30_BIT 1
 #define PRUDIR0_RXRDY_R31_BIT 6
@@ -91,30 +99,5 @@
 #define CHAN_NAME  "itc-pkt"
 #define CHAN_DESC  "Channel " xstr(HOST_INT_BIT) 
 #define CHAN_PORT  (HOST_INT_BIT)
-
-#define RING_BUFFER_BITS 9
-#define RING_BUFFER_SIZE (1<<RING_BUFFER_BITS)
-struct OutboundRingBuffer {
-  unsigned short writePtr;
-  unsigned short readPtr;
-  unsigned char buffer[RING_BUFFER_SIZE];
-};
-
-#define MAX_PACKET_SIZE 255
-
-struct InboundPacketBuffer {
-  unsigned char written;
-  unsigned char buffer[MAX_PACKET_SIZE];
-};
-
-struct PruDirBuffers {
-  struct OutboundRingBuffer out;
-  struct InboundPacketBuffer in;
-};
-
-struct PruDirs {
-  struct PruDirBuffers pruDirBuffers[3];
-};
-extern struct PruDirs pruDirData;
 
 #endif /* PRUX_H */
