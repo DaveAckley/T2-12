@@ -1,4 +1,4 @@
-{272}  -*- text -*-
+{281}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -3777,7 +3777,7 @@ both directions without a whole lot of trouble, other than one extra
 zero that needs to be discarded at the beginning.  For each pru,
 output format is:
 
- 0 0 0 [1010101010][]  
+ 0 0 0 [1010101010][]
   \ \ \      \      \--prux input buffer
    \ \ \      \--------prux output buffer
     \ \ \--------------prux txdat
@@ -3853,7 +3853,7 @@ Sun Dec 24 10:09:32 2017 OK, well we're getting there.  Modulo some
 bugs yet to be diagnosed, we are sending and receiving packets now,
 with packet delimiters and everything.  Extracts from the trace:
 
-    root@beaglebone:/home/t2/T2-12# ./pru/itcio/notes/interclockdemo11.pl 
+    root@beaglebone:/home/t2/T2-12# ./pru/itcio/notes/interclockdemo11.pl
       1 s0 r0 d0 o00000000@8 i00000000@8 [ h ooh][] s1 r1 d0 o00000000@8 i00000000@0 [ ÿzo! norg][]
       2 s1 r1 d0 o00000000@8 i00000000@0 [ h ooh][] s1 r1 d0 o00000000@8 i00000000@0 [ ÿzo! norg][]
       3 s1 r1 d0 o00000000@8 i00000000@0 [ h ooh][] s0 r0 d0 o01111110@1 i00000000@0 [ÿzo! norg][]
@@ -3951,7 +3951,7 @@ with packet delimiters and everything.  Extracts from the trace:
     387 s1 r1 d0 o01111110@8 i00011111@5 [][ÿzo!] s0 r0 d0 o01111110@8 i00000000@0 [][]
  ..
     495 s1 r1 d1 o01111110@3 i00011111@5 [][ÿzo!] s0 r0 d1 o01111110@3 i00000110@3 [][]
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 [247:
 
 Sun Dec 24 11:18:58 2017 OK, got that fixed and now things are looking
@@ -3960,7 +3960,7 @@ script, showing packet sync, bitstuffing at various points within a
 byte, bitstuffing across bytes, transmitting the packet delimiter as
 data, and empty packet dropping:
 
-    ./pru/itcio/notes/interclockdemo11.pl 
+    ./pru/itcio/notes/interclockdemo11.pl
       1 s0 r0 d0 o00000000@8[ h ü??] i00000000@8[] s1 r1 d0 o00000000@8[ ÿz!  ~norg] i00000000@0[]
 
 PRU0->PRU1: packet 'h', then packet '\374??'.
@@ -4181,7 +4181,7 @@ Now both sides have become idle
     pru1: DISCARDING EMPTY PACKET
     493 s0 r0 d0 o01111110@8[] i00000000@0[] s1 r1 d0 o01111110@1[] i00000000@0[]
     494 s1 r1 d0 o01111110@8[] i00000000@1[] s1 r1 d0 o01111110@1[] i00000000@0[]
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 And they both discarded empty packets happily ever after.
 
@@ -4218,7 +4218,7 @@ the code cause a sync alignment error..
 Sun Dec 24 12:32:34 2017 OK, well we seem to have that working.
 Heavily edited trace:
 
-     ./pru/itcio/notes/interclockdemo12.pl 
+     ./pru/itcio/notes/interclockdemo12.pl
       1 s0 r0 d0 o00000000@8[ Q DM NG hi] i00000000@2[] s1 r1 d0 o00000000@8[ ÿz! ~norg] i00000000@1[]
 0->1: "Q", "DAM" but with a bit missing in the A, "NG", "hi"
 1->0: "\377z!", "~norg"
@@ -4267,7 +4267,7 @@ for the moment anyway, with these oh-so-nearly independent channels.
     pru1: RECEIVED PACKET 'hi'
 And packets are now flowing again..
  .. 510 s1 r1 d0 o01111110@8[] i00011110@5[] s1 r1 d1 o01111110@5[] i00000000@0[]
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 :250]
 :249]
@@ -4277,14 +4277,14 @@ And packets are now flowing again..
 
 Sun Dec 24 12:53:24 2017 So okay, I think we've gotten to where we
 need some spiking for translating this in asm..[252:
-     
+
 Sun Dec 24 13:05:58 2017 Actually, there's another error path that we
 haven't tested, right -- getting a 7th 1 in a row.  We need to blow
 sync then too.[253:
 
 Sun Dec 24 13:40:57 2017 OK, now have that too:
 
-     ./pru/itcio/notes/interclockdemo12.pl 
+     ./pru/itcio/notes/interclockdemo12.pl
   ..219 s1 r1 d1 o01111110@7[NG hi] i00011111@5[L] s0 r0 d1 o11111111@6[$ ^ ~norg] i00011111@5[D &]
     220 s0 r0 d0 o01111110@8[NG hi] i00011111@5[L] s0 r0 d1 o11111111@6[$ ^ ~norg] i00011111@5[D &]
     pru1: FRAME ALIGNMENT ERROR; DROPPING PACKET & SYNC
@@ -4309,7 +4309,7 @@ And packets again flow
  .. 412 s0 r0 d0 o01111110@8[] i00000110@3[~] s0 r0 d1 o01101110@4[org] i00111110@6[hi]
     pru1: RECEIVED PACKET 'hi'
 both ways.
- .. root@beaglebone:/home/t2/T2-12# 
+ .. root@beaglebone:/home/t2/T2-12#
 
 :253]
 
@@ -4490,7 +4490,7 @@ instruction..  If we start losing ARM kicks when the system gets more
 loaded, we'll need to be polling a lot more frequently than that..
 
 But anyway, just saying, this reorg did speed things up a bit.  New
-data: 
+data:
 
 [132122.551187] <pru1: c1 31 4e 45 61 30 38 30 30 30 30 30 30 20 43 54  .1NEa08000000 CT
 [132146.670633] <pru0: c1 30 45 54 61 30 63 30 30 30 30 30 30 20 43 54  .0ETa0c000000 CT<
@@ -4553,7 +4553,7 @@ But I didn't think we would have to hit the busy city streets just to
 read a hardware counter..  Anyway.[267:
 
 Sun Dec 24 17:53:07 2017 Time to take a break for Christmas Eve
-cocktails or something.  One resume point for whenever is: Try to
+cocktails or something.  [272: Mon Dec 25 14:29:57 2017 DONE  :272]One resume point for whenever is: Try to
 refer to pruDirData somehow from prux_sbst3.inc.
 
 :267]
@@ -4608,3 +4608,110 @@ Mon Dec 25 05:12:51 2017 Committing.
 :269]
 
 :268]
+[273:
+
+Mon Dec 25 14:31:12 2017 We continue building infrastructure all
+around the wire protocol:
+
+(5.1.16) Make slow-but-correct C routines to add a packet to the
+OutboundRingBuffer.
+
+(5.1.17) Make C code to check headers and route an outbound packet to
+the correct OutboundRingBuffer.  Or is that all done linux side?
+
+(5.1.18) Make a C special command that takes one packet outbound to
+some specified direction and moves it to become the inbound packet
+from some specified direction.
+
+(5.1.19) Make some outboundPacketDone() C function, callable from C
+and asm, that takes the outbound data and ships it to linux.
+
+(5.1.20) Glue all those pieces together and demonstrate round-trip
+'internal loopback' packet routing from userspace to userspace.
+
+(5.1.21) Make spikes for translating the perl wire protocol to asm.
+
+:273]
+[274:
+
+Mon Dec 25 16:19:14 2017 OK now we have a lame-o cringe-before-kfifo
+ring buffer demo in bufferdemo10.pl.  Rotating into mostly cooking
+dinner here but will make a start at conversion-to-C.
+
+[275:
+
+Mon Dec 25 18:22:47 2017 Did a rough-cut conversion.  Next step is try
+calling some of these routines.  orbAddPacket, first, I guess, from
+processPackets.. [276:
+
+Mon Dec 25 22:25:22 2017 OK, we're making processOutboundITCPacket and
+we need to know the first byte of packet rules so we know where to
+which OutboundRingBuffer to put the packet in.  We did some recent
+design on this, right?
+[277:
+
+Mon Dec 25 23:28:24 2017 Yeah, umm, and it really shouldn't have taken
+this long to find, because it's in this file, you fogging norg, at
+:162: above.  For which the relevant part, at the moment, is this:
+
+ - In a 'routed standard' packet, by definition, (type&0xc0)==0x80.
+   The structure of a routed standard packet type is this:
+
+      7   6   5   4    3   2   1   0
+    +---+---+---+---++---+---+---+---+
+    | 1 | 0 |RSV|OVR||ERR|SD2|SD1|SD0|
+    +---+---+---+---++---+---+---+---+
+
+     RSV - Reserved: Should be 0 on output, should be ignored on input
+     OVR - Overrun: Packet data was lost due to exhausted buffer space
+     ERR - Error: Some packet data corruption or other problem was detected
+     SD[2..0] - Three bit source/destination direction code.
+
+and
+
+ - The interpretation of SD[2..0] varies with context:
+   = Linux->PRU: Packet destination direction
+   = PRU->Linux: Packet source direction
+   = PRU->PRU (in-flight intertile): Packet source direction
+
+and I believe, somewhere below that, we concluded that we should use
+the 8-way compass rose.[278: Mon Dec 25 23:44:54 2017 Yes, in :81:, we
+declared we're following src/core/include/Dirs.h, so we'll have the
+following allocations:
+
+DIRECTION  CODE  PRU  PRUDIR        PRU PRUDIR  DIRECTION CODE
+   NT       0     x      -           0    0        ET      2
+   NE       1     1      2           0    1        SE      3
+   ET       2     0      0           0    2        SW      5
+   SE       3     0      1     or    1    0        WT      6
+   ST       4     x      -           1    1        NW      7
+   SW       5     0      2           1    2        NE      1
+   WT       6     1      0
+   NW       7     1      1
+
+[279:
+
+Mon Dec 25 23:57:56 2017 So, we're expecting that itc_pkt.ko will have
+sent each routed standard packet to the appropriate PRU, so
+
+:279]
+
+:278]
+
+:277]
+:276]
+
+
+  :275]
+
+
+
+:274]
+[280:
+
+Tue Dec 26 01:00:45 2017 Well, we seem to be putting routed standard
+packets onto outbound ring buffers, but we're not yet taking them off
+it, so they just clog up there.  Unsatisfying place to break, but,
+tired, so committing for the night.
+
+:280]
