@@ -1,4 +1,4 @@
-{281}  -*- text -*-
+{283}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -4715,3 +4715,25 @@ it, so they just clog up there.  Unsatisfying place to break, but,
 tired, so committing for the night.
 
 :280]
+[281:
+
+Tue Dec 26 08:27:46 2017 Well, actually did make some asm code, last
+night, that took packets off the appropriate orb and reported how long
+they were, but didn't get to putting anything in the inbound packet
+buffer.  Did get to think that if I'm definitely going to call C
+anyway, I might as well do it early and let C do as much work as
+possible.  Like, how about asm passes its prudir and lets C convert
+that to orb*, instead of the random ugly code with multiplication and
+stuff we're now doing to derive the orb* in asm?[282:
+
+Tue Dec 26 08:55:58 2017 OK did that.
+
+So.
+
+Let's start translating interclockdemo12.pl into asm, shall we?
+
+Well let's checkpoint where we are first.
+
+:282]
+
+:281]
