@@ -53,8 +53,16 @@ LINK_PRU1_FW=
 LINK_PRU0_FW=
 
 #------------------------------------------------------
+# 'Standard organization' C source files
+CSRC_FILES+=Buffers.c
+CSRC_FILES+=LinuxIO.c
+CSRC_FILES+=SpecialPackets.c
+CSRC_FILES+=main.c
+CHDR_FILES:=$(patsubst %.c,%.h,$(CSRC_FILES))
+COBJ0_FILES:=$(patsubst %.c,$(GEN_DIR)/%_pru0.object,$(CSRC_FILES))
+COBJ1_FILES:=$(patsubst %.c,$(GEN_DIR)/%_pru1.object,$(CSRC_FILES))
 
-
+ALL_DEP:=$(CHDR_FILES) Makefile
 
 .PHONY: build abslist
 build:	$(TARGETS)
@@ -66,40 +74,43 @@ abslist:	$(TARGETS)
 	$(PRU_CGT)/bin/clpru --absolute_listing -DON_PRU=0 prux_sbst3.abs ; \
 	$(PRU_CGT)/bin/clpru --absolute_listing -DON_PRU=0 args_main.abs ; \
 
-$(PRU1_FW): $(GEN_DIR)/main_pru1.object $(GEN_DIR)/Buffers_pru.object $(GEN_DIR)/pru1_sbst3.object $(LINK_PRU1_FW) $(LINKER_COMMAND_FILE) 
-	@echo 'LD	$^'
-	$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  --library=libc.a $(LIBS)
+$(PRU1_FW): $(GEN_DIR)/main_pru1.object $(COBJ1_FILES) $(GEN_DIR)/pru1_sbst3.object $(LINK_PRU1_FW) $(LINKER_COMMAND_FILE) 
+	@echo 'LD	$@'
+	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  --library=libc.a $(LIBS)
 
-$(PRU0_FW): $(GEN_DIR)/main_pru0.object $(GEN_DIR)/Buffers_pru.object $(GEN_DIR)/pru0_sbst3.object $(LINK_PRU0_FW) $(LINKER_COMMAND_FILE) 
-	@echo 'LD	$^' 
-	$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  --library=libc.a $(LIBS)
+$(PRU0_FW): $(GEN_DIR)/main_pru0.object $(COBJ0_FILES) $(GEN_DIR)/pru0_sbst3.object $(LINK_PRU0_FW) $(LINKER_COMMAND_FILE) 
+	@echo 'LD	$@' 
+	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  --library=libc.a $(LIBS)
 
-$(GEN_DIR)/Buffers_pru.object: Buffers.c Buffers.h
-	@mkdir -p $(GEN_DIR)
-	@echo 'CC	$<'
-	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
-
-
-$(GEN_DIR)/main_pru0.object: main_pru0.c main_prux.inc prux.h
-	@mkdir -p $(GEN_DIR)
-	@echo 'CC	$<'
-	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+# $(GEN_DIR)/main_pru0.object: main_pru0.c main_prux.inc prux.h
+# 	@mkdir -p $(GEN_DIR)
+# 	@echo 'CC	$<'
+# 	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 $(GEN_DIR)/pru0_sbst3.object: pru0_sbst3.asm prux_sbst3.inc prux.h
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$<'
 	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
-$(GEN_DIR)/main_pru1.object: main_pru1.c main_prux.inc prux.h
-	@mkdir -p $(GEN_DIR)
-	@echo 'CC	$<'
-	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+# $(GEN_DIR)/main_pru1.object: main_pru1.c main_prux.inc prux.h
+# 	@mkdir -p $(GEN_DIR)
+# 	@echo 'CC	$<'
+# 	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 $(GEN_DIR)/pru1_sbst3.object: pru1_sbst3.asm prux_sbst3.inc prux.h
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$<'
 	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
+$(GEN_DIR)/%_pru0.object: %.c %.h $(ALL_DEP)
+	@mkdir -p $(GEN_DIR)
+	@echo 'CC	$< (pru0)'
+	@$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+
+$(GEN_DIR)/%_pru1.object: %.c %.h $(ALL_DEP)
+	@mkdir -p $(GEN_DIR)
+	@echo 'CC	$< (pru1)'
+	@$(PRU_CGT)/bin/clpru -DON_PRU=1 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 
 .PHONY: install copy_pru0_fw copy_pru1_fw reboot_pru_1 reboot_pru_0
@@ -140,5 +151,5 @@ reboot_pru0:
 .PHONY: clean
 clean:
 	@echo 'CLEAN	.'
-	@rm -f *.abs *.lst
+	@rm -f *.abs *.lst *~
 	@rm -rf $(GEN_DIR)
