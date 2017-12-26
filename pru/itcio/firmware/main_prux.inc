@@ -86,7 +86,8 @@ int CSendVal(const char * str1, const char * str2, uint32_t val)
 
   /* First the value in hex */
   for (i = 0; i < 8; ++i) {
-    buf[len++] = "0123456789abcdef"[val>>28];
+    uint8_t h = val>>28;
+    buf[len++] = h < 10 ? '0' + h : 'a' - 10 + h;
     val <<= 4;
   }
 
