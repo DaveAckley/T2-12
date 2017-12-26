@@ -1,5 +1,12 @@
 ;;; -*- asm -*-
 	
+        .cdecls C,LIST
+        %{
+        #include "Threads.h"
+        #include "prux.h"
+        %}
+
+
 ;;;;;;
 ;;; STRUCTURE DECLARATIONS
 
@@ -459,6 +466,7 @@ addfuncasm:
 	enterFunc 6
         add r4, r15, r14        ; Compute function, result to r4
 	sendVal PRUX_STR,""" addfuncasm sum""",r4 ; Report it
+	mov r14, r4                               ; and return it
 	exitFunc 6
         
 startStateMachines:
@@ -545,3 +553,4 @@ cosp2:
 ;;         ldi r14, 1
 ;;         jmp r3.w2               ; Return 1
         
+

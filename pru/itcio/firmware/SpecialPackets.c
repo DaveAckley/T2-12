@@ -5,8 +5,7 @@ volatile register uint32_t __R31;
 volatile register uint32_t __R30;
 volatile register uint32_t __R31;
 
-extern void copyOutScratchPad(uint8_t * packet, uint16_t len);
-extern int addfuncasm(int a, int b);
+#include "Threads.h"
 
 unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
 {
