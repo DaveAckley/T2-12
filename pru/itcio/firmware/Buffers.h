@@ -52,7 +52,7 @@ inline unsigned int orbFrontPacketLenInline(struct OutboundRingBuffer * orb) {
   return orb->buffer[orb->readPtr];
 }
 
-extern unsigned int orbFrontPacketLen(struct OutboundRingBuffer * orb) ;
+extern unsigned int orbFrontPacketLen(unsigned prudir) ;
 
 inline int orbDropFrontPacketInline(struct OutboundRingBuffer * orb) {
   unsigned int len = orbFrontPacketLenInline(orb);
@@ -61,7 +61,7 @@ inline int orbDropFrontPacketInline(struct OutboundRingBuffer * orb) {
   return 1;
 }
 
-extern int orbDropFrontPacket(struct OutboundRingBuffer * orb) ;
+extern int orbDropFrontPacket(unsigned prudir) ;
 
 inline int orbFrontPacketStartIndex(struct OutboundRingBuffer * orb) {
   if (!orbUsedBytes(orb))
@@ -75,7 +75,7 @@ inline unsigned char orbGetFrontPacketByteInline(struct OutboundRingBuffer * orb
   return orb->buffer[index];
 }
 
-extern unsigned char orbGetFrontPacketByteInline(struct OutboundRingBuffer * orb, unsigned idxInPacket) ;
+extern unsigned char orbGetFrontPacketByte(unsigned prudir, unsigned idxInPacket) ;
 
 #define MAX_PACKET_SIZE 255
 
@@ -94,5 +94,17 @@ struct PruDirs {
 };
 
 extern struct PruDirs pruDirData;
+
+inline struct PruDirBuffers * pruDirToBuffers(unsigned prudir) {
+  return &pruDirData.pruDirBuffers[prudir&3];
+}
+
+inline struct OutboundRingBuffer * pruDirToORB(unsigned prudir) {
+  return &pruDirToBuffers(prudir)->out;
+}
+
+inline struct InboundPacketBuffer * pruDirToIPB(unsigned prudir) {
+  return &pruDirToBuffers(prudir)->in;
+}
 
 #endif /* BUFFERS_H */

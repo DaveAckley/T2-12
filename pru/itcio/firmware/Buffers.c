@@ -13,10 +13,10 @@ int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned
   return 0;
 }
 
-int orbDropFrontPacket(struct OutboundRingBuffer * orb) { return orbDropFrontPacketInline(orb); }
+int orbDropFrontPacket(unsigned prudir) { return orbDropFrontPacketInline(pruDirToORB(prudir)); }
 
-unsigned int orbFrontPacketLen(struct OutboundRingBuffer * orb) { return orbFrontPacketLenInline(orb); }
+unsigned int orbFrontPacketLen(unsigned prudir) { return orbFrontPacketLenInline(pruDirToORB(prudir)); }
 
-unsigned char orbGetFrontPacketByte(struct OutboundRingBuffer * orb, unsigned idxInPacket) {
-  return orbGetFrontPacketByteInline(orb, idxInPacket);
+unsigned char orbGetFrontPacketByte(unsigned prudir, unsigned idxInPacket) {
+  return orbGetFrontPacketByteInline(pruDirToORB(prudir), idxInPacket);
 }

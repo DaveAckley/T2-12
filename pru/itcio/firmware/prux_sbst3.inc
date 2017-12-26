@@ -388,9 +388,7 @@ rxwr2:
         jmp rxr1                   ; Either way then sleep
 
 	
-;;; Interclocking thread runner: Report every N shared ticks
-;;; This version forces a context switch after each edge
-;;; and seems to show about 1.47Mbps x 6 free-running
+;;; Interclocking thread runner: Read and write packets
 InterClockThreadRunner:
         clr r30, r30, CT.bTXDATPin     ; Init to output 0
 	;; Here to make a falling edge
@@ -407,19 +405,28 @@ ictr3:  .if ON_PRU == 0
 
 	;; Here to make a rising edge
         set r30, r30, CT.bTXRDYPin        ; TXRDY rises
-        add CT.rRunCount.r, CT.rRunCount.r, 1 ; Increment shared clock count
-	lsl r0, CT.rRunCount.r, 6           ; Keep low order 26 bits
-	qbne ictr4, r0, 0                 ; Jump ahead if not zero
-	.ref pruDirData
-	ldi r28, $sizeof(PruDirBuffers)   ; First operand to multiply
-	mov r29, CT.sTH.bID               ; Second operand to multiply
-        ldi r1, pruDirData + PruDirBuffers.in + InboundPacketBuffer.written ; Set up base address in multiply delay slot
-        xin 0, &r26, 4                    ; Read 32 bit multiplication result
-        add r0,r1,r26                     ; Add to base address
-        lsr r1, CT.rRunCount.r, 28        ; Get left four bits of count
-        sbbo &r1, r0, 0, 1                ; Stash in pruDirData.pruDirBuffers[prudir].in.written
-        sendFromThread """CT""",CT.rRunCount.r ; Report counter value
-;        sendFromThread """CA""",r0 ; Report computed address
+
+        add CT.rRunCount.r,  CT.rRunCount.r, 1 ; bump count
+        qbne ictr4, CT.rRunCount.b.b0, 0       ; Wait for 1 in 256 count
+	
+	sub r2, r2, 2           ; Two bytes on stack
+	sbbo &r3.w2, r2, 0, 2   ; Save current R3.w2
+	
+        .ref orbFrontPacketLen
+        mov r14, CT.sTH.bID     ; arg is prudir
+        jal r3.w2, orbFrontPacketLen ; outbound packet len -> r14
+	
+	qbeq ictr4a, r14, 0     ; Jump ahead if zero -> no packets
+
+        sendFromThread """DP""",r14 ; Report packet length
+
+        mov r14, CT.sTH.bID     ; Get prudir again
+        .ref orbDropFrontPacket 
+        jal r3.w2, orbDropFrontPacket ; Toss that guy for now
+
+ictr4a: lbbo &r3.w2, r2, 0, 2   ; Restore r3.w2 
+        add r2, r2, 2           ; Pop stack
+
 ictr4:  saveResumePoint ictr6
 	
 	;; Our clock high loop
