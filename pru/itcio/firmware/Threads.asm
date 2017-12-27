@@ -6,195 +6,9 @@
         #include "prux.h"
         %}
 
-
-;;;;;;
-;;; STRUCTURE DECLARATIONS
-
-;;; ThreadCoord: A length (in bytes) and an offset (in registers)
-ThreadCoord:      .struct
-bOffsetRegs:    .ubyte      ; offset in registers  (to load in r0.b0)
-bLenBytes:      .ubyte      ; length in bytes      (to load in r0.b1)
-ThreadCoordLen:  .endstruct
-
-;;; ThreadLoc: A union of a ThreadCoord and a word to load
-ThreadLoc:      .union
-sTC:    .tag ThreadCoord
-w:      .ushort                     
-        .endunion
-
-;;; B4: A struct of four bytes
-B4:     .struct
-b0:        .ubyte
-b1:        .ubyte
-b2:        .ubyte
-b3:        .ubyte
-        .endstruct
-	
-;;; UB4: A union of a unsigned int and a B4
-UB4:    .union
-b:      .tag B4                  
-r:      .uint
-        .endunion
+        .include "macros.asm"
+        .include "structs.asm"
         
-;;; ThreadHeader: Enough info to save, load, and context switch a thread
-ThreadHeader:   .struct
-sThis:          .tag ThreadLoc  ; Our thread storage location
-sNext:          .tag ThreadLoc  ; Next guy's storage location
-	
-bID:            .ubyte  ; thread id (prudir for 0..2, 3 for linux)
-bFlags:         .ubyte  ; flags
-wResAddr:       .ushort ; Resume address after context switch	
-ThreadHeaderLen:       .endstruct
-
-;;; IOThread: Everything needed for a prudir state machine
-IOThread:       .struct
-sTH:            .tag ThreadHeader ; sTH takes two regs
-
-bTXRDYPin:      .ubyte  ; Transmit Ready R30 Pin Number
-bTXDATPin:      .ubyte  ; Transmit Data  R30 Pin Number
-bRXRDYPin:      .ubyte  ; Receive Ready  R31 Pin Number
-bRXDATPin:      .ubyte  ; Receive Data   R31 Pin Number
-
-bOutData:       .ubyte  ; current bits being shifted out
-bOutBCnt:       .ubyte  ; count of bits remaining to shift out
-bInpData:       .ubyte  ; current bits being shifted in
-bInpBCnt:       .ubyte  ; count of bits remaining to shift in
-
-bPrevOut:       .ubyte  ; last bit sent 
-bThisOut:       .ubyte  ; current bit to sent
-bOut1Cnt:       .ubyte  ; current count of output 1s sent
-bInp1Cnt:       .ubyte  ; current count of input 1s received
-
-rTXDATMask:     .uint   ; 1<<TXDAT_PN
-rRunCount:      .tag UB4
-        
-bRSRV40:        .ubyte   ; reserved
-bRSRV41:        .ubyte   ; reserved
-bRSRV42:        .ubyte   ; reserved
-bRSRV43:        .ubyte   ; reserved
-IOThreadLen:   .endstruct
-        
-;;; LinuxThread: Everything needed for packet processing
-LinuxThread:    .struct        
-sTH:            .tag ThreadHeader ; sTH takes two regs
-rCTRLAddress:   .uint             ; precompute PRUX_CTRL_ADDR
-wResumeCount:   .ushort           ; Use resumes instead of CYCLEs for time base
-wRSRV1:         .ushort           ; reserved
-LinuxThreadLen: .endstruct     
-
-;;; CT is the Current Thread!  It lives in R6-R13!
-	.eval IOThreadLen/4, CTRegs
-	.eval 6, CTBaseReg
-	.asg R6, CTReg
-CT:     .sassign CTReg, IOThread
-
-LT:     .sassign CTReg, LinuxThread
-
-;;;;;;
-;;; MACRO DEFINITIONS
-	
-;;;;;;;;
-;;;: macro sendVal: Print two strings and a value
-;;;  INPUTS:
-;;;    STR1: First string to print
-;;;    STR2: Second string to print
-;;;    VAL: Value to print (reg or imm)
-;;;  OUTPUTS: None
-;;;  NOTES:
-;;;  - WARNING: MUST NOT BE USED IN LEAF FUNCTIONS!
-;;;  - TRASHES CALLER-SAVE REGS
-	;int CSendVal(const char * str1, const char * str2, uint32_t val)
-	.ref CSendVal
-sendVal:        .macro STR1, STR2, REGVAL
-	.sect ".rodata:.string"
-$M1?:  .cstring STR1
-$M2?:  .cstring STR2
-	.text
-	sub r2, r2, 2           ; Two bytes on stack
-	sbbo &r3.w2, r2, 0, 2   ; Save current R3.w2
-        mov r16, REGVAL         ; Get value to report before trashing anything else
-        ldi32 r14, $M1?         ; Get string1
-        ldi32 r15, $M2?         ; Get string2
-        jal r3.w2, CSendVal     ; Call CSendVal (ignore return)
-	lbbo &r3.w2, r2, 0, 2   ; Restore r3.w2 
-        add r2, r2, 2           ; Pop stack
-        .endm
-
-;;;;;;;;
-;;;: macro sendValFromThread: Print a string and a value, with thread identified
-;;;  INPUTS:
-;;;    STR: First string to print
-;;;    VAL: Value to print (reg or imm)
-;;;  OUTPUTS: None
-;;;  NOTES:
-;;;  - WARNING: MUST NOT BE USED IN LEAF FUNCTIONS!
-;;;  - TRASHES CALLER-SAVE REGS
-	;int CSendFromThread(uint_32t prudir, const char * str, uint32_t val)
-	.ref CSendFromThread
-sendFromThread:        .macro STR, REGVAL
-	.sect ".rodata:.string"
-$M1?:  .cstring STR
-	.text
-	sub r2, r2, 2           ; Two bytes on stack
-	sbbo &r3.w2, r2, 0, 2   ; Save current R3.w2
-        mov r16, REGVAL         ; Get value to report before trashing anything else
-        mov r14, CT.sTH.bID     ; First arg is prudir
-        ldi32 r15, $M1?         ; Get string
-        jal r3.w2, CSendFromThread 
-	lbbo &r3.w2, r2, 0, 2   ; Restore r3.w2 
-        add r2, r2, 2           ; Pop stack
-        .endm
-
-;;;;;;;;;
-;;;: macro loadBit: Copy SRCREG bit BITNUM to bottom of DESTREG
-;;;  INPUTS:
-;;;    SRCREG: Source register field; REG
-;;;    BITNUM: Number of bit (0 == LSB) to copy; OP(31)
-;;;    DSTREG: Destination register field; REG
-;;;  OUTPUTS:
-;;;    Field DESTREG is cleared except its bottom bit is SRCREG[BITNUM]
-;;;  NOTES:
-;;;  - Note that supplying a register field -- e.g., r0.b0 -- for DSTREG
-;;;    means that the rest of DSTREG remains unchanged!
-
-loadBit:        .macro DESTREG, SRCREG, BITNUM
-        lsr DESTREG, SRCREG, BITNUM ; Position desired bit at bottom of destreg
-        and DESTREG, DESTREG, 1     ; Flush the rest
-        .endm
-
-;;;;;;;;
-;;;: macro enterFunc: Function prologue
-;;;  INPUTS:
-;;;    BYTES: Number of bytes to save on stack, starting with r3.w2
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - BYTES can be 0 or 2+
-;;;  - BYTES == 0 means this is a 'leaf' function that will not
-;;;    call any other functions
-enterFunc:      .macro BYTES
-        .if BYTES > 0
-        sub r2, r2, BYTES
-        sbbo &r3.w2, r2, 0, BYTES
-        .endif
-        .endm
-
-;;;;;;;;
-;;;: macro exitFunc: Function epilogue
-;;;  INPUTS:
-;;;    BYTES: Number of bytes to restore from stack, starting with
-;;;r3.w2
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - BYTES better damn match that in the associated enterFunc
-exitFunc:      .macro BYTES
-        .if BYTES > 0
-        lbbo &r3.w2, r2, 0, BYTES ; Restore regs
-        add r2, r2, BYTES         ; Pop stack
-        .endif
-        jmp r3.w2                 ; And return
-        .endm
-
-
 ;;;;;;;;
 ;;;: macro initThis: Initialize the current thread state
 ;;;  INPUTS:
@@ -241,88 +55,6 @@ initThis: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         .endif
 	.endm
 
-;;;;;;;;
-;;;: macro initNext: Initialize the next portion of the current thread state
-;;;  INPUTS:
-;;;  - NEXTSHIFT: How many regs between CT and where the next guy's stored in scratchpad
-;;;  - NEXTBYTES: How many bytes of state starting at CT are in the next guy's state
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - Intended for one-time use in tandem with initThis
-initNext:  .macro NEXTSHIFT,NEXTBYTES
-	ldi CT.sTH.sNext.sTC.bOffsetRegs, NEXTSHIFT
-        ldi CT.sTH.sNext.sTC.bLenBytes, NEXTBYTES
-        .endm
-
-;;;;;;;;
-;;;: macro saveThisThread: Save this thread's state in its place in the scratchpad
-;;;  INPUTS: NONE
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - Used during initialization and context switching
-saveThisThread: .macro
-        mov r0.w0, CT.sTH.sThis.w  ; r0.b0 <- this bOffsetRegs, r0.b1 <- this bLenBytes
-        xout PRUX_SCRATCH, &CT, b1 ; store this thread
-        .endm
-
-;;;;;;;;
-;;;: macro loadNextThread: Read in the next thread's state from its place in the scratchpad
-;;;  INPUTS: NONE
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - Used during context switching
-loadNextThread: .macro
-        mov r0.w0, CT.sTH.sNext.w ; r0.b0 <- next bOffsetRegs, r0.b1 <- next bLenBytes
-        xin PRUX_SCRATCH, &CT, b1 ; load next thread
-        .endm
-
-;;;;;;;;
-;;;: macro resumeTo: Context switch and continue at RESUMEADDR when next run
-;;;  INPUTS: 
-;;;  - RESUMEADDR: Label at which to continue execution 
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - Slightly faster than suspendThread but uses more instruction space
-resumeTo:       .macro RESUMEADDR
-        ldi CT.sTH.wResAddr,$CODE(RESUMEADDR) ; Set our resume point
-	resumeAgain                           ; And resume to that point
-	.endm
-
-;;;;;;;;
-;;;: macro saveResumePoint: Jump to RESUMEADDR when current thread is resumed
-;;;  INPUTS: 
-;;;  - RESUMEADDR: Label at which to continue execution 
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - Slightly faster than suspendThread but uses more instruction space
-saveResumePoint:       .macro RESUMEADDR
-        ldi CT.sTH.wResAddr,$CODE(RESUMEADDR) ; Set our resume point
-	saveThisThread                        ; And save current state
-	.endm
-
-;;;;;;;;
-;;;: macro resumeAgain: Context switch and continue at same place as last time
-;;;  INPUTS: NONE
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - Currently fastest context switch if current thread must be save but looping to same spot
-resumeAgain:       .macro
-        saveThisThread                        ; Stash
-        loadNextThread                        ; Load next guy
-        jmp CT.sTH.wResAddr                   ; Resume him
-	.endm
-
-;;;;;;;;
-;;;: macro resumeNextThread: Load and continue next thread without saving current
-;;;  INPUTS: NONE
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - Currently fastest context switch if looping to same spot
-resumeNextThread:       .macro
-        loadNextThread                        ; Load next guy
-        jmp CT.sTH.wResAddr                   ; Resume him
-	.endm
-
 ;;;;;;;;;;;;;;;
 ;;; SCHEDULER
 
@@ -338,17 +70,6 @@ nextContext:
         jmp CT.sTH.wResAddr         ; and resume it
                 
 
-;;;;;;;;
-;;;: macro suspendThread: Sleep current thread
-;;;  INPUTS: NONE
-;;;  OUTPUTS: NONE
-;;;  NOTES:
-;;;  - Generates an arbitrary delay (of 30ns or more)
-;;;  - Trashes everything but R2, R3.w2, and CT
-suspendThread: .macro
-        jal CT.sTH.wResAddr, contextSwitch
-        .endm
-                
 ;;; LINUX thread runner 
 LinuxThreadRunner:
 	qbbs ltr1, r31, HOST_INT_BIT   ; Process packets if host int from linux is set..
@@ -371,90 +92,15 @@ TimingThreadRunner:
 	qbeq ttr0, R0, 0           ; Report in if they're all zero
         jmp ttr1                   ; Either way then sleep
 
-;;; RX Watcher thread runner: Report on changing RX bits
-rxr0:   sendVal PRUX_STR,"""CT""",CT.rRunCount.r ; Report counter value
-rxr1:   suspendThread                            ; Now context switch
-RXWatcherThreadRunner:
-        loadBit r0.b0, r31, CT.bRXRDYPin ; read pin to b0
-	qbeq rxwr1, r0.b0, CT.bRSRV40    ; check if b0 has changed
-        mov CT.bRSRV40, r0.b0            ; update if so
-	mov r0.b3, CT.sTH.bID            ; id in top byte
-	mov r0.w1, CT.bRXRDYPin          ; 0 then pin # in next two bytes
-        sendVal PRUX_STR,"""RY""",r0     ; Report prudir and new value
-rxwr1:  
-        loadBit r0.b0, r31, CT.bRXDATPin
-	qbeq rxwr2, r0.b0, CT.bRSRV41
-        mov CT.bRSRV41, r0.b0
-	mov r0.b3, CT.sTH.bID 
-	mov r0.w1, CT.bRXDATPin
-        sendVal PRUX_STR,"""DT""",r0 ; Report prudir and new value
-rxwr2:  
-	add CT.rRunCount.r, CT.rRunCount.r, 1 ; Increment run count
-	lsl r0, CT.rRunCount.r, 5       ; Keep low order 27 bits
-	qbeq rxr0, r0, 0           ; Report in if they're all zero
-        jmp rxr1                   ; Either way then sleep
-
-	
-;;; Interclocking thread runner: Read and write packets
-InterClockThreadRunner:
-        clr r30, r30, CT.bTXDATPin     ; Init to output 0
-	;; Here to make a falling edge
-ictr1:  clr r30, r30, CT.bTXRDYPin     ; TXRDY falls
-	saveResumePoint ictr3
-	
-	;; Our clock low loop
-ictr2:  resumeNextThread               ; To pause or wait after falling edge
-ictr3:  .if ON_PRU == 0
-          qbbc ictr2, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 0, you 0, we're good
-        .else                            ; ON_PRU == 1
-	  qbbs ictr2, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 0, you 1, we're good
-        .endif  
-
-	;; Here to make a rising edge
-        set r30, r30, CT.bTXRDYPin        ; TXRDY rises
-
-        add CT.rRunCount.r,  CT.rRunCount.r, 1 ; bump count
-        qbne ictr4, CT.rRunCount.b.b0, 0       ; Wait for 1 in 256 count
-	
-	sub r2, r2, 2           ; Two bytes on stack
-	sbbo &r3.w2, r2, 0, 2   ; Save current R3.w2
-	
-        .ref orbFrontPacketLen
-        mov r14, CT.sTH.bID     ; arg is prudir
-        jal r3.w2, orbFrontPacketLen ; outbound packet len -> r14
-	
-	qbeq ictr4a, r14, 0     ; Jump ahead if zero -> no packets
-
-        sendFromThread """DP""",r14 ; Report packet length
-
-        mov r14, CT.sTH.bID     ; Get prudir again
-        .ref orbDropFrontPacket 
-        jal r3.w2, orbDropFrontPacket ; Toss that guy for now
-
-ictr4a: lbbo &r3.w2, r2, 0, 2   ; Restore r3.w2 
-        add r2, r2, 2           ; Pop stack
-
-ictr4:  saveResumePoint ictr6
-	
-	;; Our clock high loop
-ictr5:  resumeNextThread                 ; To wait, or wait more, after rising edge
-ictr6:  .if ON_PRU == 0 
-          qbbs ictr5, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 1, you 1, we're good
-        .else                            ; ON_PRU == 1
-	  qbbc ictr5, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 1, you 0, we're good
-        .endif  
-        jmp ictr1               
-
         .text
         .def mainLoop
 mainLoop:
 	enterFunc 6
-
-        sendVal PRUX_STR,""" entering main loop""",r2 ; Say hi
-	.ref processPackets
 l0:     
+	.ref processPackets
         jal r3.w2, processPackets ; Return == 0 if firstPacket done
 	qbne l0, r14, 0           ; Wait for that before initting state machines
+	
 	jal r3.w2, startStateMachines ; Not expected to return
 	
         sendVal PRUX_STR,""" unexpected return to main loop""",r2 ; Say bye
@@ -473,15 +119,16 @@ startStateMachines:
 	enterFunc 2
 	
 	;; Init threads by hand
-        initThis 0*CTRegs, IOThreadLen, 0, InterClockThreadRunner ; Thread ID 0 at shift 0
+	.ref PacketRunner
+        initThis 0*CTRegs, IOThreadLen, 0, PacketRunner ; Thread ID 0 at shift 0
         initNext 1*CTRegs, IOThreadLen             ; Info for thread 1
         saveThisThread                             ; Stash thread 0
 	
-        initThis 1*CTRegs, IOThreadLen, 1, InterClockThreadRunner ; Thread ID 1 at shift CTRegs
+        initThis 1*CTRegs, IOThreadLen, 1, PacketRunner ; Thread ID 1 at shift CTRegs
 	initNext 2*CTRegs, IOThreadLen             ; Info for thread 2
         saveThisThread                             ; Stash thread 1
 	
-        initThis 2*CTRegs, IOThreadLen, 2, InterClockThreadRunner ; Thread ID 2 at shift 2*CTRegs
+        initThis 2*CTRegs, IOThreadLen, 2, PacketRunner ; Thread ID 2 at shift 2*CTRegs
 	initNext 3*CTRegs, LinuxThreadLen          ; Info for thread 3
         saveThisThread                             ; Stash thread 2
 	
@@ -494,19 +141,9 @@ startStateMachines:
         ;; Report in             
         sendVal PRUX_STR,""" Releasing the hounds""", CT.sTH.wResAddr ; Report in
 
-;; l99:
-;;         jal r3.w2, processPackets
-;;         jmp l99
-
         ;; Thread 3 is still loaded
         jmp CT.sTH.wResAddr     ; Resume it
 	exitFunc 2
-
-        .def advanceStateMachines
-advanceStateMachines:
-	enterFunc 6             ; Save R3.w2 and R4 on stack
-	
-        exitFunc 6              ; Done
 
 	;; void copyOutScratchPad(uint8_t * packet, uint16_t len)
         ;; R14: ptr to destination start
@@ -537,20 +174,4 @@ cosp2:
         lbbo &CT, r2, 0, 8      ; Restore CT and CT+1
         add r2, r2, 8           ; Pop stack
         JMP r3.w2               ; Return
-
-;; 	;; unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len);
-;; 	;; R14: packet
-;;         ;; R15: len
-;;         .def processOutboundITCPacket
-;; processOutboundITCPacket:
-;;         qbne hasLen, r15, 0
-;;         ldi r14, 0
-;;         jmp r3.w2               ; Return 0
-;; hasLen:
-;;         lbbo &r15, r14, 0, 1    ; R15 = packet[0]
-;;         add r15, r15, 3         ; Add 3 to show we were here
-;;         sbbo &r15, r14, 0, 1    ; packet[0] = R15
-;;         ldi r14, 1
-;;         jmp r3.w2               ; Return 1
-        
 

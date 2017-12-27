@@ -54,7 +54,9 @@ COBJ0_FILES:=$(patsubst %.c,$(GEN_DIR)/%_pru0.object,$(CSRC_FILES))
 COBJ1_FILES:=$(patsubst %.c,$(GEN_DIR)/%_pru1.object,$(CSRC_FILES))
 
 # 'Standard organization' asm source files
+ASRC_FILES+=PacketRunner.asm
 ASRC_FILES+=Threads.asm
+ASRC_FILES+=macros.asm
 AHDR_FILES:=$(patsubst %.asm,%.h,$(ASRC_FILES))
 AOBJ0_FILES:=$(patsubst %.asm,$(GEN_DIR)/%_pru0.object,$(ASRC_FILES))
 AOBJ1_FILES:=$(patsubst %.asm,$(GEN_DIR)/%_pru1.object,$(ASRC_FILES))
