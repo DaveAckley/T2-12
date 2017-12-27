@@ -1,4 +1,4 @@
-{288}  -*- text -*-
+{291}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -4771,12 +4771,12 @@ wire protocol translation:
 have to save/restore it as much as possible, while still being
 reasonably robust against trashing execution flow during development.
 
-(5.1.23) Draft a thread context byte for bytesInInboundPacket.
+[288: DONE Tue Dec 26 17:18:39 2017   :288](5.1.23) Draft a thread context byte for bytesInInboundPacket.
 
-(5.1.24) Drop 'written' from InboundPacketBuffer and modify ipb
+[289: DONE Tue Dec 26 17:18:43 2017   :289](5.1.24) Drop 'written' from InboundPacketBuffer and modify ipb
 interface functions accordingly.
 
-(5.1.25) Split regsave and restore macros from entryfunc and exitfunc,
+[290: DONE Tue Dec 26 17:35:39 2017   :290](5.1.25) Split regsave and restore macros from entryfunc and exitfunc,
 so we can, if necessary, do that without returning from the function.
 Certain low-level debugging macros like sendVal will use that so they
 can be called from anywhere.
