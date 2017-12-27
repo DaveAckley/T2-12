@@ -48,7 +48,7 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
   } else {
     buf[len++] = 'a'+prudir;
   }
-  buf[len++] = 'a' + pruDirData.pruDirBuffers[prudir].in.written; /* read something written by asm in asmbuf */
+  buf[len++] = ':';
   
   /* Next the value in hex */
   for (i = 0; i < 8; ++i) {
@@ -65,6 +65,14 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
 
   /* Send it */
   pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);
+  return 1;  
+}
+
+
+int CSendPacket(uint8_t * data, uint32_t len)
+{
+  if (firstPacket) return 0; /* Not ready yet */
+  pru_rpmsg_send(&transport, firstDst, firstSrc, data, len);
   return 1;  
 }
 
