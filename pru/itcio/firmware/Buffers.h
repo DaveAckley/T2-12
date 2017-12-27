@@ -90,10 +90,14 @@ inline unsigned char orbGetFrontPacketByteInline(struct OutboundRingBuffer * orb
 
 extern unsigned char orbGetFrontPacketByte(unsigned prudir, unsigned idxInPacket) ;
 
+extern void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned char byteToWrite) ;
+
+/*return non-zero if non-empty packet actually sent*/
+extern int ipbSendPacket(unsigned prudir, unsigned char length) ;
+
 #define MAX_PACKET_SIZE 255
 
 struct InboundPacketBuffer {
-  unsigned char written;
   unsigned char buffer[MAX_PACKET_SIZE];
 };
 

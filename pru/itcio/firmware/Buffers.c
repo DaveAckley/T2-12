@@ -1,4 +1,5 @@
 #include "Buffers.h"
+#include "LinuxIO.h"
 
 #pragma DATA_SECTION(pruDirData, ".asmbuf")
 struct PruDirs pruDirData;
@@ -19,4 +20,17 @@ unsigned int orbFrontPacketLen(unsigned prudir) { return orbFrontPacketLenInline
 
 unsigned char orbGetFrontPacketByte(unsigned prudir, unsigned idxInPacket) {
   return orbGetFrontPacketByteInline(pruDirToORB(prudir), idxInPacket);
+}
+
+void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned char byteToWrite) {
+  struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
+  ipb->buffer[idxInPacket] = byteToWrite;
+}
+
+int ipbSendPacket(unsigned prudir, unsigned char length) {
+  if (length) {
+    struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
+    return CSendPacket(ipb->buffer, length);
+  }
+  return 0;
 }
