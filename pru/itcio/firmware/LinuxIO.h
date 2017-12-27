@@ -26,6 +26,8 @@ extern int CSendVal(const char * str1, const char * str2, uint32_t val);
 
 extern int CSendFromThread(uint32_t prudir, const char * str, uint32_t val);
 
+extern int CSendTagFromThread(uint32_t prudir, const char * str, uint16_t val);
+
 extern int CSendPacket(uint8_t * data, uint32_t len);
 
 extern void fillFail(const char * msg, uint8_t * packet, uint16_t len);

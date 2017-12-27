@@ -27,7 +27,7 @@ $M2?:  .cstring STR2
         .endm
 
 ;;;;;;;;
-;;;: macro sendValFromThread: Print a string and a value, with thread identified
+;;;: macro sendFromThread: Print a string and a value, with thread identified
 ;;;  INPUTS:
 ;;;    STR: First string to print
 ;;;    VAL: Value to print (reg or imm)
@@ -47,6 +47,29 @@ $M1?:  .cstring STR
         ldi32 r15, $M1?         ; Get string
         jal r3.w2, CSendFromThread 
 	restoreRegs 2           ; Restore r3.w2 
+        .endm
+
+;;;;;;;;
+;;;: macro sendTag: Maybe print a tag string plus the PC, with thread identified
+;;;  INPUTS:
+;;;    TAG: String to print
+;;;  OUTPUTS: None
+;;;  NOTES:
+;;;  - Does nothing unless CT.sTH.bFlags has PacketRunnerFlags.fReportTags set
+	;int CSendTagFromThread(uint_32t prudir, const char * str, uint32_t pc)
+	.ref CSendTagFromThread
+sendTag:        .macro STR, REGVAL
+	.sect ".rodata:.string"
+$M1?:  .cstring STR
+	.text
+	qbbc $M3?, CT.sTH.bFlags, PacketRunnerFlags.fReportTags
+	saveRegs 2              ; Save current R3.w2
+        mov r14, CT.sTH.bID     ; First arg is prudir
+        ldi32 r15, $M1?         ; Get string
+$M2?:   ldi r16, $CODE($M2?)    ; Get current iram to identify call
+        jal r3.w2, CSendTagFromThread 
+	restoreRegs 2           ; Restore r3.w2 
+$M3?:                           ; Done
         .endm
 
 ;;;;;;;;;

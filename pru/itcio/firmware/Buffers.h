@@ -14,6 +14,8 @@
  *
  */
 
+#include "prux.h"
+
 /* Packet type (first byte) information. */
 #define PKT_ROUTED_STD_MASK 0xc0
 #define PKT_ROUTED_STD_VALUE 0x80
@@ -58,6 +60,16 @@ inline int orbStoreByte(struct OutboundRingBuffer * orb, unsigned char byte) {
   return 1;
 }
 
+inline unsigned int dircodeFromPrudir(unsigned prudir) {
+  switch (prudir) {
+  case 0: return DIRCODE_FOR_PRUDIR0;
+  case 1: return DIRCODE_FOR_PRUDIR1;
+  case 2: return DIRCODE_FOR_PRUDIR2;
+  default:
+    return 0; /*which is an illegal code in this context*/
+  }
+}
+
 extern int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned char len) ;
 
 inline unsigned int orbFrontPacketLenInline(struct OutboundRingBuffer * orb) {
@@ -90,14 +102,22 @@ inline unsigned char orbGetFrontPacketByteInline(struct OutboundRingBuffer * orb
 
 extern unsigned char orbGetFrontPacketByte(unsigned prudir, unsigned idxInPacket) ;
 
-extern void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned char byteToWrite) ;
+extern void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned byteToWrite) ;
 
-extern void ipbReportFrameError(unsigned prudir, unsigned char packetLength) ;
+extern void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
+                                unsigned ct0,
+                                unsigned ct1,
+                                unsigned ct2,
+                                unsigned ct3,
+                                unsigned ct4,
+                                unsigned ct5,
+                                unsigned ct6,
+                                unsigned ct7) ;
 
 /*return non-zero if non-empty packet actually sent*/
 extern int ipbSendPacket(unsigned prudir, unsigned char length) ;
 
-#define MAX_PACKET_SIZE 255
+#define MAX_PACKET_SIZE 256
 
 struct InboundPacketBuffer {
   unsigned char buffer[MAX_PACKET_SIZE];

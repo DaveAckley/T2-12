@@ -50,8 +50,8 @@ bOutBCnt:       .ubyte  ; count of bits already shifted out
 bInpData:       .ubyte  ; current bits being shifted in
 bInpBCnt:       .ubyte  ; count of bits already shifted in
 
-bPrevOut:       .ubyte  ; last bit sent 
-bThisOut:       .ubyte  ; current bit to sent
+bRSRV0:         .ubyte  ; reserved
+bRSRV1:         .ubyte  ; reserved
 bOut1Cnt:       .ubyte  ; current count of output 1s sent
 bInp1Cnt:       .ubyte  ; current count of input 1s received
 
@@ -65,14 +65,14 @@ bRSRV43:        .ubyte   ; reserved
 IOThreadLen:   .endstruct
 
 PacketRunnerFlags:  .enum
-fPacketSync:    .emember
-fOutputStuffed: .emember
-fFlagRsrv2:     .emember
-fFlagRsrv3:     .emember
-fFlagRsrv4:     .emember
-fFlagRsrv5:     .emember
-fFlagRsrv6:     .emember
-fFlagRsrv7:     .emember
+fPacketSync:    .emember 0
+fOutputStuffed: .emember 1
+fReportTags:    .emember 2
+fFlagRsrv3:     .emember 3
+fFlagRsrv4:     .emember 4
+fFlagRsrv5:     .emember 5
+fFlagRsrv6:     .emember 6
+fFlagRsrv7:     .emember 7
         .endenum
         
 ;;; LinuxThread: Everything needed for packet processing

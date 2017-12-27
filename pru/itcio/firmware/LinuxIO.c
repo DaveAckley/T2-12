@@ -65,6 +65,61 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
 
   /* Send it */
   pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);
+
+  /* Distract the destroyer to give our packet time to get away */
+  {
+    volatile unsigned wastoid = 0;
+    while (++wastoid < 2000000) ;
+  }
+  
+
+  return 1;  
+}
+
+static unsigned char tagspinner = 0;
+
+int CSendTagFromThread(uint32_t prudir, const char * str, uint16_t val)
+{
+  enum { BUF_LEN = 50 };
+  char buf[BUF_LEN];
+  int len = 0;
+  int i;
+
+  if (firstPacket) return 0; /* Not ready yet */
+
+  buf[len++] = 0xc2; /* here comes a 'local standard' packet type 2 */
+
+  buf[len++] = ++tagspinner; /*mark tag msgs sequentially to help detect missed tags*/
+  if (prudir < 3) {
+    buf[len++] = prudirnames[prudir][0];
+    buf[len++] = prudirnames[prudir][1];
+  } else {
+    buf[len++] = 'a'+prudir;
+  }
+  buf[len++] = ':';
+  
+  /* Next the 16-bit value in hex */
+  for (i = 0; i < 4; ++i) {
+    uint8_t h = val>>12;
+    buf[len++] = h < 10 ? '0' + h : 'a' - 10 + h;
+    val <<= 4;
+  }
+
+  /* Then a space */
+  buf[len++] = ' ';
+
+  /* Then as much of the string that fits */
+  if (str) while (len < BUF_LEN-1 && *str) buf[len++] = *str++;
+
+  /* Send it */
+  pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);
+
+  /* Distract the destroyer to give our packet time to get away */
+  {
+    volatile unsigned wastoid = 0;
+    while (++wastoid < 1000000) ;
+  }
+  
   return 1;  
 }
 
@@ -159,7 +214,7 @@ int CSendVal(const char * str1, const char * str2, uint32_t val)
 /*Given packet!=0 && len > 0.  Return 0 if OK */
 unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len) {
   unsigned type = packet[0];
-  unsigned dircode = type & 0x7;
+  unsigned dircode = type & PKT_STD_DIRECTION_MASK;
   unsigned prudir;
   switch (dircode) {
   case DIRCODE_FOR_PRUDIR0: prudir = 0; break;

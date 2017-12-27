@@ -22,28 +22,46 @@ unsigned char orbGetFrontPacketByte(unsigned prudir, unsigned idxInPacket) {
   return orbGetFrontPacketByteInline(pruDirToORB(prudir), idxInPacket);
 }
 
-void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned char byteToWrite) {
+void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned byteToWrite) {
   struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
   ipb->buffer[idxInPacket] = byteToWrite;
 }
 
-void ipbReportFrameError(unsigned prudir, unsigned char packetLength) {
+void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
+                         unsigned ct0,
+                         unsigned ct1,
+                         unsigned ct2,
+                         unsigned ct3,
+                         unsigned ct4,
+                         unsigned ct5,
+                         unsigned ct6,
+                         unsigned ct7) {
   struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
-  if (packetLength < 1) {
-    packetLength = 1;
-    ipb->buffer[0] = PKT_ROUTED_STD_VALUE|PKT_STD_ERROR_VALUE;
-  } else {
-    ipb->buffer[0] |= PKT_STD_ERROR_VALUE;
+  if (packetLength < 37) {
+    packetLength = 37;
   }
-  ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|prudir; /*Fill in our source direction*/  
+  ipb->buffer[0] = PKT_ROUTED_STD_VALUE|PKT_STD_ERROR_VALUE;
+  ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/  
+  ipb->buffer[1] = 'F';
+  ipb->buffer[2] = 'R';
+  ipb->buffer[3] = 'M';
+  *((unsigned *) &ipb->buffer[4]) = ct0;
+  *((unsigned *) &ipb->buffer[8]) = ct1;
+  *((unsigned *) &ipb->buffer[12]) = ct2;
+  *((unsigned *) &ipb->buffer[16]) = ct3;
+  *((unsigned *) &ipb->buffer[20]) = ct4;
+  *((unsigned *) &ipb->buffer[24]) = ct5;
+  *((unsigned *) &ipb->buffer[28]) = ct6;
+  *((unsigned *) &ipb->buffer[32]) = ct7;
+  ipb->buffer[36] = '!';
   CSendPacket(ipb->buffer, packetLength);
 }
 
 int ipbSendPacket(unsigned prudir, unsigned char length) {
   if (length) {
     struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
-    ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|prudir; /*Fill in our source direction*/
-    return CSendPacket(ipb->buffer, length);
+    ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
+    return CSendPacket(&ipb->buffer[0], length);
   }
   return 0;
 }
