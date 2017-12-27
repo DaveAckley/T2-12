@@ -46,9 +46,9 @@ bRXRDYPin:      .ubyte  ; Receive Ready  R31 Pin Number
 bRXDATPin:      .ubyte  ; Receive Data   R31 Pin Number
 
 bOutData:       .ubyte  ; current bits being shifted out
-bOutBCnt:       .ubyte  ; count of bits remaining to shift out
+bOutBCnt:       .ubyte  ; count of bits already shifted out
 bInpData:       .ubyte  ; current bits being shifted in
-bInpBCnt:       .ubyte  ; count of bits remaining to shift in
+bInpBCnt:       .ubyte  ; count of bits already shifted in
 
 bPrevOut:       .ubyte  ; last bit sent 
 bThisOut:       .ubyte  ; current bit to sent
@@ -60,9 +60,20 @@ rRunCount:      .tag UB4
         
 bInpByte:       .ubyte   ; bytes already written of inbound packet
 bOutByte:       .ubyte   ; bytes already read from outbound packet
-bRSRV42:        .ubyte   ; reserved
+bOutLen:        .ubyte   ; length in bytes of outbound packet
 bRSRV43:        .ubyte   ; reserved
 IOThreadLen:   .endstruct
+
+PacketRunnerFlags:  .enum
+fPacketSync:    .emember
+fOutputStuffed: .emember
+fFlagRsrv2:     .emember
+fFlagRsrv3:     .emember
+fFlagRsrv4:     .emember
+fFlagRsrv5:     .emember
+fFlagRsrv6:     .emember
+fFlagRsrv7:     .emember
+        .endenum
         
 ;;; LinuxThread: Everything needed for packet processing
 LinuxThread:    .struct        

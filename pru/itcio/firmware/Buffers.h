@@ -92,6 +92,8 @@ extern unsigned char orbGetFrontPacketByte(unsigned prudir, unsigned idxInPacket
 
 extern void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned char byteToWrite) ;
 
+extern void ipbReportFrameError(unsigned prudir, unsigned char packetLength) ;
+
 /*return non-zero if non-empty packet actually sent*/
 extern int ipbSendPacket(unsigned prudir, unsigned char length) ;
 

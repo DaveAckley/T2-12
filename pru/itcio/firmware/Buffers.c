@@ -27,9 +27,22 @@ void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned char byte
   ipb->buffer[idxInPacket] = byteToWrite;
 }
 
+void ipbReportFrameError(unsigned prudir, unsigned char packetLength) {
+  struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
+  if (packetLength < 1) {
+    packetLength = 1;
+    ipb->buffer[0] = PKT_ROUTED_STD_VALUE|PKT_STD_ERROR_VALUE;
+  } else {
+    ipb->buffer[0] |= PKT_STD_ERROR_VALUE;
+  }
+  ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|prudir; /*Fill in our source direction*/  
+  CSendPacket(ipb->buffer, packetLength);
+}
+
 int ipbSendPacket(unsigned prudir, unsigned char length) {
   if (length) {
     struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
+    ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|prudir; /*Fill in our source direction*/
     return CSendPacket(ipb->buffer, length);
   }
   return 0;
