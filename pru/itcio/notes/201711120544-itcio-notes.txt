@@ -1,4 +1,4 @@
-{295}  -*- text -*-
+{309}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -546,10 +546,10 @@ following still-outstanding 'fourth round' questions:
 
 while leaving open the big money Fifth Round Questions:
 
-(5.1) Can we implement the SBST state machines and have them actually
+[308: DONE Wed Dec 27 12:13:36 2017   :308](5.1) Can we implement the SBST state machines and have them actually
    work, in a time period like, say, this semester?
 
-(5.2) Can we actually send a packet across tiles from linux to linux via
+[307: DONE Wed Dec 27 12:13:31 2017  :307](5.2) Can we actually send a packet across tiles from linux to linux via
    the PRUs and the external connectors?
 
 while not approaching or forgetting the Final Round Questions:
@@ -3013,7 +3013,7 @@ us through that.  Early goals might be:
 [223: DONE Thu Dec 21 18:19:48 2017   :223](5.1.10) Get the interclocking going, with no data at all, and report
          every 'n' shared clocks.
 
-(5.1.11) Get the interclocking handling disconnection and
+[306: DONE, sort of implicitly  :306](5.1.11) Get the interclocking handling disconnection and
          reconnection; see the reports stopping and then starting
          again as we pull connectors.
 
@@ -3028,7 +3028,7 @@ us through that.  Early goals might be:
          idle, we could easily do many thousands of iterations anyway,
          I'd think.  Might have to be a whole reg.)
 
-(5.1.12) Get the beginnings of bitstuffing going.  When clock-live
+[305: DONE  :305](5.1.12) Get the beginnings of bitstuffing going.  When clock-live
          rises (maybe we will use the flags internally, so we can
          'fall towards' communication robustly), we send a minimum of
          14 zeros (countdown counter).  And then for now just start
@@ -4324,11 +4324,11 @@ Sun Dec 24 13:46:36 2017 OK, back to translation-to-asm spiking.
 were thinking 128 256byte max packet size -- but is there maybe room
 to go 256?
 
-(5.1.14) Make a special packet -- call it 'P'? -- that queries the
+[304: Sort of DONE, via FrameError  :304](5.1.14) Make a special packet -- call it 'P'? -- that queries the
 state of the packet engine in a given direction.  Pack up pretty much
 all everything we could want to know.
 
-(5.1.15) Make a packet sync flag and try sending the packet delimiter
+[303: DONE  :303](5.1.15) Make a packet sync flag and try sending the packet delimiter
 all the time and achieving packet sync.  Observe the arrival of sync
 using the 'P' packet.
 
@@ -4613,7 +4613,7 @@ Mon Dec 25 05:12:51 2017 Committing.
 Mon Dec 25 14:31:12 2017 We continue building infrastructure all
 around the wire protocol:
 
-(5.1.16) Make slow-but-correct C routines to add a packet to the
+[302: DONE  :302](5.1.16) Make slow-but-correct C routines to add a packet to the
 OutboundRingBuffer.
 
 (5.1.17) Make C code to check headers and route an outbound packet to
@@ -4629,7 +4629,7 @@ and asm, that takes the outbound data and ships it to linux.
 (5.1.20) Glue all those pieces together and demonstrate round-trip
 'internal loopback' packet routing from userspace to userspace.
 
-(5.1.21) Make spikes for translating the perl wire protocol to asm.
+[301: DONE  :301](5.1.21) Make spikes for translating the perl wire protocol to asm.
 
 :273]
 [274:
@@ -4803,6 +4803,143 @@ have no remaining '.inc' files on either side.  Committing again.
 Wed Dec 27 01:59:33 2017 Well, conceivably 'complete' packet sending
 and receiving code, in PacketRunner.asm, just compiled for the first
 time.  I was too chicken to run it before checking in here and
-checkpointing and so on.
+checkpointing and so on.[295:
+
+Wed Dec 27 02:06:26 2017 OK, well, I ran it.  It blew up.  First
+output is like this:
+
+    [337629.451579] <pru0: c1 30 30 30 30 30 30 30 61 20 50 52 55 30 20 52  .0000000a PRU0 R
+    [337629.459566] <pru0: 65 6c 65 61 73 69 6e 67 20 74 68 65 20 68 6f 75  eleasing the hou
+    [337629.467466] <pru0: 6e 64 73                                         nds
+    [337629.474242] <pru0: 88                                               .
+    [337629.480835] <pru0: 89                                               .
+
+and this
+
+    [337631.113933] <pru1: 89                                               .
+    [337631.120522] <pru1: 88                                               .
+    [337631.127111] <pru1: 8a                                               .
+    [337631.133681] sched: RT throttling activated
+    [337631.180834] <pru1: 88                                               .
+    [337631.187564] <pru1: 88                                               .
+    [337631.194193] <pru1: 89                                               .
+    [337631.200803] <pru1: 89                                               .
+
+and this
+
+    [337631.266725] <pru1: 8a                                               .
+    [337631.273378] <pru1: 89                                               .
+    [337631.279976] <pru1: 8a                                               .
+    [337631.286623] <pru0: 88                                               .
+    [337631.293262] <pru0: 89                                               .
+    [337631.299857] <pru0: 8a                                               .
+
+But fortunately, I had my hand hovering on the emergency switch and I
+slapped a quick enter onto:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# echo 1 > /sys/kernel/debug/remoteproc/remoteproc1/single_step ; echo 1 > /sys/kernel/debug/remoteproc/remoteproc2/single_step ; cat /sys/kernel/debug/remoteproc/remoteproc1/regs
+
+and regained control of my dmesg buffer pretty quickly.
+
+So it appears that everybody is continually reporting framing errors,
+but they're only supposed to do that when they had packet sync and
+lost it.  So either they're gaining sync (invisibly) and immediately
+losing it, or they're mistakenly reporting even when they don't have
+it.
+
+Or something else.
+
+But now we're debugging.
+
+We also note the framing errors are reporting prudirs but they're
+supposed to be reporting genuine compass rose dircodes.  Maybe I'll
+fix just that before taking a nap and coming back to deal with this in
+the morning.[296:
+
+Wed Dec 27 02:31:32 2017 OK well that little direction code thing is
+fixed.  Leaving the rest till later; a possible entry point is make
+the framing error packet include lots of engine state for perusal.
+[297:
+
+Wed Dec 27 08:04:58 2017 OK, a little printf debugging suggests we
+appear to be getting to frame error without first achieving sync..
+[298:
+
+Wed Dec 27 09:06:31 2017 Still don't understand that point, but now
+have the packet threads auto-hanging after 256 rising edges, so we
+don't have to manually race to stop them..  Also appears we're
+declaring FRM before the very first rising edge, so the bug REALLY
+OUGHT TO BE VISIBLE FROM THE FRONT!  Grrrr!, he said contentedly.
+
+:298]
+:297]
+:296]
+
+:295]
 
 :294]
+[299:
+
+Wed Dec 27 11:59:16 2017 So there it is.  Two days after Christmas,
+Two Thousand Seventeen, a T2-12 tile has finally sent and received
+packets via the wire.  Data is:
+
+I did:
+
+        root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# echo 'ƒLiving Computation' > /dev/itc/pru0
+        root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# echo '‡Fog you Bell; Watson out.' > /dev/itc/pru1
+        root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# 
+
+and I saw:
+
+    [373128.732963] itc_pkt_open 246:0
+    [373128.741210] itc_pkt itc!pru0: Sending length 20 type 0x83 packet
+    [373128.747608] <pru1: 87 4c 69 76 69 6e 67 20 43 6f 6d 70 75 74 61 74  .Living Computat
+    [373128.755581] <pru1: 69 6f 6e 0a                                      ion.
+    [373128.780682] itc_pkt_release 246:0
+    [373210.137379] itc_pkt_open 246:1
+    [373210.143514] itc_pkt itc!pru1: Sending length 27 type 0x87 packet
+    [373210.149866] <pru0: 83 46 6f 67 20 79 6f 75 20 42 65 6c 6c 3b 20 57  .Fog you Bell; W
+    [373210.157831] <pru0: 61 74 73 6f 6e 20 6f 75 74 2e 0a                 atson out..
+    [373210.183342] itc_pkt_release 246:1
+
+where the key point in this case is that the first packet, sent to
+PRU0 in direction 3 (which is southeast, counting from north == 0),
+arrived back at linux from PRU1 marked as coming from direction 7
+(which is northwest), while the second packet went the opposite way. 
+
+Finally. 
+
+[300:
+
+Wed Dec 27 12:06:07 2017 And we can do autorouting:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# echo '†Go west' > /dev/itc/packets 
+
+and see:
+
+    [373618.635308] CONSIDERINGO ROUTINGO
+    [373618.638815] Routing '86'+9 packet to PRU1
+    [373618.662263] itc_pkt itc!pru1: Sending length 9 type 0x86 packet
+    [373618.668550] <pru0: 82 47 6f 20 77 65 73 74 0a                       .Go west.
+    [373618.688369] itc_pkt_release 246:2
+
+where the itc_pkt LKM determined that direction 6 (west) needed to be
+routed to PRU1, and the returned packet arrived from direction 2
+(east) via PRU0.
+
+YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY
+
+YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY
+
+YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY
+
+Ahem.
+
+Claiming 5.1.21, 5.1.16, 5.1.15, 5.1.14, 5.1.12, 5.1.11, 5.1, and 5.2.
+
+Committing.
+
+:300]
+
+:299]
