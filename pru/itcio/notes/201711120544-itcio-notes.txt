@@ -1,4 +1,4 @@
-{291}  -*- text -*-
+{295}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -4742,14 +4742,14 @@ last commit..
 
 A couple things already surfaced:
 
- - What's the deal with r3.w2 inside threadrunner code?  Do we really
+[292: Reworked   :292] - What's the deal with r3.w2 inside threadrunner code?  Do we really
    need to save it or not?  Is the point that we can go one level of
    function call deep for free, but not two?  Because threadrunner is
    never going to return, it doesn't need r3.w2, so it can trash it by
    calling a function.. but that function can't call any other
    function on r3.w2.
 
- - It seems like it would be better for the bytesininputpacket field
+[293: DONE  :293] - It seems like it would be better for the bytesininputpacket field
    to be in the IOThread context, rather than in the
    InboundPacketBuffer.  We can take a reserved byte for it.  It does
    mean that all ipb-related routines will have to be told what the
@@ -4767,7 +4767,7 @@ A couple things already surfaced:
 Tue Dec 26 15:02:47 2017 Minispikes (nails?) ahead of retrying the
 wire protocol translation:
 
-(5.1.22) Clean up use of r3.w2 inside thread code.  Goal is to not
+[291: DONE Tue Dec 26 18:21:42 2017 sort of at least  :291](5.1.22) Clean up use of r3.w2 inside thread code.  Goal is to not
 have to save/restore it as much as possible, while still being
 reasonably robust against trashing execution flow during development.
 
@@ -4798,3 +4798,11 @@ have no remaining '.inc' files on either side.  Committing again.
 :287]
 
 :285]
+[294:
+
+Wed Dec 27 01:59:33 2017 Well, conceivably 'complete' packet sending
+and receiving code, in PacketRunner.asm, just compiled for the first
+time.  I was too chicken to run it before checking in here and
+checkpointing and so on.
+
+:294]
