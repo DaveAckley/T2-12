@@ -1,4 +1,4 @@
-{309}  -*- text -*-
+{313}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -4943,3 +4943,78 @@ Committing.
 :300]
 
 :299]
+[309:
+
+Wed Dec 27 13:36:02 2017 Seems to be some particular issue between SE
+and NW -- in that direction.  NW->SE seems to work, but SE->NW
+generates a framing error.  Have to look into that.  But first
+nap.[310:
+
+Wed Dec 27 17:46:20 2017 Well it's inconclusive but it appears like
+SE_TXDAT sort of sticks at 1.  But SE_TXRDY is fine, so it tends to
+sit there clocking out framing errors no matter what it thinks it's
+sending.
+
+But it's not that simple because NW does _sometimes_ briefly reach
+packet sync:
+
+    pru/itcio/firmware# ../../../tests/PKT/XConRoutingTest.pl -nb 'ÉSENO?'
+
+leads to this:
+
+    [393955.182782] CONSIDERINGO ROUTINGO
+    [393955.186332] Routing '83'+6 packet to PRU0
+
+\203==0x83
+
+    [393955.200243] itc_pkt itc!pru0: Sending length 6 type 0x83 packet
+    [393955.206420] <pru0: c2 01 53 45 3a 30 30 30 36 20 50 4f 49           ..SE:0006 POI
+
+Debugging tag in processOutboundITCPacket shows we're adding the
+packet to an outbound buffer.
+
+    [393955.221338] read file * = dad02300, 246:2
+    [393955.240326] read file * = dad02300, 246:2
+    [393955.252414] read file * = dad02300, 246:2
+    [393955.260350] <pru1: 8f 46 52 4d 08 20 10 20 01 00 9c 00 08 09 02 03  .FRM. . ........
+              pru1---^^^^               prudir1----^^
+    [393955.268296] <pru1: 7e 08 1f 05 61 62 00 00 da be ac 1e df ae 5d 04  ~...ab........].
+    [393955.276195] <pru1: 06 00 00 7a 21                                   ...z!
+
+But then (that causes this:?) pru 1, prudir 1 gets a framing error
+
+    [393955.283149] <pru1: c1 31 4e 57 3a 30 34 35 64 61 65 65 37 20 50 53  .1NW:045daee7 PS
+              pru1---^^^^                                           prudir1--^^^          ^^-- Packet Sync
+
+But _then_ NW reports (re)achieving packet sync, which means it must
+have seen a 0x7e == 0b01111110, which requires seeing two zeros.  So
+how does that happen if SE_TXDAT is stuck at one?
+
+    [393955.296688] read file * = dad02300, 246:2
+    [393955.314162] read file * = dad02300, 246:2
+
+Let's rereremind ourselves which pin is SE_TXDAT?[311:
+
+Wed Dec 27 18:15:05 2017 Well well well, what a surprise:
+
+P9_41B  SE_TXDAT    106  0x9A8/1A8 GPIO3_20   pr1_pru0_pru_r30_6 .. gpio0[20] must be input SE_TXDAT        P9_41B
+
+it's one of the weirdo pins in the BeagleBone, that's got two
+different processor balls connected to the same output pin, so it's
+just up to us to ensure than no more than one of those internal balls
+are set to be an output.
+
+[312:
+
+Wed Dec 27 18:30:35 2017 Tell you what.  Getting on towards dinner
+time, but what say we commit and push all this crab and try it on
+another tile.  It might be a totally inherited germline defect.. but
+it might not be.
+
+:312]
+
+:311]
+
+:310]
+
+:309]
