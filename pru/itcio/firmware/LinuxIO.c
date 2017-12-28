@@ -226,10 +226,10 @@ unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len) {
   }
   {
     struct OutboundRingBuffer * orb = &pruDirData.pruDirBuffers[prudir].out;
-    CSendTagFromThread(prudir,"POI",len);
+    /*    CSendTagFromThread(prudir,"POI",len); */
     if (orbAddPacket(orb, packet, len)) {
       packet[0] |= PKT_STD_OVERRUN_VALUE;
-      CSendTagFromThread(prudir,"/POI",len);
+      /*      CSendTagFromThread(prudir,"/POI",len);*/
       return 1; /*no room at the inn*/
     }
     return 0;

@@ -28,7 +28,7 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
     unsigned i;
     for (i = 0; i < MINOR_DEVICES; ++i) s->dev_packet_state[i] = 0;
   }
-  s->debugFlags = 0xf; //XXX default some debugging on
+  //  s->debugFlags = 0xf; //XXX default some debugging on
 }
 
 __printf(5,6) int send_msg_to_pru(unsigned prunum,
@@ -358,7 +358,7 @@ static ssize_t itc_pkt_write(struct file *filp,
 
   if (MINOR(devstate->devt) == 2) {
     int newMinor = routeStandardPacket(driver_buf, count);
-    printk(KERN_INFO "CONSIDERINGO ROUTINGO\n");
+    //    printk(KERN_INFO "CONSIDERINGO ROUTINGO\n");
     if (newMinor < 0)
       return newMinor;
     if (newMinor < 2) {
