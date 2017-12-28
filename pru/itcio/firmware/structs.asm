@@ -65,12 +65,12 @@ bRSRV43:        .ubyte   ; reserved
 IOThreadLen:   .endstruct
 
 PacketRunnerFlags:  .enum
-fPacketSync:    .emember 0
-fOutputStuffed: .emember 1
-fReportTags:    .emember 2
-fFlagRsrv3:     .emember 3
-fFlagRsrv4:     .emember 4
-fFlagRsrv5:     .emember 5
+fPacketSync:    .emember 0      ; True if good packet delimiter has been seen
+fByteStuffed:   .emember 1      ; True if this output byte should be bitstuffed
+fStuffThisBit:  .emember 2      ; True if we need to stuff a zero now regardless of fByteStuffed
+fReportITags:   .emember 3      ; True if reporting input tag events
+fReportOTags:   .emember 4      ; True if reporting output tag events
+fTagBurst:      .emember 5      ; True if inside a self-delimiting burst of tag reporting
 fFlagRsrv6:     .emember 6
 fFlagRsrv7:     .emember 7
         .endenum
