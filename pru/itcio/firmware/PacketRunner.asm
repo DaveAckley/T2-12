@@ -116,8 +116,8 @@ lowCheckClockPhases:
 
 captureInputBit:  ;; Here to sample RXDAT and handle it appropriately
 	sendTag """CPIB"""          ; report in
+        nop                     ;XXX KILL 5ns before checking the data bit
 	loadBit r4.b0, r31, CT.bRXDATPin ; Read RXDAT to r4.b0
-;	sendFromThread """cb""", r4.b0 ; XXX report bit captured
 	qbgt storeRealInputBit, CT.bInp1Cnt, 5 ; Jump ahead if 5 > run of 1s we've read
         qbne moreThan5ones, CT.bInp1Cnt, 5     ; Jump ahead if 6 (or more?) 1s
         add CT.bInp1Cnt, CT.bInp1Cnt, 1        ; Assume it's another 1
@@ -235,7 +235,6 @@ makeRisingEdge: ;; Here to make a rising clock edge
 	;; FALL INTO clockHighLoop
 clockHighLoop:  resumeNextThread          ; Context switch, without saving, to wait after rising edge
 highCheckClockPhases:
-;	qbne clockHighLoop, CT.rRunCount.b.b2, 0 ; XXXX HANG THREAD AFTER 65K rising edges
         .if ON_PRU == 0 
           qbbs clockHighLoop, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 1, you 1, we're good
         .else                            ; ON_PRU == 1
