@@ -1,4 +1,4 @@
-{313}  -*- text -*-
+{316}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -554,11 +554,10 @@ while leaving open the big money Fifth Round Questions:
 
 while not approaching or forgetting the Final Round Questions:
 
-(6.1) Will our signal integrity start to break down, at speeds our
+[314: DONE Thu Dec 28 01:48:53 2017 See :313:  :314](6.1) Will our signal integrity start to break down, at speeds our
    initial code will be able to achieve?  Or In Other Words
 
-(6.2) HOW FUCKING FAST WILL ALL THIS GO IN ACTUAL REALITY?
-
+[315: DONE Thu Dec 28 01:49:22 2017 It will make the Kessel Run in 12 parsecs :315](6.2) HOW FUCKING FAST WILL ALL THIS GO IN ACTUAL REALITY?
 
 :33]
 [34:
@@ -5018,3 +5017,88 @@ it might not be.
 :310]
 
 :309]
+[313:
+
+Thu Dec 28 01:16:32 2017 So ohhh.  There's still issues to be run down
+-- in particular, I just noticed that bitstuffing seems to have
+problems -- but adding one 'nop' seems to have greatly reduced, or
+maybe essentially eliminated, the framing errors I was seeing.  It's a
+nop just before reading RXDAT, adding a(n additional) 5ns delay
+between noticing clock changes and reading the data pin.
+
+I consider this an essentially superstitious fix -- because I tried
+removing the nop and things also seemed relatively solid.. but at the
+moment I'm leaving it in there and it seems to be working pretty well.
+
+I get a solid six packet syncs on startup and they hold solid, so long
+as I don't pull and replug cables anyway.
+
+Aaaand, so we have some utterly preliminary performance numbers to
+look at.  Like this:
+
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl
+    start
+    rcvd 100% elapsed 0.006931 sec; sent 539 bytes; 77.77 KBps, 0.622 Mbps
+
+which is the result of sending six longer (~80bytes) packets plus six
+shorter packets (5bytes) on a roundtrip userspace-to-userspace via all
+six ITCs 'simultaneously'.  Granted 77KBps is not very impressive, but
+that is 12 packets userspace-to-userspace, all-in from a cold start,
+in under 7ms.  Something under 600usec per packet.
+
+Or here's another data point:
+
+    rcvd 100% elapsed 0.001839 sec; sent 30 bytes; 16.31 KBps, 0.130 Mbps
+
+which is just the six five-byte packets and nothing else.  A pitiful
+16KBps yes -- and the timing data is really noisy with so little going
+on -- but that's getting into a latency of like 300usec per packet.
+
+Going the other way, suppose we double the number of larger packets:
+
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1
+    start
+    rcvd 100% elapsed 0.002309 sec; sent 1048 bytes; 453.91 KBps, 3.631 Mbps
+    root@beaglebone:/home/t2/T2-12# 
+
+Now, sending only 1KB total, we're up to 450KBps+.  Could Be Worse.
+And we can go up from there:
+
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 
+    start
+    rcvd 100% elapsed 0.012488 sec; sent 8174 bytes; 654.54 KBps, 5.236 Mbps
+    root@beaglebone:/home/t2/T2-12# 
+
+Sending 8KB gets us up to 5Mbps -- again, userspace to userspace.  We
+can go bigger again, but eventually improvement starts topping out:
+
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1
+    start
+    rcvd 100% elapsed 0.046065 sec; sent 32606 bytes; 707.83 KBps, 5.663 Mbps
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1
+    start
+    rcvd 100% elapsed 0.322631 sec; sent 260638 bytes; 807.85 KBps, 6.463 Mbps
+    root@beaglebone:/home/t2/T2-12# 
+
+I don't think the current code can get to 1MBps no matter what, and I
+have managed to wedge things by trying to double that test a couple
+more times, so this is all very preliminary.
+
+Nonetheless.
+
+Claiming 6.1: Answer: Perhaps so, but apparently fixable.  And
+
+Claiming 6.2: Answer: It will go THIS FOGGING FAST IN ACTUAL REALITY:
+                      Say 400KBps+ for something like a cache update.
+
+Those were the Final Round Questions, folks.
+
+There is much more stabilization and robustification and
+efficiencizing to do here, but fundamentally, it's also getting to be
+time to break into a new notes file, in a directory far far away.
+
+Topic: BEYOND USERSPACE: INTERTILE EVENTS MFM TO MFM.
+
+Commtting.
+
+:313]
