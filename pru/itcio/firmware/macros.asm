@@ -1,6 +1,9 @@
 ;;;;;;
 ;;; MACRO DEFINITIONS
 	
+;        .asg 1, DEBUG_TAGS
+        .asg 0, DEBUG_TAGS
+
 ;;;;;;;;
 ;;;: macro sendVal: Print two strings and a value
 ;;;  INPUTS:
@@ -50,26 +53,79 @@ $M1?:  .cstring STR
         .endm
 
 ;;;;;;;;
-;;;: macro sendTag: Maybe print a tag string plus the PC, with thread identified
+;;;: macro startTagBurst: Set up to print tags for next NCYCLES rising edges
 ;;;  INPUTS:
-;;;    TAG: String to print
+;;;   NCYCLES: Number of rising edges to report for 1..255
+;;;   WHICH: I to report input events, or O to report output events
 ;;;  OUTPUTS: None
 ;;;  NOTES:
-;;;  - Does nothing unless CT.sTH.bFlags has PacketRunnerFlags.fReportTags set
+;;;  - ALTERS runCount non-monotonically
+startTagBurst:        .macro NCYCLES, WHICH
+	analyzeReportFlags WHICH
+        or CT.sTH.bFlags, CT.sTH.bFlags, (1<<FLAG)|(1<<PacketRunnerFlags.fTagBurst) ; set flags
+	ldi CT.rRunCount.b.b0, 256-NCYCLES ; set runCount.b0 to hit zero after NCYCLES increments
+        .endm
+	
+startITagBurst:        .macro NCYCLES
+        startTagBurst NCYCLES, 0
+        .endm
+	
+startOTagBurst:        .macro NCYCLES
+        startTagBurst NCYCLES, 1
+        .endm
+        
+analyzeReportFlags:     .macro WHICH
+        .if (WHICH == 0)
+        .eval PacketRunnerFlags.fReportITags, FLAG
+	.elseif (WHICH == 1)
+        .eval PacketRunnerFlags.fReportOTags, FLAG
+	.else
+        .emsg "WHICH must be 0 or 1, not ':WHICH:'"
+        .endif
+        .endm
+	
+;;;;;;;
+;;;: macro sendITag: Maybe print an input-related tag string plus the PC, with thread identified
+sendITag:        .macro STR, REGVAL
+        sendTag STR, 0, REGVAL
+	.endm
+;;;;;;;
+;;;: macro sendOTag: Maybe print an output-related tag string plus the PC, with thread identified
+sendOTag:        .macro STR, REGVAL
+        sendTag STR, 1, REGVAL
+	.endm
+
+
+;;;;;;;;
+;;;: macro sendTag: Maybe print a tag string plus the PC, with thread identified
+;;;  INPUTS:
+;;;    STR: Tag to print
+;;;    WHICH: Reporting context: 0 for input or 1 for output
+;;;  OUTPUTS: None
+;;;  NOTES:
+;;;  - Does nothing (except cost one cycle) unless CT.sTH.bFlags has an appropriate
+;;;	PacketRunnerFlags.fReportXTags set
 	;int CSendTagFromThread(uint_32t prudir, const char * str, uint32_t pc)
 	.ref CSendTagFromThread
-sendTag:        .macro STR, REGVAL
+sendTag:        .macro STR, WHICH, REGVAL
+	.if DEBUG_TAGS != 0
 	.sect ".rodata:.string"
 $M1?:  .cstring STR
 	.text
-	qbbc $M3?, CT.sTH.bFlags, PacketRunnerFlags.fReportTags
-	saveRegs 2              ; Save current R3.w2
+	analyzeReportFlags WHICH
+	qbbc $M3?, CT.sTH.bFlags, FLAG                        ; Jump out if not reporting appropriate tags
+	qbbc $M0?, CT.sTH.bFlags, PacketRunnerFlags.fTagBurst ; Jump ahead if not burst processing
+	qbne $M0?, CT.rRunCount.b.b0, 0 ; Jump ahead if burst isn't done
+        and CT.sTH.bFlags, CT.sTH.bFlags, 0xff&~((1<<PacketRunnerFlags.fReportITags)|(1<<PacketRunnerFlags.fReportOTags)|(1<<PacketRunnerFlags.fTagBurst)) ; clear flags
+$M0?:	saveRegs 2              ; Save current R3.w2
         mov r14, CT.sTH.bID     ; First arg is prudir
         ldi32 r15, $M1?         ; Get string
-$M2?:   ldi r16, $CODE($M2?)    ; Get current iram to identify call
+;$M2?:   ldi r16, $CODE($M2?)    ; Get current iram to identify call
+	mov r16.w0, REGVAL      ; Take bottom 16 bits of supplied val
         jal r3.w2, CSendTagFromThread 
 	restoreRegs 2           ; Restore r3.w2 
 $M3?:                           ; Done
+	.endif
         .endm
 
 ;;;;;;;;;
