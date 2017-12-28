@@ -275,9 +275,9 @@ static int itc_pkt_open(struct inode *inode, struct file *filp)
   ITCDeviceState * devstate;
   devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
 
-  printk(KERN_INFO "itc_pkt_open %d:%d\n",
+  /*  printk(KERN_INFO "itc_pkt_open %d:%d\n",
          MAJOR(devstate->devt),
-         MINOR(devstate->devt));
+         MINOR(devstate->devt)); */
 
   if (!devstate->dev_lock) {
     devstate->dev_lock = true;
@@ -301,9 +301,9 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   ITCDeviceState *devstate;
 
   devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
-  printk(KERN_INFO "itc_pkt_release %d:%d\n",
+  /*  printk(KERN_INFO "itc_pkt_release %d:%d\n", 
          MAJOR(devstate->devt),
-         MINOR(devstate->devt));
+         MINOR(devstate->devt)); */
 
   devstate->dev_lock = false;
 
@@ -376,13 +376,14 @@ static ssize_t itc_pkt_write(struct file *filp,
     return -EFAULT;
   }
 
+  /*
   dev_info(devstate->dev,
            (driver_buf[0]&0x80)?
              "Sending length %d type 0x%02x packet" :
              "Sending length %d type '%c' packet",
            count,
            driver_buf[0]);
-
+  */
   return count;
 }
 
@@ -396,7 +397,7 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
   int major = MAJOR(devstate->devt);
   int minor = MINOR(devstate->devt);
 
-  printk(KERN_INFO "read file * = %p, %d:%d\n", file, major, minor);
+  //  printk(KERN_INFO "read file * = %p, %d:%d\n", file, major, minor);
 
   switch (minor) {
   case 0:
