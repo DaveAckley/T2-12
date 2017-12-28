@@ -10,12 +10,12 @@ my $expandos = scalar(@ARGV);
 my $pktdev = "/dev/itc/packets";
 my $mode = O_RDWR;
 my @args = ("-nb",
-            "\x81GO1NE girl grill chief complaintive been w2orking on the rr all the live long day",
-            "\x82GO2ET phone home run down town bus run all night long doo dah doo dah dit dit dit dah",
-            "\x83GO3SE spot run down home base belong to us three us four us five cents a dance",
-            "\x85GO5SW atting flies firing the odd shot here and there at the fair get some flare doo dah",
-            "\x86GO6WTabix white bread and call it wheat but society survives the apocalypto carribean",
-            "\x87GO7NW passage rosemary thyme bomb thumb bluze brothers mothers of invention pretension");
+            "\x81GO1NE girl grill chief complaintive been w2orking on the rr all the live long \x01\xff\xff\xfe",
+            "\x82GO2ET phone home run down town bus run all night long doo dah doo dah  dit dah \x03\xff\xff\xfc",
+            "\x83GO3SE spot run down home base belong to us three us four us 5% dance \x07\xff\xff\xf8",
+            "\x85GO5SW atting flies firing the odd shot here and there at the flare doo dah \x1f\xff\xff\xf0",
+            "\x86GO6WTabix white bread and call it wheat but society survives the apocalypto \x3f\xff\xff\xe0",
+            "\x87GO7NW passage rosemary thyme bomb thumb bluze brothers mothers of pretension \x7f\xff\xff\xc0");
 if (scalar(@args)) {
     if ($args[0] eq "-nb") {
         shift @args;
