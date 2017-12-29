@@ -1,4 +1,4 @@
-{316}  -*- text -*-
+{322}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5102,3 +5102,183 @@ Topic: BEYOND USERSPACE: INTERTILE EVENTS MFM TO MFM.
 Commtting.
 
 :313]
+[316:
+
+Fri Dec 29 00:41:10 2017 Well, I've been cleaning up and playing
+around with the packet engine, trying to see how it jumps.
+
+The main aggravation at the moment is having no easy way, from
+userspace, to tell if an outbound packet made it into a buffer on the
+prus or not.  It gets sent back with the PKT_OVERRUN flag set if there
+wasn't space, but that's far from atomic and therefore a pain to deal
+with.
+
+I'm wondering, again, if we could just peek at the next rpmsg packet
+and only take it if we had room for it.  At this point I'd even block
+the whole packet stream to the pru while we wait for room, even if
+there are packets blocked further upstream that we could have routed
+if we had gotten to them.  I'd like to see how that feels, anyway.
+
+
+[317:
+
+Fri Dec 29 00:51:16 2017 Or how about this: We refuse to even try to
+receive a packet from linux unless we have 257 bytes available in each
+of the outbound buffers?  And we just fucking poll every time, kick or
+no kick, when we do have sufficient room?  That should eventually
+cause blocking right back into itc_pkt.ko, right?
+
+Let's try that.[318:
+
+Fri Dec 29 01:40:10 2017 Well, it's a lot slower.. but it also seems
+rock-fogging-solid:
+
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1
+    start
+    sent 198 rcvd 198 100% err 0 ovr 0 lost 0 elapsed 0.069062 sec; sent 15518 bytes; 224.70 KBps, 1.798 Mbps
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1
+    start
+    sent 390 rcvd 390 100% err 0 ovr 0 lost 0 elapsed 0.119184 sec; sent 31006 bytes; 260.15 KBps, 2.081 Mbps
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1
+    start
+    sent 774 rcvd 774 100% err 0 ovr 0 lost 0 elapsed 0.212240 sec; sent 61982 bytes; 292.04 KBps, 2.336 Mbps
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1
+    start
+    sent 1542 rcvd 1542 100% err 0 ovr 0 lost 0 elapsed 0.398220 sec; sent 123934 bytes; 311.22 KBps, 2.490 Mbps
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1
+    start
+    sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 0.773959 sec; sent 247838 bytes; 320.22 KBps, 2.562 Mbps
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1
+    start
+    sent 6150 rcvd 6150 100% err 0 ovr 0 lost 0 elapsed 1.846873 sec; sent 495646 bytes; 268.37 KBps, 2.147 Mbps
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1
+    start
+    sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 4.017822 sec; sent 991262 bytes; 246.72 KBps, 1.974 Mbps
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1 1
+    start
+    sent 24582 rcvd 24582 100% err 0 ovr 0 lost 0 elapsed 8.368798 sec; sent 1982494 bytes; 236.89 KBps, 1.895 Mbps
+    root@beaglebone:/home/t2/T2-12# 
+
+Pumping 2MB all around the barn and not a packet out of place.  Now we
+should just see if there's some easy things to do to pick some of the
+speed back up..[319:
+
+Fri Dec 29 01:45:35 2017 Got a little bit by not clearing event status
+and the cycle counter:
+
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1 1
+    start
+    sent 24582 rcvd 24582 100% err 0 ovr 0 lost 0 elapsed 7.432457 sec; sent 1982494 bytes; 266.73 KBps, 2.134 Mbps
+    root@beaglebone:/home/t2/T2-12# [320:
+
+Fri Dec 29 16:11:38 2017 Lovely.  Just lovely.  I've been debugging
+this horrible problem where on big XConRoutingTest.pl tests, sometimes
+-- but not all the time, not on any obvious pattern -- the packet code
+would go completely crazy and start delivering thousands of packets
+repeated from the past, including mangled combinations of old and new
+and so forth.  I've been rechecking and armoring my buffer code and
+doing all sorts of hijinks trying to localize the phenomenon to no
+avail.
+
+But now I'll bet you $100 I know what it is, even though I haven't
+confirmed it yet.  Take a lookeeloo at this commit message from
+a year ago August:
+
+    commit d5add00c73293f5ae6f5eef304ce97f93d180322
+    Author: Jason Reeder <jreeder@ti.com>
+    Date:   Tue Aug 30 17:42:24 2016 -0500
+
+        Fixes an rpmsg bug concerning available buffers
+
+        The vring implementation used by rpmsg contains a free
+        running index for the last available buffer that was
+        filled by the ARM side. The PRU rpmsg library also keeps
+        track locally of the last available buffer index that it
+        consumed in the form of a free running index.
+
+        The PRU rpmsg library can compare the last available index
+        that it consumed with the last available index reported by
+        the ARM core (to the vring) to determine if there is a new
+        buffer to be consumed. If the two available indexes are
+        equal to one another, then the PRU rpmsg library can tell
+        that there are no messages waiting for it in the vring.
+
+        Both of these indexes need to be of the same type in order
+        for unsigned integer overflow to affect them equally. This
+        was not the case prior to this commit. Previously, the
+        vring index was 16 bits and the local rpmsg library index
+        was 32 bits. Once the vring index rolled over from 0xffff
+        back to 0, the PRU continuously thought that a new message
+        was available because of the index mismatch. In the echo
+        example case this caused the PRU to send 65536 unsolicited
+        messages to the ARM, bringing it to a crawl due to all of
+
+DING DING DING DING!
+
+Key riced.
+
+        interrupts associated with the messages.
+
+        This commit corrects the size of the local rpmsg library's
+        last_avail_idx to use 16 bits instead of 32.
+
+        Signed-off-by: Jason Reeder <jreeder@ti.com>
+    
+
+[321:
+
+Fri Dec 29 16:28:54 2017 Yep, that was it.  Two bytes changed (plus
+ranting):
+
+    diff --git a/pru/include/pru_virtqueue.h b/pru/include/pru_virtqueue.h
+    index 7836f78..7560153 100644
+    --- a/pru/include/pru_virtqueue.h
+    +++ b/pru/include/pru_virtqueue.h
+    @@ -94,7 +94,7 @@ struct pru_virtqueue {
+            uint32_t	id;
+            uint32_t	to_arm_event;
+            uint32_t	from_arm_event;
+    -	uint32_t 	last_avail_idx;
+    +        uint16_t 	last_avail_idx;  /*ACKLEYHAX: CHERRY PICK FOGGING FIX: Was uint32_t */
+            struct vring 	vring;
+     };
+
+and now we can do this:
+
+    root@beaglebone:/home/t2/T2-12# time ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+    start 0706
+        1 'ÅENDÖ'
+        1 'ÇENDÜ'
+        1 'ÉENDá'
+        1 'ÖENDÅ'
+        1 'ÜENDÇ'
+        1 'áENDÉ'
+    32768 'ÅGO5SW atting flies firing the odd shot here and there at the flare doo dah ˇˇ0706'
+    32768 'ÇGO6WTabix white bread and call it wheat but society survives the apocalypto ?ˇˇ‡0706'
+    32768 'ÉGO7NW passage rosemary thyme bomb thumb bluze brothers mothers of pretension ˇˇ¿0706'
+    32768 'ÖGO1NE girl grill chief complaintive been w2orking on the rr all the live long ˇˇ˛0706'
+    32768 'ÜGO2ET phone home run down town bus run all night long doo dah doo dah  dit dah ˇˇ¸0706'
+    32768 'áGO3SE spot run down home base belong to us three us four us 5% dance ˇˇ¯0706'
+    sent 196614 rcvd 196614 100% err 0 ovr 0 lost 0 elapsed 43.178504 sec; sent 16646174 bytes; 385.52 KBps, 3.084 Mbps
+
+    real	0m47.941s
+    user	0m11.880s
+    sys	0m5.272s
+    root@beaglebone:/home/t2/T2-12#
+
+and be dead on balls accurate over ~200K packets with ~16MB data
+transferred.  Soon we'll undo some of the superstitious hacks recently
+done that slowed things down, and see if we can push the bitrate back
+up a bit.  But first we commit this.
+
+
+:321]
+:320]
+
+:319]
+
+:318]
+
+:317]
+
+:316]
