@@ -33,13 +33,16 @@
 
 
 /* Simple lame-o ring buffer. */
-#define RING_BUFFER_BITS 9
+#define RING_BUFFER_BITS 10
 #define RING_BUFFER_SIZE (1<<RING_BUFFER_BITS)
 #define RING_BUFFER_MASK ((1<<RING_BUFFER_BITS)-1)
 
 struct OutboundRingBuffer {
   unsigned short writePtr;      /* Points at first unused byte after end of newest packet*/
   unsigned short readPtr;       /* Points at LENGTH BYTE at front of oldest packet */
+  unsigned packetsAdded;        /* Total packets added to this orb */
+  unsigned packetsRejected;     /* Total packets not added due to insufficient space */
+  unsigned packetsRemoved;      /* Total packets removed from this orb */
   unsigned char buffer[RING_BUFFER_SIZE];
 };
 
@@ -83,6 +86,7 @@ inline int orbDropFrontPacketInline(struct OutboundRingBuffer * orb) {
   unsigned int len = orbFrontPacketLenInline(orb);
   if (len == 0) return 0;
   orb->readPtr = (orb->readPtr + len + 1) & RING_BUFFER_MASK;
+  ++orb->packetsRemoved;
   return 1;
 }
 
@@ -117,9 +121,13 @@ extern void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
 /*return non-zero if non-empty packet actually sent*/
 extern int ipbSendPacket(unsigned prudir, unsigned char length) ;
 
+
+
 #define MAX_PACKET_SIZE 256
 
 struct InboundPacketBuffer {
+  unsigned packetsReceived;     /* Count of packets shipped to linux */
+  unsigned packetsRejected;     /* Count of packets dropped due to insufficient rpmsg buffers */
   unsigned char buffer[MAX_PACKET_SIZE];
 };
 
@@ -132,7 +140,13 @@ struct PruDirs {
   struct PruDirBuffers pruDirBuffers[3];
 };
 
+extern unsigned minORBAvailablePruDirs(struct PruDirs * pd) ;
+
 extern struct PruDirs pruDirData;
+
+inline unsigned minORBAvailable() {
+  return minORBAvailablePruDirs(&pruDirData);
+}
 
 inline struct PruDirBuffers * pruDirToBuffers(unsigned prudir) {
   return &pruDirData.pruDirBuffers[prudir&3];

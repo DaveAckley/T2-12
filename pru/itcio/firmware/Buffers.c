@@ -4,13 +4,26 @@
 #pragma DATA_SECTION(pruDirData, ".asmbuf")
 struct PruDirs pruDirData;
 
+unsigned minORBAvailablePruDirs(struct PruDirs * pd)
+{
+  uint32_t min = orbAvailableBytes(&pd->pruDirBuffers[0].out);
+  uint32_t avail;
+  avail = orbAvailableBytes(&pd->pruDirBuffers[1].out); if (avail < min) min = avail;
+  avail = orbAvailableBytes(&pd->pruDirBuffers[2].out); if (avail < min) min = avail;
+  return min;
+}
+
 int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned char len)
 {
   unsigned i;
-  if (!data || len >= orbAvailableBytes(orb)) return 1;  /* Available must strictly exceed len */
+  if (!data || len >= orbAvailableBytes(orb)) {/* Available must strictly exceed len */
+    ++orb->packetsRejected;
+    return 1;  
+  }
   orbStoreByte(orb,len);       /* To have room to stick packet length first */
   for (i = 0; i < len; ++i)    /* Something smarter here should exist someday */
     orbStoreByte(orb,data[i]);
+  ++orb->packetsAdded;
   return 0;
 }
 
@@ -61,7 +74,10 @@ int ipbSendPacket(unsigned prudir, unsigned char length) {
   if (length) {
     struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
     ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
-    return CSendPacket(&ipb->buffer[0], length);
+    if (CSendPacket(&ipb->buffer[0], length))
+      ++ipb->packetsRejected;
+    else
+      ++ipb->packetsReceived;
   }
   return 0;
 }
