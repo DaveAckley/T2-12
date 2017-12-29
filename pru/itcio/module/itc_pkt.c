@@ -14,6 +14,13 @@
 
 #include "itc_pkt.h"
 
+/* define MORE_DEBUGGING to be more verbose and slow*/
+//#define MORE_DEBUGGING 1
+
+#ifndef MORE_DEBUGGING
+#define MORE_DEBUGGING 0
+#endif
+
 static ITCPacketDriverState S;
 
 static void initITCPacketDriverState(ITCPacketDriverState *s)
@@ -28,7 +35,9 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
     unsigned i;
     for (i = 0; i < MINOR_DEVICES; ++i) s->dev_packet_state[i] = 0;
   }
-  //  s->debugFlags = 0xf; //XXX default some debugging on
+#if MORE_DEBUGGING
+   s->debugFlags = 0xf; // default some debugging on
+#endif
 }
 
 __printf(5,6) int send_msg_to_pru(unsigned prunum,
@@ -275,9 +284,11 @@ static int itc_pkt_open(struct inode *inode, struct file *filp)
   ITCDeviceState * devstate;
   devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
 
-  /*  printk(KERN_INFO "itc_pkt_open %d:%d\n",
+#if MORE_DEBUGGING
+  printk(KERN_INFO "itc_pkt_open %d:%d\n",
          MAJOR(devstate->devt),
-         MINOR(devstate->devt)); */
+         MINOR(devstate->devt));
+#endif
 
   if (!devstate->dev_lock) {
     devstate->dev_lock = true;
@@ -301,9 +312,11 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   ITCDeviceState *devstate;
 
   devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
-  /*  printk(KERN_INFO "itc_pkt_release %d:%d\n", 
+#if MORE_DEBUGGING
+  printk(KERN_INFO "itc_pkt_release %d:%d\n", 
          MAJOR(devstate->devt),
-         MINOR(devstate->devt)); */
+         MINOR(devstate->devt));
+#endif
 
   devstate->dev_lock = false;
 
@@ -376,14 +389,15 @@ static ssize_t itc_pkt_write(struct file *filp,
     return -EFAULT;
   }
 
-  /*
+#if MORE_DEBUGGING
   dev_info(devstate->dev,
            (driver_buf[0]&0x80)?
              "Sending length %d type 0x%02x packet" :
              "Sending length %d type '%c' packet",
            count,
            driver_buf[0]);
-  */
+#endif
+
   return count;
 }
 
