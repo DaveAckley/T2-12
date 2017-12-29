@@ -21,13 +21,15 @@ PRU_CGT:=/usr/share/ti/cgt-pru
 LINKER_COMMAND_FILE=./AM335x_PRU.cmd
 LIBS=--library=../../lib/rpmsg_lib.lib
 INCLUDE=--include_path=../../include --include_path=../../include/am335x
-STACK_SIZE=0x100
-HEAP_SIZE=0x100
+# stack and heap sizes set in AM335x_PRU.cmd
+# STACK_SIZE=0x300
+# HEAP_SIZE=0x100
 
 
 #CFLAGS=--preproc_only -v3 -O2 --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR)
 CFLAGS=-v3 -O4 --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR) -ppd -ppa -al
-LFLAGS=--reread_libs --warn_sections --stack_size=$(STACK_SIZE) --heap_size=$(HEAP_SIZE)
+#LFLAGS=--reread_libs --warn_sections --stack_size=$(STACK_SIZE) --heap_size=$(HEAP_SIZE)
+LFLAGS=--reread_libs --warn_sections 
 
 
 GEN_DIR=gen

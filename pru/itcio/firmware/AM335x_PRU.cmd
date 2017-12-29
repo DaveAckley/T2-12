@@ -8,7 +8,7 @@
 /****************************************************************************/
 
 -cr								/* Link using C conventions */
--stack 0x200             /* 512 byte stack */
+-stack 0x300             /* 768 byte stack */
 -heap 0x100              /* 256 byte heap (who needs it?) */
 
 /* Specify the System Memory Map */
@@ -23,7 +23,8 @@ MEMORY
 
         /* Let's try reserving the first 0xA00 bytes (2.5KB) of our PRU DRAM (PRU_DMEM_0_1).  (And also
            the other PRU's DRAM (PRU_DMEM_1_0), which we don't use for anything in this linker script.) */
-#define ASMBUFSIZ 0xA00
+/*could we make it 4K for our buffers, 4K for everything else ?#define ASMBUFSIZ 0xA00*/
+#define ASMBUFSIZ 0x1000
         ASMBUF (RW) : org = 0x00000000 len = ASMBUFSIZ  /* ASMBUFSIZ memory range for packet buffers */
       	PRU_DMEM_0_1	: org = 0x00000000+ASMBUFSIZ len = 0x00002000-ASMBUFSIZ CREGISTER=24  /* 8kB PRU Data RAM 0_1 */
 	PRU_DMEM_1_0	: org = 0x00002000+ASMBUFSIZ len = 0x00002000-ASMBUFSIZ CREGISTER=25 /* 8kB PRU Data RAM 1_0 */
