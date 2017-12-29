@@ -2,7 +2,6 @@
 	
         .cdecls C,LIST
         %{
-        #include "PacketRunner.h"
         #include "Buffers.h"
         #include "prux.h"
         %}
@@ -72,18 +71,17 @@ startNewOutputByte:  ;; here to initialize once CT.bOutData has new byte to send
 	
 checkForBitStuffing: ;; Here to maybe stuff output bits
 	sendOTag """CFBS""",CT.bOut1Cnt      ; report in
-	qbbs stuffAZero, CT.sTH.bFlags, PacketRunnerFlags.fStuffThisBit ; stuff a zero if we must
-	qbbc sendRealDataBit, CT.sTH.bFlags, PacketRunnerFlags.fByteStuffed ; send real data if not stuffing this byte
-;	startOTagBurst 10         ; start talking buddy (for next 10 cycles)
-	qbgt sendRealDataBit, CT.bOut1Cnt, 5 ; just ship it if 5 > running 1s we've sent
+	qbbc sendRealDataBit, CT.sTH.bFlags, PacketRunnerFlags.fStuffThisBit ; jump ahead if not stuffing this bit
 
         ;; FALL INTO stuffAZero
 	
 stuffAZero: ;; Here to ship a bitstuffed zero
+;	startOTagBurst 10         ; start talking buddy (for next 10 cycles)
 	sendOTag """SAZ""",CT.bOutBCnt      ; report in
-	sub CT.bOutBCnt, CT.bOutBCnt, 1 ; Urgh: Cancel out the bcnt increment coming in MRE
-	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fStuffThisBit ; okay we're doing this; clear it
-	jmp transmitZero
+	clr r30, r30, CT.bTXDATPin          ; present 0 on TXDAT
+	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fStuffThisBit ; mark we did this
+	ldi CT.bOut1Cnt, 0                  ; and clear running 1s
+	jmp makeFallingEdge                 ; and that's all for this clock
 	
 sendRealDataBit: ;; Here to send an actual (data or delimiter) bit
 	sendOTag """SRDB""",CT.bOutData              ; report in
@@ -92,24 +90,30 @@ sendRealDataBit: ;; Here to send an actual (data or delimiter) bit
         qbbc transmitOne, CT.sTH.bFlags, PacketRunnerFlags.fByteStuffed ; Ready to xmit if not stuffing this byte
         qbne transmitOne, CT.bOut1Cnt, 5             ; Also ready if this is not the 5th 1
 	set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fStuffThisBit ; It is the 5th 1, stuff a zero next
-        jmp transmitOne                              ; And go send this one 
-	
-transmitZero:        ;; Here to transmit 0 and clear our running 1s count
-	sendOTag """TMT0""",CT.bOut1Cnt              ; report in
-        ldi CT.bOut1Cnt, 0                   ; clear running 1s
-	clr r30, r30, CT.bTXDATPin           ; present 0 on TXDAT
-	jmp makeFallingEdge
+
+        ;; FALL INTO transmitOne
 
 transmitOne: ;; Here to transmit 1
-	sendOTag """TMT1""",CT.bOut1Cnt              ; report in
+	sendOTag """TMT1""",CT.bOut1Cnt      ; report in
 	set r30, r30, CT.bTXDATPin           ; present 1 on TXDAT
+	jmp countRealBitSent                 ; count that real bit
         
+transmitZero: ;; Here to transmit 0 and clear our running 1s count
+	sendOTag """TMT0""",CT.bOut1Cnt      ; report in
+	clr r30, r30, CT.bTXDATPin           ; present 0 on TXDAT
+        ldi CT.bOut1Cnt, 0                   ; clear running 1s
+
+        ;; FALL INTO countRealBitSent
+
+countRealBitSent:      ;; Here if we sent a real bit (as opposed to bitstuffing 0)
+	add CT.bOutBCnt, CT.bOutBCnt, 1      ; Record we have transmitted another real bit
+
         ;; FALL INTO makeFallingEdge
 	
 makeFallingEdge:  ;; Here to make a falling edge
-	sendITag """MFE""",CT.bOutBCnt ; report in
+	sendOTag """MFE""",CT.bOutBCnt ; report in as output event
+	sendITag """MFE""",CT.bInpBCnt ; now report in as an input event
         clr r30, r30, CT.bTXRDYPin      ; TXRDY falls
-	add CT.bOutBCnt, CT.bOutBCnt, 1 ; And we have transmitted another bit
 	saveResumePoint lowCheckClockPhases ; Set where to resume to and save this context
 	
 	;; FALL INTO clockLowLoop
@@ -227,9 +231,11 @@ checkEndOfByte: ;; Here to increment and deal with end of byte processing
         add CT.bInpBCnt, CT.bInpBCnt, 1           ; Increment count of bits in byte
         qbge makeRisingEdge, CT.bInpBCnt, 7       ; Nothing more to do if 7 >= bits in byte
         qbbc makeRisingEdge, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Also nothing more to do if not synced
-	;; sendFromThread """ed""", CT.sTH.bID ; XXX report prudir
-	;; sendFromThread """e@""", CT.bInpByte ; XXX report position to store it at
-	;; sendFromThread """eo""", CT.bInpData ; XXX report byte received
+	
+        ;; FALL INTO storeThisInputByte
+
+storeThisInputByte: ;; Here to add a finished byte to the packet payload
+	sendITag """STIB""",CT.bInpData           ; report in
         mov r14, CT.sTH.bID     ; arg1 is prudir
         mov r15, CT.bInpByte    ; arg2 is what byte in the packet we just finished
 	mov r16, CT.bInpData    ; arg3 is byte value to store
@@ -246,7 +252,8 @@ setupForNextInputByte:  ;; Here to initialize for reading another byte
         ;; FALL INTO makeRisingEdge
         
 makeRisingEdge: ;; Here to make a rising clock edge
-	sendOTag """MRE""",CT.rRunCount.r               ; report in
+	sendITag """MRE""",CT.rRunCount.r      ; report in as input event
+	sendOTag """MRE""",CT.rRunCount.r      ; now report in as output event
         set r30, r30, CT.bTXRDYPin        ; TXRDY rises
 	add CT.rRunCount.r,  CT.rRunCount.r, 1 ; Count rising edges
         saveResumePoint highCheckClockPhases ; Set where to resume to, and save this context

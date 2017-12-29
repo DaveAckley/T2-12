@@ -2,7 +2,7 @@
 ;;; MACRO DEFINITIONS
 	
 ;        .asg 1, DEBUG_TAGS
-        .asg 0, DEBUG_TAGS
+        .asg 0, DEBUG_TAGS      
 
 ;;;;;;;;
 ;;;: macro sendVal: Print two strings and a value
