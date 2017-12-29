@@ -56,50 +56,50 @@ COBJ1_FILES:=$(patsubst %.c,$(GEN_DIR)/%_pru1.object,$(CSRC_FILES))
 # 'Standard organization' asm source files
 ASRC_FILES+=PacketRunner.asm
 ASRC_FILES+=Threads.asm
-ASRC_FILES+=macros.asm
-AHDR_FILES:=$(patsubst %.asm,%.h,$(ASRC_FILES))
 AOBJ0_FILES:=$(patsubst %.asm,$(GEN_DIR)/%_pru0.object,$(ASRC_FILES))
 AOBJ1_FILES:=$(patsubst %.asm,$(GEN_DIR)/%_pru1.object,$(ASRC_FILES))
 
 OBJ0_FILES:=$(COBJ0_FILES) $(AOBJ0_FILES)
 OBJ1_FILES:=$(COBJ1_FILES) $(AOBJ1_FILES)
 
-ALL_DEP:=$(CHDR_FILES) Makefile
+ALL_DEP:=Makefile
+C_ALL_DEP:=$(ALL_DEP) $(CHDR_FILES) prux.h
+ASM_ALL_DEP:=$(C_ALL_DEP) structs.asm macros.asm
 
 .PHONY: build abslist
 build:	$(TARGETS)
 	@echo '-	Generated firmwares are : $^'
 
 # LD
-$(PRU1_FW): $(GEN_DIR)/main_pru1.object $(OBJ1_FILES) $(LINKER_COMMAND_FILE) 
+$(PRU1_FW):	$(OBJ1_FILES) $(LINKER_COMMAND_FILE) 
 	@echo 'LD	$@'
 	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  --library=libc.a $(LIBS)
 	@echo 
 
-$(PRU0_FW): $(GEN_DIR)/main_pru0.object $(OBJ0_FILES) $(LINKER_COMMAND_FILE) 
+$(PRU0_FW):	$(OBJ0_FILES) $(LINKER_COMMAND_FILE) 
 	@echo 'LD	$@' 
 	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  --library=libc.a $(LIBS)
 	@echo 
 
 # CC
-$(GEN_DIR)/%_pru0.object: %.c %.h $(ALL_DEP)
+$(GEN_DIR)/%_pru0.object: %.c %.h $(C_ALL_DEP)
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$< (pru0)'
 	@$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
-$(GEN_DIR)/%_pru1.object: %.c %.h $(ALL_DEP)
+$(GEN_DIR)/%_pru1.object: %.c %.h $(C_ALL_DEP)
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$< (pru1)'
 	@$(PRU_CGT)/bin/clpru -DON_PRU=1 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
 
 # ASM
-$(GEN_DIR)/%_pru0.object: %.asm %.h $(ALL_DEP)
+$(GEN_DIR)/%_pru0.object: %.asm $(ASM_ALL_DEP)
 	@mkdir -p $(GEN_DIR)
 	@echo 'ASM	$< (pru0)'
 	@$(PRU_CGT)/bin/clpru -DON_PRU=0 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
-$(GEN_DIR)/%_pru1.object: %.asm %.h $(ALL_DEP)
+$(GEN_DIR)/%_pru1.object: %.asm $(ASM_ALL_DEP)
 	@mkdir -p $(GEN_DIR)
 	@echo 'ASM	$< (pru1)'
 	@$(PRU_CGT)/bin/clpru -DON_PRU=1 --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
