@@ -94,7 +94,7 @@ struct pru_virtqueue {
 	uint32_t	id;
 	uint32_t	to_arm_event;
 	uint32_t	from_arm_event;
-	uint32_t 	last_avail_idx;
+        uint16_t 	last_avail_idx;  /*ACKLEYHAX: CHERRY PICK FOGGING FIX: Was uint32_t */
 	struct vring 	vring;
 };
 
