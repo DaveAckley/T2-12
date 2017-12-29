@@ -126,9 +126,8 @@ int CSendTagFromThread(uint32_t prudir, const char * str, uint16_t val)
 
 int CSendPacket(uint8_t * data, uint32_t len)
 {
-  if (firstPacket) return 0; /* Not ready yet */
-  pru_rpmsg_send(&transport, firstDst, firstSrc, data, len);
-  return 1;  
+  if (firstPacket) return 1; /* Not ready yet */
+  return pru_rpmsg_send(&transport, firstDst, firstSrc, data, len);
 }
 
 
@@ -245,41 +244,44 @@ void fillFail(const char * msg, uint8_t * packet, uint16_t len)
   }
 }
 
+volatile register uint32_t __R31;
 
 int processPackets() {
   uint16_t src, dst, len;
-    
-  /* Check bit 30 or 31 of register R31 to see if the ARM has kicked us */
-  /* Also check once per second if no kicks -- some interrupts get missed? grr */
-  /* ..except caller has now done that checking.. */
-  /*if ((__R31 & HOST_INT) || PRUX_CTRL.CYCLE > 200000000) */ { 
-    
-    /* Clear the event status */
-    CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
 
-    /* Reset timeout clock */
-    resetCycleCounter();
+  { 
+    int once = 1;
+    /* Receive all messages that we can currently fit grr */
+    while (minORBAvailable() > MAX_PACKET_SIZE+1) {
 
-    /* Receive all available messages, multiple messages can be sent per kick */
-    while (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) == PRU_RPMSG_SUCCESS) {
-
-      if (firstPacket) {
-        /* linux sends an empty packet to get us going */
-        firstSrc = src;
-        firstDst = dst;
-        firstPacket = 0;
+      if (once && (__R31 & HOST_INT)) {
+        /* Clear the event status */
+        CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
+        once = 0;
       }
 
-      if (len > 0) {
-        unsigned ret;
-        if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE)
-          ret = processOutboundITCPacket(payload,len);
-        else
-          ret = processSpecialPacket(payload,len);
+      if (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) != PRU_RPMSG_SUCCESS)
+        break;
+      else {
 
-        if (ret) {
-          /* Return the processed packet back to where it came from */
-          pru_rpmsg_send(&transport, dst, src, payload, len);
+        if (firstPacket) {
+          /* linux sends an empty packet to get us going */
+          firstSrc = src;
+          firstDst = dst;
+          firstPacket = 0;
+        }
+
+        if (len > 0) {
+          unsigned ret;
+          if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE)
+            ret = processOutboundITCPacket(payload,len);
+          else
+            ret = processSpecialPacket(payload,len);
+          
+          if (ret) {
+            /* Return the processed packet back to where it came from */
+            pru_rpmsg_send(&transport, dst, src, payload, len);
+          }
         }
       }
     }
