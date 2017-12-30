@@ -5280,7 +5280,7 @@ better:
 
 for a 100*(3.277-3.084)/3.084 ~ 6% improvement..  I'm sure there's
 much more to be had with deeper understanding and work, but .. not
-right now..
+right now..  
 
 :322]
 :321]
