@@ -408,9 +408,8 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
   unsigned int copied;
 
   ITCDeviceState *devstate = file->private_data;
-  int major = MAJOR(devstate->devt);
   int minor = MINOR(devstate->devt);
-
+  //  int major = MAJOR(devstate->devt);
   //  printk(KERN_INFO "read file * = %p, %d:%d\n", file, major, minor);
 
   switch (minor) {
