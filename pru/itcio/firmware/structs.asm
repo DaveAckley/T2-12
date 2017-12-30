@@ -50,12 +50,12 @@ bOutBCnt:       .ubyte  ; count of bits already shifted out
 bInpData:       .ubyte  ; current bits being shifted in
 bInpBCnt:       .ubyte  ; count of bits already shifted in
 
-bRSRV0:         .ubyte  ; reserved
-bRSRV1:         .ubyte  ; reserved
+bRSRV0:         .ubyte
+bRSRV1:         .ubyte
 bOut1Cnt:       .ubyte  ; current count of output 1s sent
 bInp1Cnt:       .ubyte  ; current count of input 1s received
 
-rTXDATMask:     .uint   ; 1<<TXDAT_PN
+rRSRV2:         .uint
 rRunCount:      .tag UB4
         
 bInpByte:       .ubyte   ; bytes already written of inbound packet

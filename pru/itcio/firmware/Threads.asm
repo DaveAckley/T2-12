@@ -34,7 +34,6 @@ initThis: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         ldi CT.bTXDATPin, PRUDIR0_TXDAT_R30_BIT
         ldi CT.bRXRDYPin, PRUDIR0_RXRDY_R31_BIT
         ldi CT.bRXDATPin, PRUDIR0_RXDAT_R31_BIT
-        ldi CT.rTXDATMask, 1<<PRUDIR0_TXDAT_R30_BIT
 	
         .elseif ID == 1
         ;; PRUDIR 1
@@ -42,7 +41,6 @@ initThis: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         ldi CT.bTXDATPin, PRUDIR1_TXDAT_R30_BIT
         ldi CT.bRXRDYPin, PRUDIR1_RXRDY_R31_BIT
         ldi CT.bRXDATPin, PRUDIR1_RXDAT_R31_BIT
-        ldi CT.rTXDATMask, 1<<PRUDIR1_TXDAT_R30_BIT
 	
         .elseif ID == 2
         ;;PRUDIR 2
@@ -50,7 +48,6 @@ initThis: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         ldi CT.bTXDATPin, PRUDIR2_TXDAT_R30_BIT
         ldi CT.bRXRDYPin, PRUDIR2_RXRDY_R31_BIT
         ldi CT.bRXDATPin, PRUDIR2_RXDAT_R31_BIT
-        ldi CT.rTXDATMask, 1<<PRUDIR2_TXDAT_R30_BIT
 
         .endif
 	.endm
@@ -72,9 +69,10 @@ nextContext:
 
 ;;; LINUX thread runner 
 LinuxThreadRunner:
-	qbbs ltr1, r31, HOST_INT_BIT   ; Process packets if host int from linux is set..
+        qbbs ltr1, r31, HOST_INT_BIT   ; Process packets if host int from linux is set..
         add LT.wResumeCount,  LT.wResumeCount, 1 ; Otherwise, bump resume count
-        qbne ltr2, LT.wResumeCount, 0  ; And do processing if it wrapped
+	and r0.b0, LT.wResumeCount, 0x3
+        qbne ltr2, r0.b0, 0            ; And do processing every 4 resumes
 ltr1:   jal r3.w2, processPackets      ; Surface to C level, check for linux action
 ltr2:   resumeAgain                    ; Save, switch, resume at LinuxThreadRunner
 

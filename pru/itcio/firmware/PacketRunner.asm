@@ -24,7 +24,7 @@ PacketRunner:
 	ldi CT.bOut1Cnt, 0             ; Init 0 says we haven't transmitted any run of 1s lately
         ldi CT.bRSRV0, 'a'             ; XXXX: Make visible
         ldi CT.bRSRV1, 'b'             ; XXXX: Make visible
-	ldi32 CT.rTXDATMask, 0x1eacbeda; XXXX: Make visible
+        ldi32 CT.rRSRV2, 0x1eacbeda    ; XXXX: Make visible
 	ldi CT.bRSRV43, 'z'            ; XXXX: Make visible
 
         ;; FALL INTO getNextStuffedBit
@@ -200,6 +200,7 @@ resetAfterDelimiter:  ;; Here to set up for new inbound packet
         ldi CT.bInpByte, 0         ; We are on byte 0
         ldi CT.bInpBCnt, 0         ; We are on bit 0 of byte 0
         ldi CT.bInpData, 0         ; And that byte is all 0s so far
+        ldi CT.bInp1Cnt, 0         ; And we have seen 0 1s in a row
         jmp makeRisingEdge         ; And then we're done with this input bit
 
 handleGoodPacketDelimiter: ;; Here we finally have a finished packet!
@@ -265,6 +266,6 @@ highCheckClockPhases:
           qbbs clockHighLoop, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 1, you 1, we're good
         .else                            ; ON_PRU == 1
 	  qbbc clockHighLoop, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 1, you 0, we're good
-        .endif  
+        .endif
         jmp getNextStuffedBit   ; And THEN DO IT ALL AGAIN
        
