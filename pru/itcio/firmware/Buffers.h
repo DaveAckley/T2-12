@@ -118,9 +118,8 @@ extern void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
                                 unsigned ct6,
                                 unsigned ct7) ;
 
-/*return non-zero if non-empty packet actually sent*/
-extern int ipbSendPacket(unsigned prudir, unsigned char length) ;
-
+/*empty packets ignored; ipb packetsReceived++ if packet actually sent, else packetsRejected++ */
+extern void ipbSendPacket(unsigned prudir, unsigned char length) ;
 
 
 #define MAX_PACKET_SIZE 256

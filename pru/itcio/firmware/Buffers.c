@@ -16,7 +16,7 @@ unsigned minORBAvailablePruDirs(struct PruDirs * pd)
 int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned char len)
 {
   unsigned i;
-  if (!data || len >= orbAvailableBytes(orb)) {/* Available must strictly exceed len */
+  if (!data || len == 0 || len >= orbAvailableBytes(orb)) {/* Available must strictly exceed len */
     ++orb->packetsRejected;
     return 1;  
   }
@@ -53,8 +53,7 @@ void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
   if (packetLength < 37) {
     packetLength = 37;
   }
-  ipb->buffer[0] = PKT_ROUTED_STD_VALUE|PKT_STD_ERROR_VALUE;
-  ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/  
+  ipb->buffer[0] = PKT_ROUTED_STD_VALUE|PKT_STD_ERROR_VALUE|dircodeFromPrudir(prudir); /*Fill in our source direction*/  
   ipb->buffer[1] = 'F';
   ipb->buffer[2] = 'R';
   ipb->buffer[3] = 'M';
@@ -67,10 +66,11 @@ void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
   *((unsigned *) &ipb->buffer[28]) = ct6;
   *((unsigned *) &ipb->buffer[32]) = ct7;
   ipb->buffer[36] = '!';
-  CSendPacket(ipb->buffer, packetLength);
+  if (CSendPacket(ipb->buffer, packetLength))
+    ++ipb->packetsRejected; /* Losing a FRM is baad */
 }
 
-int ipbSendPacket(unsigned prudir, unsigned char length) {
+void ipbSendPacket(unsigned prudir, unsigned char length) {
   if (length) {
     struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
     ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
@@ -79,5 +79,4 @@ int ipbSendPacket(unsigned prudir, unsigned char length) {
     else
       ++ipb->packetsReceived;
   }
-  return 0;
 }

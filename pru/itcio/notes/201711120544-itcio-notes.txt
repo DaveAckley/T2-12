@@ -1,4 +1,4 @@
-{322}  -*- text -*-
+{323}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5271,7 +5271,18 @@ transferred.  Soon we'll undo some of the superstitious hacks recently
 done that slowed things down, and see if we can push the bitrate back
 up a bit.  But first we commit this.
 
+[322:
 
+Fri Dec 29 17:05:09 2017 Well, reundid a few things and got a little
+better:
+
+    sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 2.540147 sec; sent 1040414 bytes; 409.59 KBps, 3.277 Mbps
+
+for a 100*(3.277-3.084)/3.084 ~ 6% improvement..  I'm sure there's
+much more to be had with deeper understanding and work, but .. not
+right now..
+
+:322]
 :321]
 :320]
 
