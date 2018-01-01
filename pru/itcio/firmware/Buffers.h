@@ -73,7 +73,7 @@ inline unsigned int dircodeFromPrudir(unsigned prudir) {
   }
 }
 
-extern int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned char len) ;
+extern int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned len) ;
 
 inline unsigned int orbFrontPacketLenInline(struct OutboundRingBuffer * orb) {
   if (orbUsedBytes(orb) == 0) return 0;

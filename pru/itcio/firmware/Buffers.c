@@ -13,10 +13,10 @@ unsigned minORBAvailablePruDirs(struct PruDirs * pd)
   return min;
 }
 
-int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned char len)
+int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned len)
 {
   unsigned i;
-  if (!data || len == 0 || len >= orbAvailableBytes(orb)) {/* Available must strictly exceed len */
+  if (!data || len == 0 || len >= MAX_PACKET_SIZE || len >= orbAvailableBytes(orb)) {/* Available must strictly exceed len */
     ++orb->packetsRejected;
     return 1;  
   }
