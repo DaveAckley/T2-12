@@ -15,10 +15,13 @@
 #define PRU_MAX_DEVICES 2       /* PRU0, PRU1*/
 #define MINOR_DEVICES (PRU_MAX_DEVICES+1)  /* +1 for the ITC packet interface */
 #define RPMSG_BUF_SIZE 512
-#define MAX_PACKET_SIZE (RPMSG_BUF_SIZE-sizeof(struct rpmsg_hdr))
 
-/* ITC packets are max 255.  Guarantee space for 16 (256*16 == 4,096 == 2**12) */
-#define KFIFO_SIZE (1<<12)
+/*Note RPMSG takes up to 500+ but the ITCs need the length to fit in a byte */
+#define RPMSG_MAX_PACKET_SIZE (RPMSG_BUF_SIZE-sizeof(struct rpmsg_hdr))
+#define ITC_MAX_PACKET_SIZE 255
+
+#define KFIFO_SIZE (1<<12)   /* ITC packets are max 255.  Guarantee space for 16 (256*16 == 4,096 == 2**12) */
+
 /*unused? #define PROC_FIFO "itc-pkt-fifo"*/
 
 /* PRU special packets are expected to be smaller and rarer.  Give them 1KB each */

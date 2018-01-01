@@ -66,10 +66,10 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
            len, bufsiz, buf[0]);
   }
 
-  if (len >= MAX_PACKET_SIZE) {
+  if (len >= RPMSG_MAX_PACKET_SIZE) {
     printk(KERN_WARNING "send_msg_to_pru overlength (%d) packet (type='%c') truncated\n",
            len, buf[0]);
-    len = MAX_PACKET_SIZE - 1;
+    len = RPMSG_MAX_PACKET_SIZE - 1;
   }
 
   if (mutex_lock_interruptible(&devstate->specialLock))
@@ -150,7 +150,7 @@ static ssize_t itc_pin_write_handler(unsigned pru, unsigned prudir, unsigned bit
                                      const char *buf,
                                      size_t count)
 {
-  char msg[MAX_PACKET_SIZE];
+  char msg[RPMSG_MAX_PACKET_SIZE];
   int ret;
   unsigned val;
   if (sscanf(buf,"%u",&val) != 1)
@@ -166,7 +166,7 @@ static ssize_t itc_pin_write_handler(unsigned pru, unsigned prudir, unsigned bit
   */
 
   /* We wait for a return just to get it out of the buffer*/
-  ret = send_msg_to_pru(pru, 1, msg, MAX_PACKET_SIZE, "B%c%c-", bit, val);
+  ret = send_msg_to_pru(pru, 1, msg, RPMSG_MAX_PACKET_SIZE, "B%c%c-", bit, val);
   if (ret < 0) return ret;
 
   return count;
@@ -186,7 +186,7 @@ static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
                                     struct class_attribute *attr,
                                     char *buf)
 {
-  char msg[MAX_PACKET_SIZE];
+  char msg[RPMSG_MAX_PACKET_SIZE];
   int ret;
 
   /*
@@ -195,7 +195,7 @@ static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
          pru, prudir, bit);
   */
 
-  ret = send_msg_to_pru(pru, 1, msg, MAX_PACKET_SIZE, "Rxxxx-");
+  ret = send_msg_to_pru(pru, 1, msg, RPMSG_MAX_PACKET_SIZE, "Rxxxx-");
   if (ret < 0) return ret;
 
   if (msg[0]!='R' || msg[5] != '-') {
@@ -337,11 +337,11 @@ FOR_XX_IN_ITC_ALL_DIR
 
   
 /** @brief This callback used when data is being written to the device
- *  from user space.  This is primarily to be for MFM cache update
- *  packet transfer, but at present at this level, we're just talking
- *  about uninterpreted byte chunks (that fit in MAX_PACKET_SIZE).
- *  (Note also that MFM packets are less than 256 bytes (128?), but
- *  that is not reflected in the limits here.)
+ *  from user space.  Note that although rpmsg allows messages over
+ *  500 bytes long, so that's the limit for talking to a local PRU,
+ *  intertile packets are limited to at most 255 bytes.  Here, that
+ *  limit is enforced only for minor 2 (/dev/itc/packets) because
+ *  packets sent there are necessarily routable intertile.
  *
  *  @param filp A pointer to a file object
  *  @param buf The buffer to that contains the data to write to the device
@@ -359,8 +359,8 @@ static ssize_t itc_pkt_write(struct file *filp,
 
   devstate = filp->private_data;
 
-  if (count > MAX_PACKET_SIZE) {
-    dev_err(devstate->dev, "Data larger than buffer size");
+  if (count > RPMSG_MAX_PACKET_SIZE) {
+    dev_err(devstate->dev, "Data length (%d) exceeds rpmsg buffer size", count);
     return -EINVAL;
   }
 
@@ -371,9 +371,17 @@ static ssize_t itc_pkt_write(struct file *filp,
 
   if (MINOR(devstate->devt) == 2) {
     int newMinor = routeStandardPacket(driver_buf, count);
+
     //    printk(KERN_INFO "CONSIDERINGO ROUTINGO\n");
-    if (newMinor < 0)
-      return newMinor;
+    if (newMinor < 0) 
+      return newMinor;          // bad routing
+
+    if (count > ITC_MAX_PACKET_SIZE) {
+      dev_err(devstate->dev, "Routable packet size (%d) exceeds ITC length max (255)", count);
+      return -EINVAL;
+    }
+
+
     if (newMinor < 2) {
       DBGPRINTK(DBG_PKT_ROUTE,
                 KERN_INFO "Routing '%x'+%d packet to PRU%d\n",driver_buf[0],count,newMinor);
@@ -485,11 +493,6 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
 
   //  printk(KERN_INFO "Received %d from %d\n",len, minor);
 
-  if (len > 255) {
-    printk(KERN_ERR "Truncating overlength (%d) packet\n",len);
-    len = 255;
-  }
-
   DBGPRINT_HEX_DUMP(DBG_PKT_RCVD,
                     KERN_INFO, minor ? "<pru1: " : "<pru0: ",
                     DUMP_PREFIX_NONE, 16, 1,
@@ -497,8 +500,21 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
 
   if (len > 0) {
     int wake = -1;
+    u8 type =  *(u8*) data;
+
     // ITC data if first byte MSB set
-    if ((*(char*)data)&0x80) {
+    if (type&0x80) {
+      if (type&0x10) {
+        printk(KERN_ERR "Packet overrun reported on size %d packet\n",len);
+      }
+      if (type&0x08) {
+        printk(KERN_ERR "Packet error reported on size %d packet\n",len);
+      }
+      if (len > ITC_MAX_PACKET_SIZE) {
+        printk(KERN_ERR "Truncating overlength (%d) packet\n",len);
+        len = ITC_MAX_PACKET_SIZE;
+      }
+
       kfifo_in(&S.itcPacketKfifo, data, len);
       wake_up_interruptible(&S.itcPacketWaitQ);
     } else if (minor == 0) {
