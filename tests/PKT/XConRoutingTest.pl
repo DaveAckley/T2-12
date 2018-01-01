@@ -9,13 +9,14 @@ my $expandos = scalar(@ARGV);
     
 my $pktdev = "/dev/itc/packets";
 my $mode = O_RDWR;
+my $tag = scalar(localtime());
 my @args = ("-nb",
-            "\x81GO1NE girl grill chief complaintive been w2orking on the rr all the live long \x01\xff\xff\xfe",
-            "\x83GO3SE spot run down home base belong to us three us four us 5% dance \x07\xff\xff\xf8",
-            "\x85GO5SW atting flies firing the odd shot here and there at the flare doo dah \x1f\xff\xff\xf0",
-            "\x86GO6WTabix white bread and call it wheat but society survives the apocalypto \x3f\xff\xff\xe0",
-            "\x87GO7NW passage rosemary thyme bomb thumb bluze brothers mothers of pretension \x7f\xff\xff\xc0",
-            "\x82GO2ET phone home run down town bus run all night long doo dah doo dah  dit dah \x03\xff\xff\xfc",
+            "\x81${tag}GO1NE girl grill chief complaintive been w2orking on the rr all the live long \x01\xff\xff\xfe",
+            "\x83${tag}GO3SE spot run down home base belong to us three us four us 5% dance \x07\xff\xff\xf8",
+            "\x85${tag}GO5SW atting flies firing the odd shot here and there at the flare doo dah \x1f\xff\xff\xf0",
+            "\x86${tag}GO6WTabix white bread and call it wheat but society survives the apocalypto \x3f\xff\xff\xe0",
+            "\x87${tag}GO7NW passage rosemary thyme bomb thumb bluze brothers motherssage rosemary thyme bomb thumb bluze brothers motherssage rosemary thyme bomb thumb bluze brothers mothers of pretension \x7f\xff\xff\xc0",
+            "\x82${tag}GO2ET phone home run down town bus run all night long doo dah doo dah  dit dah \x03\xff\xff\xfc",   
 );
 my %rcvcount;
 if (scalar(@args)) {
@@ -24,16 +25,14 @@ if (scalar(@args)) {
         $mode |= O_NONBLOCK;
     }
 }
-my $tag = sprintf("%04d",rand()*1000);
 my $gots = 0;
-for (my $i = 0; $i < scalar(@args); ++$i) {
-    $args[$i] .= $tag;
-}
 for (my $i = 0; $i < $expandos; ++$i) {
     @args = (@args, @args);
 }
-my @sndstoppers = ("\x81END\x81",   "\x82END\x82",   "\x83END\x83",   "\x85END\x85",   "\x86END\x86",   "\x87END\x87");
-my %rcvstoppers = ("\x85END\x81"=>1,"\x86END\x82"=>1,"\x87END\x83"=>1,"\x81END\x85"=>1,"\x82END\x86"=>1,"\x83END\x87"=>1);
+my @sndstoppers = ("\x81${tag}END\x81",   "\x82${tag}END\x82",   "\x83${tag}END\x83", 
+                   "\x85${tag}END\x85",   "\x86${tag}END\x86",   "\x87${tag}END\x87");
+my %rcvstoppers = ("\x85${tag}END\x81"=>1,"\x86${tag}END\x82"=>1,"\x87${tag}END\x83"=>1,
+                   "\x81${tag}END\x85"=>1,"\x82${tag}END\x86"=>1,"\x83${tag}END\x87"=>1);
 @args = (@args, @sndstoppers);
 use Time::HiRes;
 print "start $tag\n";
