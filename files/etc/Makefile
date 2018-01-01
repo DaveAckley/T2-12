@@ -1,4 +1,4 @@
-CONF_INPUTS:=pruss-blacklist.conf fbtft.conf
+CONF_INPUTS:=pruss-blacklist.conf fbtft.conf T2-12-modprobe.conf
 CONF_OUTPUT_DIR:=/etc/modprobe.d
 CONF_OUTPUTS:=$(patsubst %,$(CONF_OUTPUT_DIR)/%,$(CONF_INPUTS))
 

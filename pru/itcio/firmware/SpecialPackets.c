@@ -193,12 +193,10 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
 
   /* PACKET TYPE: '*' Wildcard debug, content non-standardized, can change at will */
   case '*': {                        
-    if (len < 4) fillFail("[PKLEN]",packet,len);
+    if (len < 10) fillFail("[PKLEN]",packet,len);
     else {
-      int32_t a = packet[1];
-      int32_t b = packet[2];
-      int32_t ret = addfuncasm(a,b);
-      packet[3] = (uint8_t) ret;
+      uint32_t * cmemptr = (uint32_t *) 0xA0000000;
+      *((uint32_t *) &packet[3]) = *cmemptr;
     }
     break;
   }
