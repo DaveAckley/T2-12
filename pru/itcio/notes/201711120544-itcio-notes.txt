@@ -1,4 +1,4 @@
-{323}  -*- text -*-
+{328}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5293,3 +5293,154 @@ right now..
 :317]
 
 :316]
+[323:
+
+Mon Jan  1 02:20:25 2018 Happy New Year.  Ninth conversation on
+Computing Up shipped last night to round out 2017.
+
+So, look at this:
+
+    # modprobe cmemk phys_start=0xa0000000 phys_end=0xc0000000 pools=1x1048576 allowOverlap=1
+    # 
+
+yielding:
+
+    [ 4655.929111] CMEMK module: reference Linux version 4.4.54
+    [ 4655.935760] cmem_init: allowOverlap parameter has been deprecated, ignoring...
+    [ 4655.981693] allocated heap buffer 0xa0000000 of size 0x1ff00000
+    [ 4656.000772] cmemk initialized
+
+followed by:
+
+    # /home/t2/devmem2/devmem2 0xa0000000 w 0x1010babe
+    /dev/mem opened.
+    Memory mapped at address 0xb6fc1000.
+    Value at address 0xA0000000 (0xb6fc1000): 0xDABEAC1E
+    Written 0x1010BABE; readback 0x1010BABE
+    # 
+
+and then rehack the '*' packet like this:
+
+      case '*': {                        
+        if (len < 10) fillFail("[PKLEN]",packet,len);
+        else {
+          uint32_t * cmemptr = (uint32_t *) 0xA0000000;
+          *((uint32_t *) &packet[3]) = *cmemptr;
+        }
+        break;
+      }
+
+and then do this:
+
+        # echo '*ddddddddddddddddd' > /dev/itc/pru0
+
+    and then see this:
+
+    [ 5136.556071] itc_pkt_open 246:0
+    [ 5136.559487] itc_pkt itc!pru0: Sending length 19 type '*' packet
+    [ 5136.565562] <pru0: 2a 64 64 be ba 10 10 64 64 64 64 64 64 64 64 64  *dd....ddddddddd
+                                   ^^ ^^ ^^ ^^
+    [ 5136.573397] <pru0: 64 64 0a                                         dd.
+    [ 5136.602762] itc_pkt_release 246:0
+
+then rinsen repeat:
+
+    # /home/t2/devmem2/devmem2 0xa0000000 w 0x89abcdef
+    /dev/mem opened.
+    Memory mapped at address 0xb6f41000.
+    Value at address 0xA0000000 (0xb6f41000): 0x1010BABE
+    Written 0x89ABCDEF; readback 0x89ABCDEF
+    # echo '*ddddddddddddddddd' > /dev/itc/pru0
+    # 
+
+getting
+
+    [ 7709.233665] <pru0: 2a 64 64 ef cd ab 89 64 64 64 64 64 64 64 64 64  *dd....ddddddddd
+                                   ^^ ^^ ^^ ^^
+    [ 7709.241541] <pru0: 64 64 0a                                         dd.
+
+til the cows come home.
+
+[324:
+
+Mon Jan  1 02:43:13 2018 So we have 'proof of concept' for us talking
+directly between linux and the prus with no fogging rpmsg vring
+chokepoint middleman.  I would love to know if/how I could use the
+kfifo headers on the clpru side of things..
+
+I see from some web pages that the mapping that (the syscall under)
+devmem2 uses sets the associated memory to uncached, which (from some
+web page user's point of view) dramatically reduced the copying
+throughput down to 'only' 5MBps-ish.  At this point I'd be happy with
+half that -- 'only' 20Mbps -- as that will almost surely move the
+bottleneck solidly into the bitbangers, and I suppose eventually, if I
+bum the asm enough, into signal reliability on the wires.
+
+[325:
+
+Mon Jan  1 02:50:09 2018 Now, unfortunately google is saying this:
+
+    Your search - clpru kfifo - did not match any documents.
+
+without any quoting or anything on my part.  Ouch.
+
+[326:
+
+Mon Jan  1 02:56:04 2018 Well but we could use my lame-o Buffers.[hc]
+on the linux side no problem, one would think..  If we armored it for
+independent readers and writers, which we hadn't needed to yet.[327:
+
+Mon Jan  1 03:10:19 2018 Well it seems like it should mostly work..
+orbUsedBytes is where both writePtr and readPtr are involved.. but as
+long each side only advances their own pointer and then only after
+they know it's safe as far as the other side is concerned..
+
+So suppose we had most of a megabyte -- actually let's not go too
+crazy yet -- suppose we had 48KB-64KB of RAM to call our buffers.  How
+should we split it up?
+
+We'd like at least 6xinbound and 6xoutbound buffers, reasonably
+symmetric, so if we 4KB x 12 buffers that would be 48K which should be
+froggin plenty -- 4KB is a minimum of 16 packets each, and probably
+many more if we're talking MFM cache updates at perhaps 150bytes
+average -- 25 packets or more buffered in each direction..
+
+Now if we wanted we could support QoS and have priority and background
+queues in each direction -- maybe like four 2KB buffers for each ITC,
+a priority pair and a background pair.  Cache traffic would go in the
+priority channel, and I guess we'd need to draft that last bit in the
+routed header for QoS, so the receiving engine would know which
+inbound queue to place it on.  Then when the engines needed a new
+packet to send they would always look first to the priority outbound
+queue and only take from the background outbound if the priority queue
+was empty.
+
+All so that we could mix background system update traffic with live
+cache updates without crushing the latter.  There still would be up to
+a packet's delay once we had decided to ship something from the
+background channel, but we could be rsyncing .mfz files and whatever
+while events are running..
+
+(Hmm could the background stream be byte-oriented instead of packet
+oriented?  So we could just pull one byte at a time from the
+background stream as long as there was no priority traffic?  But if we
+were going to support more than one sending/receiving port in
+background traffic we'd still need some kind of headers..)
+
+Would be nice to be able to do a select() from userspace on fds for
+all the ITCs and be able to wake up and read a packet promptly.
+
+Not clear how our Buffers.[ch] would handle the PRU generating
+interrupts on linux when the buffers go either non-empty or mostly
+full or whatever..
+
+Could do it with kooky rpmsgs I suppose.  'Hey check your cmem
+buffers.'
+
+:327]
+
+:326]
+:325]
+
+:324]
+:323]
