@@ -62,6 +62,7 @@ int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsig
   if (pbAvailableBytes(pb) < length + 1) return -PBE_NOMEM;
   pbStartWritingPendingPacket(pb);
   while (length-- > 0) pbWriteByteInPendingPacketInline(pb, *data++);
+  pbCommitPendingPacket(pb);
   return 0;
 }
 
