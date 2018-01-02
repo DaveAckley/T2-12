@@ -1,4 +1,4 @@
-{333}  -*- text -*-
+{336}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5576,6 +5576,137 @@ clearing my allegedly private and mine shared state, hard enough that
 I had to power cycle.  But the disk seems to be consistent so I'm
 thankful for that, and taking the brush-with-doom as a reminder to
 commit this crab somewhere.  So I've made 'cmem-spikes' branch and am
-starting to commit there.
+starting to commit there.[333:
+
+Tue Jan  2 10:20:19 2018 So from looking at what info I can find about
+using CMEM and CMA, it seems the 'devmem2' idea of doing the mmap on
+top of /dev/mem is not really it.  Or at least, I'm suspecting that
+I have not achieved the desired 'carve out' and therefore even though
+PRU and ARM demonstrated they could both read and write location
+0xa0000000, that address was probably actually allocated for something
+else.  And once I called my 'initSharedState', which modified not just
+that address but a whole bunch afterwards, I quickly stepped on stuff
+that mattered to somebody and killed linux.
+
+'Everybody' seems to agree that when you're using CMA properly, you
+(ARM LKM) eventually get handed a physical base address to use, and
+you have to send that to PRU so it knows where to operate.[334:
+
+Tue Jan  2 11:53:46 2018 Trying a cmdline 'carveout' with
+
+cmdline=coherent_pool=1M net.ifnames=0 mem=99M@0x80000000 mem=384M@0x88000000
+
+Not sure about anything, including whether we want that coherent_pool
+arg in there as well or not.
+
+Here's a 'before' picture:
+
+    root@beaglebone:/home/t2/T2-12# cat /proc/meminfo 
+    MemTotal:         499784 kB
+    MemFree:          242092 kB
+    MemAvailable:     401068 kB
+    Buffers:           50556 kB
+    Cached:           108236 kB
+    SwapCached:            0 kB
+    Active:           142196 kB
+    Inactive:          85948 kB
+    Active(anon):      69460 kB
+    Inactive(anon):     2700 kB
+    Active(file):      72736 kB
+    Inactive(file):    83248 kB
+    Unevictable:           0 kB
+    Mlocked:               0 kB
+    HighTotal:             0 kB
+    HighFree:              0 kB
+    LowTotal:         499784 kB
+    LowFree:          242092 kB
+    SwapTotal:             0 kB
+    SwapFree:              0 kB
+    Dirty:                68 kB
+    Writeback:             0 kB
+    AnonPages:         69376 kB
+    Mapped:            24212 kB
+    Shmem:              2812 kB
+    Slab:              22508 kB
+    SReclaimable:      13744 kB
+    SUnreclaim:         8764 kB
+    KernelStack:         808 kB
+    PageTables:         1088 kB
+    NFS_Unstable:          0 kB
+    Bounce:                0 kB
+    WritebackTmp:          0 kB
+    CommitLimit:      249892 kB
+    Committed_AS:     172568 kB
+    VmallocTotal:     507904 kB
+    VmallocUsed:           0 kB
+    VmallocChunk:          0 kB
+    CmaTotal:          49152 kB
+    CmaFree:           48072 kB
+
+Rebooting..
+[335:
+
+Tue Jan  2 11:58:49 2018 Rebooted.
+
+'After' picture:
+
+    root@beaglebone:~# cat /proc/meminfo 
+    MemTotal:         470304 kB
+    MemFree:          311396 kB
+    MemAvailable:     375028 kB
+    Buffers:           10204 kB
+    Cached:            55460 kB
+    SwapCached:            0 kB
+    Active:            90668 kB
+    Inactive:          41092 kB
+    Active(anon):      66184 kB
+    Inactive(anon):     2568 kB
+    Active(file):      24484 kB
+    Inactive(file):    38524 kB
+    Unevictable:           0 kB
+    Mlocked:               0 kB
+    HighTotal:             0 kB
+    HighFree:              0 kB
+    LowTotal:         470304 kB
+    LowFree:          311396 kB
+    SwapTotal:             0 kB
+    SwapFree:              0 kB
+    Dirty:                28 kB
+    Writeback:             0 kB
+    AnonPages:         66092 kB
+    Mapped:            24156 kB
+    Shmem:              2660 kB
+    Slab:              19776 kB
+    SReclaimable:      11052 kB
+    SUnreclaim:         8724 kB
+    KernelStack:         824 kB
+    PageTables:         1052 kB
+    NFS_Unstable:          0 kB
+    Bounce:                0 kB
+    WritebackTmp:          0 kB
+    CommitLimit:      235152 kB
+    Committed_AS:     171020 kB
+    VmallocTotal:     507904 kB
+    VmallocUsed:           0 kB
+    VmallocChunk:          0 kB
+    CmaTotal:          49152 kB
+    CmaFree:           48072 kB
+    root@beaglebone:~# 
+
+and we immediately see:
+
+    MemTotal:         499784 kB
+
+vs
+
+    MemTotal:         470304 kB
+
+for a difference of like 30MB..
+
+:335]
+
+:334]
+
+:333]
 
 :332]
