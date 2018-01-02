@@ -17,7 +17,8 @@
 
 #include "PacketBuffer.h"
 
-#define SHARED_PHYSICAL_BASE_ADDRESS 0xa0000000UL
+//#define SHARED_PHYSICAL_BASE_ADDRESS 0xa0000000UL
+#define SHARED_PHYSICAL_BASE_ADDRESS 0x87f00000UL
 
 ////////////////////
 struct QoSPacketBufferPair {

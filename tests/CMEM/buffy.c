@@ -72,7 +72,9 @@ void * sharedStateVirtualBaseAddress;
 int main(int argc, char **argv) {
   int tag;
   int fd;
-  off_t target = 0xa0000000UL;
+  /*  off_t target = 0xa0000000UL; */
+  off_t target = (off_t) getSharedStatePhysical(); /*0x87f00000UL;*/
+
   struct SharedState * ss;
   int pru = 0, prudir = 0, in = 0, bulk = 0;
 
