@@ -51,7 +51,8 @@ dtb=am335x-bonegreen-t2-12.dtb
 # AHAX
 # was:cmdline=coherent_pool=1M net.ifnames=0 quiet cape_universal=enable
 # was: cmdline=coherent_pool=1M net.ifnames=0 cape_universal=enable
-cmdline=coherent_pool=1M net.ifnames=0
+# 201801021119 was: cmdline=coherent_pool=1M net.ifnames=0
+cmdline=coherent_pool=1M net.ifnames=0 mem=99M@0x80000000 mem=384M@0x88000000
 
 #In the event of edid real failures, uncomment this next line:
 #cmdline=coherent_pool=1M net.ifnames=0 quiet cape_universal=enable video=HDMI-A-1:1024x768@60e
@@ -68,4 +69,4 @@ cmdline=coherent_pool=1M net.ifnames=0
 
 ##enable Generic eMMC Flasher:
 ##make sure, these tools are installed: dosfstools rsync
-#cmdline=init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh
+#cmdline=init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3-bbg.sh
