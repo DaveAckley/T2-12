@@ -1,4 +1,4 @@
-{328}  -*- text -*-
+{333}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5436,11 +5436,146 @@ full or whatever..
 
 Could do it with kooky rpmsgs I suppose.  'Hey check your cmem
 buffers.'
+[328:
 
-:327]
+Mon Jan  1 06:38:39 2018 Started into tests/CMEM/buffy.c to try
+talking to the prus straight from userspace.  Was trying to include
+Buffers.h but bailed out of that.  After sleep will start a new
+Buffers approach that
+
+ C.1: Does not depend on prux.h or ON_PRU, and
+
+ C.2: Is unidirectional, without an inbound vs outbound distinction,
+      to be used in both directions by both sides.
+
+ C.3: Figure out where the buffers will go for PRU0, PRU1, and ARM.
+
+ C.4: Make some special packets to drive it from the pru side for
+      testing. 
+
+ C.5: Get buffy.c talking to those packets.
+
+:328]
+:327][329:
+
+Mon Jan  1 12:36:03 2018 Had random rare frame errors on SW while
+sleeping.  
+
+    [   48.472262] graphics fb0: fb_ili9486 frame buffer, 480x320, 300 KiB video memory, 32 KiB DMA buffer memory, fps=15, spi1.0 at 32 MHz
+    [17191.643583] Packet error reported on size 37 packet
+    [21871.941249] Packet error reported on size 37 packet
+    [22022.983857] Packet error reported on size 37 packet
+    [23880.556600] Packet error reported on size 37 packet
+    [24017.274371] Packet error reported on size 37 packet
+    [24029.035884] Packet error reported on size 37 packet
+    [24088.021710] Packet error reported on size 37 packet
+
+So that's :(.  I pushed on the connectors and got a flurry more:
+
+    [24088.021710] Packet error reported on size 37 packet
+    [25963.457066] Packet error reported on size 37 packet
+ ..20 lines omitted..
+    [25968.013338] Packet error reported on size 37 packet
+    [25968.169474] Packet error reported on size 176 packet
+    [25968.319663] Packet error reported on size 37 packet
+    [25968.469820] Packet error reported on size 37 packet
+    [25968.619909] Packet error reported on size 37 packet
+    [25968.803156] Packet error reported on size 190 packet
+    [25969.070212] Packet error reported on size 37 packet
+    [25969.220353] Packet error reported on size 37 packet
+    [26067.980229] Packet error reported on size 75 packet
+    [26068.159536] Packet error reported on size 135 packet
+
+but now I can mess with both the SW and NE connections pretty hard and
+not see any further errors..  Hmm..
+
+Well, there I made another one by pushing on the connectors:
+
+    [27222.222959] Packet error reported on size 41 packet
+
+Urgh and there were two more, just as I was sitting here doing
+nothing.  I'm not hexdumping packets to dmesg at the moment but here's
+what they look like raw:
+
+    root@beaglebone:/home/t2/T2-12# cat /dev/itc/packets 
+    çFRM  ⁄ ab  ⁄æ¨'µjLK  z!                                     ﬂ¡0SW:4c6ab52f PSçFRM  ⁄ ~ab⁄æ¨kkLá  z!                                                                                                 ‡¡0SW:4c6b068f PSçFRM  ⁄ ab  ⁄æ¨∑Ë {)  z!   <¡0SW:7bcae8bf PSçFRM  ⁄ ab  ⁄æ¨áq«~  z!¡0SW:7ec7718f PSçFRM  ⁄ ab  ⁄æ¨^Œ~  z!¡0SW:7ece5e1f PS
+
+[330:
+
+Mon Jan  1 12:58:31 2018 Which is all a bummer, amongst all the
+bummers with which to be dealt.  ..Seems like messing with the NE
+connector might be a bit more implicated in making SW FRMs than
+the actual SW connector..
+
+Anyway, that's to be kept in mind going forward, and in particular
+when trying other boards and other connectors on and between boards:
+Do we see evidence of a higher rate of FRMs among NE and/or SW
+connectors, compared to the rest?
+
+Note that a stuck failure on a *DAT line is probably the easiest way
+to imagine a FRM, but extra bounces on a *RDY will absolutely do it
+too, and at the moment we have no way to distinguish those two cases
+if they occur during back-to-back frame delimiters.
+
+Which also highlights a perhaps-we-want-to-fix-this-before-it-gets-
+any-more-deeply-built-in issue about the status flags that we're
+currently specifying in the packet header.  The problems are that
+
+ - they're kind of a pain in the ass to use, and
+
+ - their meaning isn't all that clear -- as in this example -- and
+
+ - the idea of being able to gain useful information from the body of
+   a packet with OVR or ERR set is seeming increasingly unlikely as we
+   actually start writing code.
+
+The 'obvious' alternative is to take these flags out of the header,
+replace them with some signal OoB code meaning 'this is a status
+report about an event that just occurred'.  That in the simplest cases
+will be a one byte packet but in general might have status-specific
+additional information if we want it.
+
+So in the immediate case, we might have different subcodes or
+something, for the different error paths in PacketThreadRunner.. [331:
+
+Mon Jan  1 14:11:22 2018 Well, spent time in tests/CMEM/PacketBuffer.h
+diddling with revised packet header formats.  Not sure how much
+progress I made, but now there's a mechanism for PRU to tell ARM
+explicitly about sync gained and lost.  In the end I allowed 
+'Standard Status Packets' to have additional bytes which in many cases
+are expected to be the corpse of the packet -- if any --than
+encountered the failure.  We'll see if that's ever any use for
+debugging or whatever.
+
+And it's also unclear whether the corpse packet, if present, is
+expected to be byte-shifted by one so that what would have been the
+first byte of the corpse packet becomes the second byte of the
+standard status packet.  Or not -- if the standard status packet
+header replaces the first byte of the packet in which the
+status-reportable event occurred.  The former seems more likely to be
+useful but may be harder to implement -- and may require truncating
+the corpse at the back if it was already max length..
+
+We'll see.
+
+:331]
+
+:330]
+
+:329]
 
 :326]
 :325]
 
 :324]
 :323]
+[332:
+
+Tue Jan  2 03:12:28 2018 OK, so I blew up linux by 'innocently'
+clearing my allegedly private and mine shared state, hard enough that
+I had to power cycle.  But the disk seems to be consistent so I'm
+thankful for that, and taking the brush-with-doom as a reminder to
+commit this crab somewhere.  So I've made 'cmem-spikes' branch and am
+starting to commit there.
+
+:332]
