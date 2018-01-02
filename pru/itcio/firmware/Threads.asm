@@ -3,6 +3,7 @@
         .cdecls C,LIST
         %{
         #include "Threads.h"
+        #include "PacketBuffer.h"
         #include "prux.h"
         %}
 

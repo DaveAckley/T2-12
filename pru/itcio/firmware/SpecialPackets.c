@@ -6,6 +6,7 @@ volatile register uint32_t __R31;
 volatile register uint32_t __R30;
 
 #include "Threads.h"
+#include "SharedState.h"
 
 typedef struct iostream {
   uint8_t * data;
@@ -195,8 +196,9 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
   case '*': {                        
     if (len < 10) fillFail("[PKLEN]",packet,len);
     else {
-      uint32_t * cmemptr = (uint32_t *) 0xA0000000;
-      *((uint32_t *) &packet[3]) = *cmemptr;
+      struct SharedState * ss = getSharedStatePhysical();
+      struct SharedStatePerPru * sspp = &ss->pruState[ON_PRU];
+      *((uint32_t *) &packet[3]) = *(uint32_t*) sspp;
     }
     break;
   }

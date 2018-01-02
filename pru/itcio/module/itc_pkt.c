@@ -15,7 +15,7 @@
 #include "itc_pkt.h"
 
 /* define MORE_DEBUGGING to be more verbose and slow*/
-//#define MORE_DEBUGGING 1
+#define MORE_DEBUGGING 1
 
 #ifndef MORE_DEBUGGING
 #define MORE_DEBUGGING 0

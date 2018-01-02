@@ -13,14 +13,14 @@
 # 
 
 # PRU_CGT environment variable must point to the TI PRU compiler directory. E.g.:
-#(Linux) export PRU_CGT=/home/jason/ti/ccs_v6_1_0/ccsv6/tools/compiler/ti-cgt-pru_2.1.0
-#(Windows) set PRU_CGT=C:/TI/ccs_v6_0_1/ccsv6/tools/compiler/ti-cgt-pru_2.1.0
-
 PRU_CGT:=/usr/share/ti/cgt-pru
 
 LINKER_COMMAND_FILE=./AM335x_PRU.cmd
 LIBS=--library=../../lib/rpmsg_lib.lib
-INCLUDE=--include_path=../../include --include_path=../../include/am335x
+INCLUDE+=--include_path=../../include
+INCLUDE+=--include_path=../../include/am335x
+INCLUDE+=--include_path=../common
+INCLUDE+=--include_path=/usr/include/asm-generic
 # stack and heap sizes set in AM335x_PRU.cmd
 # STACK_SIZE=0x300
 # HEAP_SIZE=0x100
@@ -55,6 +55,14 @@ CHDR_FILES:=$(patsubst %.c,%.h,$(CSRC_FILES))
 COBJ0_FILES:=$(patsubst %.c,$(GEN_DIR)/%_pru0.object,$(CSRC_FILES))
 COBJ1_FILES:=$(patsubst %.c,$(GEN_DIR)/%_pru1.object,$(CSRC_FILES))
 
+# Shared state source files
+SHARED_STATE_DIR:=../common
+SHARED_STATE_C_FILES:=$(wildcard $(SHARED_STATE_DIR)/*.c)
+SHARED_STATE_HDR_FILES:=$(patsubst %.c,%.h,$(SHARED_STATE_C_FILES))
+SHARED_STATE_COBJ_FILES+=$(patsubst $(SHARED_STATE_DIR)/%.c,$(GEN_DIR)/%_pru.object,$(SHARED_STATE_C_FILES))
+COBJ0_FILES+=$(SHARED_STATE_COBJ_FILES)
+COBJ1_FILES+=$(SHARED_STATE_COBJ_FILES)
+
 # 'Standard organization' asm source files
 ASRC_FILES+=PacketRunner.asm
 ASRC_FILES+=Threads.asm
@@ -84,6 +92,11 @@ $(PRU0_FW):	$(OBJ0_FILES) $(LINKER_COMMAND_FILE)
 	@echo 
 
 # CC
+$(GEN_DIR)/%_pru.object: $(SHARED_STATE_DIR)/%.c $(SHARED_STATE_DIR)/%.h $(C_ALL_DEP)
+	@mkdir -p $(GEN_DIR)
+	@echo 'CC	$< (pru[01])'
+	@$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
+
 $(GEN_DIR)/%_pru0.object: %.c %.h $(C_ALL_DEP)
 	@mkdir -p $(GEN_DIR)
 	@echo 'CC	$< (pru0)'
@@ -108,6 +121,9 @@ $(GEN_DIR)/%_pru1.object: %.asm $(ASM_ALL_DEP)
 
 
 .PHONY: install copy_pru0_fw copy_pru1_fw reboot_pru_1 reboot_pru_0
+
+# COMMON
+
 
 #Let module side do the rebooting
 #WAS:install: build copyfw rebootprus
