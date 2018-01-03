@@ -1,4 +1,4 @@
-{346}  -*- text -*-
+{350}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5806,6 +5806,90 @@ Tue Jan  2 22:29:14 2018 OK we tightened up the '*' command so that it
 just does stuff it's entitled to.  Committing this and then we need to
 move on.  How do we take the next step?  Trying to integrate straight
 into itc_pkt feels too big.  Maybe evaluate that next and see about
-breaking it down.
+breaking it down.[346:
+
+Tue Jan  2 22:38:21 2018 OK so the main pending issue is
+notifications.  How does itc_pkt know to wake up and check the queues?
+Use the rpmsg interrupt?  Try and fucking figure out interrupts
+ourselves?
+
+Does rpmsg officially expose its 'kick' method?  Could we just call
+that without actually sending a message?[347:
+
+Tue Jan  2 22:43:22 2018 Well, so the money shot for kick is awfully
+small:
+
+    int16_t pru_virtqueue_kick(struct pru_virtqueue *vq) {
+ ..ignorable stuff..
+            /* Generate a system event to kick the ARM */
+            __R31 = (INT_ENABLE | (vq->to_arm_event - INT_OFFSET)); 
+and done.
+            return PRU_VIRTQUEUE_SUCCESS;
+    }
+
+[348:
+
+Tue Jan  2 22:45:56 2018 Except on the itc_pkt side, we don't handle
+that interrupt directly.  The signature of our callback is
+
+    void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
+                    void *data , int len , void *priv,
+                    u32 src )
+
+meaning somebody else has broken it down to the rpmsg packet level,
+and presumably itc_pkt_cb doesn't get called at all unless there's a
+real packet to handle..
+
+Well we could live with that for starters..  Have the PRU side send
+either a null packet or possibly some tiny status info, and let
+itc_pkt poll the inbound queues.
+
+Note also though that the _cb call is PRU-device specific:
+
+      ITCDeviceState * devstate = dev_get_drvdata(&rpmsg_dev->dev);
+      int minor = MINOR(devstate->devt);
+
+so as it stands we not only know we got an rpmsg packet but also know
+which PRU it came from.
+
+Hacking itc_pkt at this point _is_ too big.
+
+What I'd really like to know, as we face moving back into kernel mode
+and away from this wild west /dev/mem chaos, is how to use the CMA API
+properly to come up with a real shared state that all linux agrees is
+mine to use.  The whole thing where I then have to send an rpmsg
+packet to the PRUs telling them where the shared state is.
+
+But we have no examples of this as yet.  People talk about something
+in some DMA driver but I haven't tried to run that down..
+
+:348]
+
+:347]
+
+:346]
 
 :345]
+[349:
+
+Wed Jan  3 14:59:50 2018 Well just committed a substantial reorg to
+get SharedState working on the kernel module side.  That required sad
+#ifdefs in common/ and all sorts of at least sufficient renaming and
+rehacking to get itc_pkt once again accepted as non-kernel-tainting.
+
+Also figured out module parameters a bit so now we can set debugging
+flags at insmod time FWIW.
+
+Current status is that itc_pkt now apparently successfully allocates a
+chunk of coherent dma memory at insmod time, and gives it back at
+rmmod time, and initializes it to be legal shared state.  Big next
+stop would be to
+
+ - Send a packet to each PRU telling them the shared state physical
+   address, and
+
+ - demo them using it via the '*' packet..
+
+But first pushing.
+
+:349]
