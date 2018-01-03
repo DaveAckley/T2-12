@@ -237,6 +237,7 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
               if (cmd == 'r') sss.inbound = 0; /* We read only from outbound */
               else sss.inbound = 1;            /* and write only to inbound */
               pb = getPacketBufferIfAny(ss,&sss);
+
               if (!pb) {
                 *data = 0;
               } else if (cmd == 'r') {
