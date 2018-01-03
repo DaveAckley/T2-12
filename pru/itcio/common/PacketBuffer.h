@@ -81,7 +81,11 @@
  *  111 7 Packet sync achieved (1 byte packet)
  */
 
+#ifdef __KERNEL__
+#include <linux/string.h> /*for memset*/
+#else
 #include <string.h> /*for memset*/
+#endif
 
 /* IMPLEMENTATION NOTE:
  *
@@ -106,6 +110,12 @@ struct PacketBuffer {
   unsigned short readIdx;       /* Count of bytes read in not-yet-dropped oldest packet */
   unsigned char buffer[];       /* Actual buffer storage starts here */
 };
+
+#ifdef GCC_SYNC_PACKETS
+#define SYNC_MEMORY()  __sync_synchronize()
+#else
+#define SYNC_MEMORY() do { } while (0)
+#endif
 
 #define SIZEOF_PACKET_BUFFER_HEADER 32
 
@@ -178,6 +188,7 @@ static inline unsigned int pbCommitPendingPacketInline(struct PacketBuffer *pb) 
   if (pb->writeIdx == 0) return 0;
   pb->buffer[pb->writePtr] = pb->writeIdx;
   /* Packet becomes visible to reader when writePtr is updated. */
+  SYNC_MEMORY();
   pb->writePtr = (pb->writePtr + pb->writeIdx + 1) & pb->bufferMask;
   pbStartWritingPendingPacketInline(pb);
   return 1;
@@ -210,6 +221,7 @@ extern int pbReadByteFromOldestPacket(struct PacketBuffer *pb) ;
 static inline unsigned int pbDropOldestPacketInline(struct PacketBuffer *pb) {
   if (pbUsedBytesInline(pb) == 0) return 0;
   /* Free space becomes visible to writer when readPtr is updated. */
+  SYNC_MEMORY();
   pb->readPtr = (pb->readPtr + pb->buffer[pb->readPtr] + 1) & pb->bufferMask;
   return pbStartReadingOldestPacketInline(pb);
 }

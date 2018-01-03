@@ -96,3 +96,11 @@ int pbTransferPacketIfPossible(struct PacketBuffer *pbto, struct PacketBuffer *p
   pbDropOldestPacket(pbfrom);
   return 0;
 }
+
+
+#ifdef __KERNEL__
+#include <linux/module.h>
+MODULE_LICENSE("GPL v2");
+MODULE_AUTHOR("Dave Ackley <ackley@ackleyshack.com>");
+MODULE_DESCRIPTION("T2 intertile packet buffers");
+#endif

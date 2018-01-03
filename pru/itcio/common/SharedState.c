@@ -60,3 +60,10 @@ struct PacketBuffer * sspiNextInbound(struct SharedStatePerITC * sspi)
 {
   return sspiNextInboundInline(sspi) ;
 }
+
+#ifdef __KERNEL__
+#include <linux/module.h>
+MODULE_LICENSE("GPL v2");
+MODULE_AUTHOR("Dave Ackley <ackley@ackleyshack.com>");
+MODULE_DESCRIPTION("T2 PRU<->ARM shared state management");
+#endif

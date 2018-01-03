@@ -81,16 +81,16 @@ struct SharedState {
   struct SharedStatePerPru pruState[2];
 };
 
-static inline struct SharedState * getSharedStatePhysicalInline() {
+static inline struct SharedState * getSharedStatePhysicalInline(void) {
   return (struct SharedState*) SHARED_PHYSICAL_BASE_ADDRESS;
 }
 
-extern struct SharedState * getSharedStatePhysical() ;
+extern struct SharedState * getSharedStatePhysical(void) ;
 
 /* set up during mmap-ing by external code*/
 extern void * sharedStateVirtualBaseAddress;
 
-static inline struct SharedState * getSharedStateVirtualInline() {
+static inline struct SharedState * getSharedStateVirtualInline(void) {
   return (struct SharedState*) sharedStateVirtualBaseAddress;
 }
 
