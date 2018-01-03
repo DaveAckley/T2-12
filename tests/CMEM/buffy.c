@@ -57,6 +57,14 @@
 
 #include "SharedState.h"
 
+/* If we are on gcc and wish to do memory synchronization on a
+   per-packet basis (rather than synchronizing all operations), define
+   GCC_SYNC_PACKETS for here and before including PacketBuffer.h */
+#ifdef GCC_SYNC_PACKETS
+#define DEV_MEM_SYNC_FLAGS 0
+#else
+#define DEV_MEM_SYNC_FLAGS O_SYNC
+#endif
   
 #define FATAL do { fprintf(stderr, "Error at line %d, file %s (%d) [%s]\n", \
                            __LINE__, __FILE__, errno, strerror(errno)); exit(1); } while(0)
@@ -90,7 +98,7 @@ int main(int argc, char **argv) {
 
   tag = random()&0xffff;
 
-  if((fd = open("/dev/mem", O_RDWR | O_SYNC)) == -1) FATAL;
+  if((fd = open("/dev/mem", O_RDWR | DEV_MEM_SYNC_FLAGS)) == -1) FATAL;
   printf("/dev/mem opened.\n"); 
   fflush(stdout);
     

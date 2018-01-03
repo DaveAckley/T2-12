@@ -1,5 +1,6 @@
 BUF_DIR:=../../pru/itcio/common
 CFLAGS+=-I $(BUF_DIR) -g2
+CFLAGS+=-I $(BUF_DIR) -g2 -DGCC_SYNC_PACKETS
 LDFLAGS+=
 
 all:	buffy
