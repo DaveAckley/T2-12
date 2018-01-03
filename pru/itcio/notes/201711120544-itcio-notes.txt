@@ -1,4 +1,4 @@
-{336}  -*- text -*-
+{346}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5443,17 +5443,17 @@ talking to the prus straight from userspace.  Was trying to include
 Buffers.h but bailed out of that.  After sleep will start a new
 Buffers approach that
 
- C.1: Does not depend on prux.h or ON_PRU, and
+[337: Tue Jan  2 20:47:26 2018 DONE  :337] C.1: Does not depend on prux.h or ON_PRU, and
 
- C.2: Is unidirectional, without an inbound vs outbound distinction,
+[340: Tue Jan  2 21:28:53 2018 DONE  :340] C.2: Is unidirectional, without an inbound vs outbound distinction,
       to be used in both directions by both sides.
 
- C.3: Figure out where the buffers will go for PRU0, PRU1, and ARM.
+[339: Tue Jan  2 20:47:55 2018 DONE  :339] C.3: Figure out where the buffers will go for PRU0, PRU1, and ARM.
 
- C.4: Make some special packets to drive it from the pru side for
+[341: Tue Jan  2 21:28:59 2018 DONE  :341] C.4: Make some special packets to drive it from the pru side for
       testing. 
 
- C.5: Get buffy.c talking to those packets.
+[338: Tue Jan  2 20:47:35 2018 DONE  :338] C.5: Get buffy.c talking to those packets.
 
 :328]
 :327][329:
@@ -5710,3 +5710,102 @@ for a difference of like 30MB..
 :333]
 
 :332]
+[336:
+
+Tue Jan  2 20:45:25 2018 So, it appears we can read and write packets
+in various shared state buffers from the linux side.  Next step is to
+
+[343: Tue Jan  2 21:29:15 2018 DONE  :343]C.6: Demonstrate reading and writing packets from the PRU side
+
+C.7: Make a userspace packet dumper on the linux side
+
+:336]
+[342:
+
+Tue Jan  2 21:29:08 2018 OK, so here's some hot annotated packet
+reading action from the PRU side:
+
+    root@beaglebone:/home/t2/T2-12# echo '*0sir-------------------------------' > /dev/itc/pru1
+
+Send the '*' special packet to pru1.  '0' means pru0's queues, 's'
+means the slow queues; 'i' means the inbound queues; 'r' means try to
+read a packet under those conditions.  The response (via dmesg) is:
+
+    [34326.106954] itc_pkt_open 246:1
+    [34326.117060] itc_pkt itc!pru1: Sending length 37 type '*' packet
+    [34326.123186] <pru1: 2a 30 73 69 72 58 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d  *0sirX----------
+    [34326.131118] <pru1: 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d  ----------------
+    [34326.138938] <pru1: 2d 2d 2d 2d 0a                                   ----.
+    [34326.162046] itc_pkt_release 246:1
+
+where the added 'X' means 'no such packets were available.
+
+    root@beaglebone:/home/t2/T2-12# ./tests/CMEM/buffy '!' 0 s i winboundSlowPru0
+    /dev/mem opened.
+    Memory mapped at address 0xb6ef8000. (tag=8430)
+    1:P0D0I0B0 2:P0D0I0B0 Cmd:'!' -- Initted!
+    1:P0D0I0B0 2:P0D0I0B0 Cmd:'0' -- PRU0
+    1:P0D0I0B0 2:P0D0I0B0 Cmd:'s' -- 
+    1:P0D0I0B1 2:P0D0I0B0 Cmd:'i' -- I1
+    1:P0D0I1B1 2:P0D0I0B0 Cmd:'winboundSlowPru0' -- Wrote 15
+    root@beaglebone:/home/t2/T2-12# 
+
+Use buffy on the linux side.  '!' means initialize all the shared
+state; '0' means pru0; 's' means slow queues; 'i' means inbound; and
+'winboundSlowPru0' means try to write a packet containing
+"inboundSlowPru0".
+
+    root@beaglebone:/home/t2/T2-12# echo '*0sir-------------------------------' > /dev/itc/pru1
+
+Now we retry the special command.  Now the dmesg response is:
+
+    [34340.667741] itc_pkt_open 246:1
+    [34340.678081] itc_pkt itc!pru1: Sending length 37 type '*' packet
+    [34340.684246] <pru1: 2a 30 73 69 72 69 6e 62 6f 75 6e 64 53 6c 6f 77  *0sirinboundSlow
+    [34340.692144] <pru1: 50 72 75 30 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d  Pru0------------
+    [34340.700007] <pru1: 2d 2d 2d 2d 0a                                   ----.
+    [34340.722288] itc_pkt_release 246:1
+
+[344:
+
+Tue Jan  2 21:41:11 2018 And we think we can do it the other way too.  Let's see..
+
+    root@beaglebone:/home/t2/T2-12# echo '*fo1w can only do one packet read or write per "*" command at present' > /dev/itc/pru0
+
+Write a packet to PRU1s fast outbound queue.  Note that we tell pru0
+to mess with pru1's queues and it does.  But that's unsafe for
+production use, because to avoid needing to lock anything, we need
+each end of each queue to have exactly one owner.
+
+    root@beaglebone:/home/t2/T2-12# ./tests/CMEM/buffy 0 f r 1 r
+    /dev/mem opened.
+    Memory mapped at address 0xb6fc0000. (tag=7f97)
+    1:P0D0I0B0 2:P0D0I0B0 Cmd:'0' -- PRU0
+    1:P0D0I0B0 2:P0D0I0B0 Cmd:'f' -- 
+    1:P0D0I0B0 2:P0D0I0B0 Cmd:'r' -- Nothing to read
+
+We try to read, but there's nothing in the fast outbound queue on
+pru0.. 
+
+    1:P0D0I0B0 2:P0D0I0B0 Cmd:'1' -- PRU1
+    1:P1D0I0B0 2:P0D0I0B0 Cmd:'r' -- Read(0) 65=' can only do one packet read or write per "*" command at present
+    '
+
+But there it is; there's our packet over on the pru1 side.
+
+    root@beaglebone:/home/t2/T2-12# 
+
+A WALA.
+
+:344]
+
+:342]
+[345:
+
+Tue Jan  2 22:29:14 2018 OK we tightened up the '*' command so that it
+just does stuff it's entitled to.  Committing this and then we need to
+move on.  How do we take the next step?  Trying to integrate straight
+into itc_pkt feels too big.  Maybe evaluate that next and see about
+breaking it down.
+
+:345]
