@@ -197,10 +197,63 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
     if (len < 10) fillFail("[PKLEN]",packet,len);
     else {
       struct SharedState * ss = getSharedStatePhysical();
-      struct SharedStatePerPru * sspp = &ss->pruState[ON_PRU];
-      *((uint32_t *) &packet[3]) = *(uint32_t*) sspp;
+      struct SharedStateSelector sss;
+      struct SharedStateSelector sss2;
+      initSharedStateSelector(&sss); sss.pru = ON_PRU;
+      initSharedStateSelector(&sss2); sss2.pru = ON_PRU;
+      for (i = 1; i < len; ++i) {
+        unsigned char cmd = packet[i];
+        switch (cmd) {
+        case '2': sss2 = sss; break;
+        case 'x': { struct SharedStateSelector tmp = sss; sss = sss2; sss2 = tmp; } break;
+        case 't':
+          {
+            packet[i] = 'U';
+            break;
+          }
+
+        case '!':
+          initSharedState(ss);
+          packet[i] = '.';
+          break;
+          //unsafe to mess across prus        case '0': sss.pru = 0; break;
+          //unsafe to mess across prus        case '1': sss.pru = 1; break;
+        case 'a': sss.prudir = 0; break;
+        case 'b': sss.prudir = 1; break;
+        case 'c': sss.prudir = 2; break;
+        case 'f': sss.bulk = 0; break;
+        case 's': sss.bulk = 1; break;
+        case 'p': sss.bulk = -1; break;
+          //implied by 'w'        case 'i': sss.inbound = 1; break;
+          //implied by 'r'        case 'o': sss.inbound = 0; break;
+
+        case 'r':
+        case 'w':
+          {
+            if (i + 2 < len) {
+              unsigned char * data = &packet[++i];
+              unsigned plen = len-i;
+              struct PacketBuffer * pb;
+              if (cmd == 'r') sss.inbound = 0; /* We read only from outbound */
+              else sss.inbound = 1;            /* and write only to inbound */
+              pb = getPacketBufferIfAny(ss,&sss);
+              if (!pb) {
+                *data = 0;
+              } else if (cmd == 'r') {
+                if (pbReadPacketIfPossible(pb, data, plen) <= 0)
+                  *data = 'X';
+              } else if (cmd == 'w') {
+                if (pbWritePacketIfPossible(pb, data, plen) != 0)
+                  *data = 'X';
+              }
+              i = len; 
+            }
+          }
+        default: packet[i] = '?'; i = len; break;
+        }
+      }
+      break;
     }
-    break;
   }
 
 

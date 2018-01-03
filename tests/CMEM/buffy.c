@@ -139,6 +139,7 @@ int main(int argc, char **argv) {
     case 'b':
     case 'c':
       sss.prudir = cmd - 'a';
+      printf("PRUdir%d\n",sss.prudir);
       break;
 
     case 'f':
