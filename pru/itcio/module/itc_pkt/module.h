@@ -1,5 +1,5 @@
-#ifndef ITC_PKT_H
-#define ITC_PKT_H
+#ifndef MODULE_H
+#define MODULE_H
 
 #include <linux/kernel.h>
 #include <linux/rpmsg.h>
@@ -21,6 +21,9 @@
 #define ITC_MAX_PACKET_SIZE 255
 
 #define KFIFO_SIZE (1<<12)   /* ITC packets are max 255.  Guarantee space for 16 (256*16 == 4,096 == 2**12) */
+
+/* 65KB shared packet buffer space */
+#define SHARED_PACKET_BUFFER_SIZE (1u<<16)
 
 /*unused? #define PROC_FIFO "itc-pkt-fifo"*/
 
@@ -61,6 +64,8 @@ typedef struct itc_pkt_driver_state {
   SpecialPacketFIFO special0Kfifo;  /* buffer for inbound special packets from PRU0 */
   SpecialPacketFIFO special1Kfifo;  /* buffer for inbound special packets from PRU1 */
   struct mutex      standardLock;   /* lock for reading standard packets */
+  phys_addr_t       packetPhysP;    /* physical address of shared buffer space */
+  struct SharedState * packetVirtP;    /* virtual address of shared buffer space */
   int               open_pru_minors;/* how many of our minors have (ever?) been opened */
   ITCDeviceState    * (dev_packet_state[MINOR_DEVICES]); /* ptrs to all our device states */
 } ITCPacketDriverState;
@@ -77,4 +82,4 @@ extern ITCDeviceState * make_itc_minor(struct device * dev,
 
 #include "pin_info_maps.h"
   
-#endif /* ITC_PKT_H */
+#endif /* MODULE_H */

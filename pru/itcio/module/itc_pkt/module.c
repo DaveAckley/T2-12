@@ -12,7 +12,9 @@
  *
  */
 
-#include "itc_pkt.h"
+#include "module.h"
+#include "SharedState.h"
+#include <linux/dma-mapping.h>
 
 /* define MORE_DEBUGGING to be more verbose and slow*/
 #define MORE_DEBUGGING 1
@@ -23,6 +25,10 @@
 
 static ITCPacketDriverState S;
 
+static int debugflags = 0;
+module_param(debugflags, int, 0);
+MODULE_PARM_DESC(debugflags, "Extra debugging flags; 0 for none");
+
 static void initITCPacketDriverState(ITCPacketDriverState *s)
 {
   INIT_KFIFO(s->itcPacketKfifo);
@@ -30,6 +36,8 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
   INIT_KFIFO(s->special1Kfifo);
   init_waitqueue_head(&s->itcPacketWaitQ); 
   mutex_init(&s->standardLock);
+  s->packetPhysP = 0;
+  s->packetVirtP = 0;
   s->open_pru_minors = 0;
   {
     unsigned i;
@@ -38,6 +46,54 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
 #if MORE_DEBUGGING
    s->debugFlags = 0xf; // default some debugging on
 #endif
+   s->debugFlags |= debugflags;
+}
+
+static int initITCSharedPacketBuffers(ITCPacketDriverState *s)
+{
+  void *virtp;
+  dma_addr_t dma = 0;
+  size_t size = SHARED_PACKET_BUFFER_SIZE;
+
+  printk(KERN_INFO "BOSCO initITCSharedPacketBuffers GLURB\n");
+  if (!s) return -EINVAL;
+  if (!s->dev_packet_state[2]) return -EINVAL;
+  if (!s->dev_packet_state[2]->dev) return -ENODEV;
+  if (s->packetPhysP || s->packetVirtP) return -EEXIST;
+
+  printk(KERN_INFO "dma_alloc_coherent %p %u\n",s->dev_packet_state[2]->dev,size);
+  virtp = dma_alloc_coherent(0, size, &dma, GFP_KERNEL);
+
+  printk(KERN_INFO "gots virtp %p / physp 0x%08x OGLURB\n", virtp, dma);
+  
+  if (!virtp) {
+    printk(KERN_WARNING "dma_alloc_coherent failed\n");
+    return -EINVAL;
+  }
+
+  s->packetVirtP = (struct SharedState *) virtp;
+  s->packetPhysP = dma;
+
+  initSharedState(s->packetVirtP);
+  
+  return 0;
+}
+
+static void freeITCSharedPacketBuffers(ITCPacketDriverState *s)
+{
+  size_t size = SHARED_PACKET_BUFFER_SIZE;
+
+  printk(KERN_INFO "prefreesnrog\n");
+  if (!s->packetVirtP || !s->packetPhysP) {
+    printk(KERN_WARNING "freeITCSharedPacketBuffers without active alloc\n");
+    return;
+  }
+  dma_free_coherent(0, size, s->packetVirtP, s->packetPhysP);
+
+  s->packetVirtP = 0;
+  s->packetPhysP = 0;
+
+  printk(KERN_INFO "postdujrrn\n");
 }
 
 __printf(5,6) int send_msg_to_pru(unsigned prunum,
@@ -821,7 +877,16 @@ static int __init itc_pkt_init (void)
     goto fail_register_rpmsg_driver;
   }
 
+  ret = initITCSharedPacketBuffers(&S);
+  if (ret) {
+    pr_err("Failed to allocate shared packet buffers");
+    goto fail_init_shared_buffers;
+  }
+
   return 0;
+
+ fail_init_shared_buffers:
+  unregister_rpmsg_driver(&itc_pkt_driver);
 
  fail_register_rpmsg_driver:
   unregister_chrdev_region(S.major_devt,
@@ -839,6 +904,8 @@ static void __exit itc_pkt_exit (void)
     device_destroy(&itc_pkt_class_instance, S.dev_packet_state[2]->devt);
   }
 
+  freeITCSharedPacketBuffers(&S);
+
   unregister_rpmsg_driver(&itc_pkt_driver);
   class_unregister(&itc_pkt_class_instance);
   unregister_chrdev_region(S.major_devt,
@@ -852,7 +919,8 @@ MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Dave Ackley <ackley@ackleyshack.com>");
 MODULE_DESCRIPTION("T2 intertile packet communications subsystem");  ///< modinfo description
 
-MODULE_VERSION("0.4");            ///< 0.4 for general internal renaming and reorg
+MODULE_VERSION("0.5");          ///< 0.5 for using shared memory 
+/// 0.4 for general internal renaming and reorg (201801031340)
 /// 0.3 for renaming to itc_pkt
 /// 0.2 for initial import
 
