@@ -52,7 +52,8 @@ dtb=am335x-bonegreen-t2-12.dtb
 # was:cmdline=coherent_pool=1M net.ifnames=0 quiet cape_universal=enable
 # was: cmdline=coherent_pool=1M net.ifnames=0 cape_universal=enable
 # 201801021119 was: cmdline=coherent_pool=1M net.ifnames=0
-cmdline=coherent_pool=1M net.ifnames=0 mem=99M@0x80000000 mem=384M@0x88000000
+# 201801040209 was: cmdline=coherent_pool=1M net.ifnames=0 mem=99M@0x80000000 mem=384M@0x88000000
+cmdline=coherent_pool=1M net.ifnames=0
 
 #In the event of edid real failures, uncomment this next line:
 #cmdline=coherent_pool=1M net.ifnames=0 quiet cape_universal=enable video=HDMI-A-1:1024x768@60e

@@ -44,7 +44,7 @@ install_files:	all
 	test -f $(ETC_MODULES_FILE) || \
 	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
 	grep $(MNAME) $(ETC_MODULES_FILE) || echo $(MNAME) >> $(ETC_MODULES_FILE)
-	grep cmemk $(ETC_MODULES_FILE) || echo cmemk >> $(ETC_MODULES_FILE)
+	#grep cmemk $(ETC_MODULES_FILE) || echo cmemk >> $(ETC_MODULES_FILE)
 	depmod
 
 
