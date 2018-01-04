@@ -1,4 +1,4 @@
-{355}  -*- text -*-
+{368}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6008,3 +6008,213 @@ eventually close in on speed testing again..
 But not now.  Committing then dinner prep.
 
 :354]
+[355:
+
+Thu Jan  4 00:04:14 2018 OK.  Let's just get the PRUs to also check
+their shared state buffers for outbound packets... but when?  Not in
+the linux thread..[356: 
+
+Thu Jan  4 00:07:38 2018 ..in orbFrontPacketLen.[357:
+
+Thu Jan 4 00:11:38 2018 So we need the moral equivalent of a struct
+SharedStateSelector per PacketRunner thread; how are we going to do
+that?  Two of its four data members are per-thread constants -- .pru
+== ON_PRU, and .prudir == CT.sTH.bID.  The other two depend on the
+calling context: In lookForNextPacket .inbound == 0 and .bulk == -1,
+while in handleGoodPacketDelimiter .inbound == 1 and .bulk is either 0
+or 1 depending on analysis of the packet header.
+
+But that's not quite all, because a .bulk == -1 turns into either a 0
+or a 1 at lookForNextPacket time, and we have to remember which for
+the duration of the packet.  At lookForNextPacket time, we'd really
+just like to compute and remember a struct PacketBuffer *, then use
+that for the rest of packet transmission.
+
+Aand also on input, we can't determine the appropriate struct
+PacketBuffer * until the end of the first byte.
+
+[358:
+
+Thu Jan  4 02:30:53 2018 (Well there went two hours I won't get back,
+once again trying and failing to get the touchscreen calibrated
+properly.  This was triggered by a forum post showing that libts-bin
+was (now?) made and installable (on jessie) even though there used to
+be some kind of issue (right?) that blocked me before.  So now we have
+libts-bin, and with ts_calibrate and ts_test we can have the
+touchscreen WORKING FINE.. And yet, then, it's still fogged up with
+mfms and SDL. Closest I got was pretty good x and inverted y.  Yes and
+none of the usual suspects for re-or-un- inverting the y seemed to
+work.  Grr.)
+
+:358]
+:357]
+
+:356]
+
+:355]
+[359:
+
+Thu Jan  4 02:38:22 2018 So we want room for a struct PacketBuffer *
+in the PacketRunner thread context.  Can we have it?  What would it
+take? [360:
+
+Thu Jan  4 02:40:26 2018 Well, we do have
+
+    rRSRV2:         .uint
+
+just sitting there..  But wait Batman!  Really we'd need two struct
+PacketBuffer*'s, no, one in one out?
+
+I currently see a total of seven bytes available including rRSRV2.
+But not eight.  And we could really do this with just two more flags
+-- say fInputBulk and fOutputBulk.  With ON_PRU + bID + one of those
+flags, the packetbuffer is determined.  And redetermined and
+redetermined every damn byte in and byte out...
+
+Let's go with flags for now.[361:
+
+Thu Jan  4 02:49:11 2018 OK, fInputBulk bit 6 and fOutputBulk bit 7
+and that uses up our flag byte.  Should we take a moment to expand to
+a flag word?  We have bytes to spare, but the flags are currently in
+our two-reg header which is full full full.
+
+We could expand flags to 16 bits and just draft the first two for bID,
+and then use like
+
+    and r14, CT.sTH.wFlags, 3   ; Get thread id (0..3)
+
+instead of
+
+    mov r14, CT.sTH.bID
+
+and still take only one clock in the common case.  (Passing bID to
+macros like sendITag or whatever would have to be reconsidered.)
+[362:
+
+Thu Jan  4 03:20:00 2018 OK, two bit thread IDs seem to be working,
+and now we have fInputBulk and fOutputBulk and six more unused flags
+as well.
+
+[363:
+
+Thu Jan  4 04:02:53 2018 OK, we are computing and caching the
+PacketBuffer*'s at '@' packet time, and have macro 'ldPBPtr' -- so far
+untested -- to access the appropriate one in context.  ldPBPtr costs
+six cycles plus an LBBO to PRU local storage, which is apparently only
+another three cycles for up to four bytes.  So we're still under 10
+cycles total, but that's a considerable fraction the 35-40+ cycles
+that actually reading from system DDR is purported to take.
+
+People talk about numbers like these:
+
+    LBBO 1,2,4 Bytes from PRU DRAM: 3 cycles
+    LBBO 8 Bytes from PRU DRAM: 4 cycles
+    LBBO 12 Bytes from PRU DRAM: 5 cycles
+    LBBO 16 Bytes from PRU DRAM: 6 cycles
+
+    LBCO 4 Bytes from DDR: 43 cycles
+    LBCO 8 Bytes from DDR: 44 cycles
+    LBCO 12 Bytes from DDR: 45 cycles
+    LBCO 16 Bytes from DDR: 46 cycles
+
+(from https://groups.google.com/forum/#!topic/beagleboard/6tZfe7kBEOw)
+and those latter numbers in particular suggest we really might want to
+think about doing our byte-wise IO to local memory and then bursting
+full packets to DDR.  If we're going to pay 43 cycles to read 4 bytes,
+we'd really like to pay 46 cycles to read 16 bytes instead..
+
+And that would affect our asm calculus as well, if we'd need to access
+the pbptrs only on a per-packet rather than a per-byte basis.  We
+already are reserving 4KB of the good stuff for our struct PruDirs,
+but we'd only need 6*(256+overhead) < 2KB for three-in and three-out.
+Since the bulk rate would be applied when we're bursting whole packets
+between local RAM and the SharedState, and wouldn't affect the single
+in-progress packets in local RAM.
+
+But buuut if we could use the OCM for SharedState, then maybe the
+calculus changes again..  Who knows.  We want to avoid copying, but we
+really want to avoid copying single bytes at a time..
+
+So I'm going to sleep some more here, but next up let's focus on
+laying the sharedstate buffers behind the firmware/Buffers.[hc]
+buffers, and not worry about deriving pbptrs in the PacketRunner.
+[364:
+
+Thu Jan  4 13:04:29 2018 Well just about time to move the flag again,
+but working a little here.  We note that if we're going by packets
+rather than bytes, between local memory and the external DDR, we don't
+actually need or use bulk rate flags inside the threads..  so we
+didn't actually need to reorganize the thread header..
+
+..so.. taking out the flag defs but leaving in the reorged
+  header.[365:
+
+Thu Jan  4 13:30:26 2018 OK, well, it had to happen sooner or later
+and apparently now is the time:
+
+    LD	gen/main_pru1_fw.out
+    "AM335x_PRU.cmd", line 84: error: program will not fit into available memory.
+       placement with alignment fails for section ".text" size 0x2020 page 0.
+       Available memory ranges:
+       PRU_IMEM     size: 0x2000       unused: 0x1fec       max hole: 0x1fec    
+    error: errors encountered during linking; "gen/main_pru1_fw.out" not built
+
+so I'm looking through the listings trying to see what's where.
+Adding --symdebug:none to CFLAGS makes the listings a lot easier to
+read.  Each function is being listed with separate relative addresses,
+but still, I discovered that processSpecialPacket is taking almost 800
+bytes -- almost 10% of available IRAM -- all by itself..  So let's
+just clean that up a bit.
+
+In a way I'm glad this happened now.  I'd been wondering when I would
+have to worry about code size, and I'd been getting steadily sloppier
+with it, to sort of half-deliberately seek the corners while working
+on other things.  Hitting the box size here doesn't feel too bad.
+[366:
+
+Thu Jan  4 13:40:19 2018 OK, for now diked out
+processPacketEnginePacket (packet type 'P') and we're fine..  I wish I
+could have the link print out the final IRAM and DRAM used numbers
+during every build, not just when there's a problem..
+[367:
+
+Thu Jan  4 14:19:47 2018 OK, now a full build looks something like this:
+
+    make -k 
+    CC	Buffers.c (pru1)
+    CC	LinuxIO.c (pru1)
+    CC	SpecialPackets.c (pru1)
+    CC	main.c (pru1)
+    CC	../common/SharedState.c (pru[01])
+    CC	../common/PacketBuffer.c (pru[01])
+    ASM	PacketRunner.asm (pru1)
+    ASM	Threads.asm (pru1)
+    LD	gen/main_pru1_fw.out
+      PRU_IMEM      000003d4   ASMBUF        000000b8   PRU_DMEM_0_1  00000931 
+    CC	Buffers.c (pru0)
+    CC	LinuxIO.c (pru0)
+    CC	SpecialPackets.c (pru0)
+    CC	main.c (pru0)
+    ASM	PacketRunner.asm (pru0)
+    ASM	Threads.asm (pru0)
+    LD	gen/main_pru0_fw.out
+      PRU_IMEM      000003d0   ASMBUF        000000b8   PRU_DMEM_0_1  00000931 
+    -	Generated firmwares are : gen/main_pru1_fw.out gen/main_pru0_fw.out
+
+and I'm not sure, right off the bat, why PRU0 is using four less bytes
+of IMEM than PRU1!
+
+Time to move the flag.  Committing.
+
+:367]
+:366]
+:365]
+
+:364]
+:363]
+:362]
+:361]
+
+:360]
+
+:359]
