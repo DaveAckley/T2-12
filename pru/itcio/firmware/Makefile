@@ -27,9 +27,9 @@ INCLUDE+=--include_path=/usr/include/asm-generic
 
 
 #CFLAGS=--preproc_only -v3 -O2 --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR)
-CFLAGS=-v3 -O4 --gen_opt_info=2 --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR) -ppd -ppa -al
+CFLAGS=-v3 -O4 --symdebug:none --gen_opt_info=2 --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR) -ppd -ppa -al
 #LFLAGS=--reread_libs --warn_sections --stack_size=$(STACK_SIZE) --heap_size=$(HEAP_SIZE)
-LFLAGS=-o4 --reread_libs --warn_sections 
+LFLAGS=-o4 --reread_libs --warn_sections
 
 
 GEN_DIR=gen
@@ -83,13 +83,17 @@ build:	$(TARGETS)
 # LD
 $(PRU1_FW):	$(OBJ1_FILES) $(LINKER_COMMAND_FILE) 
 	@echo 'LD	$@'
-	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  --library=libc.a $(LIBS)
-	@echo 
+	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) --map_file=$@.map -o $@ $^  --library=libc.a $(LIBS) &&\
+	head -15 $@.map | tail -1 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
+	head -19 $@.map | tail -2 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
+	echo
 
 $(PRU0_FW):	$(OBJ0_FILES) $(LINKER_COMMAND_FILE) 
 	@echo 'LD	$@' 
-	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^  --library=libc.a $(LIBS)
-	@echo 
+	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) --map_file=$@.map -o $@ $^  --library=libc.a $(LIBS) &&\
+	head -15 $@.map | tail -1 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
+	head -19 $@.map | tail -2 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
+	echo
 
 # CC
 $(GEN_DIR)/%_pru.object: $(SHARED_STATE_DIR)/%.c $(SHARED_STATE_DIR)/%.h $(C_ALL_DEP)
