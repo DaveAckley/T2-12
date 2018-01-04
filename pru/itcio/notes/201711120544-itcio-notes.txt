@@ -1,4 +1,4 @@
-{350}  -*- text -*-
+{355}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5885,11 +5885,126 @@ chunk of coherent dma memory at insmod time, and gives it back at
 rmmod time, and initializes it to be legal shared state.  Big next
 stop would be to
 
- - Send a packet to each PRU telling them the shared state physical
+[350: Wed Jan  3 16:06:07 2018 DONE  :350] - Send a packet to each PRU telling them the shared state physical
    address, and
 
- - demo them using it via the '*' packet..
+[352: Wed Jan  3 17:00:28 2018 DONE  :352] - demo them using it via the '*' packet..
 
 But first pushing.
 
 :349]
+[351:
+
+Wed Jan  3 16:06:11 2018 OK so the PRUs are seeing the shared state
+address:
+
+    [  428.720452] virtio_rpmsg_bus virtio1: creating channel itc-pkt addr 0x1e
+
+rpmsg sets us up the bomb; calls our int..
+
+    [  428.749290] ZORG itc_pkt_init
+    [  428.752482] BOSCO initITCSharedPacketBuffers GLURB
+    [  428.757403] dma_alloc_coherent 65536
+
+Now very early on we go for 65K of coherent memory.
+
+    [  428.797277] gots virtp dc910000 / physp 0x9c910000 OGLURB
+
+And we get (oddly related hmm) virtual and physical addresses for it.
+
+    [  428.819156] ZORG itc_pkt_probe dev=dac42408
+    [  428.823576] itc_pkt rpmsg0: chnl: 0x400 -> 0x1f
+    [  428.850634] INITTING /dev/itc!packets
+    [  428.863443] itc_pkt rpmsg0: pru itc packet device ready at /dev/itc!packets
+
+La partie continue..
+
+    [  428.870554] GROZ made minor 2=bf18c0f4 SLORG
+    [  428.904077] INITTING /dev/itc!pru1
+
+Getting ready to init PRU1
+
+    [  428.920241] itc_pkt rpmsg0: pru itc packet device ready at /dev/itc!pru1
+    [  428.927165] BLURGE back with devstate=db615c90
+    [  428.931708] BLURGE buf=dad91b9c
+    [  428.967804] >pru1: 40 39 63 39 31 30 30 30 30 21                    @9c910000!
+    [  428.990606] RECTOBLURGE sent buf='@9c910000!'
+
+We ship it an excited (now non-empty) first packet.
+
+    [  428.995157] <pru1: 40 39 63 39 31 30 30 30 30 2e                    @9c910000.
+
+It replies with a firm statement of I-was-here.
+(Which as present we ignore):
+
+    [  429.002529] <pru1: c1 30 30 30 30 30 30 64 31 20 50 52 55 31 20 52  .000000d1 PRU1 R
+    [  429.010349] <pru1: 65 6c 65 61 73 69 6e 67 20 74 68 65 20 68 6f 75  eleasing the hou
+    [  429.018156] <pru1: 6e 64 73                                         nds
+    [  429.038346] ZORG itc_pkt_probe dev=dc1db608
+
+And then on to PRU0..
+
+:351]
+[353:
+
+Wed Jan  3 17:00:37 2018 OK so we've sent a routed standard packet to
+the PRUs via SharedState and gotten it back via the '*' special
+command:
+
+    # echo '‡foonow chow chow!' > /dev/itc/packets ; echo '*fbr-----------------------' >/dev/itc/pru1
+
+causing this sequence:
+
+    [ 3695.887150] itc_pkt_open 246:2
+    [ 3695.893476] Routing '87'+19 packet to PRU1
+
+The standard packet is away via SharedState.
+
+    [ 3695.911508] itc_pkt_release 246:2
+    [ 3695.922208] itc_pkt_open 246:1
+    [ 3695.935166] itc_pkt itc!pru1: Sending length 28 type '*' packet
+
+The * special packet still goes to the PRUs by rpmsg ATM.
+
+    [ 3695.941285] <pru1: 2a 66 62 72 87 66 6f 6f 6e 6f 77 20 63 68 6f 77  *fbr.foonow chow
+    [ 3695.949205] <pru1: 20 63 68 6f 77 21 0a 2d 2d 2d 2d 0a               chow!.----.
+
+The processed * packet comes back by rpmsg as well.
+
+In '*fbr', the 'f' means consider the fast queues, not the bulk rate;
+the 'b' means check prudir 1 (via a0,b1,c2), and 'r' means read an
+outbound packet from the selected queue and copy it into the '*'
+packet at this point.
+
+Now, we sent this packet to pru1, and prudir 1 of pru 1 just happens
+to be NW.. which is dircode 7, which corresponds to the '7' in the
+"Routing '87'.." or the "echo '\207..".
+
+    [ 3695.971497] itc_pkt_release 246:1
+
+:353]
+[354:
+
+Wed Jan  3 17:12:41 2018 So, next steps.
+
+The elephant in the room at the moment is notifications: How are the
+two sides supposed to 'kick' each other when there's work to do?  It's
+more urgent overall in the PRU->ARM direction, because the PRUs can
+poll the foggen buffers if need be.  The win of an interrupt for them
+is avoiding perhaps dozens of cycles of memory read latency, but we're
+going to be paying that pretty often anyway.  But heavy polling on the
+linux side would chew up mfm cycles and We Don't Want That.
+
+We saw back in :347: that generating an event to linux is pretty
+cheap, except that we need to send a packet with it in the current
+framework..  So for starters the PRUs send an empty packet whenever
+one of their inbound buffers transitions from empty to not-empty.
+
+And hell linux could do the same.  Then we're back to where we were,
+pretty much -- at least back far enough to face packet disposition on
+the linux side (how do we interact with the kfifos?  Do they die?) and
+eventually close in on speed testing again..
+
+But not now.  Committing then dinner prep.
+
+:354]
