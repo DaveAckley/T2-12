@@ -5,6 +5,77 @@
         .asg 0, DEBUG_TAGS      
 
 ;;;;;;;;
+;;;: macro ldThreadID: Copy the current threadid to DESTREG
+;;;  INPUTS:
+;;;    DESTREG: Destination register field; REG
+;;;  OUTPUTS: 
+;;;    Field DESTREG is cleared except its bottom two bits are the thread id
+;;;  NOTES:
+;;;  - Note that supplying a register field -- e.g., r0.b0 -- for DSTREG
+;;;    means that the rest of DSTREG remains unchanged!
+ldThreadID:        .macro DESTREG
+        and DESTREG, CT.sTH.wFlags, 0x3
+        .endm
+
+;;;;;;;;
+;;;: macro ldPBPtr: Copy appropriate struct PacketBuffer* to DESTRN
+;;;  INPUTS:
+;;;    DESTRN: Destination register Rn
+;;;    WHICH: Direction: 0 for inbound pointers, 1 for outbound pointers
+;;;  OUTPUTS: 
+;;;    DESTRN is completely rewritten
+;;;  NOTES:
+;;;  - TRASHES r0.b0
+;;;  - Relies on CT.sTH.wFlags for thread ID and bulk settings
+        ; struct PacketBuffer * (inboundPacketBufferPtrs[8])  
+	.ref inboundPacketBufferPtrs
+        ; struct PacketBuffer * (outboundPacketBufferPtrs[8]);
+	.ref outboundPacketBufferPtrs
+ldPBPtr:        .macro DESTRN, WHICH
+	.if (WHICH == 0)
+        .eval inboundPacketBufferPtrs, BASEADDR
+        .eval PacketRunnerFlags.fInputBulk, FLAG
+	.elseif (WHICH == 1)
+        .eval outboundPacketBufferPtrs, BASEADDR
+        .eval PacketRunnerFlags.fOutputBulk, FLAG
+	.else
+        .emsg "WHICH must be 0 or 1, not ':WHICH:'"
+        .endif
+        ldThreadID r0.b0        ; b0 = prudir
+        lsl r0.b0, r0.b0, 2     ; b0 = prudir*4
+        qbbc $M0?, CT.sTH.wFLAGS, FLAG
+        add r0.b0, r0.b0, 16    ; b0 = prudir*4+(bulk?16:0)
+$M0:    ldi32 DESTRN, BASEADDR  ; DESTRN = &inboundBufferPtrs or outbound.
+	lbbo &DESTRN, DESTRN, r0.b0, 4 ; DESTRN = selected buffer ptr
+        .endm
+
+;;;;;;;;
+;;;: macro ldInPBPtr: Copy appropriate inbound struct PacketBuffer* to DESTRN
+;;;  INPUTS:
+;;;    DESTRN: Destination register Rn
+;;;  OUTPUTS: 
+;;;    DESTRN is completely rewritten
+;;;  NOTES:
+;;;  - TRASHES r0.b0
+;;;  - Relies on CT.sTH.wFlags for thread ID and bulk settings
+ldInPBPtr: .macro DESTRN
+        ldPBPtr DESTRN, 0
+        .endm
+	
+;;;;;;;;
+;;;: macro ldOutPBPtr: Copy appropriate outbound struct PacketBuffer* to DESTRN
+;;;  INPUTS:
+;;;    DESTRN: Destination register Rn
+;;;  OUTPUTS: 
+;;;    DESTRN is completely rewritten
+;;;  NOTES:
+;;;  - TRASHES r0.b0
+;;;  - Relies on CT.sTH.wFlags for thread ID and bulk settings
+ldOutPBPtr: .macro DESTRN
+        ldPBPtr DESTRN, 1
+        .endm
+
+;;;;;;;;
 ;;;: macro sendVal: Print two strings and a value
 ;;;  INPUTS:
 ;;;    STR1: First string to print
@@ -46,7 +117,7 @@ $M1?:  .cstring STR
 	.text
 	saveRegs 2              ; Save current R3.w2
         mov r16, REGVAL         ; Get value to report before trashing anything else
-        mov r14, CT.sTH.bID     ; First arg is prudir
+        ldThreadID r14          ; First arg is prudir
         ldi32 r15, $M1?         ; Get string
         jal r3.w2, CSendFromThread 
 	restoreRegs 2           ; Restore r3.w2 
@@ -62,7 +133,7 @@ $M1?:  .cstring STR
 ;;;  - ALTERS runCount non-monotonically
 startTagBurst:        .macro NCYCLES, WHICH
 	analyzeReportFlags WHICH
-        or CT.sTH.bFlags, CT.sTH.bFlags, (1<<FLAG)|(1<<PacketRunnerFlags.fTagBurst) ; set flags
+        or CT.sTH.wFlags, CT.sTH.wFlags, (1<<FLAG)|(1<<PacketRunnerFlags.fTagBurst) ; set flags
 	ldi CT.rRunCount.b.b0, 256-NCYCLES ; set runCount.b0 to hit zero after NCYCLES increments
         .endm
 	
@@ -103,7 +174,7 @@ sendOTag:        .macro STR, REGVAL
 ;;;    WHICH: Reporting context: 0 for input or 1 for output
 ;;;  OUTPUTS: None
 ;;;  NOTES:
-;;;  - Does nothing (except cost one cycle) unless CT.sTH.bFlags has an appropriate
+;;;  - Does nothing (except cost one cycle) unless CT.sTH.wFlags has an appropriate
 ;;;	PacketRunnerFlags.fReportXTags set
 	;int CSendTagFromThread(uint_32t prudir, const char * str, uint32_t pc)
 	.ref CSendTagFromThread
@@ -113,12 +184,12 @@ sendTag:        .macro STR, WHICH, REGVAL
 $M1?:  .cstring STR
 	.text
 	analyzeReportFlags WHICH
-	qbbc $M3?, CT.sTH.bFlags, FLAG                        ; Jump out if not reporting appropriate tags
-	qbbc $M0?, CT.sTH.bFlags, PacketRunnerFlags.fTagBurst ; Jump ahead if not burst processing
+	qbbc $M3?, CT.sTH.wFlags, FLAG                        ; Jump out if not reporting appropriate tags
+	qbbc $M0?, CT.sTH.wFlags, PacketRunnerFlags.fTagBurst ; Jump ahead if not burst processing
 	qbne $M0?, CT.rRunCount.b.b0, 0 ; Jump ahead if burst isn't done
-        and CT.sTH.bFlags, CT.sTH.bFlags, 0xff&~((1<<PacketRunnerFlags.fReportITags)|(1<<PacketRunnerFlags.fReportOTags)|(1<<PacketRunnerFlags.fTagBurst)) ; clear flags
+        and CT.sTH.wFlags, CT.sTH.wFlags, 0xff&~((1<<PacketRunnerFlags.fReportITags)|(1<<PacketRunnerFlags.fReportOTags)|(1<<PacketRunnerFlags.fTagBurst)) ; clear flags
 $M0?:	saveRegs 2              ; Save current R3.w2
-        mov r14, CT.sTH.bID     ; First arg is prudir
+	ldThreadID r14          ; First arg is prudir
         ldi32 r15, $M1?         ; Get string
 ;$M2?:   ldi r16, $CODE($M2?)    ; Get current iram to identify call
 	mov r16.w0, REGVAL      ; Take bottom 16 bits of supplied val

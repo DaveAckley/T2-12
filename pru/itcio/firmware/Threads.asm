@@ -25,8 +25,7 @@ initThis: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         zero &CT,IOThreadLen                      ; Clear CT to start
         ldi CT.sTH.sThis.sTC.bOffsetRegs, THISSHIFT
         ldi CT.sTH.sThis.sTC.bLenBytes, THISBYTES
-        ldi CT.sTH.bID, ID
-        ldi CT.sTH.bFlags, 0
+        or CT.sTH.wFlags, CT.sTH.wFlags, ID   ; ID to bottom two bits of flags, rest cleared
 	ldi CT.sTH.wResAddr,$CODE(RESUMEADDR)
 	
 	.if ID == 0

@@ -3,6 +3,7 @@
 #include "LinuxIO.h"
 #include "Buffers.h"
 #include "SpecialPackets.h"
+#include "SharedState.h"
 #include "resource_table_x.h"
 #include <rsc_types.h>
 #include <pru_virtqueue.h>
@@ -17,12 +18,13 @@
  */
 #define VIRTIO_CONFIG_S_DRIVER_OK	4
 
+struct PacketBuffer * (inboundPacketBufferPtrs[8]);
+struct PacketBuffer * (outboundPacketBufferPtrs[8]);
 static uint8_t payload[RPMSG_BUF_SIZE];
 static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
 static uint16_t firstSrc, firstDst;
 static void * sharedStatePhysicalAddress = 0;
-
 struct SharedState * getSharedStatePhysical(void)
 {
   return sharedStatePhysicalAddress;
@@ -45,6 +47,24 @@ void handleAtPacket(uint8_t * data, uint32_t len)
   }
   sharedStatePhysicalAddress = (void*) addr;
   data[9] = '.';
+
+  // Init packetBufferPtrs (see macros.asm: ldInPBPtr, ldOutPBPtr for access)
+  {
+    unsigned prudir, bulk;
+    struct SharedStateSelector sss;
+    initSharedStateSelectorInline(&sss);
+    sss.pru = ON_PRU;
+    for (prudir = 0; prudir <= 2; ++prudir) {
+      sss.prudir = prudir;
+      for (bulk = 0; bulk <= 1; ++bulk) {
+        sss.bulk = bulk;
+        sss.inbound = 0;
+        outboundPacketBufferPtrs[prudir+4*bulk] = getPacketBufferIfAny(sharedStatePhysicalAddress,&sss);
+        sss.inbound = 1;
+        inboundPacketBufferPtrs[prudir+4*bulk] = getPacketBufferIfAny(sharedStatePhysicalAddress,&sss);
+      }
+    }
+  }
 }
 
 

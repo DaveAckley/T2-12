@@ -1,5 +1,6 @@
 #include "Buffers.h"
 #include "LinuxIO.h"
+#include "SharedState.h"
 
 #pragma DATA_SECTION(pruDirData, ".asmbuf")
 struct PruDirs pruDirData;
@@ -70,11 +71,29 @@ void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
     ++ipb->packetsRejected; /* Losing a FRM is baad */
 }
 
-void ipbSendPacket(unsigned prudir, unsigned char length) {
+void ipbSendPacketVIARPMSG(unsigned prudir, unsigned char length) {
   if (length) {
     struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
     ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
     if (CSendPacket(&ipb->buffer[0], length))
+      ++ipb->packetsRejected;
+    else
+      ++ipb->packetsReceived;
+  }
+}
+
+void ipbSendPacket(unsigned prudir, unsigned char length) {
+  if (length) {
+    struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
+    struct PacketBuffer * pb;
+    struct SharedStateSelector sss;
+    sss.pru = ON_PRU;
+    sss.prudir = prudir;
+    sss.inbound = 1;
+    sss.bulk = (ipb->buffer[0]&PKT_BULK_STD_MASK)==PKT_BULK_STD_VALUE;
+    ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
+    pb = getPacketBufferIfAny(getSharedStatePhysical(), &sss);
+    if (pbWritePacketIfPossible(pb, ipb->buffer, length))
       ++ipb->packetsRejected;
     else
       ++ipb->packetsReceived;

@@ -31,8 +31,8 @@ ThreadHeader:   .struct
 sThis:          .tag ThreadLoc  ; Our thread storage location
 sNext:          .tag ThreadLoc  ; Next guy's storage location
 	
-bID:            .ubyte  ; thread id (prudir for 0..2, 3 for linux)
-bFlags:         .ubyte  ; flags
+wFlags:         .ushort  ; flags (two LSB are thread id aka prudir for 0..2, 3 for linux)
+
 wResAddr:       .ushort ; Resume address after context switch	
 ThreadHeaderLen:       .endstruct
 
@@ -65,14 +65,23 @@ bRSRV43:        .ubyte   ; reserved
 IOThreadLen:   .endstruct
 
 PacketRunnerFlags:  .enum
-fPacketSync:    .emember 0      ; True if good packet delimiter has been seen
-fByteStuffed:   .emember 1      ; True if this output byte should be bitstuffed
-fStuffThisBit:  .emember 2      ; True if we need to stuff a zero now regardless of fByteStuffed
-fReportITags:   .emember 3      ; True if reporting input tag events
-fReportOTags:   .emember 4      ; True if reporting output tag events
-fTagBurst:      .emember 5      ; True if inside a self-delimiting burst of tag reporting
-fFlagRsrv6:     .emember 6
-fFlagRsrv7:     .emember 7
+fThreadIDBit0:  .emember 0      ; LSB of thread id (True if prudir is 1 or 3)
+fThreadIDBit1:  .emember 1      ; MSB of thread id (True if prudir is 2 or 3)
+fPacketSync:    .emember 2      ; True if good packet delimiter has been seen
+fByteStuffed:   .emember 3      ; True if this output byte should be bitstuffed
+fStuffThisBit:  .emember 4      ; True if we need to stuff a zero now regardless of fByteStuffed
+fReportITags:   .emember 5      ; True if reporting input tag events
+fReportOTags:   .emember 6      ; True if reporting output tag events
+fTagBurst:      .emember 7      ; True if inside a self-delimiting burst of tag reporting
+fRSRV8:         .emember 8      ; reserved
+fRSRV9:         .emember 9      ; reserved
+fRSRV10:        .emember 10     ; reserved
+fRSRV11:        .emember 11     ; reserved
+fRSRV12:        .emember 12     ; reserved
+fRSRV13:        .emember 13     ; reserved
+fRSRV14:        .emember 14     ; reserved
+fRSRV15:        .emember 15     ; reserved
+
         .endenum
         
 ;;; LinuxThread: Everything needed for packet processing

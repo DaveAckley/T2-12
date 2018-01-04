@@ -12,7 +12,7 @@
 ;;; Interclocking thread runner: Read and write packets
 	.def PacketRunner
 PacketRunner:
-	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Init to not having sync
+	clr CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; Init to not having sync
 	ldi CT.bOutLen, 0              ; Init 0 says We're working on a 0 length packet
 	ldi CT.bOutByte, 0             ; Init 0 says We're working on byte 0 of it (not that that should matter)
 	ldi CT.bOutData, 0             ; Init 0 says We're outputting an all zeros byte
@@ -37,29 +37,29 @@ getNextStuffedBit:  ;; Here to find next output bit to transmit
 getNextOutputByte:  ;; Here to fetch next output byte in packet if any
 	sendOTag """GNOB""",CT.bOutLen      ; report location
 	qbge sendPacketDelimiter, CT.bOutLen, CT.bOutByte ; packet is done if outbyte >= outlen
-	mov r14, CT.sTH.bID     ; arg1 to orbGetFrontPacketByte
+	ldThreadID r14          ; arg1 to orbGetFrontPacketByte
         mov r15, CT.bOutByte    ; arg2 to orbGetFrontPacketByte
         jal r3.w2, orbGetFrontPacketByte ; go get next byte to send
         mov CT.bOutData, r14             ; move output byte into position
-	set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fByteStuffed ; this byte SHOULD be bitstuffed
+	set CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fByteStuffed ; this byte SHOULD be bitstuffed
         add CT.bOutByte, CT.bOutByte, 1    ; increment bytes sent of this packet
         jmp startNewOutputByte
 
 sendPacketDelimiter:   ;; time to send packet delimiter and discard finished packet
 	sendOTag """SPD""",CT.bOutLen       ; report location
         ldi CT.bOutData, 0x7e   ; set up packet delimiter
-	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fByteStuffed ; this byte should NOT be bitstuffed
+	clr CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fByteStuffed ; this byte should NOT be bitstuffed
 	qbeq lookForNextPacket, CT.bOutLen, 0 ; jump ahead if current packet len is 0
-	mov r14, CT.sTH.bID     ; arg1 to orbDropFrontPacket
+	ldThreadID r14                ; arg1 to orbDropFrontPacket
         jal r3.w2, orbDropFrontPacket ; toss the packet we just finished sending
 
         ;; FALL INTO lookForNextPacket
 
 lookForNextPacket: ;; here to set up next outbound packet if have sync and packets
-	sendOTag """LFNP""",CT.sTH.bFlags      ; report in
+	sendOTag """LFNP""",CT.sTH.wFlags      ; report in
         ldi CT.bOutByte, 0           ; No matter what we're on byte 0 now
-	qbbc startNewOutputByte, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; don't try for packets till we have sync
-	mov r14, CT.sTH.bID          ; arg1 to orbFrontPacketLen
+	qbbc startNewOutputByte, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; don't try for packets till we have sync
+	ldThreadID r14               ; arg1 to orbFrontPacketLen
         jal r3.w2, orbFrontPacketLen ; next packetlen or 0 -> r14
         mov CT.bOutLen, r14          ; Save length of next packet or 0
 
@@ -71,7 +71,7 @@ startNewOutputByte:  ;; here to initialize once CT.bOutData has new byte to send
 	
 checkForBitStuffing: ;; Here to maybe stuff output bits
 	sendOTag """CFBS""",CT.bOut1Cnt      ; report in
-	qbbc sendRealDataBit, CT.sTH.bFlags, PacketRunnerFlags.fStuffThisBit ; jump ahead if not stuffing this bit
+	qbbc sendRealDataBit, CT.sTH.wFlags, PacketRunnerFlags.fStuffThisBit ; jump ahead if not stuffing this bit
 
         ;; FALL INTO stuffAZero
 	
@@ -79,7 +79,7 @@ stuffAZero: ;; Here to ship a bitstuffed zero
 ;	startOTagBurst 10         ; start talking buddy (for next 10 cycles)
 	sendOTag """SAZ""",CT.bOutBCnt      ; report in
 	clr r30, r30, CT.bTXDATPin          ; present 0 on TXDAT
-	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fStuffThisBit ; mark we did this
+	clr CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fStuffThisBit ; mark we did this
 	ldi CT.bOut1Cnt, 0                  ; and clear running 1s
 	jmp makeFallingEdge                 ; and that's all for this clock
 	
@@ -87,9 +87,9 @@ sendRealDataBit: ;; Here to send an actual (data or delimiter) bit
 	sendOTag """SRDB""",CT.bOutData              ; report in
         qbbc transmitZero, CT.bOutData, CT.bOutBCnt  ; Jump ahead if sending a 0
 	add CT.bOut1Cnt, CT.bOut1Cnt, 1              ; Count 1s
-        qbbc transmitOne, CT.sTH.bFlags, PacketRunnerFlags.fByteStuffed ; Ready to xmit if not stuffing this byte
+        qbbc transmitOne, CT.sTH.wFlags, PacketRunnerFlags.fByteStuffed ; Ready to xmit if not stuffing this byte
         qbne transmitOne, CT.bOut1Cnt, 5             ; Also ready if this is not the 5th 1
-	set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fStuffThisBit ; It is the 5th 1, stuff a zero next
+	set CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fStuffThisBit ; It is the 5th 1, stuff a zero next
 
         ;; FALL INTO transmitOne
 
@@ -158,9 +158,9 @@ moreThan5ones: ;; Here to recognize frame delimiters and errors
 	;; otherwise FALL INTO completeFrameDelimiter
 	
 completeFrameDelimiter:  ;; Here we have a (possibly misaligned) complete frame delimiter
-	sendITag """CFRD""",CT.sTH.bFlags ; report in
+	sendITag """CFRD""",CT.sTH.wFlags ; report in
         ldi CT.bInp1Cnt, 0      ; Reset input 1 count
-        qbbc achievePacketSync, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; If we didn't have sync, get it now
+        qbbc achievePacketSync, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; If we didn't have sync, get it now
         
 	;; otherwise FALL INTO checkExistingAlignment
 
@@ -173,9 +173,9 @@ checkExistingAlignment:  ;; Here we already have packet sync and are looking at 
 
 frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, whether or not synced
 	sendITag """FMER""",CT.bInpByte               ; report in
-	qbbc resetAfterDelimiter, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Don't report a problem unless we're synced
-	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Blow packet sync
-	mov r14, CT.sTH.bID     ; arg1 is prudir
+	qbbc resetAfterDelimiter, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; Don't report a problem unless we're synced
+	clr CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; Blow packet sync
+	ldThreadID r14          ; arg1 is prudir
 	mov r15, CT.bInpByte    ; arg2 is number of bytes written
 	mov r16, r6             ; arg3 is first reg
 	mov r17, r7
@@ -189,8 +189,8 @@ frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, w
         jmp resetAfterDelimiter
 
 achievePacketSync: ;; Here to achieve packet sync when we didn't already have it
-	sendITag """APS""",CT.sTH.bFlags               ; report in
-        set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Achieve packet sync
+	sendITag """APS""",CT.sTH.wFlags               ; report in
+        set CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; Achieve packet sync
 	sendFromThread """PS""", CT.rRunCount.r ; Report that
 
 	;; FALL INTO resetAfterDelimiter
@@ -206,10 +206,8 @@ resetAfterDelimiter:  ;; Here to set up for new inbound packet
 handleGoodPacketDelimiter: ;; Here we finally have a finished packet!
 	sendITag """HGPD""",CT.bInpByte               ; report in
         qbeq resetAfterDelimiter, CT.bInpByte, 0 ; But if it's zero-length, discard it!
-	sendITag """IPSP""",CT.sTH.bID               ; report in
-	;; sendFromThread """sd""", CT.sTH.bID ; XXX report prudir
-	;; sendFromThread """s@""", CT.bInpByte ; XXX report len
-        mov r14, CT.sTH.bID                      ; arg1 is prudir
+	sendITag """IPSP""",CT.sTH.wFlags               ; report in
+        ldThreadID r14                           ; arg1 is prudir
         mov r15, CT.bInpByte                     ; arg2 is length
         jal r3.w2, ipbSendPacket                 ; Send the packet off to linux!  Foggin finally!
 	jmp resetAfterDelimiter                  ; And set up for another
@@ -231,13 +229,13 @@ checkEndOfByte: ;; Here to increment and deal with end of byte processing
 	sendITag """CEOB""",CT.bInpBCnt               ; report in
         add CT.bInpBCnt, CT.bInpBCnt, 1           ; Increment count of bits in byte
         qbge makeRisingEdge, CT.bInpBCnt, 7       ; Nothing more to do if 7 >= bits in byte
-        qbbc makeRisingEdge, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Also nothing more to do if not synced
+        qbbc makeRisingEdge, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; Also nothing more to do if not synced
 	
         ;; FALL INTO storeThisInputByte
 
 storeThisInputByte: ;; Here to add a finished byte to the packet payload
 	sendITag """STIB""",CT.bInpData           ; report in
-        mov r14, CT.sTH.bID     ; arg1 is prudir
+        ldThreadID r14                            ; arg1 is prudir
         mov r15, CT.bInpByte    ; arg2 is what byte in the packet we just finished
 	mov r16, CT.bInpData    ; arg3 is byte value to store
         jal r3.w2, ipbWriteByte ; go store this byte
