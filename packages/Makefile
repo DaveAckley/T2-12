@@ -1,5 +1,6 @@
 PACKAGES+=emacs-nox
 PACKAGES+=fbi
+PACKAGES+=libts-bin
 PACKAGES+=inotify-tools
 PACKAGES+=git g++
 PACKAGES+=software-properties-common python-software-properties
