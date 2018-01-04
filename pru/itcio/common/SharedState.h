@@ -17,9 +17,6 @@
 
 #include "PacketBuffer.h"
 
-//#define SHARED_PHYSICAL_BASE_ADDRESS 0xa0000000UL
-#define SHARED_PHYSICAL_BASE_ADDRESS 0x87f00000UL
-
 ////////////////////
 struct QoSPacketBufferPair {
   PacketBufferStorageMED fast;  /* Priority rate queue */
@@ -81,10 +78,7 @@ struct SharedState {
   struct SharedStatePerPru pruState[2];
 };
 
-static inline struct SharedState * getSharedStatePhysicalInline(void) {
-  return (struct SharedState*) SHARED_PHYSICAL_BASE_ADDRESS;
-}
-
+/* set up during startup by external code*/
 extern struct SharedState * getSharedStatePhysical(void) ;
 
 /* set up during mmap-ing by external code*/

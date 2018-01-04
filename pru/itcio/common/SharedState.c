@@ -36,11 +36,6 @@ void initSharedStatePerPru(struct SharedStatePerPru * sspp)
     initSharedStatePerITC(&sspp->pruDirState[i]);
 }
 
-struct SharedState * getSharedStatePhysical()
-{
-  return getSharedStatePhysicalInline();
-}
-
 struct PacketBuffer * getNextPacketBufferToRead(struct QoSPacketBufferPair * qpbp)
 {
   return getNextPacketBufferToReadInline(qpbp);
