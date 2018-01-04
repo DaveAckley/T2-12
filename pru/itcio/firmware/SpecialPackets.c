@@ -107,6 +107,7 @@ int32_t peekIOS(IOS * io) {
 
 uint16_t cursorIOS(IOS *io) { return io->pos; }
 
+#if 0
 void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
   IOS iostream;
   IOS * ios = &iostream;
@@ -185,6 +186,7 @@ void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
     }
   }
 }
+#endif
 
 unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
 {
@@ -314,11 +316,13 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
     break;
   }
 
+#if 0
   /* PACKET TYPE: 'P'acket engine access */
   case 'P': {                        
     processPacketEnginePacket(&packet[1], len-1);
     break;
   }
+#endif
     
   default:
     {
