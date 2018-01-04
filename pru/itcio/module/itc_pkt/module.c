@@ -34,7 +34,7 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
   INIT_KFIFO(s->itcPacketKfifo);
   INIT_KFIFO(s->special0Kfifo);
   INIT_KFIFO(s->special1Kfifo);
-  init_waitqueue_head(&s->itcPacketWaitQ); 
+  init_waitqueue_head(&s->itcPacketWaitQ);
   mutex_init(&s->standardLock);
   s->packetPhysP = 0;
   s->packetVirtP = 0;
@@ -57,15 +57,13 @@ static int initITCSharedPacketBuffers(ITCPacketDriverState *s)
 
   printk(KERN_INFO "BOSCO initITCSharedPacketBuffers GLURB\n");
   if (!s) return -EINVAL;
-  if (!s->dev_packet_state[2]) return -EINVAL;
-  if (!s->dev_packet_state[2]->dev) return -ENODEV;
   if (s->packetPhysP || s->packetVirtP) return -EEXIST;
 
-  printk(KERN_INFO "dma_alloc_coherent %p %u\n",s->dev_packet_state[2]->dev,size);
+  printk(KERN_INFO "dma_alloc_coherent %u\n", size);
   virtp = dma_alloc_coherent(0, size, &dma, GFP_KERNEL);
 
   printk(KERN_INFO "gots virtp %p / physp 0x%08x OGLURB\n", virtp, dma);
-  
+
   if (!virtp) {
     printk(KERN_WARNING "dma_alloc_coherent failed\n");
     return -EINVAL;
@@ -75,7 +73,7 @@ static int initITCSharedPacketBuffers(ITCPacketDriverState *s)
   s->packetPhysP = dma;
 
   initSharedState(s->packetVirtP);
-  
+
   return 0;
 }
 
@@ -151,7 +149,7 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
         break;
       }
     }
-    
+
     if (ret == 0)
       if (!kfifo_out(kfifop, buf, bufsiz))
         printk(KERN_WARNING "kfifo was empty\n");
@@ -369,7 +367,7 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
 
   devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
 #if MORE_DEBUGGING
-  printk(KERN_INFO "itc_pkt_release %d:%d\n", 
+  printk(KERN_INFO "itc_pkt_release %d:%d\n",
          MAJOR(devstate->devt),
          MINOR(devstate->devt));
 #endif
@@ -379,19 +377,24 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   return 0;
 }
 
-static int routeStandardPacket(const unsigned char * buf, size_t len)
+static int routeStandardPacket(struct SharedStateSelector * sss, const unsigned char * buf, size_t len)
 {
   if (len == 0) return -EINVAL;
   if ((buf[0] & 0x80) == 0) return -ENXIO; /* only standard packets can be routed */
   switch (buf[0] & 0x7) {
   default: return -ENODEV;
-#define XX(dir) case ITC_DIR_TO_DIR_NUM(dir): return ITC_DIR_TO_PRU(dir);
-FOR_XX_IN_ITC_ALL_DIR    
+#define XX(dir)                                         \
+    case ITC_DIR_TO_DIR_NUM(dir):                       \
+    sss->pru = ITC_DIR_TO_PRU(dir);                     \
+    sss->prudir = ITC_DIR_TO_PRU(dir);                  \
+    break;
+FOR_XX_IN_ITC_ALL_DIR
 #undef XX
   }
+  return 0;
 }
 
-  
+
 /** @brief This callback used when data is being written to the device
  *  from user space.  Note that although rpmsg allows messages over
  *  500 bytes long, so that's the limit for talking to a local PRU,
@@ -426,11 +429,16 @@ static ssize_t itc_pkt_write(struct file *filp,
   }
 
   if (MINOR(devstate->devt) == 2) {
-    int newMinor = routeStandardPacket(driver_buf, count);
+    struct SharedStateSelector sss;
+    int newMinor, ret;
 
-    //    printk(KERN_INFO "CONSIDERINGO ROUTINGO\n");
-    if (newMinor < 0) 
-      return newMinor;          // bad routing
+    initSharedStateSelector(&sss);
+    ret = routeStandardPacket(&sss, driver_buf, count);
+
+    if (ret < 0)
+      return ret;          // bad routing
+
+    newMinor = sss.pru;
 
     if (count > ITC_MAX_PACKET_SIZE) {
       dev_err(devstate->dev, "Routable packet size (%d) exceeds ITC length max (255)", count);
@@ -444,6 +452,21 @@ static ssize_t itc_pkt_write(struct file *filp,
       devstate = S.dev_packet_state[newMinor];
       BUG_ON(!devstate);
     }
+
+    {
+      struct PacketBuffer * pb = getPacketBufferIfAny(S.packetVirtP, &sss);
+      if (!pb) {
+        dev_err(devstate->dev, "No FOB packet buffer found?");
+        return -EINVAL;
+      }
+      ret = pbWritePacketIfPossible(pb, driver_buf, count);
+      if (ret < 0) {
+        dev_err(devstate->dev,
+                "FOB packet transmission failed %d\n",ret);
+        return ret;
+      }
+    }
+    return count;
   }
 
   ret = rpmsg_send(devstate->rpmsg_dev, (void *)driver_buf, count);
@@ -493,7 +516,7 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
         break;
       }
     }
-    if (ret == 0) 
+    if (ret == 0)
       ret = kfifo_to_user(devfifo, buf, count, &copied);
     mutex_unlock(&devstate->specialLock);
     break;
@@ -514,16 +537,16 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
         ret = -ERESTARTSYS;
         break;
       }
-        
+
     }
-    if (ret == 0) 
+    if (ret == 0)
       ret = kfifo_to_user(devfifo, buf, count, &copied);
 
     mutex_unlock(&S.standardLock);
 
     break;
   }
-    
+
   default: BUG_ON(1);
   }
 
@@ -626,7 +649,7 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
   }
 
   BUG_ON(S.dev_packet_state[minor_obtained]);
-  
+
   devstate = make_itc_minor(&rpmsg_dev->dev, minor_obtained, &ret);
 
   printk(KERN_INFO "BLURGE back with devstate=%p\n",devstate);
@@ -639,13 +662,12 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
   devstate->rpmsg_dev = rpmsg_dev;
   ++S.open_pru_minors;
 
-  /* send empty message to give PRU src & dst info*/
+  /* send initial '@' packet to give PRU src & dst info, plus the shared space physaddr */
   {
-    char buf[10];
-    printk(KERN_INFO "BLURGE sending on buf=%p\n",buf);
-
-    ret = send_msg_to_pru(minor_obtained,0,buf,10, "%s",""); /* grr..gcc warns on "" as format string */
-    printk(KERN_INFO "RECTOBLURGE back with buf='%s'\n",buf);
+    char buf[32];
+    printk(KERN_INFO "BLURGE buf=%p\n",buf);
+    ret = send_msg_to_pru(minor_obtained,0,buf,32,"@%08x!",S.packetPhysP);
+    printk(KERN_INFO "RECTOBLURGE sent buf='%s'\n",buf);
   }
 
   if (ret) {
@@ -762,7 +784,7 @@ ITCDeviceState * make_itc_minor(struct device * dev,
      so with the switch code above I'd generate three lock classes
      each with one lock instance, while with the code below I'm
      generating one class with three instances.  On the one hand,
-     lockdep-design says this: 
+     lockdep-design says this:
 
         For example a lock in the inode struct is one class, while
         each inode has its own instantiation of that lock class.
@@ -777,7 +799,7 @@ ITCDeviceState * make_itc_minor(struct device * dev,
      which sounds to me like if I make a single lock class, then when
      someone's holding the PRU0 lock nobody else can acquire the PRU1
      lock, since that would be the 'same lock-class' being acquired
-     twice.  
+     twice.
 
      But that can't be what it means, right, or else having one inode
      locked would block all the rest?  'Acquiring a lock-class' must
@@ -788,8 +810,8 @@ ITCDeviceState * make_itc_minor(struct device * dev,
      And, umm, Clearly I Don't Get mutex_init.
   */
 
-  mutex_init(&devstate->specialLock); 
-  init_waitqueue_head(&devstate->specialWaitQ); 
+  mutex_init(&devstate->specialLock);
+  init_waitqueue_head(&devstate->specialWaitQ);
 
   devstate->devt = MKDEV(MAJOR(S.major_devt), minor_obtained);
 
@@ -834,7 +856,7 @@ static void itc_pkt_remove(struct rpmsg_channel *rpmsg_dev) {
   ITCDeviceState *devstate;
 
   devstate = dev_get_drvdata(&rpmsg_dev->dev);
-  mutex_destroy(&devstate->specialLock); 
+  mutex_destroy(&devstate->specialLock);
   device_destroy(&itc_pkt_class_instance, devstate->devt);
   cdev_del(&devstate->cdev);
 }
@@ -855,6 +877,12 @@ static int __init itc_pkt_init (void)
   printk(KERN_INFO "ZORG itc_pkt_init\n");
 
   initITCPacketDriverState(&S);
+
+  ret = initITCSharedPacketBuffers(&S);
+  if (ret) {
+    pr_err("Failed to allocate shared packet buffers, error = %d", ret);
+    goto fail_init_shared_buffers;
+  }
 
   ret = class_register(&itc_pkt_class_instance);
   if (ret) {
@@ -877,23 +905,18 @@ static int __init itc_pkt_init (void)
     goto fail_register_rpmsg_driver;
   }
 
-  ret = initITCSharedPacketBuffers(&S);
-  if (ret) {
-    pr_err("Failed to allocate shared packet buffers");
-    goto fail_init_shared_buffers;
-  }
-
   return 0;
-
- fail_init_shared_buffers:
-  unregister_rpmsg_driver(&itc_pkt_driver);
 
  fail_register_rpmsg_driver:
   unregister_chrdev_region(S.major_devt,
                            MINOR_DEVICES);
  fail_alloc_chrdev_region:
   class_unregister(&itc_pkt_class_instance);
+
  fail_class_register:
+  freeITCSharedPacketBuffers(&S);
+
+ fail_init_shared_buffers:
   return ret;
 }
 
@@ -919,7 +942,7 @@ MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Dave Ackley <ackley@ackleyshack.com>");
 MODULE_DESCRIPTION("T2 intertile packet communications subsystem");  ///< modinfo description
 
-MODULE_VERSION("0.5");          ///< 0.5 for using shared memory 
+MODULE_VERSION("0.5");          ///< 0.5 for using shared memory
 /// 0.4 for general internal renaming and reorg (201801031340)
 /// 0.3 for renaming to itc_pkt
 /// 0.2 for initial import

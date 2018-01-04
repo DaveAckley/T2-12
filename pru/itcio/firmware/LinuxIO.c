@@ -21,6 +21,32 @@ static uint8_t payload[RPMSG_BUF_SIZE];
 static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
 static uint16_t firstSrc, firstDst;
+static void * sharedStatePhysicalAddress = 0;
+
+struct SharedState * getSharedStatePhysical(void)
+{
+  return sharedStatePhysicalAddress;
+}
+
+void handleAtPacket(uint8_t * data, uint32_t len)
+{
+  unsigned addr=0, i;
+  if (sharedStatePhysicalAddress!=0) return fillFail("[RE@]",data,len);
+  if (len != 10) return fillFail("[PKLEN]",data,len);
+  if (data[9] != '!') return fillFail("[PKTRM]",data,len);
+  for (i = 1; i < 9; ++i) {
+    unsigned ch = data[i];
+    unsigned dig;
+    if (ch >= '0' && ch <= '9') dig = ch-'0';
+    else if (ch >= 'a' && ch <= 'f') dig = ch-'a'+10;
+    else if (ch >= 'A' && ch <= 'F') dig = ch-'A'+10;
+    else return fillFail("[PKFMT]",data,len);
+    addr = (addr<<4) + dig;
+  }
+  sharedStatePhysicalAddress = (void*) addr;
+  data[9] = '.';
+}
+
 
 static const char * (prudirnames[3]) = {
 #if ON_PRU == 0
@@ -265,10 +291,14 @@ int processPackets() {
       else {
 
         if (firstPacket) {
-          /* linux sends an empty packet to get us going */
+          /* linux sends an @ packet to give us startup info */
           firstSrc = src;
           firstDst = dst;
           firstPacket = 0;
+          handleAtPacket(payload,len);
+          /* ack 1st packet */
+          pru_rpmsg_send(&transport, dst, src, payload, len);
+          break;
         }
 
         if (len > 0) {
