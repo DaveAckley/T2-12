@@ -53,9 +53,10 @@ static int initITCSharedPacketBuffers(ITCPacketDriverState *s)
 {
   void *virtp;
   dma_addr_t dma = 0;
-  size_t size = SHARED_PACKET_BUFFER_SIZE;
+  size_t size = sizeof(struct SharedState);
 
-  printk(KERN_INFO "BOSCO initITCSharedPacketBuffers GLURB\n");
+  printk(KERN_INFO "itc_pkt: Allocating %dB coherent shared state\n", size);
+
   if (!s) return -EINVAL;
   if (s->packetPhysP || s->packetVirtP) return -EEXIST;
 
@@ -79,7 +80,7 @@ static int initITCSharedPacketBuffers(ITCPacketDriverState *s)
 
 static void freeITCSharedPacketBuffers(ITCPacketDriverState *s)
 {
-  size_t size = SHARED_PACKET_BUFFER_SIZE;
+  size_t size = sizeof(struct SharedState);
 
   printk(KERN_INFO "prefreesnrog\n");
   if (!s->packetVirtP || !s->packetPhysP) {
@@ -138,6 +139,13 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
 
   /* Wait, if we're supposed to, for a packet in our kfifo */
   if (wait) {
+#if 0 /*XXX WRITE ME*/
+    SharedStateSelector sss;
+    sss.pru = prunum;
+    sss.inbound = 1;
+
+    XXX
+#else
     SpecialPacketFIFO *kfifop;
 
     if (prunum == 0) kfifop = &S.special0Kfifo;
@@ -153,6 +161,7 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
     if (ret == 0)
       if (!kfifo_out(kfifop, buf, bufsiz))
         printk(KERN_WARNING "kfifo was empty\n");
+#endif
   }
 
   mutex_unlock(&devstate->specialLock);
@@ -397,12 +406,16 @@ FOR_XX_IN_ITC_ALL_DIR
         
 static void processBufferKick(struct SharedStateSelector* sss)
 {
+  static unsigned kicks = 0;
   struct PacketBuffer * pb = getPacketBufferIfAnyInline(S.packetVirtP, sss);
   unsigned char selbuf[7];
   sharedStateSelectorCode(sss,selbuf);
   selbuf[4] = ':';
   selbuf[5] = ' ';
   selbuf[6] = '\0';
+
+  if ((++kicks&0xfff)==0)
+    printk(KERN_INFO "%sTotal kicks now %u\n", selbuf, kicks);
 
   if (!pb) {
     printk(KERN_ERR "%sNo packet buffer found for kick %d%d%d%d\n",
@@ -963,6 +976,13 @@ static int __init itc_pkt_init (void)
 
 static void __exit itc_pkt_exit (void)
 {
+  {
+    /*Try to halt the prus before bailing*/
+    char buf[10];
+    send_msg_to_pru(0, 0, buf, 10, "\177!");
+    send_msg_to_pru(1, 0, buf, 10, "\177!");
+  }
+
   if (S.dev_packet_state[2]) { /* [0] and [1] handled automatically, right? */
     device_destroy(&itc_pkt_class_instance, S.dev_packet_state[2]->devt);
   }

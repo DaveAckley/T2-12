@@ -22,9 +22,6 @@
 
 #define KFIFO_SIZE (1<<12)   /* ITC packets are max 255.  Guarantee space for 16 (256*16 == 4,096 == 2**12) */
 
-/* 65KB shared packet buffer space */
-#define SHARED_PACKET_BUFFER_SIZE (1u<<16)
-
 /*unused? #define PROC_FIFO "itc-pkt-fifo"*/
 
 /* PRU special packets are expected to be smaller and rarer.  Give them 1KB each */
