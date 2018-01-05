@@ -398,21 +398,18 @@ FOR_XX_IN_ITC_ALL_DIR
 static void processBufferKick(struct SharedStateSelector* sss)
 {
   struct PacketBuffer * pb = getPacketBufferIfAnyInline(S.packetVirtP, sss);
-  printk(KERN_INFO "pBK SNORF\n");
+  unsigned char selbuf[7];
+  sharedStateSelectorCode(sss,selbuf);
+  selbuf[4] = ':';
+  selbuf[5] = ' ';
+  selbuf[6] = '\0';
+
   if (!pb) {
-    printk(KERN_ERR "No packet buffer found for kick %d%d%d%d\n",
-           sss->pru,sss->prudir,sss->inbound,sss->bulk);
+    printk(KERN_ERR "%sNo packet buffer found for kick %d%d%d%d\n",
+           selbuf, sss->pru,sss->prudir,sss->inbound,sss->bulk);
   } else {
     unsigned char buff[256];
-    unsigned char selbuf[7];
     int ret;
-    selbuf[0] = sss->pru+'0';
-    selbuf[1] = sss->prudir+'a';
-    selbuf[2] = sss->inbound ? 'i' : 'o';
-    selbuf[3] = sss->bulk ? 's' : 'f';
-    selbuf[4] = ':';
-    selbuf[5] = ' ';
-    selbuf[6] = '\0';
     
     while ((ret = pbReadPacketIfPossible(pb,buff,256)) > 0) {
       DBGPRINT_HEX_DUMP(DBG_PKT_RCVD,
@@ -600,14 +597,17 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
 
   //  printk(KERN_INFO "Received %d from %d\n",len, minor);
 
-  DBGPRINT_HEX_DUMP(DBG_PKT_RCVD,
-                    KERN_INFO, minor ? "<pru1: " : "<pru0: ",
-                    DUMP_PREFIX_NONE, 16, 1,
-                    data, len, true);
-
   if (len > 0) {
     int wake = -1;
-    u8 type =  *(u8*) data;
+    u8 * d = (u8*) data;
+    u8 type =  d[0];
+
+    if (type >= 2)
+      DBGPRINT_HEX_DUMP(DBG_PKT_RCVD,
+                        KERN_INFO, minor ? "<pru1: " : "<pru0: ",
+                        DUMP_PREFIX_NONE, 16, 1,
+                        data, len, true);
+
 
     // ITC data if first byte MSB set
     if (type&0x80) {
