@@ -90,12 +90,20 @@ void ipbSendPacket(unsigned prudir, unsigned char length) {
     sss.pru = ON_PRU;
     sss.prudir = prudir;
     sss.inbound = 1;
-    sss.bulk = (ipb->buffer[0]&PKT_BULK_STD_MASK)==PKT_BULK_STD_VALUE;
+    sss.bulk = ( (ipb->buffer[0]&PKT_BULK_STD_MASK) == PKT_BULK_STD_VALUE );
     ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
     pb = getPacketBufferIfAny(getSharedStatePhysical(), &sss);
-    if (pbWritePacketIfPossible(pb, ipb->buffer, length))
-      ++ipb->packetsRejected;
-    else
-      ++ipb->packetsReceived;
+    if (pb) {
+      if (pbIsEmptyInline(pb))
+        ipb->flags |= NEED_KICK;
+      if (pbWritePacketIfPossible(pb, ipb->buffer, length))
+        ++ipb->packetsRejected;
+      else 
+        ++ipb->packetsReceived;
+      if (ipb->flags & NEED_KICK) {
+        if (CSendPacket((uint8_t*) &sss,sizeof(sss))==0)
+          ipb->flags &= ~NEED_KICK;
+      }
+    }
   }
 }

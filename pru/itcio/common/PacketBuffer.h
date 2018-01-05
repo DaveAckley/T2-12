@@ -155,6 +155,10 @@ static inline void pbInitInline(struct PacketBuffer * pb, unsigned ringBufferBit
 }
 extern void pbInit(struct PacketBuffer * pb, unsigned ringBufferBits) ;
 
+static inline unsigned int pbIsEmptyInline(struct PacketBuffer * pb) {
+  return  pb->writePtr == pb->readPtr;
+}
+
 static inline unsigned int pbUsedBytesInline(struct PacketBuffer * pb) {
   int diff = pb->writePtr - pb->readPtr;
   if (diff < 0) diff += pb->bufferSize;

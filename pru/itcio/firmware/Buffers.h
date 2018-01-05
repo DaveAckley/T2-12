@@ -130,9 +130,13 @@ extern void ipbSendPacket(unsigned prudir, unsigned char length) ;
 struct InboundPacketBuffer {
   unsigned packetsReceived;     /* Count of packets shipped to linux */
   unsigned packetsRejected;     /* Count of packets dropped due to insufficient rpmsg buffers */
+  unsigned char flags;          /* only NEED_KICK==0x01 currently exists */
   unsigned char buffer[MAX_PACKET_SIZE];
 };
 
+enum PruPacketBufferFlags {
+  NEED_KICK = 0x01,
+};
 struct PruDirBuffers {
   struct OutboundRingBuffer out;
   struct InboundPacketBuffer in;

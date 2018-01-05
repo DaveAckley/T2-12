@@ -394,6 +394,34 @@ FOR_XX_IN_ITC_ALL_DIR
   return 0;
 }
 
+        
+static void processBufferKick(struct SharedStateSelector* sss)
+{
+  struct PacketBuffer * pb = getPacketBufferIfAnyInline(S.packetVirtP, sss);
+  printk(KERN_INFO "pBK SNORF\n");
+  if (!pb) {
+    printk(KERN_ERR "No packet buffer found for kick %d%d%d%d\n",
+           sss->pru,sss->prudir,sss->inbound,sss->bulk);
+  } else {
+    unsigned char buff[256];
+    unsigned char selbuf[7];
+    int ret;
+    selbuf[0] = sss->pru+'0';
+    selbuf[1] = sss->prudir+'a';
+    selbuf[2] = sss->inbound ? 'i' : 'o';
+    selbuf[3] = sss->bulk ? 's' : 'f';
+    selbuf[4] = ':';
+    selbuf[5] = ' ';
+    selbuf[6] = '\0';
+    
+    while ((ret = pbReadPacketIfPossible(pb,buff,256)) > 0) {
+      DBGPRINT_HEX_DUMP(DBG_PKT_RCVD,
+                        KERN_INFO, selbuf,
+                        DUMP_PREFIX_NONE, 16, 1,
+                        buff, ret, true);
+    }
+  }
+}
 
 /** @brief This callback used when data is being written to the device
  *  from user space.  Note that although rpmsg allows messages over
@@ -596,14 +624,26 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
 
       kfifo_in(&S.itcPacketKfifo, data, len);
       wake_up_interruptible(&S.itcPacketWaitQ);
-    } else if (minor == 0) {
-      kfifo_in(&S.special0Kfifo, data, len);
-      wake = 0;
-    } else if (minor == 1) {
-      kfifo_in(&S.special1Kfifo, data, len);
-      wake = 1;
+    } else {
+      if (type<2) { // Then it's a shared state buffer kick from PRU(type)
+
+        if (len != 4) {
+          printk(KERN_ERR "Length %d buffer kick received, ignored\n",len);
+        } else {
+          processBufferKick((struct SharedStateSelector*) data);
+        }
+      } else {
+
+        if (minor == 0) {
+          kfifo_in(&S.special0Kfifo, data, len);
+          wake = 0;
+        } else if (minor == 1) {
+          kfifo_in(&S.special1Kfifo, data, len);
+          wake = 1;
+        }
+        else BUG_ON(1);
+      }
     }
-    else BUG_ON(1);
     if (wake >= 0) {
       wake_up_interruptible(&S.dev_packet_state[wake]->specialWaitQ);
     }
