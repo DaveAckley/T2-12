@@ -1,4 +1,4 @@
-{368}  -*- text -*-
+{372}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6218,3 +6218,73 @@ Time to move the flag.  Committing.
 :360]
 
 :359]
+[368:
+
+Thu Jan  4 16:24:33 2018 OK flag is back in town.  What's next
+  here.[369:
+
+Thu Jan  4 16:28:55 2018 Maybe trying to install?  We're theoretically
+going to put received packets into SharedState now..  And how will we
+see what's happening?
+
+:369]
+
+:368]
+[370:
+
+Thu Jan  4 17:21:00 2018 OK, so we have inbound packets now getting
+put into shared state, and we're sending the associated struct
+SharedStateSelector as a four byte 'kick' packet when our packetbuffer
+(PRU side) is transitioning from empty to non-empty.  I thought that
+was a disgusting hack at first but it just amounts to reserving
+special packet types '\0' and '\1' as 'kick' packets, which kind of
+seems extremely reasonable..
+
+Anyway and furthermore, we do the kicking via a NEEDS_KICK flag in the
+(to be renamed) InboundPacketBuffer state, so if there's no rpmsg
+buffers available when PRU goes to kick, it won't block but will
+instead keep trying on the next inbound packet of that buffer, and so
+on even if/though the buffer isn't empty.  We could arrange for a last
+ditch timeout per buffer but have not as yet.
+
+We also have itc_pkt.ko checking the associated pb when it gets a
+shared state kick, and dmesging the received packets, and we see it
+working thus:
+
+    # echo '\207zz7' > /dev/itc/pru1
+    #
+
+gets
+
+    [ 4206.892278] itc_pkt_open 246:1
+    [ 4206.902384] itc_pkt itc!pru1: Sending length 5 type 0x87 packet
+
+Our packet outbound.
+
+    [ 4206.908622] <pru0: 00 01 01 00                                      ....
+
+The sss kick coming back: pru0, prudir1, inbound0, bulk0.
+
+    [ 4206.915460] pBK SNORF
+    [ 4206.917760] 0bif: 83 7a 7a 37 0a                                   .zz7.
+
+Hexdumping the packet. 0bif->Pru0 prudirB(aka1), Inbound, Fast.
+
+    [ 4206.939142] itc_pkt_release 246:1
+
+Done.
+
+
+:370]
+[371:
+
+Fri Jan  5 00:09:18 2018 Doing a checkpoint commit ahead of
+
+(1) Tearing out OutboundRingBuffer
+(2) Renaming InboundPacketBuffer to something else
+(3) Tearing out the individual byte-oriented functions of IPB,
+(4) Creating memcpy-based packet add and remove from the SharedState
+    packet buffers.
+    
+
+:371]
