@@ -61,6 +61,7 @@ int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsig
   if (length > 255) return -PBE_FBIG;
   if (pbAvailableBytes(pb) < length + 1) return -PBE_NOMEM;
   pbStartWritingPendingPacket(pb);
+  /*XXX LET'S GET SOME MEMCPY ACTION MOVING IN HERE*/
   while (length-- > 0) pbWriteByteInPendingPacketInline(pb, *data++);
   pbCommitPendingPacket(pb);
   return 0;
@@ -74,6 +75,7 @@ int pbReadPacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsign
   if (plen == 0) return 0;
   if (plen > length) return -PBE_FBIG;
   pbStartReadingOldestPacket(pb);
+  /*XXX LET'S GET SOME MEMCPY ACTION MOVING IN HERE*/
   for (i = 0; i < plen; ++i)
     data[i] = pbReadByteFromOldestPacketInline(pb);
   pbDropOldestPacket(pb);
