@@ -1,4 +1,4 @@
-{372}  -*- text -*-
+{377}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6280,11 +6280,42 @@ Done.
 
 Fri Jan  5 00:09:18 2018 Doing a checkpoint commit ahead of
 
-(1) Tearing out OutboundRingBuffer
-(2) Renaming InboundPacketBuffer to something else
-(3) Tearing out the individual byte-oriented functions of IPB,
+[373: Fri Jan  5 03:22:23 2018 DONE  :373](1) Tearing out OutboundRingBuffer
+[374: DONE 'PRUPacketBuffer'  :374](2) Renaming InboundPacketBuffer to something else
+[375: NOT DONE -- they still exist for the ASM-facing side  :375](3) Tearing out the individual byte-oriented functions of IPB,
 (4) Creating memcpy-based packet add and remove from the SharedState
     packet buffers.
-    
+[372:
+
+Fri Jan  5 03:22:07 2018 OK, did a bunch of that..[376:
+
+Fri Jan  5 03:34:03 2018 Now standard packet traffic in both
+directions is going via shared state.  Next major functionality issue
+is reducing or eliminating the kfifos and figuring out how to let
+user processes wait on the shared state.  That's going to take a bit
+of design.  And actually, we'd like to figure out how to support
+userspace select() over the different buffers.  Maximally:
+
+7.1 Able to get an fd and select() on it for any face and QoS class
+
+7.2 Having that fd close with an IOError if its face is disconnected.
+
+7.3 Having some sort of listen() service that will track ITC
+    connections and produce appropriate fds for them when they connect
+    and we accept()
+
+7.4 Able to request, test, and release the ITC locks via that same fd.
+
+7.5 Able to run reasonably reliable port-to-port byte streams over the
+    bulk transport channels, allowing a limited range of specific port
+    numbers and only nearest-neighbor connections.  Rather than going
+    for anything like a full IP tunnel, the goal is primarily to
+    provide some kind of minimal bespoke rsync access with controlled
+    destinations to move .mfz files (into which, though, we might pack
+    a range of things like dpkgs or whatever.)
+
+:376]
+
+:372]    
 
 :371]
