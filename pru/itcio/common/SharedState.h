@@ -18,9 +18,15 @@
 #include "PacketBuffer.h"
 
 ////////////////////
+#define QOSPACKETBUFFERFAST_BUFFER_BITS RING_BUFFER_BITS_MED
+typedef PacketBufferStorageMED QoSPacketBufferFast;
+
+#define QOSPACKETBUFFERSLOW_BUFFER_BITS RING_BUFFER_BITS_MED
+typedef PacketBufferStorageMED QoSPacketBufferSlow;
+
 struct QoSPacketBufferPair {
-  PacketBufferStorageMED fast;  /* Priority rate queue */
-  PacketBufferStorageMED slow;  /* Bulk rate queue */
+  QoSPacketBufferFast fast;  /* Priority rate queue */
+  QoSPacketBufferSlow slow;  /* Bulk rate queue */
 };
 extern void initQoSPacketBufferPair(struct QoSPacketBufferPair * qpbp) ;
 
@@ -53,6 +59,7 @@ struct SharedStatePerITC {
   struct QoSPacketBufferPair outbound;  /* Packets outbound from host to ITC and beyond */
   struct QoSPacketBufferPair inbound;   /* Packets inbound to host from ITC and beyond */
 };
+
 extern void initSharedStatePerITC(struct SharedStatePerITC * sspi) ;
 
 static inline struct PacketBuffer * sspiNextOutboundInline(struct SharedStatePerITC * sspi) {
@@ -68,8 +75,16 @@ static inline struct PacketBuffer * sspiNextInboundInline(struct SharedStatePerI
 extern struct PacketBuffer * sspiNextInbound(struct SharedStatePerITC * sspi) ;
 
 ////////////////////
+#define SHAREDSTATEPERPRUDOWNBOUND_BUFFER_BITS RING_BUFFER_BITS_SML
+typedef PacketBufferStorageSML SharedStatePerPruPacketBufferDownbound;
+
+#define SHAREDSTATEPERPRUUPBOUND_BUFFER_BITS RING_BUFFER_BITS_SML
+typedef PacketBufferStorageSML SharedStatePerPruPacketBufferUpbound;
+
 struct SharedStatePerPru {
   struct SharedStatePerITC pruDirState[3];
+  SharedStatePerPruPacketBufferDownbound downbound;     /* Special packets heading down from host to PRU */
+  SharedStatePerPruPacketBufferUpbound upbound;         /* Special packets heading up from PRU to host */
 };
 extern void initSharedStatePerPru(struct SharedStatePerPru * sspp) ;
 

@@ -28,8 +28,8 @@ void initSharedState(struct SharedState * ss)
 
 void initQoSPacketBufferPair(struct QoSPacketBufferPair * qpbp)
 {
-  pbInit((struct PacketBuffer*) &qpbp->fast, RING_BUFFER_BITS_MED);
-  pbInit((struct PacketBuffer*) &qpbp->slow, RING_BUFFER_BITS_MED);
+  pbInit((struct PacketBuffer*) &qpbp->fast, QOSPACKETBUFFERFAST_BUFFER_BITS);
+  pbInit((struct PacketBuffer*) &qpbp->slow, QOSPACKETBUFFERSLOW_BUFFER_BITS);
 }
 
 void initSharedStatePerITC(struct SharedStatePerITC * sspi)
@@ -43,6 +43,8 @@ void initSharedStatePerPru(struct SharedStatePerPru * sspp)
   unsigned i;
   for (i = 0; i < 3; ++i)
     initSharedStatePerITC(&sspp->pruDirState[i]);
+  pbInit((struct PacketBuffer*) &sspp->downbound, SHAREDSTATEPERPRUDOWNBOUND_BUFFER_BITS);
+  pbInit((struct PacketBuffer*) &sspp->upbound, SHAREDSTATEPERPRUUPBOUND_BUFFER_BITS);
 }
 
 struct PacketBuffer * getNextPacketBufferToRead(struct QoSPacketBufferPair * qpbp)
