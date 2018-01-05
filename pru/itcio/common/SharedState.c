@@ -10,6 +10,15 @@ struct PacketBuffer * getPacketBufferIfAny(struct SharedState * ss, struct Share
   return getPacketBufferIfAnyInline(ss, sss);
 }
 
+char * sharedStateSelectorCode(struct SharedStateSelector * sss, char * buf)
+{
+  buf[0] = sss->pru+'0';
+  buf[1] = sss->prudir+'a';
+  buf[2] = sss->inbound ? 'i' : 'o';
+  buf[3] = sss->bulk ? 's' : 'f';
+  return &buf[4];
+}
+
 void initSharedState(struct SharedState * ss)
 {
   unsigned i;

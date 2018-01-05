@@ -122,6 +122,9 @@ static inline struct PacketBuffer * getPacketBufferIfAnyInline(struct SharedStat
   return pb;
 }
 
+/* writes four bytes to buf[0]..buf[3] and returns &buf[4] */
+extern char * sharedStateSelectorCode(struct SharedStateSelector * sss, char * buf) ;
+
 extern struct PacketBuffer * getPacketBufferIfAny(struct SharedState * ss, struct SharedStateSelector * sss) ;
 
 #endif /* SHAREDSTATE_H */
