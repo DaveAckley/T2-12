@@ -28,9 +28,9 @@ ldThreadID:        .macro DESTREG
 ;;;  - TRASHES r0.b0
 ;;;  - Relies on CT.sTH.wFlags for thread ID and bulk settings
         ; struct PacketBuffer * (inboundPacketBufferPtrs[8])  
-	.ref inboundPacketBufferPtrs
+	.global inboundPacketBufferPtrs
         ; struct PacketBuffer * (outboundPacketBufferPtrs[8]);
-	.ref outboundPacketBufferPtrs
+	.global outboundPacketBufferPtrs
 ldPBPtr:        .macro DESTRN, WHICH
 	.if (WHICH == 0)
         .eval inboundPacketBufferPtrs, BASEADDR
@@ -360,7 +360,7 @@ resumeNextThread:       .macro
 ;;;  - Generates an arbitrary delay (of 30ns or more)
 ;;;  - Trashes everything but R2, R3.w2, and CT
 suspendThread: .macro
-	.ref contextSwitch
+	.global contextSwitch
         jal CT.sTH.wResAddr, contextSwitch
         .endm
                 
