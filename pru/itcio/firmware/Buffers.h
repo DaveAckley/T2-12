@@ -34,38 +34,6 @@
 
 #define PKT_STD_DIRECTION_MASK 0x07
 
-
-/* Simple lame-o ring buffer. */
-#define RING_BUFFER_BITS 10
-#define RING_BUFFER_SIZE (1<<RING_BUFFER_BITS)
-#define RING_BUFFER_MASK ((1<<RING_BUFFER_BITS)-1)
-
-struct OutboundRingBuffer {
-  unsigned short writePtr;      /* Points at first unused byte after end of newest packet*/
-  unsigned short readPtr;       /* Points at LENGTH BYTE at front of oldest packet */
-  unsigned packetsAdded;        /* Total packets added to this orb */
-  unsigned packetsRejected;     /* Total packets not added due to insufficient space */
-  unsigned packetsRemoved;      /* Total packets removed from this orb */
-  unsigned char buffer[RING_BUFFER_SIZE];
-};
-
-inline unsigned int orbUsedBytes(struct OutboundRingBuffer * orb) {
-  int diff = orb->writePtr - orb->readPtr;
-  if (diff < 0) diff += RING_BUFFER_SIZE;
-  return (unsigned int) diff;
-}
-
-inline unsigned int orbAvailableBytes(struct OutboundRingBuffer * orb) {
-  return RING_BUFFER_SIZE - orbUsedBytes(orb) - 1;
-}
-
-inline int orbStoreByte(struct OutboundRingBuffer * orb, unsigned char byte) {
-  if (orbAvailableBytes(orb) == 0) return 0;
-  orb->buffer[orb->writePtr] = byte;
-  orb->writePtr = (orb->writePtr+1) & RING_BUFFER_MASK;
-  return 1;
-}
-
 inline unsigned int dircodeFromPrudir(unsigned prudir) {
   switch (prudir) {
   case 0: return DIRCODE_FOR_PRUDIR0;
@@ -76,42 +44,11 @@ inline unsigned int dircodeFromPrudir(unsigned prudir) {
   }
 }
 
-extern int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned len) ;
+extern void ppbWriteInboundByte(unsigned prudir, unsigned char idxInPacket, unsigned byteToWrite) ;
 
-inline unsigned int orbFrontPacketLenInline(struct OutboundRingBuffer * orb) {
-  if (orbUsedBytes(orb) == 0) return 0;
-  return orb->buffer[orb->readPtr];
-}
+extern int ppbReadOutboundByte(unsigned prudir, unsigned char idxInPacket) ;
 
-extern unsigned int orbFrontPacketLen(unsigned prudir) ;
-
-inline int orbDropFrontPacketInline(struct OutboundRingBuffer * orb) {
-  unsigned int len = orbFrontPacketLenInline(orb);
-  if (len == 0) return 0;
-  orb->readPtr = (orb->readPtr + len + 1) & RING_BUFFER_MASK;
-  ++orb->packetsRemoved;
-  return 1;
-}
-
-extern int orbDropFrontPacket(unsigned prudir) ;
-
-inline int orbFrontPacketStartIndex(struct OutboundRingBuffer * orb) {
-  if (!orbUsedBytes(orb))
-    return -1;
-  return (orb->readPtr + 1) &  RING_BUFFER_MASK;
-}
-
-inline unsigned char orbGetFrontPacketByteInline(struct OutboundRingBuffer * orb, unsigned idxInPacket) {
-  unsigned int base = orbFrontPacketStartIndex(orb);
-  unsigned int index = (base + idxInPacket) & RING_BUFFER_MASK;
-  return orb->buffer[index];
-}
-
-extern unsigned char orbGetFrontPacketByte(unsigned prudir, unsigned idxInPacket) ;
-
-extern void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned byteToWrite) ;
-
-extern void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
+extern void ppbReportFrameError(unsigned prudir, unsigned char packetLength,
                                 unsigned ct0,
                                 unsigned ct1,
                                 unsigned ct2,
@@ -121,49 +58,48 @@ extern void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
                                 unsigned ct6,
                                 unsigned ct7) ;
 
-/*empty packets ignored; ipb packetsReceived++ if packet actually sent, else packetsRejected++ */
-extern void ipbSendPacket(unsigned prudir, unsigned char length) ;
+/*return 0 if packet shipped, -PBE_BUSY if caller needs to wait and try again */
+extern int ppbSendInboundPacket(unsigned prudir, unsigned char length) ;
+
+/*return 0 if no packet available, >0 packet length on success */
+extern int ppbReceiveOutboundPacket(unsigned prudir) ;
 
 
 #define MAX_PACKET_SIZE 256
 
-struct InboundPacketBuffer {
-  unsigned packetsReceived;     /* Count of packets shipped to linux */
-  unsigned packetsRejected;     /* Count of packets dropped due to insufficient rpmsg buffers */
-  unsigned char flags;          /* only NEED_KICK==0x01 currently exists */
+struct PRUPacketBuffer {
+  unsigned packetTransfers;     /* Count of packet-wise transfers in or out of this buffer */
+  unsigned packetStalls;        /* Count of packet transfer retries */
+  unsigned packetDrops;         /* Count of packet transfer failures */
+  unsigned char flags;          /* NEED_KICK, .. */
   unsigned char buffer[MAX_PACKET_SIZE];
 };
 
 enum PruPacketBufferFlags {
-  NEED_KICK = 0x01,
+  NEED_KICK = 0x01,             /* We want to kick ARM but haven't yet succeeded */
 };
+
 struct PruDirBuffers {
-  struct OutboundRingBuffer out;
-  struct InboundPacketBuffer in;
+  struct PRUPacketBuffer out;
+  struct PRUPacketBuffer in;
 };
 
 struct PruDirs {
   struct PruDirBuffers pruDirBuffers[3];
 };
 
-extern unsigned minORBAvailablePruDirs(struct PruDirs * pd) ;
-
 extern struct PruDirs pruDirData;
-
-inline unsigned minORBAvailable() {
-  return minORBAvailablePruDirs(&pruDirData);
-}
 
 inline struct PruDirBuffers * pruDirToBuffers(unsigned prudir) {
   return &pruDirData.pruDirBuffers[prudir&3];
 }
 
-inline struct OutboundRingBuffer * pruDirToORB(unsigned prudir) {
-  return &pruDirToBuffers(prudir)->out;
+inline struct PRUPacketBuffer * pruDirToInPPB(unsigned prudir) {
+  return &pruDirToBuffers(prudir)->in;
 }
 
-inline struct InboundPacketBuffer * pruDirToIPB(unsigned prudir) {
-  return &pruDirToBuffers(prudir)->in;
+inline struct PRUPacketBuffer * pruDirToOutPPB(unsigned prudir) {
+  return &pruDirToBuffers(prudir)->out;
 }
 
 #endif /* BUFFERS_H */

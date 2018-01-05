@@ -5,43 +5,17 @@
 #pragma DATA_SECTION(pruDirData, ".asmbuf")
 struct PruDirs pruDirData;
 
-unsigned minORBAvailablePruDirs(struct PruDirs * pd)
-{
-  uint32_t min = orbAvailableBytes(&pd->pruDirBuffers[0].out);
-  uint32_t avail;
-  avail = orbAvailableBytes(&pd->pruDirBuffers[1].out); if (avail < min) min = avail;
-  avail = orbAvailableBytes(&pd->pruDirBuffers[2].out); if (avail < min) min = avail;
-  return min;
+void ppbWriteInboundByte(unsigned prudir, unsigned char idxInPacket, unsigned byteToWrite) {
+  struct PRUPacketBuffer * ppb = pruDirToInPPB(prudir);
+  ppb->buffer[idxInPacket] = byteToWrite;
 }
 
-int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned len)
-{
-  unsigned i;
-  if (!data || len == 0 || len >= MAX_PACKET_SIZE || len >= orbAvailableBytes(orb)) {/* Available must strictly exceed len */
-    ++orb->packetsRejected;
-    return 1;  
-  }
-  orbStoreByte(orb,len);       /* To have room to stick packet length first */
-  for (i = 0; i < len; ++i)    /* Something smarter here should exist someday */
-    orbStoreByte(orb,data[i]);
-  ++orb->packetsAdded;
-  return 0;
+int ppbReadOutboundByte(unsigned prudir, unsigned char idxInPacket) {
+  struct PRUPacketBuffer * ppb = pruDirToOutPPB(prudir);
+  return ppb->buffer[idxInPacket];
 }
 
-int orbDropFrontPacket(unsigned prudir) { return orbDropFrontPacketInline(pruDirToORB(prudir)); }
-
-unsigned int orbFrontPacketLen(unsigned prudir) { return orbFrontPacketLenInline(pruDirToORB(prudir)); }
-
-unsigned char orbGetFrontPacketByte(unsigned prudir, unsigned idxInPacket) {
-  return orbGetFrontPacketByteInline(pruDirToORB(prudir), idxInPacket);
-}
-
-void ipbWriteByte(unsigned prudir, unsigned char idxInPacket, unsigned byteToWrite) {
-  struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
-  ipb->buffer[idxInPacket] = byteToWrite;
-}
-
-void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
+void ppbReportFrameError(unsigned prudir, unsigned char packetLength,
                          unsigned ct0,
                          unsigned ct1,
                          unsigned ct2,
@@ -50,60 +24,88 @@ void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
                          unsigned ct5,
                          unsigned ct6,
                          unsigned ct7) {
-  struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
+  struct PRUPacketBuffer * ppb = pruDirToInPPB(prudir);
   if (packetLength < 37) {
     packetLength = 37;
   }
-  ipb->buffer[0] = PKT_ROUTED_STD_VALUE|PKT_STD_ERROR_VALUE|dircodeFromPrudir(prudir); /*Fill in our source direction*/  
-  ipb->buffer[1] = 'F';
-  ipb->buffer[2] = 'R';
-  ipb->buffer[3] = 'M';
-  *((unsigned *) &ipb->buffer[4]) = ct0;
-  *((unsigned *) &ipb->buffer[8]) = ct1;
-  *((unsigned *) &ipb->buffer[12]) = ct2;
-  *((unsigned *) &ipb->buffer[16]) = ct3;
-  *((unsigned *) &ipb->buffer[20]) = ct4;
-  *((unsigned *) &ipb->buffer[24]) = ct5;
-  *((unsigned *) &ipb->buffer[28]) = ct6;
-  *((unsigned *) &ipb->buffer[32]) = ct7;
-  ipb->buffer[36] = '!';
-  if (CSendPacket(ipb->buffer, packetLength))
-    ++ipb->packetsRejected; /* Losing a FRM is baad */
+  ppb->buffer[0] = PKT_ROUTED_STD_VALUE|PKT_STD_ERROR_VALUE|dircodeFromPrudir(prudir); /*Fill in our source direction*/  
+  ppb->buffer[1] = 'F';
+  ppb->buffer[2] = 'R';
+  ppb->buffer[3] = 'M';
+  *((unsigned *) &ppb->buffer[4]) = ct0;
+  *((unsigned *) &ppb->buffer[8]) = ct1;
+  *((unsigned *) &ppb->buffer[12]) = ct2;
+  *((unsigned *) &ppb->buffer[16]) = ct3;
+  *((unsigned *) &ppb->buffer[20]) = ct4;
+  *((unsigned *) &ppb->buffer[24]) = ct5;
+  *((unsigned *) &ppb->buffer[28]) = ct6;
+  *((unsigned *) &ppb->buffer[32]) = ct7;
+  ppb->buffer[36] = '!';
+  if (ppbSendInboundPacket(prudir, packetLength))
+    ++ppb->packetDrops; /* Losing a FRM is baad */
 }
 
-void ipbSendPacketVIARPMSG(unsigned prudir, unsigned char length) {
-  if (length) {
-    struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
-    ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
-    if (CSendPacket(&ipb->buffer[0], length))
-      ++ipb->packetsRejected;
-    else
-      ++ipb->packetsReceived;
-  }
-}
+int ppbSendInboundPacket(unsigned prudir, unsigned char length) {
+  int ret = 0;
+  struct PRUPacketBuffer * ppb = pruDirToInPPB(prudir);
+  struct PacketBuffer * pb;
+  struct SharedStateSelector sss;
+  sss.pru = ON_PRU;
+  sss.prudir = prudir;
+  sss.inbound = 1;
 
-void ipbSendPacket(unsigned prudir, unsigned char length) {
-  if (length) {
-    struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
-    struct PacketBuffer * pb;
-    struct SharedStateSelector sss;
-    sss.pru = ON_PRU;
-    sss.prudir = prudir;
-    sss.inbound = 1;
-    sss.bulk = ( (ipb->buffer[0]&PKT_BULK_STD_MASK) == PKT_BULK_STD_VALUE );
-    ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
-    pb = getPacketBufferIfAny(getSharedStatePhysical(), &sss);
-    if (pb) {
-      if (pbIsEmptyInline(pb))
-        ipb->flags |= NEED_KICK;
-      if (pbWritePacketIfPossible(pb, ipb->buffer, length))
-        ++ipb->packetsRejected;
-      else 
-        ++ipb->packetsReceived;
-      if (ipb->flags & NEED_KICK) {
-        if (CSendPacket((uint8_t*) &sss,sizeof(sss))==0)
-          ipb->flags &= ~NEED_KICK;
-      }
+  if (length > 0) {
+
+    sss.bulk = ( (ppb->buffer[0]&PKT_BULK_STD_MASK) == PKT_BULK_STD_VALUE );
+    ppb->buffer[0] = (ppb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
+    pb = getPacketBufferIfAny(getSharedStatePhysical(), &sss); /*'IfAny' only applies if sss.bulk<0*/
+
+    // NOTE: Only kicking ARM on empty -> non-empty transitions is
+    // racy because itc_pkt.ko may drain the last packet, and stop
+    // checking the buffer, after we do this check but before the
+    // ensuing pbWritePacket commits.
+    //
+    // A safer thing would be to kick after every packet but that's a
+    // bit expensive -- and even with that I'm worried linux could run
+    // way long and miss an interrupt, and then we'd still be dead.
+    //
+    // So what we're doing is accept the race risk of kicking just on
+    // empty -> non-empty, and have itc_pkt.ko time out and poll all
+    // buffers reasonably often as a backstop.
+
+    if (pbIsEmptyInline(pb))
+      ppb->flags |= NEED_KICK;
+
+    if (pbWritePacketIfPossible(pb, ppb->buffer, length)) {
+      ++ppb->packetStalls;
+      ret = -PBE_BUSY;
+    } else 
+      ++ppb->packetTransfers;
+
+    if (ppb->flags & NEED_KICK) {
+      if (CSendPacket((uint8_t*) &sss,sizeof(sss))==0)
+        ppb->flags &= ~NEED_KICK;
     }
   }
+
+  return ret;
+}
+
+int ppbReceiveOutboundPacket(unsigned prudir) {
+  int len;
+  struct PRUPacketBuffer * ppb = pruDirToOutPPB(prudir);
+  struct PacketBuffer * pb;
+  struct SharedStateSelector sss;
+  sss.pru = ON_PRU;
+  sss.prudir = prudir;
+  sss.inbound = 0;
+  sss.bulk = -1;
+  pb = getPacketBufferIfAny(getSharedStatePhysical(), &sss);
+  if (!pb) return 0;
+  if (pbIsEmptyInline(pb)) return 0;  /*but shouldn't happen with sss.bulk<0*/
+
+  len = pbReadPacketIfPossible(pb, &ppb->buffer[0], MAX_PACKET_SIZE);
+  if (len <= 0) return 0;       /* len < 0 "can't happen" */
+  ++ppb->packetTransfers;
+  return len;
 }
