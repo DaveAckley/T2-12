@@ -111,7 +111,11 @@ struct PacketBuffer {
   unsigned char buffer[];       /* Actual buffer storage starts here */
 };
 
-#ifdef GCC_SYNC_PACKETS
+/*On the linux side we want to make sure packet data is all set up
+  before the packet's existence becomes visible to the PRUs.  There's
+  surely a more subtle way to do this but for now we do a full memory
+  barrier before changing writePtr or readPtr.*/
+#ifdef __KERNEL__
 #define SYNC_MEMORY()  __sync_synchronize()
 #else
 #define SYNC_MEMORY() do { } while (0)
