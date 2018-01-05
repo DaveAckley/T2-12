@@ -79,7 +79,7 @@ static const char * (prudirnames[3]) = {
 int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
 {
   enum { BUF_LEN = 50 };
-  char buf[BUF_LEN];
+  unsigned char buf[BUF_LEN];
   int len = 0;
   int i;
 
@@ -110,6 +110,20 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
   if (str) while (len < BUF_LEN-1 && *str) buf[len++] = *str++;
 
   /* Send it */
+#if 1
+  {
+    struct SharedStateSelector sss;
+    struct PacketBuffer * pb;
+    sss.pru = ON_PRU;
+    sss.prudir = prudir;
+    sss.inbound = 1;
+    sss.bulk = 1;
+    pb = getPacketBufferIfAny(getSharedStatePhysical(), &sss);
+
+    pbWritePacketIfPossible(pb, buf, len);   // Write the packet or silently fail
+    CSendPacket((uint8_t*) &sss,sizeof(sss)); // And send a kick or silently fail
+  }
+#else
   pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);
 
   /* Distract the destroyer to give our packet time to get away */
@@ -117,7 +131,7 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
     volatile unsigned wastoid = 0;
     while (++wastoid < 2000000) ;
   }
-  
+#endif  
 
   return 1;  
 }
@@ -256,6 +270,7 @@ int CSendVal(const char * str1, const char * str2, uint32_t val)
   return 1;  
 }
 
+#if 0 /*itc_pkt.ko is handling std packet routing now*/
 /*Given packet!=0 && len > 0.  Return 0 if OK */
 unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len) {
   unsigned type = packet[0];
@@ -270,7 +285,7 @@ unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len) {
     return 1; /*this packet doesn't belong here*/
   }
   {
-    struct OutboundRingBuffer * orb = &pruDirData.pruDirBuffers[prudir].out;
+    struct PRUPacketBuffer * ppb = &pruDirData.pruDirBuffers[prudir].out;
     /*    CSendTagFromThread(prudir,"POI",len); */
     if (orbAddPacket(orb, packet, len)) {
       packet[0] |= PKT_STD_OVERRUN_VALUE;
@@ -280,6 +295,8 @@ unsigned processOutboundITCPacket(uint8_t * packet, uint16_t len) {
     return 0;
   }
 }
+#endif
+
 void fillFail(const char * msg, uint8_t * packet, uint16_t len)
 {
   uint32_t i;
@@ -297,8 +314,8 @@ int processPackets() {
 
   { 
     int once = 1;
-    /* Receive all messages that we can currently fit grr */
-    while (minORBAvailable() > MAX_PACKET_SIZE+1) {
+    /* Receive all messages available */
+    while (1) {
 
       if (once && (__R31 & HOST_INT)) {
         /* Clear the event status */
@@ -323,8 +340,10 @@ int processPackets() {
 
         if (len > 0) {
           unsigned ret;
-          if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE)
-            ret = processOutboundITCPacket(payload,len);
+          if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE) {
+            payload[0] |= PKT_STD_ERROR_VALUE; /* No, no, you should not be here. */
+            ret = 1;
+          }
           else
             ret = processSpecialPacket(payload,len);
           

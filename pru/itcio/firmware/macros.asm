@@ -360,6 +360,7 @@ resumeNextThread:       .macro
 ;;;  - Generates an arbitrary delay (of 30ns or more)
 ;;;  - Trashes everything but R2, R3.w2, and CT
 suspendThread: .macro
+	.ref contextSwitch
         jal CT.sTH.wResAddr, contextSwitch
         .endm
                 

@@ -37,10 +37,10 @@ getNextStuffedBit:  ;; Here to find next output bit to transmit
 getNextOutputByte:  ;; Here to fetch next output byte in packet if any
 	sendOTag """GNOB""",CT.bOutLen      ; report location
 	qbge sendPacketDelimiter, CT.bOutLen, CT.bOutByte ; packet is done if outbyte >= outlen
-	ldThreadID r14          ; arg1 to orbGetFrontPacketByte
-        mov r15, CT.bOutByte    ; arg2 to orbGetFrontPacketByte
-        jal r3.w2, orbGetFrontPacketByte ; go get next byte to send
-        mov CT.bOutData, r14             ; move output byte into position
+	ldThreadID r14          ; arg1 to ppbReadOutboundByte
+        mov r15, CT.bOutByte    ; arg2 to ppbReadOutboundByte
+        jal r3.w2, ppbReadOutboundByte ; go get next byte to send
+        mov CT.bOutData, r14    ; move output byte into position
 	set CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fByteStuffed ; this byte SHOULD be bitstuffed
         add CT.bOutByte, CT.bOutByte, 1    ; increment bytes sent of this packet
         jmp startNewOutputByte
@@ -49,9 +49,6 @@ sendPacketDelimiter:   ;; time to send packet delimiter and discard finished pac
 	sendOTag """SPD""",CT.bOutLen       ; report location
         ldi CT.bOutData, 0x7e   ; set up packet delimiter
 	clr CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fByteStuffed ; this byte should NOT be bitstuffed
-	qbeq lookForNextPacket, CT.bOutLen, 0 ; jump ahead if current packet len is 0
-	ldThreadID r14                ; arg1 to orbDropFrontPacket
-        jal r3.w2, orbDropFrontPacket ; toss the packet we just finished sending
 
         ;; FALL INTO lookForNextPacket
 
@@ -59,8 +56,8 @@ lookForNextPacket: ;; here to set up next outbound packet if have sync and packe
 	sendOTag """LFNP""",CT.sTH.wFlags      ; report in
         ldi CT.bOutByte, 0           ; No matter what we're on byte 0 now
 	qbbc startNewOutputByte, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; don't try for packets till we have sync
-	ldThreadID r14               ; arg1 to orbFrontPacketLen
-        jal r3.w2, orbFrontPacketLen ; next packetlen or 0 -> r14
+	ldThreadID r14               ; arg1 to ppbReceiveOutboundPacket
+        jal r3.w2, ppbReceiveOutboundPacket ; next packetlen or 0 -> r14
         mov CT.bOutLen, r14          ; Save length of next packet or 0
 
 startNewOutputByte:  ;; here to initialize once CT.bOutData has new byte to send
@@ -185,7 +182,7 @@ frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, w
 	mov r21, r11
 	mov r22, r12
 	mov r23, r13
-        jal r3.w2, ipbReportFrameError ; Notify upstairs that we got problems down heah
+        jal r3.w2, ppbReportFrameError ; Notify upstairs that we got problems down heah
         jmp resetAfterDelimiter
 
 achievePacketSync: ;; Here to achieve packet sync when we didn't already have it
@@ -206,11 +203,15 @@ resetAfterDelimiter:  ;; Here to set up for new inbound packet
 handleGoodPacketDelimiter: ;; Here we finally have a finished packet!
 	sendITag """HGPD""",CT.bInpByte               ; report in
         qbeq resetAfterDelimiter, CT.bInpByte, 0 ; But if it's zero-length, discard it!
-	sendITag """IPSP""",CT.sTH.wFlags               ; report in
-        ldThreadID r14                           ; arg1 is prudir
-        mov r15, CT.bInpByte                     ; arg2 is length
-        jal r3.w2, ipbSendPacket                 ; Send the packet off to linux!  Foggin finally!
-	jmp resetAfterDelimiter                  ; And set up for another
+	
+sendInFinishedPacket:       ;; Here we know the inbound packet is non-empty
+	sendITag """IPSP""",CT.sTH.wFlags   ; report in
+        ldThreadID r14                      ; arg1 is prudir
+        mov r15, CT.bInpByte                ; arg2 is packet length
+        jal r3.w2, ppbSendInboundPacket     ; Push it to DDR for linux!  Foggin finally!
+	qbeq resetAfterDelimiter, r14, 0    ; Go set up for another if successful
+        suspendThread                       ; If no room to ship we wait :(
+        jmp sendInFinishedPacket            ; And then try again
 
 storeRealInputBit: ;; Here if not dealing with bitstuffed 0s, packet delimiters, or framing errors
 	sendITag """SRIB""",r4.b0               ; report in
@@ -238,7 +239,7 @@ storeThisInputByte: ;; Here to add a finished byte to the packet payload
         ldThreadID r14                            ; arg1 is prudir
         mov r15, CT.bInpByte    ; arg2 is what byte in the packet we just finished
 	mov r16, CT.bInpData    ; arg3 is byte value to store
-        jal r3.w2, ipbWriteByte ; go store this byte
+        jal r3.w2, ppbWriteInboundByte ; go store this byte
 
         ;; FALL INTO setupForNextInputByte
         
