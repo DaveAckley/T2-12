@@ -1,4 +1,4 @@
-{377}  -*- text -*-
+{380}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6319,3 +6319,53 @@ userspace select() over the different buffers.  Maximally:
 :372]    
 
 :371]
+[377:
+
+Fri Jan  5 06:12:24 2018 OK the 7s are nice but the 7s are big, what's
+a small step to do here?  [378:
+
+Fri Jan  5 06:13:44 2018 Could and would we want to go to like nine
+minors instead of two, and have /dev/itc/packets, /dev/itc/pru[01],
+and /dev/itc/{NE|ET|SE|SW|WT|NW}.  Hmm couldn't we, if we wanted, just
+have a single wait queue for everything, and let each one filter to
+see if whatever caused the wake was what they wanted, and just go back
+to sleep if not?  If we're not talking all that many waiters, isn't
+that a fairly straightforward way to 'wait on multiple queues'?  Just
+have one queue and check for all conditions of interest when you wake?
+And have a randomized iterator etc for the more generalized cases like
+/dev/packets?
+
+It works as long as you can tell if you want the front guy on each
+queue, and if you don't somebody else will, so the front guy _will_
+get consumed somehow and deeper guys will surface.
+
+:378]
+
+:377]
+[379:
+
+Fri Jan  5 13:13:58 2018 Grand.  Now I'm getting this in the itc_pkt
+build:
+
+    depmod
+    depmod: FATAL: Module index: bad character 'ÿ'=0xff - only 7-bit ASCII is supported:
+    uÿÿÿÿÿÿÿÿp10A4d*dc*dsc*dp*ic*isc*ip*in*
+    Makefile:43: recipe for target 'install_files' failed
+    make[2]: *** [install_files] Error 1
+    modprobe -r itc_pkt || exit 0
+
+but itc_pkt still appears to load and run.  Poking around with 'depmod
+-n' reveals (amongst a metric fogton of foggen usb aliases!) this:
+
+ ..
+    alias usb:v14F7p0001d*dc*dsc*dp*ic*isc*ip*in* dvb_usb_az6027
+    alias uÿÿÿÿÿÿÿÿp10A4d*dc*dsc*dp*ic*isc*ip*in* dvb_usb_az6027
+    alias usb:v13D3p3275d*dc*dsc*dp*ic*isc*ip*in* dvb_usb_az6027
+ ..
+
+which does in fact appear to be a trashed alias name within which
+'somebody' punch in a -1LL.  Does that happen because my dma
+allocation is now no longer a power of two?  We're about to reboot and
+see if this goes away, but checkpoint committing first.
+
+:379]
