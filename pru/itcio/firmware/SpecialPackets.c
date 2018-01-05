@@ -194,6 +194,16 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
   if (len == 0) return 0; /* or assert? */
   switch (packet[0]) {
 
+
+  /* PACKET TYPE: '\177' Halt PRU immediately */
+  case '\177': {
+    if (len == 2 && packet[1] == '!')
+      __halt();
+    else
+      fillFail("[PKFMT]",packet,len);
+  }
+    break;
+
   /* PACKET TYPE: '*' Wildcard debug, content non-standardized, can change at will */
   case '*': {                        
     if (len < 10) fillFail("[PKLEN]",packet,len);
