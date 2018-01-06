@@ -243,6 +243,15 @@ extern int pbReadPacketIfPossible(struct PacketBuffer *pb, unsigned char * data,
 
 extern int pbTransferPacketIfPossible(struct PacketBuffer *pbto, struct PacketBuffer *pbfrom) ;
 
+#ifdef __KERNEL__
+
+extern int pbWritePacketIfPossibleFromUser(struct PacketBuffer *pb, void __user * from, unsigned length) ;
+
+extern int pbReadPacketIfPossibleToUser(struct PacketBuffer *pb, void __user * to, unsigned length) ;
+
+#endif
+
+
 enum PacketBufferErrors {
   PBE_PERM=		 1,	/* Operation not permitted */
   PBE_NOENT=		 2,	/* No such file or directory */
