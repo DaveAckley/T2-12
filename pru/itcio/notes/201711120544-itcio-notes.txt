@@ -1,4 +1,4 @@
-{380}  -*- text -*-
+{386}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6367,5 +6367,65 @@ which does in fact appear to be a trashed alias name within which
 'somebody' punch in a -1LL.  Does that happen because my dma
 allocation is now no longer a power of two?  We're about to reboot and
 see if this goes away, but checkpoint committing first.
+[380:
 
+Fri Jan  5 13:58:53 2018 OK, well after reboot the depmod error is
+gone, leaving only a lingering bad odor and a vague unease as if
+someone somewhere may be dancing upon your grave I mean memory. 
+
+We Shall See.
+
+:380]
 :379]
+[381:
+
+Fri Jan  5 14:06:21 2018 But anyway where we WERE, back in :378:, was
+trying to figure out what to do about the sudden plethora of endpoints
+now coming in to itc_pkt, and how to present them to userspace.
+
+Did we understand the waitq issues or no?  Well let's have a proposal
+to shoot at.
+
+Well the proposal is nine minor devices:
+
+,0 -> PRU0 control channel        /dev/itc/pru0
+,1 -> PRU1 control channel        /dev/itc/pru1
+,2 -> All routed std packets      /dev/itc/packets
+,3 -> NE bulk transit             /dev/itc/?
+,4-7 -> ET,SE,SW,WT bulk transit
+,8 -> NW bulk transit
+
+/dev/itc/listen
+/dev/itc/accept
+
+[382:
+
+Fri Jan  5 17:18:22 2018 The proposal is forget the bulk transit for
+now, and just get the existing three minors working YOU FOGGEN NORG!
+
+So we should be able to repurpose the existing waitq's, and ditch all
+the kfifos.  OneTwoThreeGo.
+
+:382]
+:381]
+[383:
+
+Fri Jan  5 18:15:25 2018 Heading off for dinner so reminders for
+later:
+
+[384: Fri Jan  5 22:51:42 2018 Well that's done for now, but with dikes.  :384] - You are fixing stupid compilation bugs in module.c
+
+ - Then you are testing the SharedState route for special packets.
+   The rpmsg path should still work, but stuff sent to
+   /dev/itc/pru[01] should now go by SharedState
+
+ - Querying pin states should also go by SharedState.
+
+ - Get all that crab working.
+
+:383][385:
+
+Fri Jan  5 22:52:04 2018 Doing a checkpoint commit before trying this
+stuff because I tore it up a lot.
+
+:385]
