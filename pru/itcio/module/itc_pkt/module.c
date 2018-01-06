@@ -92,75 +92,84 @@ static void freeITCSharedPacketBuffers(ITCPacketDriverState *s)
   printk(KERN_INFO "postdujrrn\n");
 }
 
-__printf(5,6) int send_msg_to_pru(unsigned prunum,
-                                  unsigned wait,
-                                  char * buf,
-                                  unsigned bufsiz,
-                                  const char * fmt, ...)
+int ship_packet_to_pru(unsigned prunum, unsigned wait, char * pkt, unsigned pktlen)
 {
-  int ret = 0;
-  unsigned len;
-  va_list args;
-  ITCDeviceState *devstate;
   struct SharedStatePerPru * sspp;
   struct PacketBuffer * dpb;
+  ITCDeviceState *devstate;
+  int ret;
 
   BUG_ON(prunum > 1);
-
-  sspp = &S.packetVirtP->pruState[prunum];
-  dpb = PacketBufferFromPacketBufferStorageInline(sspp->downbound);
 
   devstate = S.dev_packet_state[prunum];
   BUG_ON(!devstate);
   BUG_ON(!devstate->rpmsg_dev);
 
-  va_start(args, fmt);
-  len = vsnprintf(buf, bufsiz, fmt, args);
-  va_end(args);
-
-  if (len >= bufsiz) {
-    printk(KERN_WARNING "send_msg_to_pru data (%d) exceeded bufsiz (%d) (type='%c') truncated\n",
-           len, bufsiz, buf[0]);
+  if (pktlen >= ITC_MAX_PACKET_SIZE) {
+    printk(KERN_WARNING "shippackettopru overlength (%d) packet (type='%c') truncated\n",
+           pktlen, pkt[0]);
+    pktlen = ITC_MAX_PACKET_SIZE - 1;
   }
-
-  if (len >= RPMSG_MAX_PACKET_SIZE) {
-    printk(KERN_WARNING "send_msg_to_pru overlength (%d) packet (type='%c') truncated\n",
-           len, buf[0]);
-    len = RPMSG_MAX_PACKET_SIZE - 1;
-  }
+  
+  sspp = &S.packetVirtP->pruState[prunum];
+  dpb = PacketBufferFromPacketBufferStorageInline(sspp->downbound);
 
   if (mutex_lock_interruptible(&devstate->specialLock))
     return -ERESTARTSYS;
 
+  //////////&devstate->specialLock HELD//////////
   DBGPRINT_HEX_DUMP(DBG_PKT_SENT,
                     KERN_INFO, prunum ? ">pru1: " : ">pru0: ",
                     DUMP_PREFIX_NONE, 16, 1,
-                    buf, len, true);
+                    pkt, pktlen, true);
 
-  ret = pbWritePacketIfPossible(dpb, buf, len);
-  if (ret < 0)
-    printk(KERN_ERR "special packet send failed (%d)\n", ret);
+  ret = pbWritePacketIfPossible(dpb, pkt, pktlen);
+  if (ret < 0) printk(KERN_ERR "special packet send failed (%d)\n", ret);
   else if (wait) {
     struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
+    printk(KERN_INFO "shippackettpru starting to wait\n");
     while (pbIsEmptyInline(upb)) {
+      printk(KERN_INFO "shippackettopru while wait\n");
       if (wait_event_interruptible(devstate->specialWaitQ, !pbIsEmptyInline(upb))) {
         ret = -ERESTARTSYS;
         break;
       }
     }
 
+    printk(KERN_INFO "shippackettopru while done %d\n", ret);
+
     if (ret == 0) {
       /* Note that if you are waiting for a response, it must fit in
          your sending buffer or this will fail! */
-      ret = pbReadPacketIfPossible(upb, buf, bufsiz);
+      printk(KERN_INFO "shippacketto reading\n");
+      ret = pbReadPacketIfPossible(upb, pkt, pktlen);
+      printk(KERN_INFO "shippacketpru read %d\n",ret);
       if (ret < 0) {
         printk(KERN_ERR "special packet response read failed (%d)\n", ret);
       }
     }
   }
-
+  printk(KERN_INFO "shippacketpru unlocking, ret %d, wait %d\n", ret, wait);
   mutex_unlock(&devstate->specialLock);
+  //////////&devstate->specialLock RELEASED//////////
+
   return ret;
+}
+
+__printf(5,6) int send_msg_to_pru(unsigned prunum,
+                                  unsigned wait,
+                                  char * buf,
+                                  unsigned bufsiz,
+                                  const char * fmt, ...)
+{
+  unsigned len;
+  va_list args;
+
+  va_start(args, fmt);
+  len = vsnprintf(buf, bufsiz, fmt, args);
+  va_end(args);
+
+  return ship_packet_to_pru(prunum, wait, buf, len);
 }
 
 
@@ -448,6 +457,7 @@ static ssize_t itc_pkt_write(struct file *filp,
   int ret;
   static unsigned char driver_buf[RPMSG_BUF_SIZE];
   ITCDeviceState *devstate;
+  unsigned origminor;
 
   devstate = filp->private_data;
 
@@ -461,7 +471,9 @@ static ssize_t itc_pkt_write(struct file *filp,
     return -EFAULT;
   }
 
-  if (MINOR(devstate->devt) == 2) {
+  origminor = MINOR(devstate->devt);
+
+  if (origminor == 2) {
     struct SharedStateSelector sss;
     int newMinor, ret;
 
@@ -502,11 +514,16 @@ static ssize_t itc_pkt_write(struct file *filp,
     return count;
   }
 
-  ret = rpmsg_send(devstate->rpmsg_dev, (void *)driver_buf, count);
-  if (ret) {
-    dev_err(devstate->dev,
-            "Transmission on rpmsg bus failed %d\n",ret);
-    return -EFAULT;
+  /*Here for packets explicitly to minor/pru [01]  */
+
+  {
+    ret = ship_packet_to_pru(origminor, 0, driver_buf, count);
+    printk(KERN_INFO "DOWNBOUND SPECIAL (%s) GOT %d\n",driver_buf,ret);
+    if (ret) {
+      dev_err(devstate->dev,
+              "Shared state transmission failed %d\n",ret);
+      return -EFAULT;
+    }
   }
 
 #if MORE_DEBUGGING
@@ -539,26 +556,34 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
 
     if (mutex_lock_interruptible(&devstate->specialLock))
       return -ERESTARTSYS;
-
+    printk(KERN_INFO "PREWHILE\n");
     while (pbIsEmptyInline(upb)) {
+      printk(KERN_INFO "INWHILE1\n");
       if (file->f_flags & O_NONBLOCK) {
+        printk(KERN_INFO "INWHILE2\n");
         ret = -EAGAIN;
         break;
       }
+      printk(KERN_INFO "INWHILE3\n");
       if (wait_event_interruptible(devstate->specialWaitQ, !pbIsEmptyInline(upb))) {
+        printk(KERN_INFO "INWHILE4\n");
         ret = -ERESTARTSYS;
         break;
       }
     }
+    printk(KERN_INFO "POSTWHILE (%d)\n", ret);
 
     if (ret == 0)
       ret = pbReadPacketIfPossibleToUser(upb, buf, count);
+
+    printk(KERN_INFO "POSTREAD (%d)\n", ret);
 
     mutex_unlock(&devstate->specialLock);
     break;
   }
 
   case 2: {
+    printk(KERN_ERR "SUMMON THE REIMPLEMENTOR FOR SPECIALS ON PRUDEVS\n");
     return -EINVAL;
 #if 0
     ITCPacketFIFO * devfifo = &S.itcPacketKfifo;
@@ -638,8 +663,8 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
     printk(KERN_ERR "SUMMON THE REIMPLEMENTOR\n");
 #if 0
       kfifo_in(&S.itcPacketKfifo, data, len);
-      wake_up_interruptible(&S.itcPacketWaitQ);
 #endif
+      wake_up_interruptible(&S.itcPacketWaitQ);
     } else {
       if (type<2) { // Then it's a shared state buffer kick from PRU(type)
 
@@ -649,18 +674,11 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
           processBufferKick((struct SharedStateSelector*) data);
         }
       } else {
-    printk(KERN_ERR "I SAID, SUMMON THE REIMPLEMENTOR\n");
-#if 0
-
         if (minor == 0) {
-          kfifo_in(&S.special0Kfifo, data, len);
           wake = 0;
         } else if (minor == 1) {
-          kfifo_in(&S.special1Kfifo, data, len);
           wake = 1;
         }
-        else BUG_ON(1);
-#endif
       }
     }
     if (wake >= 0) {
@@ -721,11 +739,18 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
   devstate->rpmsg_dev = rpmsg_dev;
   ++S.open_pru_minors;
 
-  /* send initial '@' packet to give PRU src & dst info, plus the shared space physaddr */
+  /* send initial '@' packet via rpmsg to give PRU src & dst info, plus the shared space physaddr */
   {
     char buf[32];
     printk(KERN_INFO "BLURGE buf=%p\n",buf);
-    ret = send_msg_to_pru(minor_obtained,0,buf,32,"@%08x!",S.packetPhysP);
+    snprintf(buf,32,"@%08x!",S.packetPhysP);
+    ret = rpmsg_send(devstate->rpmsg_dev, (void *)buf, strlen(buf));
+    if (ret) {
+      dev_err(devstate->dev,
+              "Transmission on rpmsg bus failed %d\n",ret);
+      return -EFAULT;
+    }
+
     printk(KERN_INFO "RECTOBLURGE sent buf='%s'\n",buf);
   }
 

@@ -52,6 +52,8 @@ typedef struct itc_pkt_driver_state {
   ITCDeviceState    * (dev_packet_state[MINOR_DEVICES]); /* ptrs to all our device states */
 } ITCPacketDriverState;
 
+extern int ship_packet_to_pru(unsigned prunum, unsigned wait, char * pkt, unsigned pktlen) ;
+
 extern __printf(5,6) int send_msg_to_pru(unsigned prunum,
                                          unsigned wait,
                                          char * buf,
