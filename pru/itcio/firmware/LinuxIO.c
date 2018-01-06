@@ -112,15 +112,16 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
   /* Send it */
 #if 1
   {
+    struct SharedState * ss = getSharedStatePhysical();
+    struct SharedStatePerPru * sspp = &ss->pruState[ON_PRU];
+    struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
     struct SharedStateSelector sss;
-    struct PacketBuffer * pb;
     sss.pru = ON_PRU;
-    sss.prudir = prudir;
+    sss.prudir = 4;
     sss.inbound = 1;
-    sss.bulk = 1;
-    pb = getPacketBufferIfAny(getSharedStatePhysical(), &sss);
+    sss.bulk = 0;
 
-    pbWritePacketIfPossible(pb, buf, len);   // Write the packet or silently fail
+    pbWritePacketIfPossible(upb, buf, len);   // Write the packet or silently fail
     CSendPacket((uint8_t*) &sss,sizeof(sss)); // And send a kick or silently fail
   }
 #else
@@ -265,8 +266,27 @@ int CSendVal(const char * str1, const char * str2, uint32_t val)
   if (str1) while (len < BUF_LEN-1 && *str1) buf[len++] = *str1++;
   if (str2) while (len < BUF_LEN-1 && *str2) buf[len++] = *str2++;
 
+#if 1
+  {
+    struct SharedState * ss = getSharedStatePhysical();
+    struct SharedStatePerPru * sspp = &ss->pruState[ON_PRU];
+    struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
+    struct SharedStateSelector sss;
+    sss.pru = ON_PRU;
+    sss.prudir = 4;
+    sss.inbound = 1;
+    sss.bulk = 0;
+
+    pbWritePacketIfPossible(upb, (unsigned char *) buf, len);   // Write the packet or silently fail
+    CSendPacket((uint8_t*) &sss,sizeof(sss)); // And send a kick or silently fail
+  }
+#else
+
   /* Send it */
   pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);
+
+#endif  
+
   return 1;  
 }
 
@@ -354,16 +374,22 @@ int processPackets() {
     }
   }
 
-  /* Also handle all available downbound packets */
-  {
+  /* Once we're going, also handle all available downbound packets */
+  if (!firstPacket) {
     struct SharedState * ss = getSharedStatePhysical();
     struct SharedStatePerPru * sspp = &ss->pruState[ON_PRU];
     struct PacketBuffer * dpb = PacketBufferFromPacketBufferStorageInline(sspp->downbound);
     struct PacketBuffer * upb = 0;
     int len;
+    struct SharedStateSelector sss;
+    sss.pru = ON_PRU;
+    sss.prudir = 4;
+    sss.inbound = 1;
+    sss.bulk = 0;
       
     while ((len = pbReadPacketIfPossible(dpb, payload, RPMSG_BUF_SIZE)) > 0) {
       unsigned ret;
+      CSendPacket((uint8_t*) "gots", 4); // XXXX
       if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE) {
         payload[0] |= PKT_STD_ERROR_VALUE; /* No, no, you should not be here. */
         ret = 1;
@@ -374,6 +400,7 @@ int processPackets() {
       if (ret) {
         if (!upb) upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
         pbWritePacketIfPossible(upb, payload, len);
+        CSendPacket((uint8_t*) &sss,sizeof(sss)); // And send a kick or silently fail
       }
     }
   }
