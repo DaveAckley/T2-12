@@ -311,47 +311,69 @@ volatile register uint32_t __R31;
 
 int processPackets() {
   uint16_t src, dst, len;
+  int once = 1;
 
-  { 
-    int once = 1;
-    /* Receive all messages available */
-    while (1) {
+  /* Receive all rpmsg messages available */
+  while (1) {
 
-      if (once && (__R31 & HOST_INT)) {
-        /* Clear the event status */
-        CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
-        once = 0;
+    if (once && (__R31 & HOST_INT)) {
+      /* Clear the event status */
+      CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
+      once = 0;
+    }
+
+    if (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) != PRU_RPMSG_SUCCESS)
+      break;
+    else {
+
+      if (firstPacket) {
+        /* linux sends an @ packet to give us startup info */
+        firstSrc = src;
+        firstDst = dst;
+        firstPacket = 0;
+        handleAtPacket(payload,len);
+        /* ack 1st packet */
+        pru_rpmsg_send(&transport, dst, src, payload, len);
+        break;
       }
 
-      if (pru_rpmsg_receive(&transport, &src, &dst, payload, &len) != PRU_RPMSG_SUCCESS)
-        break;
-      else {
-
-        if (firstPacket) {
-          /* linux sends an @ packet to give us startup info */
-          firstSrc = src;
-          firstDst = dst;
-          firstPacket = 0;
-          handleAtPacket(payload,len);
-          /* ack 1st packet */
-          pru_rpmsg_send(&transport, dst, src, payload, len);
-          break;
+      if (len > 0) {
+        unsigned ret;
+        if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE) {
+          payload[0] |= PKT_STD_ERROR_VALUE; /* No, no, you should not be here. */
+          ret = 1;
         }
-
-        if (len > 0) {
-          unsigned ret;
-          if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE) {
-            payload[0] |= PKT_STD_ERROR_VALUE; /* No, no, you should not be here. */
-            ret = 1;
-          }
-          else
-            ret = processSpecialPacket(payload,len);
+        else
+          ret = processSpecialPacket(payload,len);
           
-          if (ret) {
-            /* Return the processed packet back to where it came from */
-            pru_rpmsg_send(&transport, dst, src, payload, len);
-          }
+        if (ret) {
+          /* Return the processed packet back to where it came from */
+          pru_rpmsg_send(&transport, dst, src, payload, len);
         }
+      }
+    }
+  }
+
+  /* Also handle all available downbound packets */
+  {
+    struct SharedState * ss = getSharedStatePhysical();
+    struct SharedStatePerPru * sspp = &ss->pruState[ON_PRU];
+    struct PacketBuffer * dpb = PacketBufferFromPacketBufferStorageInline(sspp->downbound);
+    struct PacketBuffer * upb = 0;
+    int len;
+      
+    while ((len = pbReadPacketIfPossible(dpb, payload, RPMSG_BUF_SIZE)) > 0) {
+      unsigned ret;
+      if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE) {
+        payload[0] |= PKT_STD_ERROR_VALUE; /* No, no, you should not be here. */
+        ret = 1;
+      }
+      else
+        ret = processSpecialPacket(payload,len);
+
+      if (ret) {
+        if (!upb) upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
+        pbWritePacketIfPossible(upb, payload, len);
       }
     }
   }
