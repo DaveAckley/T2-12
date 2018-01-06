@@ -1,4 +1,4 @@
-{386}  -*- text -*-
+{387}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6429,3 +6429,13 @@ Fri Jan  5 22:52:04 2018 Doing a checkpoint commit before trying this
 stuff because I tore it up a lot.
 
 :385]
+[386:
+
+Sat Jan  6 03:12:57 2018 OK, I broke stuff bad for a while because I'm
+a double major norg but now things are settling down a little.  Still
+not getting packets all the way out to people waiting on /dev/itc/*,
+but at least things are moving between the PRUs and the LKM again.
+
+Committing before nap.
+
+:386]
