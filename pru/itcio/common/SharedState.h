@@ -126,8 +126,10 @@ static inline struct PacketBuffer * getPacketBufferIfAnyInline(struct SharedStat
   struct SharedStatePerITC * sspi;
   struct QoSPacketBufferPair * qpbp;
   struct PacketBuffer * pb;
-  if (!ss || !sss || sss->pru > 1 || sss->prudir > 2) return 0;
+  if (!ss || !sss || sss->pru > 1 || sss->prudir > 4) return 0;
   sspp = &ss->pruState[sss->pru];
+  if (sss->prudir > 2) 
+    return PacketBufferFromPacketBufferStorageInline(sss->inbound ? sspp->upbound : sspp->downbound);
   sspi = &sspp->pruDirState[sss->prudir];
   qpbp = sss->inbound ? &sspi->inbound : &sspi->outbound;
   if (sss->bulk < 0) 
