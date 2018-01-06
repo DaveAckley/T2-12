@@ -31,9 +31,6 @@ MODULE_PARM_DESC(debugflags, "Extra debugging flags; 0 for none");
 
 static void initITCPacketDriverState(ITCPacketDriverState *s)
 {
-  INIT_KFIFO(s->itcPacketKfifo);
-  INIT_KFIFO(s->special0Kfifo);
-  INIT_KFIFO(s->special1Kfifo);
   init_waitqueue_head(&s->itcPacketWaitQ);
   mutex_init(&s->standardLock);
   s->packetPhysP = 0;
@@ -105,8 +102,13 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
   unsigned len;
   va_list args;
   ITCDeviceState *devstate;
+  struct SharedStatePerPru * sspp;
+  struct PacketBuffer * dpb;
 
   BUG_ON(prunum > 1);
+
+  sspp = &S.packetVirtP->pruState[prunum];
+  dpb = PacketBufferFromPacketBufferStorageInline(sspp->downbound);
 
   devstate = S.dev_packet_state[prunum];
   BUG_ON(!devstate);
@@ -135,33 +137,26 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
                     DUMP_PREFIX_NONE, 16, 1,
                     buf, len, true);
 
-  ret = rpmsg_send(devstate->rpmsg_dev, buf, len);
-
-  /* Wait, if we're supposed to, for a packet in our kfifo */
-  if (wait) {
-#if 0 /*XXX WRITE ME*/
-    SharedStateSelector sss;
-    sss.pru = prunum;
-    sss.inbound = 1;
-
-    XXX
-#else
-    SpecialPacketFIFO *kfifop;
-
-    if (prunum == 0) kfifop = &S.special0Kfifo;
-    else kfifop = &S.special1Kfifo;
-
-    while (kfifo_is_empty(kfifop)) {
-      if (wait_event_interruptible(devstate->specialWaitQ, !kfifo_is_empty(kfifop))) {
+  ret = pbWritePacketIfPossible(dpb, buf, len);
+  if (ret < 0)
+    printk(KERN_ERR "special packet send failed (%d)\n", ret);
+  else if (wait) {
+    struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
+    while (pbIsEmptyInline(upb)) {
+      if (wait_event_interruptible(devstate->specialWaitQ, !pbIsEmptyInline(upb))) {
         ret = -ERESTARTSYS;
         break;
       }
     }
 
-    if (ret == 0)
-      if (!kfifo_out(kfifop, buf, bufsiz))
-        printk(KERN_WARNING "kfifo was empty\n");
-#endif
+    if (ret == 0) {
+      /* Note that if you are waiting for a response, it must fit in
+         your sending buffer or this will fail! */
+      ret = pbReadPacketIfPossible(upb, buf, bufsiz);
+      if (ret < 0) {
+        printk(KERN_ERR "special packet response read failed (%d)\n", ret);
+      }
+    }
   }
 
   mutex_unlock(&devstate->specialLock);
@@ -530,7 +525,6 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
                             size_t count, loff_t *ppos)
 {
   int ret = 0;
-  unsigned int copied;
 
   ITCDeviceState *devstate = file->private_data;
   int minor = MINOR(devstate->devt);
@@ -540,27 +534,33 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
   switch (minor) {
   case 0:
   case 1: {
-    SpecialPacketFIFO * devfifo = (minor == 0) ? &S.special0Kfifo : &S.special1Kfifo;
+    struct SharedStatePerPru * sspp = &S.packetVirtP->pruState[minor];
+    struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
+
     if (mutex_lock_interruptible(&devstate->specialLock))
       return -ERESTARTSYS;
 
-    while (kfifo_is_empty(devfifo)) {
+    while (pbIsEmptyInline(upb)) {
       if (file->f_flags & O_NONBLOCK) {
         ret = -EAGAIN;
         break;
       }
-      if (wait_event_interruptible(devstate->specialWaitQ, !kfifo_is_empty(devfifo))) {
+      if (wait_event_interruptible(devstate->specialWaitQ, !pbIsEmptyInline(upb))) {
         ret = -ERESTARTSYS;
         break;
       }
     }
+
     if (ret == 0)
-      ret = kfifo_to_user(devfifo, buf, count, &copied);
+      ret = pbReadPacketIfPossibleToUser(upb, buf, count);
+
     mutex_unlock(&devstate->specialLock);
     break;
   }
 
   case 2: {
+    return -EINVAL;
+#if 0
     ITCPacketFIFO * devfifo = &S.itcPacketKfifo;
 
     if (mutex_lock_interruptible(&S.standardLock))
@@ -583,12 +583,13 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
     mutex_unlock(&S.standardLock);
 
     break;
+#endif
   }
 
   default: BUG_ON(1);
   }
 
-  return ret ? ret : copied;
+  return ret;
 }
 
 
@@ -634,9 +635,11 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
         printk(KERN_ERR "Truncating overlength (%d) packet\n",len);
         len = ITC_MAX_PACKET_SIZE;
       }
-
+    printk(KERN_ERR "SUMMON THE REIMPLEMENTOR\n");
+#if 0
       kfifo_in(&S.itcPacketKfifo, data, len);
       wake_up_interruptible(&S.itcPacketWaitQ);
+#endif
     } else {
       if (type<2) { // Then it's a shared state buffer kick from PRU(type)
 
@@ -646,6 +649,8 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
           processBufferKick((struct SharedStateSelector*) data);
         }
       } else {
+    printk(KERN_ERR "I SAID, SUMMON THE REIMPLEMENTOR\n");
+#if 0
 
         if (minor == 0) {
           kfifo_in(&S.special0Kfifo, data, len);
@@ -655,6 +660,7 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
           wake = 1;
         }
         else BUG_ON(1);
+#endif
       }
     }
     if (wake >= 0) {

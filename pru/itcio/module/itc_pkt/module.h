@@ -8,7 +8,6 @@
 #include <linux/init.h>
 #include <linux/cdev.h>
 #include <linux/module.h>
-#include <linux/kfifo.h>
 #include <linux/uaccess.h>
 #include <linux/poll.h>
 
@@ -19,17 +18,6 @@
 /*Note RPMSG takes up to 500+ but the ITCs need the length to fit in a byte */
 #define RPMSG_MAX_PACKET_SIZE (RPMSG_BUF_SIZE-sizeof(struct rpmsg_hdr))
 #define ITC_MAX_PACKET_SIZE 255
-
-#define KFIFO_SIZE (1<<12)   /* ITC packets are max 255.  Guarantee space for 16 (256*16 == 4,096 == 2**12) */
-
-/*unused? #define PROC_FIFO "itc-pkt-fifo"*/
-
-/* PRU special packets are expected to be smaller and rarer.  Give them 1KB each */
-#define SPECIAL_KFIFO_SIZE (1<<10)
-
-/* REC_1 for one byte record lengths is perfect for us.. */
-typedef STRUCT_KFIFO_REC_1(KFIFO_SIZE) ITCPacketFIFO;
-typedef STRUCT_KFIFO_REC_1(SPECIAL_KFIFO_SIZE) SpecialPacketFIFO;
 
 typedef enum debug_flags {
   DBG_PKT_RCVD      = 0x00000001,
@@ -56,10 +44,7 @@ typedef struct itc_dev_state {
 typedef struct itc_pkt_driver_state {
   DebugFlags        debugFlags;
   dev_t             major_devt;     /* our dynamically-allocated major device number */
-  ITCPacketFIFO     itcPacketKfifo; /* buffer for all inbound standard packets */
   wait_queue_head_t itcPacketWaitQ; /* for people blocking on standard packets */
-  SpecialPacketFIFO special0Kfifo;  /* buffer for inbound special packets from PRU0 */
-  SpecialPacketFIFO special1Kfifo;  /* buffer for inbound special packets from PRU1 */
   struct mutex      standardLock;   /* lock for reading standard packets */
   phys_addr_t       packetPhysP;    /* physical address of shared buffer space */
   struct SharedState * packetVirtP;    /* virtual address of shared buffer space */
