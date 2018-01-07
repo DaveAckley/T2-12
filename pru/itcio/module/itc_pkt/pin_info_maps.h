@@ -2,7 +2,9 @@
 #define PIN_INFO_MAPS_H
 
 /*PIN INFO MACRO MAPS*/
-/* direction to direction# */
+/* for direction name to (six way) ITCDir use ITC_DIR__<ET> etc */
+
+/* six way ITCDir to (eight way) dir num */
 /*      ITC_DIR_TO_DIR_NUM__NT 0 North non-existent in T2-12*/
 #define ITC_DIR_TO_DIR_NUM__NE 1
 #define ITC_DIR_TO_DIR_NUM__ET 2

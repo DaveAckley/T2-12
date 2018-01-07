@@ -16,7 +16,7 @@ KDIR?=/lib/modules/$(shell uname -r)/build
 ETC_MODULES_FILE:=/etc/modules-load.d/t2_12_modules.conf
 
 BUF_DIR:=../../common
-BUF_SRC_FILENAMES:=PacketBuffer.c SharedState.c
+BUF_SRC_FILENAMES:=PacketBuffer.c SharedState.c ITCIterator.c
 BUF_HDR_FILENAMES:=$(patsubst %.c, %.h, $(BUF_SRC_FILENAMES))
 BUF_SRC_ORIGIN_FILES:=$(patsubst %, $(BUF_DIR)/%, $(BUF_SRC_FILENAMES))
 BUF_HDR_ORIGIN_FILES:=$(patsubst %, $(BUF_DIR)/%, $(BUF_HDR_FILENAMES))
