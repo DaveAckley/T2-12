@@ -211,6 +211,13 @@ static inline unsigned int pbGetLengthOfOldestPacketInline(struct PacketBuffer *
 
 extern unsigned int pbGetLengthOfOldestPacket(struct PacketBuffer * pb) ;
 
+static inline int pbGetTypeOfOldestPacketIfAnyInline(struct PacketBuffer * pb) {
+  if (pbUsedBytesInline(pb)==0) return -1;
+  return pb->buffer[(pb->readPtr + 1) & pb->bufferMask];
+}
+
+extern int pbGetTypeOfOldestPacketIfAny(struct PacketBuffer * pb) ;
+
 static inline unsigned int pbStartReadingOldestPacketInline(struct PacketBuffer * pb) {
   if (pbUsedBytesInline(pb)==0) return 0;
   pb->readIdx = 0;

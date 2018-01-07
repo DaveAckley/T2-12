@@ -40,6 +40,11 @@ unsigned int pbGetLengthOfOldestPacket(struct PacketBuffer * pb)
   return pbGetLengthOfOldestPacketInline(pb);
 }
 
+int pbGetTypeOfOldestPacketIfAny(struct PacketBuffer * pb)
+{
+  return pbGetTypeOfOldestPacketIfAnyInline(pb);
+}
+
 unsigned int pbStartReadingOldestPacket(struct PacketBuffer * pb)
 {
   return pbStartReadingOldestPacketInline(pb);
