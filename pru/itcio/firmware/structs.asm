@@ -46,9 +46,9 @@ bRXRDYPin:      .ubyte  ; Receive Ready  R31 Pin Number
 bRXDATPin:      .ubyte  ; Receive Data   R31 Pin Number
 
 bOutData:       .ubyte  ; current bits being shifted out
-bOutBCnt:       .ubyte  ; count of bits already shifted out
+bOutBNum:       .ubyte  ; next bit number (0=LSB) to shift out
 bInpData:       .ubyte  ; current bits being shifted in
-bInpBCnt:       .ubyte  ; count of bits already shifted in
+bInpBNum:       .ubyte  ; next bit number (0=LSB) to shift in
 
 bRSRV0:         .ubyte
 bRSRV1:         .ubyte

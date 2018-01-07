@@ -16,10 +16,10 @@ PacketRunner:
 	ldi CT.bOutLen, 0              ; Init 0 says We're working on a 0 length packet
 	ldi CT.bOutByte, 0             ; Init 0 says We're working on byte 0 of it (not that that should matter)
 	ldi CT.bOutData, 0             ; Init 0 says We're outputting an all zeros byte
-	ldi CT.bOutBCnt, 8             ; Init 8 says But current byte all finished
+	ldi CT.bOutBNum, 0xff          ; Init 255 says But the current byte is all finished
         ldi CT.bInpByte, 0             ; Init 0 says We are reading byte 0 of a packet (if we had sync)
 	ldi CT.bInpData, 0             ; Init 0 says The byte we're reading is so far all zeros
-	ldi CT.bInpBCnt, 0             ; Init 0 says And we've read zero bits of it so far
+	ldi CT.bInpBNum, 7             ; Init 7 says And next bit number to read is bit 7
 	ldi CT.bInp1Cnt, 0             ; Init 0 says No run of 1s have been seen on input
 	ldi CT.bOut1Cnt, 0             ; Init 0 says we haven't transmitted any run of 1s lately
         ldi CT.bRSRV0, 'a'             ; XXXX: Make visible
@@ -30,8 +30,8 @@ PacketRunner:
         ;; FALL INTO getNextStuffedBit
 	
 getNextStuffedBit:  ;; Here to find next output bit to transmit
-	sendOTag """GNSB""",CT.bOutBCnt      ; report location
-	qbge checkForBitStuffing, CT.bOutBCnt, 7  ; jump ahead if 7 >= bits sent in output byte
+	sendOTag """GNSB""",CT.bOutBNum      ; report location
+	qbne checkForBitStuffing, CT.bOutBNum, 0xff  ; jump ahead if the 0 bit has already been sent
         ;; otherwise FALL INTO getNextOutputByte
 	
 getNextOutputByte:  ;; Here to fetch next output byte in packet if any
@@ -61,8 +61,8 @@ lookForNextPacket: ;; here to set up next outbound packet if have sync and packe
         mov CT.bOutLen, r14          ; Save length of next packet or 0
 
 startNewOutputByte:  ;; here to initialize once CT.bOutData has new byte to send
-	sendOTag """SNOB""",CT.bOutBCnt      ; report in
-        ldi CT.bOutBCnt, 0      ; no bits of bOutData have been sent
+	sendOTag """SNOB""",CT.bOutBNum      ; report in
+        ldi CT.bOutBNum, 7           ; next bit to send is the 7th (our protocol is MSB first)
 	
         ;; FALL INTO checkForBitStuffing
 	
@@ -74,7 +74,7 @@ checkForBitStuffing: ;; Here to maybe stuff output bits
 	
 stuffAZero: ;; Here to ship a bitstuffed zero
 ;	startOTagBurst 10         ; start talking buddy (for next 10 cycles)
-	sendOTag """SAZ""",CT.bOutBCnt      ; report in
+	sendOTag """SAZ""",CT.bOutBNum      ; report in
 	clr r30, r30, CT.bTXDATPin          ; present 0 on TXDAT
 	clr CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fStuffThisBit ; mark we did this
 	ldi CT.bOut1Cnt, 0                  ; and clear running 1s
@@ -82,7 +82,7 @@ stuffAZero: ;; Here to ship a bitstuffed zero
 	
 sendRealDataBit: ;; Here to send an actual (data or delimiter) bit
 	sendOTag """SRDB""",CT.bOutData              ; report in
-        qbbc transmitZero, CT.bOutData, CT.bOutBCnt  ; Jump ahead if sending a 0
+        qbbc transmitZero, CT.bOutData, CT.bOutBNum  ; Jump ahead if next bit to send a 0
 	add CT.bOut1Cnt, CT.bOut1Cnt, 1              ; Count 1s
         qbbc transmitOne, CT.sTH.wFlags, PacketRunnerFlags.fByteStuffed ; Ready to xmit if not stuffing this byte
         qbne transmitOne, CT.bOut1Cnt, 5             ; Also ready if this is not the 5th 1
@@ -103,13 +103,13 @@ transmitZero: ;; Here to transmit 0 and clear our running 1s count
         ;; FALL INTO countRealBitSent
 
 countRealBitSent:      ;; Here if we sent a real bit (as opposed to bitstuffing 0)
-	add CT.bOutBCnt, CT.bOutBCnt, 1      ; Record we have transmitted another real bit
+	sub CT.bOutBNum, CT.bOutBNum, 1      ; Record we have transmitted another real bit
 
         ;; FALL INTO makeFallingEdge
 	
 makeFallingEdge:  ;; Here to make a falling edge
-	sendOTag """MFE""",CT.bOutBCnt ; report in as output event
-	sendITag """MFE""",CT.bInpBCnt ; now report in as an input event
+	sendOTag """MFE""",CT.bOutBNum ; report in as output event
+	sendITag """MFE""",CT.bInpBNum ; now report in as an input event
         clr r30, r30, CT.bTXRDYPin      ; TXRDY falls
 	saveResumePoint lowCheckClockPhases ; Set where to resume to and save this context
 	
@@ -162,8 +162,8 @@ completeFrameDelimiter:  ;; Here we have a (possibly misaligned) complete frame 
 	;; otherwise FALL INTO checkExistingAlignment
 
 checkExistingAlignment:  ;; Here we already have packet sync and are looking at a complete frame delimiter
-	sendITag """CEXA""", CT.bInpBCnt               ; report in
-        qbeq handleGoodPacketDelimiter, CT.bInpBCnt, 6 ; If at 7th bit, delimiter is aligned, go release full packet
+	sendITag """CEXA""", CT.bInpBNum               ; report in
+        qbeq handleGoodPacketDelimiter, CT.bInpBNum, 1 ; If at bit number 1, delimiter is aligned, go release full packet
 	sendITag """CEXF""", CT.bInpData             ; report in
 	
 	;; otherwise FALL INTO frameError
@@ -195,7 +195,7 @@ achievePacketSync: ;; Here to achieve packet sync when we didn't already have it
 resetAfterDelimiter:  ;; Here to set up for new inbound packet
 	sendITag """RAD""",CT.rRunCount.r ; report in
         ldi CT.bInpByte, 0         ; We are on byte 0
-        ldi CT.bInpBCnt, 0         ; We are on bit 0 of byte 0
+        ldi CT.bInpBNum, 7         ; We are on bit 7 of byte 0
         ldi CT.bInpData, 0         ; And that byte is all 0s so far
         ldi CT.bInp1Cnt, 0         ; And we have seen 0 1s in a row
         jmp makeRisingEdge         ; And then we're done with this input bit
@@ -216,7 +216,7 @@ sendInFinishedPacket:       ;; Here we know the inbound packet is non-empty
 storeRealInputBit: ;; Here if not dealing with bitstuffed 0s, packet delimiters, or framing errors
 	sendITag """SRIB""",r4.b0               ; report in
         qbeq gotReal0, r4.b0, 0    ; No storing needed on zeros (because we cleared bInpData to start)
-        set CT.bInpData, CT.bInpData, CT.bInpBCnt ; Otherwise set the bit we're on
+        set CT.bInpData, CT.bInpData, CT.bInpBNum ; Otherwise set the bit we're on
         add CT.bInp1Cnt, CT.bInp1Cnt, 1           ; And increment the running 1s count
         jmp checkEndOfByte                        ; Go see if we've finished a byte
 
@@ -227,9 +227,9 @@ gotReal0:  ;; Here if we're seeing a real data bit 0
         ;; FALL INTO checkEndOfByte
 
 checkEndOfByte: ;; Here to increment and deal with end of byte processing
-	sendITag """CEOB""",CT.bInpBCnt               ; report in
-        add CT.bInpBCnt, CT.bInpBCnt, 1           ; Increment count of bits in byte
-        qbge makeRisingEdge, CT.bInpBCnt, 7       ; Nothing more to do if 7 >= bits in byte
+	sendITag """CEOB""",CT.bInpBNum           ; report in
+        sub CT.bInpBNum, CT.bInpBNum, 1           ; Move on to next bit number
+        qbne makeRisingEdge, CT.bInpBNum, 0xff    ; Nothing more to do if the bit number hasn't underflowed
         qbbc makeRisingEdge, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; Also nothing more to do if not synced
 	
         ;; FALL INTO storeThisInputByte
@@ -247,7 +247,7 @@ setupForNextInputByte:  ;; Here to initialize for reading another byte
 	sendITag """SFNB""",CT.bInpByte ; report in
         add CT.bInpByte,  CT.bInpByte, 1 ; Move on to next byte
         ldi CT.bInpData, 0               ; Clear the byte data itself
-        ldi CT.bInpBCnt, 0               ; And clear the bit in byte
+        ldi CT.bInpBNum, 7               ; And set the bit number coming next
 
         ;; FALL INTO makeRisingEdge
         
