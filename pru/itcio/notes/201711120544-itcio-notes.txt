@@ -1,4 +1,4 @@
-{395}  -*- text -*-
+{399}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6669,7 +6669,120 @@ Sun Jan  7 01:53:02 2018 OK, well, it seems like the rehack for MSB
 first 'worked first time'..  At least packets still seem to go over
 the wire and be legible when they arrive back at userspace..
 
-Committing that part of it.
+Committing that part of it.[395:
+
+Sun Jan  7 02:15:26 2018 OK so how do we move forward here?  This is
+basically The Last Day (TM) to work on this stuff before official
+Spring semester prep kicks in.  Can't we somehow make something like
+this:
+
+ aspirational# cat /dev/itc/ET &
+ aspirational# echo '@zotz' > /dev/itc/WT
+ @zotz
+
+work today?  And, say:
+
+ aspirational# cat /dev/itc/packets &
+ aspirational# echo '2zotz' > /dev/itc/WT
+ @zotz
+
+From userspace use cases, what's the minimum first things to go for?
+In the development so far, we've been very bottom-up and
+machine-oriented: There are two PRUs, ergo /dev/itc/pru0 and pru1..
+
+Could we do like /dev/itc/ET/bulk and /dev/itc/ET/prio ? and let you
+open whichever you want?  At my level of competence, it would be
+minors out the gazoo plus that awkward itc!pkt device notation, I
+guess.  
+
+
+:395]
 
 :394]
 :393]
+[396:
+
+Sun Jan  7 03:51:21 2018 OK, making an extended-info wait-on-packet
+struct thing so that processes will be able to say they are waiting
+not merely for a particular pb to be non-empty, but they're waiting
+for it to contain a packet whose first four bytes (zero padded if
+necessary) matches THIS value under THIS mask.
+
+But I think to do that I have to copy the packet out of the queue into
+some associated holding buffer so that if nobody matches it we will
+still move on next time..  Or it's not clear that works either.  How
+do we get an orphan packet out of a pb?  itc_pkt either has to have
+some way of knowing that nobody is waiting for this packet, or has to
+time the packet out eventually, or has to let the damn thing clog the
+pb indefinitely.  Which do you prefer?
+
+Right now we're pretty much blocking indefinitely until some reader
+comes along.  And then that reader gets the next thing in the pb
+whether it's nanoseconds fresh or stale since Friday.  If readers were
+required to register their interest somehow, rather than anonymously
+waiting for something, then the dispatcher could know whether anybody
+was actually waiting for this thing, and discard it otherwise.  Is
+that true though?  Doesn't that just make a race between the
+dispatcher discarding and the consumer getting back onto the wait
+queue to consume?  So maybe we do just time packets out?
+
+If a pb isn't empty we note the time and wake everybody that might be
+relevant.  On future kicks or timeouts we check for stale pb fronts
+and dump a packet if so (and restart the timer and wake the pb is
+still nonempty).
+
+Or what if we start dropping packets if nobody has taken them and the
+pb is starting to get full?  Then it's not time but need.  But that
+can leave a giant wad of crap in the buffer that somebody will have to
+slog through..
+
+Is there a clean way to iterate over a wait queue and ask a custom
+question of everything waiting?  Like: Do any of you really want this
+or should I dump it?  But again again that's not enough.  Our
+processes are not even waiting unless the queue is empty.
+
+So if we say there is expected to be only one reader for a given pb..
+Then we let the pb fill and the reader is expected to return
+frequently enough to avoid overflow.  And all we have to do is wake
+the waiters if there's maybe something relevant to them.
+
+[397:
+
+Sun Jan  7 04:58:10 2018 So, just noting:
+
+ship_packet_to_pru
+   - uses the downbound/upbound pbs, and
+   - holds the specialLock while it waits
+
+send_msg_to_pru
+   - uses ship_packet_to_pru so the above applies
+
+so none of that deals with bulk or priority or directions.
+
+Our original intention for priority was routed packets for mfm only.
+So one guy would open /dev/itc/packets for O_RDWR, and there would be
+a lock and a waitq just for him, and his waking condition is activity
+on any of the inbound priority pbs.  And we use a random iterator to
+sequence those packets to him.
+
+So it's harder to play with /dev/itc/packets that way, because you
+can't do 'cat /dev/itc/packets &' + 'echo pkt >/dev/itc/packets'
+because the cat will be holding the lock so the echo can't get in.
+So you have to do a perl script or whatever with O_RDWR.  But come on
+let's not have that stop us.
+
+So what's the lock for (reading) /dev/itc/packets?  It's
+s->standardLock, no?  Looks like.  So let's make a predicate function that
+returns true if any of the priority pbs are non-empty..
+
+
+:397]:396]
+[398:
+
+Sun Jan  7 09:27:27 2018 OK, well, progress.  We have packets moving
+userspace to userspace, but things are still a little broken  -- 
+the packets tests/PKT/XConRoutingTest.pl is getting back look a little
+different than they used to and it's not recognizing them.  So that
+needs to be debugged, but time for a nap first.  Committing this much.
+
+:398]
