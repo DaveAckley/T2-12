@@ -1,4 +1,4 @@
-{387}  -*- text -*-
+{395}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -4887,7 +4887,7 @@ I did:
 
         root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# echo 'ÉLiving Computation' > /dev/itc/pru0
         root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# echo 'áFog you Bell; Watson out.' > /dev/itc/pru1
-        root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# 
+        root@beaglebone:/home/t2/T2-12/pru/itcio/firmware#
 
 and I saw:
 
@@ -4905,15 +4905,15 @@ and I saw:
 where the key point in this case is that the first packet, sent to
 PRU0 in direction 3 (which is southeast, counting from north == 0),
 arrived back at linux from PRU1 marked as coming from direction 7
-(which is northwest), while the second packet went the opposite way. 
+(which is northwest), while the second packet went the opposite way.
 
-Finally. 
+Finally.
 
 [300:
 
 Wed Dec 27 12:06:07 2017 And we can do autorouting:
 
-    root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# echo 'ÜGo west' > /dev/itc/packets 
+    root@beaglebone:/home/t2/T2-12/pru/itcio/firmware# echo 'ÜGo west' > /dev/itc/packets
 
 and see:
 
@@ -5059,15 +5059,15 @@ Going the other way, suppose we double the number of larger packets:
     root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1
     start
     rcvd 100% elapsed 0.002309 sec; sent 1048 bytes; 453.91 KBps, 3.631 Mbps
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 Now, sending only 1KB total, we're up to 450KBps+.  Could Be Worse.
 And we can go up from there:
 
-    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1
     start
     rcvd 100% elapsed 0.012488 sec; sent 8174 bytes; 654.54 KBps, 5.236 Mbps
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 Sending 8KB gets us up to 5Mbps -- again, userspace to userspace.  We
 can go bigger again, but eventually improvement starts topping out:
@@ -5078,7 +5078,7 @@ can go bigger again, but eventually improvement starts topping out:
     root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1
     start
     rcvd 100% elapsed 0.322631 sec; sent 260638 bytes; 807.85 KBps, 6.463 Mbps
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 I don't think the current code can get to 1MBps no matter what, and I
 have managed to wedge things by trying to double that test a couple
@@ -5157,7 +5157,7 @@ rock-fogging-solid:
     root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1 1
     start
     sent 24582 rcvd 24582 100% err 0 ovr 0 lost 0 elapsed 8.368798 sec; sent 1982494 bytes; 236.89 KBps, 1.895 Mbps
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 Pumping 2MB all around the barn and not a packet out of place.  Now we
 should just see if there's some easy things to do to pick some of the
@@ -5223,7 +5223,7 @@ Key riced.
         last_avail_idx to use 16 bits instead of 32.
 
         Signed-off-by: Jason Reeder <jreeder@ti.com>
-    
+
 
 [321:
 
@@ -5280,7 +5280,7 @@ better:
 
 for a 100*(3.277-3.084)/3.084 ~ 6% improvement..  I'm sure there's
 much more to be had with deeper understanding and work, but .. not
-right now..  
+right now..
 
 :322]
 :321]
@@ -5301,7 +5301,7 @@ Computing Up shipped last night to round out 2017.
 So, look at this:
 
     # modprobe cmemk phys_start=0xa0000000 phys_end=0xc0000000 pools=1x1048576 allowOverlap=1
-    # 
+    #
 
 yielding:
 
@@ -5317,11 +5317,11 @@ followed by:
     Memory mapped at address 0xb6fc1000.
     Value at address 0xA0000000 (0xb6fc1000): 0xDABEAC1E
     Written 0x1010BABE; readback 0x1010BABE
-    # 
+    #
 
 and then rehack the '*' packet like this:
 
-      case '*': {                        
+      case '*': {
         if (len < 10) fillFail("[PKLEN]",packet,len);
         else {
           uint32_t * cmemptr = (uint32_t *) 0xA0000000;
@@ -5351,7 +5351,7 @@ then rinsen repeat:
     Value at address 0xA0000000 (0xb6f41000): 0x1010BABE
     Written 0x89ABCDEF; readback 0x89ABCDEF
     # echo '*ddddddddddddddddd' > /dev/itc/pru0
-    # 
+    #
 
 getting
 
@@ -5451,7 +5451,7 @@ Buffers approach that
 [339: Tue Jan  2 20:47:55 2018 DONE  :339] C.3: Figure out where the buffers will go for PRU0, PRU1, and ARM.
 
 [341: Tue Jan  2 21:28:59 2018 DONE  :341] C.4: Make some special packets to drive it from the pru side for
-      testing. 
+      testing.
 
 [338: Tue Jan  2 20:47:35 2018 DONE  :338] C.5: Get buffy.c talking to those packets.
 
@@ -5459,7 +5459,7 @@ Buffers approach that
 :327][329:
 
 Mon Jan  1 12:36:03 2018 Had random rare frame errors on SW while
-sleeping.  
+sleeping.
 
     [   48.472262] graphics fb0: fb_ili9486 frame buffer, 480x320, 300 KiB video memory, 32 KiB DMA buffer memory, fps=15, spi1.0 at 32 MHz
     [17191.643583] Packet error reported on size 37 packet
@@ -5497,7 +5497,7 @@ Urgh and there were two more, just as I was sitting here doing
 nothing.  I'm not hexdumping packets to dmesg at the moment but here's
 what they look like raw:
 
-    root@beaglebone:/home/t2/T2-12# cat /dev/itc/packets 
+    root@beaglebone:/home/t2/T2-12# cat /dev/itc/packets
     çFRM  ⁄ ab  ⁄æ¨'µjLK  z!                                     ﬂ¡0SW:4c6ab52f PSçFRM  ⁄ ~ab⁄æ¨kkLá  z!                                                                                                 ‡¡0SW:4c6b068f PSçFRM  ⁄ ab  ⁄æ¨∑Ë {)  z!   <¡0SW:7bcae8bf PSçFRM  ⁄ ab  ⁄æ¨áq«~  z!¡0SW:7ec7718f PSçFRM  ⁄ ab  ⁄æ¨^Œ~  z!¡0SW:7ece5e1f PS
 
 [330:
@@ -5541,7 +5541,7 @@ something, for the different error paths in PacketThreadRunner.. [331:
 Mon Jan  1 14:11:22 2018 Well, spent time in tests/CMEM/PacketBuffer.h
 diddling with revised packet header formats.  Not sure how much
 progress I made, but now there's a mechanism for PRU to tell ARM
-explicitly about sync gained and lost.  In the end I allowed 
+explicitly about sync gained and lost.  In the end I allowed
 'Standard Status Packets' to have additional bytes which in many cases
 are expected to be the corpse of the packet -- if any --than
 encountered the failure.  We'll see if that's ever any use for
@@ -5601,7 +5601,7 @@ arg in there as well or not.
 
 Here's a 'before' picture:
 
-    root@beaglebone:/home/t2/T2-12# cat /proc/meminfo 
+    root@beaglebone:/home/t2/T2-12# cat /proc/meminfo
     MemTotal:         499784 kB
     MemFree:          242092 kB
     MemAvailable:     401068 kB
@@ -5650,7 +5650,7 @@ Tue Jan  2 11:58:49 2018 Rebooted.
 
 'After' picture:
 
-    root@beaglebone:~# cat /proc/meminfo 
+    root@beaglebone:~# cat /proc/meminfo
     MemTotal:         470304 kB
     MemFree:          311396 kB
     MemAvailable:     375028 kB
@@ -5691,7 +5691,7 @@ Tue Jan  2 11:58:49 2018 Rebooted.
     VmallocChunk:          0 kB
     CmaTotal:          49152 kB
     CmaFree:           48072 kB
-    root@beaglebone:~# 
+    root@beaglebone:~#
 
 and we immediately see:
 
@@ -5745,10 +5745,10 @@ where the added 'X' means 'no such packets were available.
     Memory mapped at address 0xb6ef8000. (tag=8430)
     1:P0D0I0B0 2:P0D0I0B0 Cmd:'!' -- Initted!
     1:P0D0I0B0 2:P0D0I0B0 Cmd:'0' -- PRU0
-    1:P0D0I0B0 2:P0D0I0B0 Cmd:'s' -- 
+    1:P0D0I0B0 2:P0D0I0B0 Cmd:'s' --
     1:P0D0I0B1 2:P0D0I0B0 Cmd:'i' -- I1
     1:P0D0I1B1 2:P0D0I0B0 Cmd:'winboundSlowPru0' -- Wrote 15
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 Use buffy on the linux side.  '!' means initialize all the shared
 state; '0' means pru0; 's' means slow queues; 'i' means inbound; and
@@ -5781,11 +5781,11 @@ each end of each queue to have exactly one owner.
     /dev/mem opened.
     Memory mapped at address 0xb6fc0000. (tag=7f97)
     1:P0D0I0B0 2:P0D0I0B0 Cmd:'0' -- PRU0
-    1:P0D0I0B0 2:P0D0I0B0 Cmd:'f' -- 
+    1:P0D0I0B0 2:P0D0I0B0 Cmd:'f' --
     1:P0D0I0B0 2:P0D0I0B0 Cmd:'r' -- Nothing to read
 
 We try to read, but there's nothing in the fast outbound queue on
-pru0.. 
+pru0..
 
     1:P0D0I0B0 2:P0D0I0B0 Cmd:'1' -- PRU1
     1:P1D0I0B0 2:P0D0I0B0 Cmd:'r' -- Read(0) 65=' can only do one packet read or write per "*" command at present
@@ -5793,7 +5793,7 @@ pru0..
 
 But there it is; there's our packet over on the pru1 side.
 
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 A WALA.
 
@@ -5822,7 +5822,7 @@ small:
     int16_t pru_virtqueue_kick(struct pru_virtqueue *vq) {
  ..ignorable stuff..
             /* Generate a system event to kick the ARM */
-            __R31 = (INT_ENABLE | (vq->to_arm_event - INT_OFFSET)); 
+            __R31 = (INT_ENABLE | (vq->to_arm_event - INT_OFFSET));
 and done.
             return PRU_VIRTQUEUE_SUCCESS;
     }
@@ -6012,7 +6012,7 @@ But not now.  Committing then dinner prep.
 
 Thu Jan  4 00:04:14 2018 OK.  Let's just get the PRUs to also check
 their shared state buffers for outbound packets... but when?  Not in
-the linux thread..[356: 
+the linux thread..[356:
 
 Thu Jan  4 00:07:38 2018 ..in orbFrontPacketLen.[357:
 
@@ -6156,7 +6156,7 @@ and apparently now is the time:
     "AM335x_PRU.cmd", line 84: error: program will not fit into available memory.
        placement with alignment fails for section ".text" size 0x2020 page 0.
        Available memory ranges:
-       PRU_IMEM     size: 0x2000       unused: 0x1fec       max hole: 0x1fec    
+       PRU_IMEM     size: 0x2000       unused: 0x1fec       max hole: 0x1fec
     error: errors encountered during linking; "gen/main_pru1_fw.out" not built
 
 so I'm looking through the listings trying to see what's where.
@@ -6180,7 +6180,7 @@ during every build, not just when there's a problem..
 
 Thu Jan  4 14:19:47 2018 OK, now a full build looks something like this:
 
-    make -k 
+    make -k
     CC	Buffers.c (pru1)
     CC	LinuxIO.c (pru1)
     CC	SpecialPackets.c (pru1)
@@ -6190,7 +6190,7 @@ Thu Jan  4 14:19:47 2018 OK, now a full build looks something like this:
     ASM	PacketRunner.asm (pru1)
     ASM	Threads.asm (pru1)
     LD	gen/main_pru1_fw.out
-      PRU_IMEM      000003d4   ASMBUF        000000b8   PRU_DMEM_0_1  00000931 
+      PRU_IMEM      000003d4   ASMBUF        000000b8   PRU_DMEM_0_1  00000931
     CC	Buffers.c (pru0)
     CC	LinuxIO.c (pru0)
     CC	SpecialPackets.c (pru0)
@@ -6198,7 +6198,7 @@ Thu Jan  4 14:19:47 2018 OK, now a full build looks something like this:
     ASM	PacketRunner.asm (pru0)
     ASM	Threads.asm (pru0)
     LD	gen/main_pru0_fw.out
-      PRU_IMEM      000003d0   ASMBUF        000000b8   PRU_DMEM_0_1  00000931 
+      PRU_IMEM      000003d0   ASMBUF        000000b8   PRU_DMEM_0_1  00000931
     -	Generated firmwares are : gen/main_pru1_fw.out gen/main_pru0_fw.out
 
 and I'm not sure, right off the bat, why PRU0 is using four less bytes
@@ -6316,7 +6316,7 @@ userspace select() over the different buffers.  Maximally:
 
 :376]
 
-:372]    
+:372]
 
 :371]
 [377:
@@ -6371,7 +6371,7 @@ see if this goes away, but checkpoint committing first.
 
 Fri Jan  5 13:58:53 2018 OK, well after reboot the depmod error is
 gone, leaving only a lingering bad odor and a vague unease as if
-someone somewhere may be dancing upon your grave I mean memory. 
+someone somewhere may be dancing upon your grave I mean memory.
 
 We Shall See.
 
@@ -6438,4 +6438,238 @@ but at least things are moving between the PRUs and the LKM again.
 
 Committing before nap.
 
-:386]
+:386][387:
+
+Sat Jan  6 10:58:25 2018 OK so we need to be a little more systematic
+about what devices are waiting for what packets, so processBufferKick
+(and likely related) can compute who to wake based on which non-empty
+inbound or upbound PacketBuffer it discovers.
+
+We have:
+
+      PB                DEV             DIR          WAITQ
+
+  pru0 upbound         /dev/itc/pru0    Read        devstate0->specialLock
+  pru1 upbound         /dev/itc/pru1    Read        devstate1->specialLock
+
+
+  pru[01] downbound
+
+
+[388:
+
+Sat Jan  6 11:14:04 2018 Still working on that table but thinking:
+Maybe processBufferKick should peek at a little bit of the packet --
+up to the first four bytes if they exist -- and we could write the
+wait conditions to be more specific.  Not just the arrival of any
+packet, but the arrival of a packet with a particular first four
+bytes..  We could then put a spinning tag in, say, the second and
+third bytes of a special, and, multiple processes could wait on
+replies from multiple specials, and they could all wait on the same
+queue, but each matching their own tag.
+
+Argh.  This seems like an obviously good idea, and also leads to a way
+to handle waiting on disjunctive conditions... as long as everybody is
+waiting on the same queue.. but I _just_ took the single rpmsg queue
+and exploded it into a dozen..  wait no it's not the _buffers_ its the
+_wait queue_; could have lots of buffers but only a few wait queues..
+
+Maybe we enforce only a fast path vs bulk rate distinction, and you do
+have to pick precisely one of those.. ?  But then we couldn't have the
+opportunistic 'process fast if any else check bulk'..  Although
+actually I suppose we could have a third wait q for such dual-speed
+waiting, and the waker would always wake the dual-speed waiters in
+addition to the speed appropriate for the given pb.
+
+But it's unclear right now why processes on the kernel side would need
+dual-speed waiting anyway..  It's important on the PRU side because
+bulk and priority have to share the wire.  But on the linux side we'd
+have separate processes not only for priority vs bulk but also for
+different port numbers within bulk.
+
+It would be cool if the bulk channels could be byte-oriented instead
+of packet oriented, so when idle, the PRU-side engines could start
+sending bytes on behalf of some stream, but as soon as the
+corresponding priority buffer becomes non-empty, they end the bulk
+packet early and switch to the priority transmission.  Then later when
+the wire goes quiet again they can resend the bulk header then resume
+bulk transmission where they were previously interrupted.  That way
+the latency overhead to the priority channel would never be more than
+two bytes: up to one bulk data byte and one forced frame delimiter.
+
+And if we formalize the bulk header a bit more we could do this within
+the current all-packets framework.  We'd extend the struct
+PRUPacketBuffer to remember something like the readIdx, which is
+currently only being remembered in the thread state.
+
+Anyway, now is not the time to be thinking of this stuff, but it's
+there for the future, and it would allow the bulk data packets to use
+up the full ITC_MAX_PACKET_SIZE without introducing onerous latency on
+the priority channel.  We might end up shipping a bulk packet with
+just one byte in it every so often but okay.
+
+Proposed bulk packet header:
+
+    byte 0            byte 1            byte 2            byte 3
+
+  type s.t.         src/dest port
+  (type & 0xa0)     0xf0 src
+     == 0x2         0x0f dst
+[389:
+
+Sat Jan  6 13:06:52 2018 If we had a clear(ish) demarcation point
+where we said routing took place, we could think in terms of popping
+off a source-rouing header byte at that point (like we did back in sfb
+days and everyrouter and his dog does too).
+
+It seems like entering one of the broken-out SharedState PacketBuffers
+would be the obvious time, and the source-route would tell us which
+buffer to get on.  We could even have buffers for routing internally
+within the prus -- PRU0->PRU1 and PRU1->PRU0 transfer buffers up in
+the shared DRAM that we're not currently using for anything, that
+would allow routing through a tile without ever going up to linux.
+
+If we wanted to allow that..
+
+So when does entering the broken-out pbs occur?
+
+1 - On local packet output, it happens in itc_pkt.ko -- in particular,
+    on a write to /dev/itc/packets.  We strip a byte indicating the
+    direction and put the rest in the specified buffer.
+
+2 - On PRU packet input from the wire, it happens in
+    ppbSendInboundPacket.  But we don't want to strip a byte then,
+    unless we're supporting source-routing, which seems like a
+    separate issue.
+
+3 - On local packet output on a write to /dev/itc/<DIR>, when that
+    exists.
+
+[390:
+
+Sat Jan  6 16:02:28 2018 (After 1st round dinner prop..) So if we talk
+minimal minimal, we should BEGIN with /dev/itc/<DIR> and have that be
+just uninterpreted data packets back and forth.
+
+No routing, no packet types, nothing except packet framing and
+uninterpreted eight-bit clean data for all bytes of the packet.  On
+output we dish to the appropriate non-bulk outbound prudir pb or block
+until we can; on input we ship to the appropriate non-bulk inbound
+prudir pb or block until we can.
+
+That's certainly pure.  One cost of that purity is the inbound bulk
+queues are useless, because without some kind of packet header
+interpretation we can't know that one arriving packet is priority
+while the next is bulk.
+
+So that's why we 'have' to accept at least a half a bit of header.  If
+the packet's first byte's MSB is 1, it's a routing header.  Then the
+question is what does the rest of the first byte mean.  If the packet
+engine can look past an MSB of 0 then really the first byte is a
+header no matter what, and we shouldn't pretend it's just the MSB.
+
+Use cases for packets, and thus packet header interpretations:
+
+                         Context         Handling
+ - engine query     0x0  PRU in/down    processed -> engine response out/up (NYI)
+ - engine response  0x1
+ - priority traffic 0x2  <ITC> wire in  ->ITC fast inb pb
+                         /dev/itc/<ITC> ->ITC fast out pb
+ - source route     0x3  <ITC> wire in  -> pop + ITC transfer slow pb (NYI)
+ - bulk traffic     0x4  <ITC> wire in  ->ITC slow inb pb
+                         /dev/itc/<ITC> ->ITC slow out pb
+ - reserved         0x5
+ - push status      0x6
+ - reserved         0x7-0xf
+
+So we could say the fundamental router level looks at the first four
+bits of the first byte -- which should really be the four LSBs of the
+byte, given that we transmit the LSB first, and the rest of the first
+byte is the concern of the engine level or higher.  [392:
+
+Sun Jan  7 00:38:04 2018 No, let's stick with MSBs.  It's way more
+intuitive and explainable, and given packet sync and bitstuffing it
+majorly violates levels to pretend we might take action before the
+first byte is complete.  (Even though we could, in principle, because
+none of the first four bits of a packet will ever be stuffed..)
+
+So, by making our 'important' use cases have 0x2, 0x3, and 0x4 in the
+most significant nybble, we can do down-to-the-bit packet header
+interpretation and yet still get a degree of interpretability.
+
+For example, the first eight packet types that fall in priority
+traffic -- interpreted as ASCII characters -- are space through
+single-quote [ !"#$%&'].  So we pick from them for cache protocol
+commands. "!" - begin cache update, "$" - cache data, "#" - finish
+update, whatever.
+
+Similarly, the first eight bulk traffic types are [@ABCDEFG].  So say
+'@' is the default bulk stream packet type..  Or, 'C' for connect, 'D'
+for data, 'F' for finish?  You get the idea.
+
+And, last and best, the first eight source route types are [01234567],
+which we can/shall interpret as the 8 way compass rose numbers.  Want
+to source route a packet east?  Just prepend a "2".  Southwest then
+east then northwest?  Prepend "527".  If I didn't screw it up,
+"63217652" will make a full orbit of your T2-12 tile and then return
+to you like a boomerang.
+
+:392]
+
+[391:
+
+Sat Jan  6 23:41:30 2018 And so if we did that,
+
+:391]
+ *     Packet First Byte
+ *      7    6    5    4     3    2    1    0
+ *   +----+----+----+----+ +----+----+----+----+
+ *   | PH | -- | -- | -- | | -- | -- | -- | -- |
+ *   +----+----+----+----+ +----+----+----+----+
+ *     ||
+ * 1 this byte is a Packet Header
+ * 0 this byte is seven-bit clean data.
+
+
+ *     Packet Header First Byte
+ *      7    6    5    4     3    2    1    0
+ *   +----+----+----+----+ +----+----+----+----+
+ *   | 1  | -- | -- | -- | | -- | -- | -- | -- |
+ *   +----+----+----+----+ +----+----+----+----+
+ *
+ *
+ *
+
+
+:390]
+
+:389]
+
+:388]
+:387]
+[393:
+
+Sun Jan  7 01:16:40 2018 You know, I'm thinking of saying fogit and
+let's send the MSB first.  After all:
+
+ - Typical HDLC wire protocols also invert the bits, but T2-12
+   doesn't, and
+
+ - Even in standard (LSB-first) HDLC protocols, if a CRC is appended,
+   the CRC ships MSB-first!  Gah!
+
+The point is, our protocol is _not_ a literal implementation of HDLC,
+for multiple fundamental reasons, so it's a given that we Will Not
+Have Wire Interoperability.  So let's update stuff from a slightly
+higher level perspective.  The sequence of signals on a TXDAT pin
+shall represent a NON-INVERTED BYTE SENT MSB-FIRST.
+[394:
+
+Sun Jan  7 01:53:02 2018 OK, well, it seems like the rehack for MSB
+first 'worked first time'..  At least packets still seem to go over
+the wire and be legible when they arrive back at userspace..
+
+Committing that part of it.
+
+:394]
+:393]
