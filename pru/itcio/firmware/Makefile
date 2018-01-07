@@ -57,7 +57,8 @@ COBJ1_FILES:=$(patsubst %.c,$(GEN_DIR)/%_pru1.object,$(CSRC_FILES))
 
 # Shared state source files
 SHARED_STATE_DIR:=../common
-SHARED_STATE_C_FILES:=$(wildcard $(SHARED_STATE_DIR)/*.c)
+SHARED_STATE_C_FILENAMES:=PacketBuffer.c SharedState.c
+SHARED_STATE_C_FILES:=$(patsubst %.c,$(SHARED_STATE_DIR)/%.c,$(SHARED_STATE_C_FILENAMES))
 SHARED_STATE_HDR_FILES:=$(patsubst %.c,%.h,$(SHARED_STATE_C_FILES))
 SHARED_STATE_COBJ_FILES+=$(patsubst $(SHARED_STATE_DIR)/%.c,$(GEN_DIR)/%_pru.object,$(SHARED_STATE_C_FILES))
 COBJ0_FILES+=$(SHARED_STATE_COBJ_FILES)
