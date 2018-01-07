@@ -389,7 +389,7 @@ int processPackets() {
       
     while ((len = pbReadPacketIfPossible(dpb, payload, RPMSG_BUF_SIZE)) > 0) {
       unsigned ret;
-      CSendPacket((uint8_t*) "gots", 4); // XXXX
+      //      CSendPacket((uint8_t*) "gots", 4); // XXXX
       if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE) {
         payload[0] |= PKT_STD_ERROR_VALUE; /* No, no, you should not be here. */
         ret = 1;
