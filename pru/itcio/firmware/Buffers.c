@@ -49,7 +49,7 @@ int ppbSendInboundPacket(unsigned prudir, unsigned char length) {
   int ret = 0;
   struct PRUPacketBuffer * ppb = pruDirToInPPB(prudir);
   struct PacketBuffer * pb;
-  struct SharedStateSelector sss;
+  PBID sss;
   sss.pru = ON_PRU;
   sss.prudir = prudir;
   sss.inbound = 1;
@@ -58,6 +58,7 @@ int ppbSendInboundPacket(unsigned prudir, unsigned char length) {
 
     sss.bulk = ( (ppb->buffer[0]&PKT_BULK_STD_MASK) == PKT_BULK_STD_VALUE );
     ppb->buffer[0] = (ppb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
+    //    CSendVal("HOR","K", (prudir<<16)|ppb->buffer[0]);
     pb = getPacketBufferIfAny(getSharedStatePhysical(), &sss); /*'IfAny' only applies if sss.bulk<0*/
 
     // NOTE: Only kicking ARM on empty -> non-empty transitions is
@@ -95,7 +96,7 @@ int ppbReceiveOutboundPacket(unsigned prudir) {
   int len;
   struct PRUPacketBuffer * ppb = pruDirToOutPPB(prudir);
   struct PacketBuffer * pb;
-  struct SharedStateSelector sss;
+  PBID sss;
   sss.pru = ON_PRU;
   sss.prudir = prudir;
   sss.inbound = 0;

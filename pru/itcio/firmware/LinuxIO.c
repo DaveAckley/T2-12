@@ -51,8 +51,8 @@ void handleAtPacket(uint8_t * data, uint32_t len)
   // Init packetBufferPtrs (see macros.asm: ldInPBPtr, ldOutPBPtr for access)
   {
     unsigned prudir, bulk;
-    struct SharedStateSelector sss;
-    initSharedStateSelectorInline(&sss);
+    PBID sss;
+    initPBID(&sss);
     sss.pru = ON_PRU;
     for (prudir = 0; prudir <= 2; ++prudir) {
       sss.prudir = prudir;
@@ -115,11 +115,11 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
     struct SharedState * ss = getSharedStatePhysical();
     struct SharedStatePerPru * sspp = &ss->pruState[ON_PRU];
     struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
-    struct SharedStateSelector sss;
+    PBID sss;
     sss.pru = ON_PRU;
     sss.prudir = 4;
     sss.inbound = 1;
-    sss.bulk = 0;
+    sss.bulk = 1;
 
     pbWritePacketIfPossible(upb, buf, len);   // Write the packet or silently fail
     CSendPacket((uint8_t*) &sss,sizeof(sss)); // And send a kick or silently fail
@@ -271,7 +271,7 @@ int CSendVal(const char * str1, const char * str2, uint32_t val)
     struct SharedState * ss = getSharedStatePhysical();
     struct SharedStatePerPru * sspp = &ss->pruState[ON_PRU];
     struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
-    struct SharedStateSelector sss;
+    PBID sss;
     sss.pru = ON_PRU;
     sss.prudir = 4;
     sss.inbound = 1;
@@ -381,7 +381,7 @@ int processPackets() {
     struct PacketBuffer * dpb = PacketBufferFromPacketBufferStorageInline(sspp->downbound);
     struct PacketBuffer * upb = 0;
     int len;
-    struct SharedStateSelector sss;
+    PBID sss;
     sss.pru = ON_PRU;
     sss.prudir = 4;
     sss.inbound = 1;
@@ -394,9 +394,11 @@ int processPackets() {
         payload[0] |= PKT_STD_ERROR_VALUE; /* No, no, you should not be here. */
         ret = 1;
       }
-      else
+      else {
         ret = processSpecialPacket(payload,len);
-
+        sss.bulk = 1;           /* Legitimate special packets are all bulk.. right? */
+      }
+      
       if (ret) {
         if (!upb) upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
         pbWritePacketIfPossible(upb, payload, len);

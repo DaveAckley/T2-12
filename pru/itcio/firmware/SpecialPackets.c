@@ -209,15 +209,15 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
     if (len < 10) fillFail("[PKLEN]",packet,len);
     else {
       struct SharedState * ss = getSharedStatePhysical();
-      struct SharedStateSelector sss;
-      struct SharedStateSelector sss2;
-      initSharedStateSelector(&sss); sss.pru = ON_PRU;
-      initSharedStateSelector(&sss2); sss2.pru = ON_PRU;
+      PBID sss;
+      PBID sss2;
+      initPBID(&sss); sss.pru = ON_PRU;
+      initPBID(&sss2); sss2.pru = ON_PRU;
       for (i = 1; i < len; ++i) {
         unsigned char cmd = packet[i];
         switch (cmd) {
         case '2': sss2 = sss; break;
-        case 'x': { struct SharedStateSelector tmp = sss; sss = sss2; sss2 = tmp; } break;
+        case 'x': { PBID tmp = sss; sss = sss2; sss2 = tmp; } break;
         case 't':
           {
             packet[i] = 'U';
