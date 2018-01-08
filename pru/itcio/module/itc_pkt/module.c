@@ -33,7 +33,7 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
 {
   init_waitqueue_head(&s->itcPacketWaitQ);
   mutex_init(&s->standardLock);
-  itcIteratorInitialize(&s->itcIterator, 50);
+  itcIteratorInitialize(&s->itcIterator, 250);
   s->packetPhysP = 0;
   s->packetVirtP = 0;
   s->open_pru_minors = 0;
@@ -131,9 +131,9 @@ int ship_packet_to_pru(unsigned prunum, unsigned wait, char * pkt, unsigned pktl
   if (ret < 0) printk(KERN_ERR "special packet send failed (%d)\n", ret);
   else if (wait) {
     struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
-    //    Dbgprintk(KERN_INFO "shippackettpru starting to wait\n");
+    Dbgprintk(KERN_INFO "shippackettpru starting to wait\n");
     while (pbIsEmptyInline(upb)) {
-      //      Dbgprintk(KERN_INFO "shippackettopru while wait\n");
+      Dbgprintk(KERN_INFO "shippackettopru while wait\n");
       if (wait_event_interruptible(devstate->specialWaitQ, !pbIsEmptyInline(upb))) {
         ret = -ERESTARTSYS;
         break;
@@ -145,11 +145,19 @@ int ship_packet_to_pru(unsigned prunum, unsigned wait, char * pkt, unsigned pktl
     if (ret == 0) {
       /* Note that if you are waiting for a response, it must fit in
          your sending buffer or this will fail! */
-      //      Dbgprintk(KERN_INFO "shippacketto reading\n");
+      Dbgprintk(KERN_INFO "shippacketto reading\n");
       ret = pbReadPacketIfPossible(upb, pkt, pktlen);
-      //      Dbgprintk(KERN_INFO "shippacketpru read %d\n",ret);
+      Dbgprintk(KERN_INFO "shippacketpru read %d\n",ret);
       if (ret < 0) {
+        char buf[200];
+        int len;
+        len = pbReadPacketIfPossible(upb, buf, 200);
         printk(KERN_ERR "special packet response read failed (%d)\n", ret);
+        if (len >= 0)
+          Dbgprint_hex_dump(DBG_PKT_RCVD,
+                            KERN_INFO, prunum ? "{pru1: " : "{pru0: ",
+                            DUMP_PREFIX_NONE, 16, 1,
+                            buf, len, true);
       } else {
         Dbgprint_hex_dump(DBG_PKT_RCVD,
                           KERN_INFO, prunum ? "{pru1: " : "{pru0: ",
@@ -158,7 +166,7 @@ int ship_packet_to_pru(unsigned prunum, unsigned wait, char * pkt, unsigned pktl
       }
     }
   }
-  //  Dbgprintk(KERN_INFO "shippacketpru unlocking, ret %d, wait %d\n", ret, wait);
+  Dbgprintk(KERN_INFO "shippacketpru unlocking, ret %d, wait %d\n", ret, wait);
   mutex_unlock(&devstate->specialLock);
   //////////&devstate->specialLock RELEASED//////////
 
@@ -283,7 +291,7 @@ static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
   {
     uint32_t r31 = extract32(&msg[1]);
     uint32_t val = (r31>>bit)&1;
-    //    Dbgprintk(KERN_INFO "R31 0x%08x@%u = %u\n", r31, bit, val);
+    Dbgprintk(KERN_INFO "R31 0x%08x@%u = %u\n", r31, bit, val);
     return sprintf(buf,"%u\n", val);
   }
 }
@@ -399,7 +407,7 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   return 0;
 }
 
-static unsigned mapITCDir6(const ITCDir d, struct SharedStateSelector *sss) {
+static unsigned mapITCDir6(const ITCDir d, PBID *sss) {
   switch (d) {
 #define XX(dir)                                        \
     case ITC_DIR__##dir:                               \
@@ -412,12 +420,12 @@ FOR_XX_IN_ITC_ALL_DIR
   return 0;
 }
 
-static unsigned mapITCDirNum8(const unsigned dirnum, struct SharedStateSelector *sss) {
+static unsigned mapITCDirNum8(const unsigned dirnum, PBID *sss) {
   switch (dirnum) {
 #define XX(dir)                                        \
     case ITC_DIR_TO_DIR_NUM(dir):                      \
       sss->pru = ITC_DIR_TO_PRU(dir);                  \
-      sss->prudir = ITC_DIR_TO_PRU(dir);               \
+      sss->prudir = ITC_DIR_TO_PRUDIR(dir);               \
       return 1;
 FOR_XX_IN_ITC_ALL_DIR
 #undef XX
@@ -425,40 +433,45 @@ FOR_XX_IN_ITC_ALL_DIR
   return 0;
 }
 
-static int routeStandardPacket(struct SharedStateSelector * sss, const unsigned char * buf, size_t len)
+static int routeStandardPacket(PBID * sss, const unsigned char * buf, size_t len)
 {
   if (len == 0) return -EINVAL;
   if ((buf[0] & 0x80) == 0) return -ENXIO; /* only standard packets can be routed */
+  { unsigned char dbuf[7]; PBIDToString(sss,dbuf);
+    Dbgprintk(KERN_INFO "%s: RSP preroute 0x%02x/'%c'\n", dbuf, buf[0], buf[0]);
+  }
   if (!mapITCDirNum8(buf[0] & 0x7, sss)) return -ENODEV;
+  { unsigned char dbuf[7]; PBIDToString(sss,dbuf);
+    Dbgprintk(KERN_INFO "%s: RSP postroute 0x%02x/'%c'\n", dbuf, buf[0], buf[0]);
+  }
   return 0;
 }
 
-static void processBufferKick(struct SharedStateSelector* sss)
+static void processBufferKick(PBID* sss)
 {
   //  static unsigned kicks = 0;
   struct PacketBuffer * pb = getPacketBufferIfAnyInline(S.packetVirtP, sss);
-  unsigned char selbuf[7];
-  sharedStateSelectorCode(sss,selbuf);
-  selbuf[4] = ':';
-  selbuf[5] = ' ';
-  selbuf[6] = '\0';
+  unsigned char kickid[7];
+  PBIDToString(sss,kickid);
 
-  //  Dbgprintk(KERN_INFO "%sTotal kicks now %u\n", selbuf, ++kicks);
+  //  Dbgprintk(KERN_INFO "%s: Total kicks now %u\n", kickid, ++kicks);
 
   if (!pb) {
     printk(KERN_ERR "%sNo packet buffer found for kick %d%d%d%d\n",
-           selbuf, sss->pru,sss->prudir,sss->inbound,sss->bulk);
+           kickid, sss->pru,sss->prudir,sss->inbound,sss->bulk);
   } else {
     int type = pbGetTypeOfOldestPacketIfAnyInline(pb);
     if (type < 0) 
-      Dbgprintk(KERN_WARNING "%s Kick on empty buffer\n", selbuf);
+      Dbgprintk(KERN_WARNING "%s: Kick on empty buffer %p(%s)\n", kickid, pb, PBToString(pb));
     else {
-      //      Dbgprintk(KERN_INFO "%s Found packet type 0x%02x/'%c' in %p\n", selbuf, type, (char) type, pb);
+      Dbgprintk(KERN_INFO "%s: Found packet type 0x%02x/'%c' in %p(%s)\n", kickid, type, (char) type, pb, PBToString(pb));
       if (type & 0x80) {
-        //        Dbgprintk(KERN_INFO "%s Releasing the hound\n", selbuf);
+        //        Dbgprintk(KERN_INFO "%s Releasing the hound\n", kickid);
         wake_up_interruptible(&S.itcPacketWaitQ);
       } else {
-        Dbgprintk(KERN_INFO "%s Kick on special packet: what to do?\n", selbuf);
+        ITCDeviceState * devstate = S.dev_packet_state[sss->pru];
+        Dbgprintk(KERN_INFO "%s Kick on special packet: waking minor %d\n", kickid, sss->pru);
+        wake_up_interruptible(&devstate->specialWaitQ);
       }
     }
   }
@@ -501,10 +514,10 @@ static ssize_t itc_pkt_write(struct file *filp,
   origminor = MINOR(devstate->devt);
 
   if (origminor == 2) {
-    struct SharedStateSelector sss;
+    PBID sss;
     int newMinor, ret;
 
-    initSharedStateSelector(&sss);
+    initPBID(&sss);
     ret = routeStandardPacket(&sss, driver_buf, count);
 
     if (ret < 0)
@@ -531,6 +544,7 @@ static ssize_t itc_pkt_write(struct file *filp,
         dev_err(devstate->dev, "No FOB packet buffer found?");
         return -EINVAL;
       }
+      Dbgprintk(KERN_INFO "%s: writing %d\n", PBToString(pb), count);
       ret = pbWritePacketIfPossible(pb, driver_buf, count);
       if (ret < 0) {
         dev_err(devstate->dev,
@@ -568,7 +582,7 @@ static ssize_t itc_pkt_write(struct file *filp,
 static struct PacketBuffer* getRandomNonEmptyPriorityPB(void)
 {
   struct SharedState * ss = getSharedStateVirtualInline();
-  struct SharedStateSelector sss;
+  PBID sss;
   sss.inbound = 1;
   sss.bulk = 0;
   for (itcIteratorStart(&S.itcIterator);
@@ -576,19 +590,16 @@ static struct PacketBuffer* getRandomNonEmptyPriorityPB(void)
        ) {
     ITCDir dir = itcIteratorGetNext(&S.itcIterator);
     struct PacketBuffer * pb;
-      unsigned char selbuf[7];
+    unsigned char selbuf[5];
 
     if (!mapITCDir6(dir, &sss))
       BUG_ON(1);
 
-    sharedStateSelectorCode(&sss,selbuf);
-    selbuf[4] = ':';
-    selbuf[5] = ' ';
-    selbuf[6] = '\0';
+    PBIDToString(&sss,selbuf);
 
     pb = getPacketBufferIfAnyInline(ss, &sss);
     BUG_ON(!pb);
-    //    Dbgprintk(KERN_INFO "%s: itcdir %d pb %p\n", selbuf, dir, pb);
+    Dbgprintk(KERN_INFO "%s: itcdir %d pb %p(%s)\n", selbuf, dir, pb, PBToString(pb));
 
     if (!pbIsEmptyInline(pb)) return pb;
   }
@@ -598,7 +609,7 @@ static struct PacketBuffer* getRandomNonEmptyPriorityPB(void)
 static unsigned all_priority_pbs_empty(void)
 {
   struct SharedState * ss = getSharedStateVirtualInline();
-  struct SharedStateSelector sss;
+  PBID sss;
   unsigned pru, prudir;
   sss.bulk = 0;
   sss.inbound = 1;
@@ -610,13 +621,10 @@ static unsigned all_priority_pbs_empty(void)
       unsigned char selbuf[7];
       //      Dbgprintk(KERN_INFO "pru %d prudir %d\n",pru,prudir);
       sss.prudir = prudir;
-      sharedStateSelectorCode(&sss,selbuf);
-      selbuf[4] = ':';
-      selbuf[5] = ' ';
-      selbuf[6] = '\0';
+      PBIDToString(&sss,selbuf);
       pb = getPacketBufferIfAnyInline(ss, &sss);
       BUG_ON(!pb);
-      //      Dbgprintk(KERN_INFO "%sChecking %p\n",selbuf,pb);
+      //      Dbgprintk(KERN_INFO "%s: Checking %p(%s)\n",selbuf,pb,PBToString(pb));
       if (!pbIsEmptyInline(pb)) return 0;
     }
   }
@@ -758,7 +766,14 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
         if (len != 4) {
           printk(KERN_ERR "Length %d buffer kick received, ignored\n",len);
         } else {
-          processBufferKick((struct SharedStateSelector*) data);
+#if 0
+          u8 flip[4];
+          int i;
+          for (i = 0; i < 4; ++i) flip[3-i] = data[i];
+          processBufferKick((PBID*) flip);
+#else
+          processBufferKick((PBID*) data);
+#endif
         }
       } else {
         if (minor == 0) {
