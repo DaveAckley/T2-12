@@ -5,9 +5,35 @@ struct PacketBuffer * PacketBufferFromPacketBufferStorage(unsigned char * pbs)
   return PacketBufferFromPacketBufferStorageInline(pbs);
 }
 
-void pbInit(struct PacketBuffer * pb, unsigned ringBufferBits)
+void initPBID(PBID * sss)
 {
-  pbInitInline(pb,ringBufferBits);
+  initPBIDInline(sss);
+}
+
+char * PBToString(struct PacketBuffer * pb)
+{
+  static char buf[5];
+  return PBIDToString(&pb->pbid, buf);
+}
+
+char * PBIDToString(PBID * sss, char * buf)
+{
+  buf[0] = sss->pru+'0';
+  buf[1] = sss->prudir+'a';
+  buf[2] = sss->inbound ? 'i' : 'o';
+  buf[3] = (sss->bulk < 0) ? '?' : (sss->bulk ? 's' : 'f');
+  buf[4] = '\0';
+  return buf;
+}
+
+void pbInit(struct PacketBuffer * pb, unsigned ringBufferBits, PBID * pbid)
+{
+  unsigned bufsize = 1u<<ringBufferBits;
+  unsigned size = bufsize+SIZEOF_PACKET_BUFFER_HEADER;
+  memset(pb, 0, size);
+  pb->bufferSize = bufsize;
+  pb->bufferMask = bufsize - 1;
+  pb->pbid = *pbid;
 }
 
 unsigned int pbUsedBytes(struct PacketBuffer * pb)
@@ -67,7 +93,11 @@ int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsig
   if (pbAvailableBytes(pb) < length + 1) return -PBE_NOMEM;
   pbStartWritingPendingPacket(pb);
   /*XXX LET'S GET SOME MEMCPY ACTION MOVING IN HERE*/
-  while (length-- > 0) pbWriteByteInPendingPacketInline(pb, *data++);
+  if (pb->writePtr + length + 1 < pb->bufferSize) {
+    memcpy(&pb->buffer[pb->writePtr + 1], data, length);
+    pb->writeIdx = length;
+  } else 
+    while (length-- > 0) pbWriteByteInPendingPacketInline(pb, *data++);
   pbCommitPendingPacket(pb);
   return 0;
 }
@@ -80,9 +110,11 @@ int pbReadPacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsign
   if (plen == 0) return 0;
   if (plen > length) return -PBE_FBIG;
   pbStartReadingOldestPacket(pb);
-  /*XXX LET'S GET SOME MEMCPY ACTION MOVING IN HERE*/
-  for (i = 0; i < plen; ++i)
-    data[i] = pbReadByteFromOldestPacketInline(pb);
+  if (pb->readPtr + plen + 1 < pb->bufferSize) 
+    memcpy(data, &pb->buffer[pb->readPtr + 1], plen);
+  else  /*XXX LET'S GET SOME DOUBLE-SPLIT MEMCPY ACTION MOVING IN HERE*/
+    for (i = 0; i < plen; ++i)
+      data[i] = pbReadByteFromOldestPacketInline(pb);
   pbDropOldestPacket(pb);
   return plen;
 }

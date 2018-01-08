@@ -87,6 +87,23 @@
 #include <string.h> /*for memset*/
 #endif
 
+////////////////////
+typedef struct PacketBufferIdentifier {
+  unsigned char pru;
+  unsigned char prudir;
+  unsigned char inbound;
+  signed char bulk;
+} PBID;
+
+static inline void initPBIDInline(PBID * sss)
+{
+  memset(sss, 0, sizeof(*sss));
+}
+
+extern void  initPBID(PBID * sss) ;
+
+extern char * PBIDToString(PBID * sss, char * buf) ;
+
 /* IMPLEMENTATION NOTE:
  *
  * Although this is C code this header is also read by clpru for use
@@ -99,17 +116,20 @@
  */
 
 struct PacketBuffer {
+  PBID pbid;                    /* Identifier for debug msgs */
+  unsigned packetsAdded;        /* Total packets added to this PacketBuffer */
+  unsigned packetsRejected;     /* Total packets not added due to insufficient space */
+  unsigned packetsRemoved;      /* Total packets removed from this PacketBuffer */
   unsigned bufferSize;          /* Power of 2 size, in bytes, of buffer, below*/
   unsigned bufferMask;          /* bufferSize - 1*/
   unsigned writePtr;            /* Points at first unused byte after end of newest committed packet*/
   unsigned readPtr;             /* Points at LENGTH BYTE at front of oldest packet */
-  unsigned packetsAdded;        /* Total packets added to this orb */
-  unsigned packetsRejected;     /* Total packets not added due to insufficient space */
-  unsigned packetsRemoved;      /* Total packets removed from this orb */
   unsigned short writeIdx;      /* Count of bytes written in not-yet-committed newest packet*/
   unsigned short readIdx;       /* Count of bytes read in not-yet-dropped oldest packet */
   unsigned char buffer[];       /* Actual buffer storage starts here */
 };
+
+extern char * PBToString(struct PacketBuffer * pb) ;
 
 /*On the linux side we want to make sure packet data is all set up
   before the packet's existence becomes visible to the PRUs.  There's
@@ -149,15 +169,7 @@ static inline struct PacketBuffer * PacketBufferFromPacketBufferStorageInline(un
 
 extern struct PacketBuffer * PacketBufferFromPacketBufferStorage(unsigned char * pbs) ;
 
-static inline void pbInitInline(struct PacketBuffer * pb, unsigned ringBufferBits) {
-  unsigned bufsize = 1u<<ringBufferBits;
-  unsigned size = bufsize+SIZEOF_PACKET_BUFFER_HEADER;
-  memset(pb, 0, size);
-  pb->bufferSize = bufsize;
-  pb->bufferMask = bufsize - 1;
-  
-}
-extern void pbInit(struct PacketBuffer * pb, unsigned ringBufferBits) ;
+extern void pbInit(struct PacketBuffer * pb, unsigned ringBufferBits, PBID * pbid) ;
 
 static inline unsigned int pbIsEmptyInline(struct PacketBuffer * pb) {
   return  pb->writePtr == pb->readPtr;

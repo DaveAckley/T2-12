@@ -19,7 +19,7 @@
 
 ////////////////////
 #define QOSPACKETBUFFERFAST_BUFFER_BITS RING_BUFFER_BITS_MED
-typedef PacketBufferStorageMED QoSPacketBufferFast;
+typedef PacketBufferStorageLRG QoSPacketBufferFast;
 
 #define QOSPACKETBUFFERSLOW_BUFFER_BITS RING_BUFFER_BITS_MED
 typedef PacketBufferStorageMED QoSPacketBufferSlow;
@@ -28,7 +28,7 @@ struct QoSPacketBufferPair {
   QoSPacketBufferFast fast;  /* Priority rate queue */
   QoSPacketBufferSlow slow;  /* Bulk rate queue */
 };
-extern void initQoSPacketBufferPair(struct QoSPacketBufferPair * qpbp) ;
+extern void initQoSPacketBufferPair(struct QoSPacketBufferPair * qpbp, PBID *pbid) ;
 
 static inline struct PacketBuffer * getPacketBufferForQoSInline(struct QoSPacketBufferPair * qpbp, unsigned bulk) {
   return
@@ -60,7 +60,7 @@ struct SharedStatePerITC {
   struct QoSPacketBufferPair inbound;   /* Packets inbound to host from ITC and beyond */
 };
 
-extern void initSharedStatePerITC(struct SharedStatePerITC * sspi) ;
+extern void initSharedStatePerITC(struct SharedStatePerITC * sspi, PBID *pbid) ;
 
 static inline struct PacketBuffer * sspiNextOutboundInline(struct SharedStatePerITC * sspi) {
   return getNextPacketBufferToReadInline(&sspi->outbound);
@@ -86,7 +86,7 @@ struct SharedStatePerPru {
   SharedStatePerPruPacketBufferDownbound downbound;     /* Special packets heading down from host to PRU */
   SharedStatePerPruPacketBufferUpbound upbound;         /* Special packets heading up from PRU to host */
 };
-extern void initSharedStatePerPru(struct SharedStatePerPru * sspp) ;
+extern void initSharedStatePerPru(struct SharedStatePerPru * sspp, PBID *pbid) ;
 
 ////////////////////
 struct SharedState {
@@ -105,22 +105,7 @@ static inline struct SharedState * getSharedStateVirtualInline(void) {
 
 extern void initSharedState(struct SharedState * ss) ;
 
-////////////////////
-struct SharedStateSelector {
-  unsigned char pru;
-  unsigned char prudir;
-  unsigned char inbound;
-  signed char bulk;
-};
-
-static inline void initSharedStateSelectorInline(struct SharedStateSelector * sss)
-{
-  memset(sss, 0, sizeof(*sss));
-}
-
-extern void  initSharedStateSelector(struct SharedStateSelector * sss) ;
-
-static inline struct PacketBuffer * getPacketBufferIfAnyInline(struct SharedState * ss, struct SharedStateSelector * sss)
+static inline struct PacketBuffer * getPacketBufferIfAnyInline(struct SharedState * ss, PBID * sss)
 {
   struct SharedStatePerPru * sspp;
   struct SharedStatePerITC * sspi;
@@ -139,9 +124,6 @@ static inline struct PacketBuffer * getPacketBufferIfAnyInline(struct SharedStat
   return pb;
 }
 
-/* writes four bytes to buf[0]..buf[3] and returns &buf[4] */
-extern char * sharedStateSelectorCode(struct SharedStateSelector * sss, char * buf) ;
-
-extern struct PacketBuffer * getPacketBufferIfAny(struct SharedState * ss, struct SharedStateSelector * sss) ;
+extern struct PacketBuffer * getPacketBufferIfAny(struct SharedState * ss, PBID * sss) ;
 
 #endif /* SHAREDSTATE_H */
