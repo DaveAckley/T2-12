@@ -1,4 +1,4 @@
-{399}  -*- text -*-
+{402}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6783,6 +6783,41 @@ Sun Jan  7 09:27:27 2018 OK, well, progress.  We have packets moving
 userspace to userspace, but things are still a little broken  -- 
 the packets tests/PKT/XConRoutingTest.pl is getting back look a little
 different than they used to and it's not recognizing them.  So that
-needs to be debugged, but time for a nap first.  Committing this much.
+needs to be debugged, but time for a nap first.  Committing this
+much.[399:
+
+Sun Jan  7 15:12:41 2018 OK back after nap and first Sunday.  So why
+are the packets not matching XCon's rcvstoppers?  [400:
+
+Sun Jan  7 15:15:24 2018 We're receiving stuff like this:
+
+    1 'ÉSun Jan  7 15:15:01 2018ENDá'
+    2 'ÉSun Jan  7 15:15:01 2018ENDÜ'
+
+which can't be right because the first and last bytes should always be
+four apart.  If fact all of our received headers are \203s or \206s
+and none other.
+
+Where is that header rewriting supposed to happen?
+
+:400]
+
+:399]
 
 :398]
+[401:
+
+Sun Jan  7 21:18:00 2018 OK that was a double stupid double
+cuttenpasto failure my gob.
+
+Anyway, so we're starting to run well enough to consider speed tests
+and it isn't pretty so far.  I've added memcpy to the non-wrapping
+cases of pbReadPacketIfPossible and pbWritePacketIfPossible and that
+helped noticeably, getting us back to around 1Mbps on 12KB in 102
+packets.
+
+Going to higher volumes is going to have to wait for another hacking
+time because we need to rehack so writes to pbs can block rather than
+just reads.  But committing this stuff now before a nap.
+
+:401]
