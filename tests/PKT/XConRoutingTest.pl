@@ -29,10 +29,11 @@ my $gots = 0;
 for (my $i = 0; $i < $expandos; ++$i) {
     @args = (@args, @args);
 }
-my @sndstoppers = ("\x81${tag}END\x81",   "\x82${tag}END\x82",   "\x83${tag}END\x83", 
-                   "\x85${tag}END\x85",   "\x86${tag}END\x86",   "\x87${tag}END\x87");
-my %rcvstoppers = ("\x85${tag}END\x81"=>1,"\x86${tag}END\x82"=>1,"\x87${tag}END\x83"=>1,
-                   "\x81${tag}END\x85"=>1,"\x82${tag}END\x86"=>1,"\x83${tag}END\x87"=>1);
+my @sndstoppers = ("\201${tag}END\201",   "\202${tag}END\202",   "\203${tag}END\203", 
+                   "\205${tag}END\205",   "\206${tag}END\206",   "\207${tag}END\207");
+my %rcvstoppers = ("\205${tag}END\201"=>1,"\206${tag}END\202"=>1,"\207${tag}END\203"=>1,
+                   "\201${tag}END\205"=>1,"\202${tag}END\206"=>1,"\203${tag}END\207"=>1);
+#print join("--\n",keys  %rcvstoppers);
 @args = (@args, @sndstoppers);
 use Time::HiRes;
 print "start $tag\n";
@@ -56,6 +57,7 @@ while (scalar(@args)) {
 }
 my $loops = 0;
 while (scalar(keys %rcvstoppers) || $pktsrcvd+$pkterror+$pktoverrun < $pktssent) {
+#    print "SK=".scalar(keys %rcvstoppers)." $pktsrcvd+$pkterror+$pktoverrun < $pktssent\n";
     processAvailablePackets();
     Time::HiRes::usleep(100*++$loops);
     last if $loops >= 1000;
@@ -94,6 +96,7 @@ sub processAvailablePackets {
             ++$rcvcount{$pkt};
             $bytesrcvd += $count;
             $pktsrcvd++;
+#            print "$pktsrcvd '$pkt'\n";
             delete $rcvstoppers{$pkt};
         }
     }
