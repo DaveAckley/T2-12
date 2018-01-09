@@ -118,16 +118,27 @@ startStateMachines:
 	
 	;; Init threads by hand
 	.ref PacketRunner
+	.ref pruDirToBuffers
+	
         initThis 0*CTRegs, IOThreadLen, 0, PacketRunner ; Thread ID 0 at shift 0
         initNext 1*CTRegs, IOThreadLen             ; Info for thread 1
+        ldThreadID r14
+        jal r3.w2, pruDirToBuffers
+        mov CT.rBufAddr, r14.w0                    ; Set up buffer base addr
         saveThisThread                             ; Stash thread 0
 	
         initThis 1*CTRegs, IOThreadLen, 1, PacketRunner ; Thread ID 1 at shift CTRegs
 	initNext 2*CTRegs, IOThreadLen             ; Info for thread 2
+        ldThreadID r14
+        jal r3.w2, pruDirToBuffers
+        mov CT.rBufAddr, r14.w0                    ; Set up buffer base addr
         saveThisThread                             ; Stash thread 1
 	
         initThis 2*CTRegs, IOThreadLen, 2, PacketRunner ; Thread ID 2 at shift 2*CTRegs
 	initNext 3*CTRegs, LinuxThreadLen          ; Info for thread 3
+        ldThreadID r14
+        jal r3.w2, pruDirToBuffers
+        mov CT.rBufAddr, r14.w0                    ; Set up buffer base addr
         saveThisThread                             ; Stash thread 2
 	
         initThis 3*CTRegs, LinuxThreadLen, 3, LinuxThreadRunner ; Thread ID 3 at shift 3*CTRegs

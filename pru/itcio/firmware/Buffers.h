@@ -65,35 +65,39 @@ extern int ppbSendInboundPacket(unsigned prudir, unsigned char length) ;
 extern int ppbReceiveOutboundPacket(unsigned prudir) ;
 
 
-#define MAX_PACKET_SIZE 256
+/*MAX_PACKET_SIZE cannot be changed without redesigning asm code!*/
+#define MAX_PACKET_SIZE (1<<8)
 
-struct PRUPacketBuffer {
+struct PRUPacketBufferStats {
   unsigned packetTransfers;     /* Count of packet-wise transfers in or out of this buffer */
   unsigned packetStalls;        /* Count of packet transfer retries */
   unsigned packetDrops;         /* Count of packet transfer failures */
   unsigned char flags;          /* NEED_KICK, .. */
-  unsigned char buffer[MAX_PACKET_SIZE];
 };
 
 enum PruPacketBufferFlags {
   NEED_KICK = 0x01,             /* We want to kick ARM but haven't yet succeeded */
 };
 
-struct PruDirBuffers {
-  struct PRUPacketBuffer out;
-  struct PRUPacketBuffer in;
+typedef unsigned char PRUPacketBuffer[MAX_PACKET_SIZE];
+struct PRUDirBuffers {
+  PRUPacketBuffer outbuffer;  /*At struct PRUDirBuffers* + 0*/
+  PRUPacketBuffer inbuffer;   /*At struct PRUDirBuffers* + 256*/
+  struct PRUPacketBufferStats outstats;
+  struct PRUPacketBufferStats instats;
 };
 
 struct PruDirs {
-  struct PruDirBuffers pruDirBuffers[3];
+  struct PRUDirBuffers pruDirBuffers[3];
 };
 
 extern struct PruDirs pruDirData;
 
-inline struct PruDirBuffers * pruDirToBuffers(unsigned prudir) {
+inline struct PRUDirBuffers * pruDirToBuffers(unsigned prudir) {
   return &pruDirData.pruDirBuffers[prudir&3];
 }
 
+/*
 inline struct PRUPacketBuffer * pruDirToInPPB(unsigned prudir) {
   return &pruDirToBuffers(prudir)->in;
 }
@@ -101,5 +105,6 @@ inline struct PRUPacketBuffer * pruDirToInPPB(unsigned prudir) {
 inline struct PRUPacketBuffer * pruDirToOutPPB(unsigned prudir) {
   return &pruDirToBuffers(prudir)->out;
 }
+*/
 
 #endif /* BUFFERS_H */

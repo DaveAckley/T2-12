@@ -38,30 +38,31 @@ ThreadHeaderLen:       .endstruct
 
 ;;; IOThread: Everything needed for a prudir state machine
 IOThread:       .struct
-sTH:            .tag ThreadHeader ; sTH takes two regs
-
+sTH:            .tag ThreadHeader ; sTH takes two regs CT, CT+1
+;;; CT+2
 bTXRDYPin:      .ubyte  ; Transmit Ready R30 Pin Number
 bTXDATPin:      .ubyte  ; Transmit Data  R30 Pin Number
 bRXRDYPin:      .ubyte  ; Receive Ready  R31 Pin Number
 bRXDATPin:      .ubyte  ; Receive Data   R31 Pin Number
-
+;;; CT+3
 bOutData:       .ubyte  ; current bits being shifted out
 bOutBNum:       .ubyte  ; next bit number (0=LSB) to shift out
-bInpData:       .ubyte  ; current bits being shifted in
-bInpBNum:       .ubyte  ; next bit number (0=LSB) to shift in
-
-bRSRV0:         .ubyte
-bRSRV1:         .ubyte
-bOut1Cnt:       .ubyte  ; current count of output 1s sent
-bInp1Cnt:       .ubyte  ; current count of input 1s received
-
-rRSRV2:         .uint
-rRunCount:      .tag UB4
-        
-bInpByte:       .ubyte   ; bytes already written of inbound packet
 bOutByte:       .ubyte   ; bytes already read from outbound packet
 bOutLen:        .ubyte   ; length in bytes of outbound packet
+;;; CT+4
+bInpData:       .ubyte  ; current bits being shifted in
+bInpBNum:       .ubyte  ; next bit number (0=LSB) to shift in
+bInpByte:       .ubyte   ; bytes already written of inbound packet
 bRSRV43:        .ubyte   ; reserved
+;;; CT+5
+bOut1Cnt:       .ubyte  ; current count of output 1s sent
+bInp1Cnt:       .ubyte  ; current count of input 1s received
+wRSRV2:         .ushort
+;;; CT+6
+rRunCount:      .tag UB4
+;;; CT+7
+rBufAddr:       .uint ; base address of our struct PruDirBuffers
+        
 IOThreadLen:   .endstruct
 
 PacketRunnerFlags:  .enum

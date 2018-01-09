@@ -194,7 +194,6 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
   if (len == 0) return 0; /* or assert? */
   switch (packet[0]) {
 
-
   /* PACKET TYPE: '\177' Halt PRU immediately */
   case '\177': {
     if (len == 2 && packet[1] == '!')
@@ -206,6 +205,9 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
 
   /* PACKET TYPE: '*' Wildcard debug, content non-standardized, can change at will */
   case '*': {                        
+#if 1
+    fillFail("[DEIMP]",packet,len);
+#else 
     if (len < 10) fillFail("[PKLEN]",packet,len);
     else {
       struct SharedState * ss = getSharedStatePhysical();
@@ -267,6 +269,7 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
       }
       break;
     }
+#endif
   }
 
 

@@ -22,9 +22,7 @@ PacketRunner:
 	ldi CT.bInpBNum, 7             ; Init 7 says And next bit number to read is bit 7
 	ldi CT.bInp1Cnt, 0             ; Init 0 says No run of 1s have been seen on input
 	ldi CT.bOut1Cnt, 0             ; Init 0 says we haven't transmitted any run of 1s lately
-        ldi CT.bRSRV0, 'a'             ; XXXX: Make visible
-        ldi CT.bRSRV1, 'b'             ; XXXX: Make visible
-        ldi32 CT.rRSRV2, 0x1eacbeda    ; XXXX: Make visible
+        ldi CT.wRSRV2, 0xfeed          ; XXXX: Make visible
 	ldi CT.bRSRV43, 'z'            ; XXXX: Make visible
 
         ;; FALL INTO getNextStuffedBit
@@ -37,10 +35,7 @@ getNextStuffedBit:  ;; Here to find next output bit to transmit
 getNextOutputByte:  ;; Here to fetch next output byte in packet if any
 	sendOTag """GNOB""",CT.bOutLen      ; report location
 	qbge sendPacketDelimiter, CT.bOutLen, CT.bOutByte ; packet is done if outbyte >= outlen
-	ldThreadID r14          ; arg1 to ppbReadOutboundByte
-        mov r15, CT.bOutByte    ; arg2 to ppbReadOutboundByte
-        jal r3.w2, ppbReadOutboundByte ; go get next byte to send
-        mov CT.bOutData, r14    ; move output byte into position
+	lbbo &CT.bOutData, CT.rBufAddr, CT.bOutByte, 1    ; bOutData = pdb->outbuffer[bOutByte] (yum)
 	set CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fByteStuffed ; this byte SHOULD be bitstuffed
         add CT.bOutByte, CT.bOutByte, 1    ; increment bytes sent of this packet
         jmp startNewOutputByte
@@ -214,7 +209,7 @@ sendInFinishedPacket:       ;; Here we know the inbound packet is non-empty
         jmp sendInFinishedPacket            ; And then try again
 
 storeRealInputBit: ;; Here if not dealing with bitstuffed 0s, packet delimiters, or framing errors
-	sendITag """SRIB""",r4.b0               ; report in
+;	sendITag """SRIB""",r4.b0               ; report in
         qbeq gotReal0, r4.b0, 0    ; No storing needed on zeros (because we cleared bInpData to start)
         set CT.bInpData, CT.bInpData, CT.bInpBNum ; Otherwise set the bit we're on
         add CT.bInp1Cnt, CT.bInp1Cnt, 1           ; And increment the running 1s count
@@ -236,16 +231,14 @@ checkEndOfByte: ;; Here to increment and deal with end of byte processing
 
 storeThisInputByte: ;; Here to add a finished byte to the packet payload
 	sendITag """STIB""",CT.bInpData           ; report in
-        ldThreadID r14                            ; arg1 is prudir
-        mov r15, CT.bInpByte    ; arg2 is what byte in the packet we just finished
-	mov r16, CT.bInpData    ; arg3 is byte value to store
-        jal r3.w2, ppbWriteInboundByte ; go store this byte
+	add r0, CT.rBufAddr, (MAX_PACKET_SIZE-1)  ; r0 = &(pdb->inbuffer[-1]), in effect
+        add CT.bInpByte, CT.bInpByte, 1           ; newbInpByte = oldbInpByte + 1
+	sbbo &CT.bInpData, r0, CT.bInpByte, 1     ; pdb->inbuffer[oldbInpByte + 1 - 1] = bInpData
 
         ;; FALL INTO setupForNextInputByte
         
 setupForNextInputByte:  ;; Here to initialize for reading another byte
 	sendITag """SFNB""",CT.bInpByte ; report in
-        add CT.bInpByte,  CT.bInpByte, 1 ; Move on to next byte
         ldi CT.bInpData, 0               ; Clear the byte data itself
         ldi CT.bInpBNum, 7               ; And set the bit number coming next
 
