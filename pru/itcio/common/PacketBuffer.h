@@ -189,6 +189,10 @@ static inline unsigned int pbAvailableBytesInline(struct PacketBuffer * pb) {
 
 extern unsigned int pbAvailableBytes(struct PacketBuffer * pb) ;
 
+static inline unsigned int pbRoomToWritePacketOfLengthInline(struct PacketBuffer * pb, unsigned length) {
+  return pbAvailableBytes(pb) > length; /*> since one to store pktlen*/
+}
+
 static inline void pbStartWritingPendingPacketInline(struct PacketBuffer * pb) {
   pb->writeIdx = 0;
 }
