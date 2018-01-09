@@ -15,6 +15,9 @@
 #include "module.h"
 #include "SharedState.h"
 #include <linux/dma-mapping.h>
+#include <linux/kthread.h>         /* For thread functions */
+#include <linux/delay.h>	    /* for msleep() */
+#include <linux/jiffies.h>	    /* for time_before(), time_after() */
 
 /* define MORE_DEBUGGING to be more verbose and slow*/
 #define MORE_DEBUGGING 1
@@ -29,11 +32,39 @@ static int debugflags = 0;
 module_param(debugflags, int, 0);
 MODULE_PARM_DESC(debugflags, "Extra debugging flags; 0 for none");
 
+static int itcpktThreadRunner(void *arg) {
+  const int jiffyTimeout = HZ/10;
+
+  printk(KERN_INFO "itcpktThreadRunner: Started (%d)\n",jiffyTimeout);
+  while (!kthread_should_stop()) {    // Returns true when kthread_stop() is called
+    int i;
+    set_current_state(TASK_RUNNING);
+
+    // Just wake everybody dammit
+    wake_up_interruptible(&S.itcPacketWaitQ);
+    wake_up_interruptible(&S.itcWriteWaitQ); // XXX??
+
+    for (i = 0; i <= 1; ++i) {
+      ITCDeviceState * devstate = S.dev_packet_state[i];
+      wake_up_interruptible(&devstate->specialWaitQ);
+    }
+
+    set_current_state(TASK_INTERRUPTIBLE);
+    msleep(10);
+  }
+  printk(KERN_INFO "itcpktThreadRunner: Stopping by request\n");
+  return 0;
+}
+
 static void initITCPacketDriverState(ITCPacketDriverState *s)
 {
+#if MORE_DEBUGGING
+   s->debugFlags = 0xf; // default some debugging on
+#endif
   init_waitqueue_head(&s->itcPacketWaitQ);
+  init_waitqueue_head(&s->itcWriteWaitQ);
   mutex_init(&s->standardLock);
-  itcIteratorInitialize(&s->itcIterator, 250);
+  itcIteratorInitialize(&s->itcIterator,"itc_pkt", 10000);
   s->packetPhysP = 0;
   s->packetVirtP = 0;
   s->open_pru_minors = 0;
@@ -41,13 +72,28 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
     unsigned i;
     for (i = 0; i < MINOR_DEVICES; ++i) s->dev_packet_state[i] = 0;
   }
-#if MORE_DEBUGGING
-   s->debugFlags = 0xf; // default some debugging on
-#endif
    s->debugFlags |= debugflags;
 }
 
 void * sharedStateVirtualBaseAddress;
+
+static void cachePriorityPBs(ITCPacketDriverState *s, struct SharedState * ss)
+{
+  PBID sss;
+  unsigned pru, prudir;
+  sss.bulk = 0;
+  sss.inbound = 1;
+  for (pru = 0; pru <= 1; ++pru) {
+    sss.pru = pru;
+    for (prudir = 0; prudir <= 2; ++prudir) {
+      struct PacketBuffer * pb;
+      sss.prudir = prudir;
+      pb = getPacketBufferIfAnyInline(ss, &sss);
+      BUG_ON(!pb);
+      s->fastInBufs[3*pru + prudir] = pb;
+    }
+  }
+}
 
 static int initITCSharedPacketBuffers(ITCPacketDriverState *s)
 {
@@ -75,6 +121,8 @@ static int initITCSharedPacketBuffers(ITCPacketDriverState *s)
   s->packetPhysP = dma;
 
   initSharedState(s->packetVirtP);
+
+  cachePriorityPBs(s, s->packetVirtP);
 
   return 0;
 }
@@ -407,7 +455,7 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   return 0;
 }
 
-static unsigned mapITCDir6(const ITCDir d, PBID *sss) {
+unsigned mapITCDir6(const ITCDir d, PBID *sss) {
   switch (d) {
 #define XX(dir)                                        \
     case ITC_DIR__##dir:                               \
@@ -438,11 +486,11 @@ static int routeStandardPacket(PBID * sss, const unsigned char * buf, size_t len
   if (len == 0) return -EINVAL;
   if ((buf[0] & 0x80) == 0) return -ENXIO; /* only standard packets can be routed */
   { unsigned char dbuf[7]; PBIDToString(sss,dbuf);
-    Dbgprintk(KERN_INFO "%s: RSP preroute 0x%02x/'%c'\n", dbuf, buf[0], buf[0]);
+    Dbgprintk(KERN_INFO "%s: RSP preroute 0x%02x\n", dbuf, buf[0]);
   }
   if (!mapITCDirNum8(buf[0] & 0x7, sss)) return -ENODEV;
   { unsigned char dbuf[7]; PBIDToString(sss,dbuf);
-    Dbgprintk(KERN_INFO "%s: RSP postroute 0x%02x/'%c'\n", dbuf, buf[0], buf[0]);
+    Dbgprintk(KERN_INFO "%s: RSP postroute 0x%02x\n", dbuf, buf[0]);
   }
   return 0;
 }
@@ -464,10 +512,13 @@ static void processBufferKick(PBID* sss)
     if (type < 0) 
       Dbgprintk(KERN_WARNING "%s: Kick on empty buffer %p(%s)\n", kickid, pb, PBToString(pb));
     else {
-      Dbgprintk(KERN_INFO "%s: Found packet type 0x%02x/'%c' in %p(%s)\n", kickid, type, (char) type, pb, PBToString(pb));
+      Dbgprintk(KERN_INFO "%s: Kick found 0x%02x[%d] in %s\n",
+                kickid, type, pbGetLengthOfOldestPacket(pb),
+                PBToString(pb));
       if (type & 0x80) {
         //        Dbgprintk(KERN_INFO "%s Releasing the hound\n", kickid);
         wake_up_interruptible(&S.itcPacketWaitQ);
+        wake_up_interruptible(&S.itcWriteWaitQ); // XXX??
       } else {
         ITCDeviceState * devstate = S.dev_packet_state[sss->pru];
         Dbgprintk(KERN_INFO "%s Kick on special packet: waking minor %d\n", kickid, sss->pru);
@@ -494,7 +545,6 @@ static ssize_t itc_pkt_write(struct file *filp,
                              const char __user *buf,
                              size_t count, loff_t *offset)
 {
-  int ret;
   static unsigned char driver_buf[RPMSG_BUF_SIZE];
   ITCDeviceState *devstate;
   unsigned origminor;
@@ -515,7 +565,7 @@ static ssize_t itc_pkt_write(struct file *filp,
 
   if (origminor == 2) {
     PBID sss;
-    int newMinor, ret;
+    int newMinor, ret = 0;
 
     initPBID(&sss);
     ret = routeStandardPacket(&sss, driver_buf, count);
@@ -533,7 +583,7 @@ static ssize_t itc_pkt_write(struct file *filp,
 
     if (newMinor < 2) {
       Dbgifprintk(DBG_PKT_ROUTE,
-                  KERN_INFO "Routing '%x'+%d packet to PRU%d\n",driver_buf[0],count,newMinor);
+                  KERN_INFO "Routing 0x%02x[%d] packet to PRU%d\n",driver_buf[0],count,newMinor);
       devstate = S.dev_packet_state[newMinor];
       BUG_ON(!devstate);
     }
@@ -544,21 +594,43 @@ static ssize_t itc_pkt_write(struct file *filp,
         dev_err(devstate->dev, "No FOB packet buffer found?");
         return -EINVAL;
       }
-      Dbgprintk(KERN_INFO "%s: writing %d\n", PBToString(pb), count);
-      ret = pbWritePacketIfPossible(pb, driver_buf, count);
-      if (ret < 0) {
-        dev_err(devstate->dev,
-                "FOB packet transmission failed %d\n",ret);
-        return ret;
+
+      if (mutex_lock_interruptible(&S.standardLock))
+        return -ERESTARTSYS;
+
+      while (!pbRoomToWritePacketOfLengthInline(pb, count)) {
+
+        Dbgprintk(KERN_INFO "%s: no room to write %d\n", PBToString(pb), count);
+        if (filp->f_flags & O_NONBLOCK) {
+          ret = -EAGAIN;
+          break;
+        }
+        Dbgprintk(KERN_INFO "%s: waiting for room to write %d\n", PBToString(pb), count);
+
+        if (wait_event_interruptible(S.itcWriteWaitQ, pbRoomToWritePacketOfLengthInline(pb, count))) {
+          ret = -ERESTARTSYS;
+          break;
+        }
       }
+      
+      if (ret==0)  {
+        Dbgprintk(KERN_INFO "%s: writing %d\n", PBToString(pb), count);
+        ret = pbWritePacketIfPossible(pb, driver_buf, count);
+        if (ret < 0) {
+          dev_err(devstate->dev,
+                  "FOB packet transmission failed %d\n",ret);
+        }
+      }
+
+      mutex_unlock(&S.standardLock);
     }
-    return count;
+    return ret == 0 ? count : ret;
   }
 
   /*Here for packets explicitly to minor/pru [01]  */
 
   {
-    ret = ship_packet_to_pru(origminor, 0, driver_buf, count);
+    int ret = ship_packet_to_pru(origminor, 0, driver_buf, count);
     Dbgprintk(KERN_INFO "DOWNBOUND SPECIAL (%s) GOT %d\n",driver_buf,ret);
     if (ret) {
       dev_err(devstate->dev,
@@ -581,26 +653,11 @@ static ssize_t itc_pkt_write(struct file *filp,
 
 static struct PacketBuffer* getRandomNonEmptyPriorityPB(void)
 {
-  struct SharedState * ss = getSharedStateVirtualInline();
-  PBID sss;
-  sss.inbound = 1;
-  sss.bulk = 0;
   for (itcIteratorStart(&S.itcIterator);
        itcIteratorHasNext(&S.itcIterator);
        ) {
     ITCDir dir = itcIteratorGetNext(&S.itcIterator);
-    struct PacketBuffer * pb;
-    unsigned char selbuf[5];
-
-    if (!mapITCDir6(dir, &sss))
-      BUG_ON(1);
-
-    PBIDToString(&sss,selbuf);
-
-    pb = getPacketBufferIfAnyInline(ss, &sss);
-    BUG_ON(!pb);
-    Dbgprintk(KERN_INFO "%s: itcdir %d pb %p(%s)\n", selbuf, dir, pb, PBToString(pb));
-
+    struct PacketBuffer * pb = S.fastInBufs[dir];
     if (!pbIsEmptyInline(pb)) return pb;
   }
   BUG_ON(1); /*shouldn't be here unless someone was nonempty with a lock held!*/
@@ -608,27 +665,10 @@ static struct PacketBuffer* getRandomNonEmptyPriorityPB(void)
 
 static unsigned all_priority_pbs_empty(void)
 {
-  struct SharedState * ss = getSharedStateVirtualInline();
-  PBID sss;
-  unsigned pru, prudir;
-  sss.bulk = 0;
-  sss.inbound = 1;
-  //  Dbgprintk(KERN_INFO "in all_priority_pbs_empty(void)\n");
-  for (pru = 0; pru <= 1; ++pru) {
-    sss.pru = pru;
-    for (prudir = 0; prudir <= 2; ++prudir) {
-      struct PacketBuffer * pb;
-      unsigned char selbuf[7];
-      //      Dbgprintk(KERN_INFO "pru %d prudir %d\n",pru,prudir);
-      sss.prudir = prudir;
-      PBIDToString(&sss,selbuf);
-      pb = getPacketBufferIfAnyInline(ss, &sss);
-      BUG_ON(!pb);
-      //      Dbgprintk(KERN_INFO "%s: Checking %p(%s)\n",selbuf,pb,PBToString(pb));
-      if (!pbIsEmptyInline(pb)) return 0;
-    }
+  unsigned pbi;
+  for (pbi = 0; pbi < 6; ++pbi) {
+    if (!pbIsEmptyInline(S.fastInBufs[pbi])) return 0;
   }
-  //  Dbgprintk(KERN_INFO "Return 1\n");
   return 1;
 }
 
@@ -729,8 +769,6 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
   ITCDeviceState * devstate = dev_get_drvdata(&rpmsg_dev->dev);
   int minor = MINOR(devstate->devt);
 
-  //  printk(KERN_INFO "Received %d from %d\n",len, minor);
-
   if (len > 0) {
     int wake = -1;
     u8 * d = (u8*) data;
@@ -755,25 +793,14 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
         printk(KERN_ERR "Truncating overlength (%d) packet\n",len);
         len = ITC_MAX_PACKET_SIZE;
       }
-    printk(KERN_ERR "SUMMON THE REIMPLEMENTOR\n");
-#if 0
-      kfifo_in(&S.itcPacketKfifo, data, len);
-#endif
-      wake_up_interruptible(&S.itcPacketWaitQ);
+      printk(KERN_ERR "SUMMON THE REIMPLEMENTOR?  Routed packet arrived via rpmsg\n");
     } else {
       if (type<2) { // Then it's a shared state buffer kick from PRU(type)
 
         if (len != 4) {
           printk(KERN_ERR "Length %d buffer kick received, ignored\n",len);
         } else {
-#if 0
-          u8 flip[4];
-          int i;
-          for (i = 0; i < 4; ++i) flip[3-i] = data[i];
-          processBufferKick((PBID*) flip);
-#else
           processBufferKick((PBID*) data);
-#endif
         }
       } else {
         if (minor == 0) {
@@ -1091,7 +1118,16 @@ static int __init itc_pkt_init (void)
     goto fail_register_rpmsg_driver;
   }
 
+  S.task = kthread_run(itcpktThreadRunner, NULL, "itc_pkt_timer");  
+  if (IS_ERR(S.task)) {
+    pr_err("Thread creation failed %ld\n", PTR_ERR(S.task));
+    goto fail_run_kthread;
+   }
+
   return 0;
+
+ fail_run_kthread:
+  unregister_rpmsg_driver(&itc_pkt_driver);
 
  fail_register_rpmsg_driver:
   unregister_chrdev_region(S.major_devt,
@@ -1122,6 +1158,8 @@ static void __exit itc_pkt_exit (void)
 
   freeITCSharedPacketBuffers(&S);
 
+  kthread_stop(S.task);         // Tell timing thread to pack it in
+
   unregister_rpmsg_driver(&itc_pkt_driver);
   class_unregister(&itc_pkt_class_instance);
   unregister_chrdev_region(S.major_devt,
@@ -1135,7 +1173,8 @@ MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Dave Ackley <ackley@ackleyshack.com>");
 MODULE_DESCRIPTION("T2 intertile packet communications subsystem");  ///< modinfo description
 
-MODULE_VERSION("0.5");          ///< 0.5 for using shared memory
+MODULE_VERSION("0.6");          ///< 0.6 for timing thread (201801080658)
+/// 0.5 for using shared memory
 /// 0.4 for general internal renaming and reorg (201801031340)
 /// 0.3 for renaming to itc_pkt
 /// 0.2 for initial import

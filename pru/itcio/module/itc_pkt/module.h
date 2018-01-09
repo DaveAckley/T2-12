@@ -48,11 +48,15 @@ typedef struct itc_dev_state {
 typedef struct itc_pkt_driver_state {
   DebugFlags        debugFlags;
   dev_t             major_devt;     /* our dynamically-allocated major device number */
-  wait_queue_head_t itcPacketWaitQ; /* for people blocking on standard packets */
+  wait_queue_head_t itcPacketWaitQ; /* for people blocking to reading standard packets */
+  wait_queue_head_t itcWriteWaitQ ; /* for people blocking to write standard packets (to anywhere) */
   struct mutex      standardLock;   /* lock for reading standard packets */
   ITCIterator       itcIterator;    /* iterator for visiting priority pbs randomly */
   phys_addr_t       packetPhysP;    /* physical address of shared buffer space */
   struct SharedState * packetVirtP;    /* virtual address of shared buffer space */
+  struct PacketBuffer *(fastInBufs[6]); /* cached ptrs to priority inbound buffers */
+  struct task_struct *task;            /* itcpktThreadRunner task ptr */
+
   int               open_pru_minors;/* how many of our minors have (ever?) been opened */
   ITCDeviceState    * (dev_packet_state[MINOR_DEVICES]); /* ptrs to all our device states */
 } ITCPacketDriverState;
