@@ -1,0 +1,2 @@
+#!/bin/bash
+echo 0 > /sys/kernel/debug/remoteproc/remoteproc1/single_step ;echo 0 > /sys/kernel/debug/remoteproc/remoteproc2/single_step ; cat /sys/kernel/debug/remoteproc/remoteproc1/regs
