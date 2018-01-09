@@ -29,6 +29,9 @@ my $gots = 0;
 for (my $i = 0; $i < $expandos; ++$i) {
     @args = (@args, @args);
 }
+for (my $i = 0; $i < scalar(@args); ++$i) {
+    $args[$i] .= $i;
+}
 my @sndstoppers = ("\201${tag}END\201",   "\202${tag}END\202",   "\203${tag}END\203", 
                    "\205${tag}END\205",   "\206${tag}END\206",   "\207${tag}END\207");
 my %rcvstoppers = ("\205${tag}END\201"=>1,"\206${tag}END\202"=>1,"\207${tag}END\203"=>1,
@@ -48,12 +51,18 @@ my $pktsrcvd = 0;
 my $pkterror = 0;
 my $pktoverrun = 0;
 while (scalar(@args)) {
-    my $pkt = rand() > 0.5 ? shift @args : pop @args;
-    my $len = syswrite(PKTS, $pkt);
-    die "Error: $!" unless defined($len) or ($mode & O_NONBLOCK) and $!{EAGAIN};
+    my $pkt = rand() > 0.0 ? shift @args : pop @args;
+    my $len;
+    while (1) {
+        processAvailablePackets();
+        $len = syswrite(PKTS, $pkt);
+        last if defined($len);
+        next if ($mode & O_NONBLOCK) and $!{EAGAIN};
+        die "Error: $!";
+    }
     $pktssent++;
     $bytessent += $len;
-    processAvailablePackets();
+#    print "O$pktssent $pkt O$pktssent\n";
 }
 my $loops = 0;
 while (scalar(keys %rcvstoppers) || $pktsrcvd+$pkterror+$pktoverrun < $pktssent) {
@@ -66,9 +75,9 @@ my $stop = Time::HiRes::time();
 die "Error: $!" unless defined($count) or ($mode & O_NONBLOCK) and $!{EAGAIN};
 close(PKTS) or die "Can't close $pktdev: $!";
 my @rares = sort { if ($rcvcount{$a} != $rcvcount{$b}) { $rcvcount{$a} <=> $rcvcount{$b} } else { $a cmp $b } } keys %rcvcount;
-for my $ky (@rares) {
-    printf("%5d '%s'\n",$rcvcount{$ky}, $ky);
-}
+# for my $ky (@rares) {
+#     printf("%5d '%s'\n",$rcvcount{$ky}, $ky);
+# }
 
 my $sec = $stop-$start;
 my $pct = 100.0*$bytesrcvd/$bytessent;
@@ -96,7 +105,7 @@ sub processAvailablePackets {
             ++$rcvcount{$pkt};
             $bytesrcvd += $count;
             $pktsrcvd++;
-#            print "$pktsrcvd '$pkt'\n";
+#            print "I$pktsrcvd $pkt I$pktsrcvd\n";
             delete $rcvstoppers{$pkt};
         }
     }
