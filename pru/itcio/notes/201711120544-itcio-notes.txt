@@ -1,4 +1,4 @@
-{402}  -*- text -*-
+{404}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6818,6 +6818,31 @@ packets.
 
 Going to higher volumes is going to have to wait for another hacking
 time because we need to rehack so writes to pbs can block rather than
-just reads.  But committing this stuff now before a nap.
+just reads.  But committing this stuff now before a nap.[402:
+
+Mon Jan  8 05:38:54 2018 So, what would we actually sleep on, if we
+discover a pb out of linux is full when we want to write?  Back in
+UART days, we set up to get an interrupt when either the inbound fifo
+was nearly full -or- some small number of character times had passed
+without any further input.  By analogy to that we ought to kick when
+the outbound fifo is nearly empty.. or what, anything else?
+
+:402]
 
 :401]
+[403:
+
+Tue Jan  9 02:48:26 2018 OK, so we got to higher volumes and now we
+can confirm that yes we are running much slower than before, like
+1Mbps instead of 3+Mbps.  I'm not ready to revert all this yet,
+because the design is less contorted, and I have to believe there are
+a small set of issues -- mapping, caching, interrupting, something --
+that could be found and addressed to get the speed at least back up if
+not detectably beyond.
+
+In any case, have just done a asm rehack to do the byte-level
+load/storing directly in asm instead of calling C and having it do
+multiplies and crab, so checkpoint committing all this ahead of trying
+it.. 
+
+:403]
