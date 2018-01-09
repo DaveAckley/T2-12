@@ -2,11 +2,12 @@
 #include <linux/bug.h>
 #include "ITCIterator.h"
 
-void itcIteratorInitialize(ITCIterator * itr, ITCIteratorUseCount avguses) {
+void itcIteratorInitialize(ITCIterator * itr, const char * name, ITCIteratorUseCount avguses) {
   int i;
   BUG_ON(!itr);
   BUG_ON(avguses <= 0);
   BUG_ON((avguses<<1) <= 0);
+  itr->m_name = name;
   itr->m_averageUsesPerShuffle = avguses;
   for (i = 0; i < ITC_DIR_COUNT; ++i)
     itr->m_indices[i] = i; /*0,1,2,3,4,5*/
@@ -28,8 +29,8 @@ void itcIteratorShuffle(ITCIterator * itr) {
     }
   }
 
-  printk(KERN_DEBUG "ITC %p iterator order is %d%d%d%d%d%d for next %d uses\n",
-         itr,
+  printk(KERN_DEBUG "%s: ITC iterator order is %d%d%d%d%d%d for next %d uses\n",
+         itr->m_name,
          itr->m_indices[0],
          itr->m_indices[1],
          itr->m_indices[2],

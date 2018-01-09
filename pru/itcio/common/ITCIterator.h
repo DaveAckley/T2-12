@@ -13,6 +13,7 @@ typedef ITCDir ITCDirSet[ITC_DIR_COUNT];
 typedef int ITCIteratorUseCount;
 
 typedef struct itciterator {
+  const char * m_name;
   ITCIteratorUseCount m_usesRemaining;
   ITCIteratorUseCount m_averageUsesPerShuffle;
   ITCDir m_nextIndex;
@@ -21,7 +22,7 @@ typedef struct itciterator {
 
 void itcIteratorShuffle(ITCIterator * itr) ;
 
-void itcIteratorInitialize(ITCIterator * itr, ITCIteratorUseCount avguses) ;
+void itcIteratorInitialize(ITCIterator * itr, const char * name, ITCIteratorUseCount avguses) ;
 
 static inline void itcIteratorStart(ITCIterator * itr) {
   if (--itr->m_usesRemaining < 0) itcIteratorShuffle(itr);
