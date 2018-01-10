@@ -21,6 +21,7 @@ BUF_HDR_FILENAMES:=$(patsubst %.c, %.h, $(BUF_SRC_FILENAMES))
 BUF_SRC_ORIGIN_FILES:=$(patsubst %, $(BUF_DIR)/%, $(BUF_SRC_FILENAMES))
 BUF_HDR_ORIGIN_FILES:=$(patsubst %, $(BUF_DIR)/%, $(BUF_HDR_FILENAMES))
 BUF_ORIGIN_FILES:=$(BUF_SRC_ORIGIN_FILES) $(BUF_HDR_ORIGIN_FILES)
+BUF_LOCAL_FILES:=$(BUF_SRC_FILENAMES) $(BUF_HDR_FILENAMES)
 BUF_OBJ_FILENAMES:=$(patsubst %.c, %.o, $(BUF_SRC_FILENAMES))
 
 obj-m += $(MNAME).o
@@ -31,6 +32,7 @@ all:	copy_common
 	@make -C $(KDIR) M=$(CURDIR) modules
 
 clean:	FORCE
+	@rm -f $(BUF_LOCAL_FILES)
 	@make -C $(KDIR) M=$(CURDIR) clean
 
 
