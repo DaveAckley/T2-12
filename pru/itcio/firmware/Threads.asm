@@ -25,7 +25,8 @@ initThis: .macro THISSHIFT,THISBYTES,ID,RESUMEADDR
         zero &CT,IOThreadLen                      ; Clear CT to start
         ldi CT.sTH.sThis.sTC.bOffsetRegs, THISSHIFT
         ldi CT.sTH.sThis.sTC.bLenBytes, THISBYTES
-        ldi CT.sTH.wFlags, ID                     ; ID to bottom two bits of flags, rest cleared
+        ldi CT.sTH.bID, ID                     ; Set up ID
+        ldi CT.sTH.bFlags, 0                   ; Clear flags
 	ldi CT.sTH.wResAddr,$CODE(RESUMEADDR)
 	
 	.if ID == 0
@@ -69,8 +70,12 @@ nextContext:
 
 ;;; LINUX thread runner 
 LinuxThreadRunner:
-        qbbc ltr2, r31, HOST_INT_BIT   ; Don't process rpmsgs unless host int from linux is set..
+        qbbc ltr2, r31, HOST_INT_BIT   ; Process rpmsgs if host int from linux is set..
+	;; add LT.wResumeCount, LT.wResumeCount, 1
+        ;; qbne ltr2, LT.wResumeCount, 0 ; Done unless 65K timeout
+        ;; or PSS.sCU.w, PSS.sCU.w, 0xff ; If so set all outbound flags 
 ltr1:   jal r3.w2, processPackets      ; Surface to C level, check for linux action
+	or PSS.sCU.w, PSS.sCU.w, r14.w0 ; Merge any new activity flags into bCheckOut and bCheckIn
 ltr2:   resumeAgain                    ; Save, switch, resume at LinuxThreadRunner
 
 ;;; Idle thread runner 
@@ -93,8 +98,8 @@ mainLoop:
 	enterFunc 6
 l0:     
 	.ref processPackets
-        jal r3.w2, processPackets ; Return == 0 if firstPacket done
-	qbne l0, r14, 0           ; Wait for that before initting state machines
+        jal r3.w2, processPackets ; Return == 0 if still awaiting first linux packet
+	qbeq l0, r14, 0           ; Wait for that before initting state machines
 	
 	jal r3.w2, startStateMachines ; Not expected to return
 	
@@ -113,6 +118,10 @@ addfuncasm:
 startStateMachines:
 	enterFunc 2
 	
+	;; Init PRU-wide shared state
+	ldi PSSReg, 0
+        ldi PSS.sCU.w, 0xffff     ; All 1s means all directions need checking
+        
 	;; Init threads by hand
 	.ref PacketRunner
 	.ref pruDirToBuffers

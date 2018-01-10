@@ -11,10 +11,13 @@
 ;;;  OUTPUTS: 
 ;;;    Field DESTREG is cleared except its bottom two bits are the thread id
 ;;;  NOTES:
+;;;  - The thread ID is stored in CT.sTH.bID and you can get it from
+;;;    there for complex instructions!  You often don't need to
+;;;    develop it into a separate register!
 ;;;  - Note that supplying a register field -- e.g., r0.b0 -- for DSTREG
 ;;;    means that the rest of DSTREG remains unchanged!
 ldThreadID:        .macro DESTREG
-        and DESTREG, CT.sTH.wFlags, 0x3
+        mov DESTREG, CT.sTH.bID
         .endm
 
 ;;;;;;;;
@@ -41,8 +44,7 @@ ldPBPtr:        .macro DESTRN, WHICH
 	.else
         .emsg "WHICH must be 0 or 1, not ':WHICH:'"
         .endif
-        ldThreadID r0.b0        ; b0 = prudir
-        lsl r0.b0, r0.b0, 2     ; b0 = prudir*4
+        lsl r0.b0, CT.sTH.bID, 2 ; b0 = prudir*4
         qbbc $M0?, CT.sTH.wFLAGS, FLAG
         add r0.b0, r0.b0, 16    ; b0 = prudir*4+(bulk?16:0)
 $M0:    ldi32 DESTRN, BASEADDR  ; DESTRN = &inboundBufferPtrs or outbound.
@@ -117,7 +119,7 @@ $M1?:  .cstring STR
 	.text
 	saveRegs 2              ; Save current R3.w2
         mov r16, REGVAL         ; Get value to report before trashing anything else
-        ldThreadID r14          ; First arg is prudir
+        mov r14, CT.sTH.bID     ; First arg is prudir
         ldi32 r15, $M1?         ; Get string
         jal r3.w2, CSendFromThread 
 	restoreRegs 2           ; Restore r3.w2 
@@ -189,7 +191,7 @@ $M1?:  .cstring STR
 	qbne $M0?, CT.rRunCount.b.b0, 0 ; Jump ahead if burst isn't done
         and CT.sTH.wFlags, CT.sTH.wFlags, 0xff&~((1<<PacketRunnerFlags.fReportITags)|(1<<PacketRunnerFlags.fReportOTags)|(1<<PacketRunnerFlags.fTagBurst)) ; clear flags
 $M0?:	saveRegs 2              ; Save current R3.w2
-	ldThreadID r14          ; First arg is prudir
+	mov r14, CT.sTH.bID     ; First arg is prudir
         ldi32 r15, $M1?         ; Get string
 ;$M2?:   ldi r16, $CODE($M2?)    ; Get current iram to identify call
 	mov r16.w0, REGVAL      ; Take bottom 16 bits of supplied val
