@@ -69,10 +69,7 @@ nextContext:
 
 ;;; LINUX thread runner 
 LinuxThreadRunner:
-        qbbs ltr1, r31, HOST_INT_BIT   ; Process packets if host int from linux is set..
-        add LT.wResumeCount,  LT.wResumeCount, 1 ; Otherwise, bump resume count
-	and r0.b0, LT.wResumeCount, 0x3
-        qbne ltr2, r0.b0, 0            ; And do processing every 4 resumes
+        qbbc ltr2, r31, HOST_INT_BIT   ; Don't process rpmsgs unless host int from linux is set..
 ltr1:   jal r3.w2, processPackets      ; Surface to C level, check for linux action
 ltr2:   resumeAgain                    ; Save, switch, resume at LinuxThreadRunner
 
