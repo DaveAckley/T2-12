@@ -17,13 +17,12 @@ PacketRunner:
 	ldi CT.bOutByte, 0             ; Init 0 says We're working on byte 0 of it (not that that should matter)
 	ldi CT.bOutData, 0             ; Init 0 says We're outputting an all zeros byte
 	ldi CT.bOutBNum, 0xff          ; Init 255 says But the current byte is all finished
-        ldi CT.bInpByte, 0             ; Init 0 says We are reading byte 0 of a packet (if we had sync)
+        ldi CT.wInpByte, 0             ; Init 0 says We are reading byte 0 of a packet (if we had sync)
 	ldi CT.bInpData, 0             ; Init 0 says The byte we're reading is so far all zeros
 	ldi CT.bInpBNum, 7             ; Init 7 says And next bit number to read is bit 7
 	ldi CT.bInp1Cnt, 0             ; Init 0 says No run of 1s have been seen on input
 	ldi CT.bOut1Cnt, 0             ; Init 0 says we haven't transmitted any run of 1s lately
-        ldi CT.wRSRV2, 0xfeed          ; XXXX: Make visible
-	ldi CT.bRSRV43, 'z'            ; XXXX: Make visible
+        ldi CT.wRSRV2, ('d'<<8+'a')    ; XXXX: Make visible
 
         ;; FALL INTO getNextStuffedBit
 	
@@ -122,16 +121,16 @@ lowCheckClockPhases:
 
 captureInputBit:  ;; Here to sample RXDAT and handle it appropriately
 	sendITag """CPIB""",CT.bInp1Cnt ; report in
-	loadBit r4.b0, r31, CT.bRXDATPin ; Read RXDAT to r4.b0
+;DONT	loadBit r4.b0, r31, CT.bRXDATPin ; Read RXDAT to r4.b0
 	qbgt storeRealInputBit, CT.bInp1Cnt, 5 ; Jump ahead if 5 > run of 1s we've read
         qbne moreThan5ones, CT.bInp1Cnt, 5     ; Jump ahead if 6 (or more?) 1s
 
 	;; otherwise FALL INTO haveExactly5ones
 	
 haveExactly5ones: ;; Here to eat stuffing or count 6th 1
-	sendITag """HX51""",r4.b0       ; report in
+	sendITag """HX51""",r31         ; report in
         add CT.bInp1Cnt, CT.bInp1Cnt, 1        ; Assume it's another 1
-	qbne makeRisingEdge, r4.b0, 0          ; If we guessed right, we're done, go make a rising edge
+	qbbs makeRisingEdge, r31, CT.bRXDATPin ; If we guessed right, we're done, go make a rising edge
 	
 	;; otherwise FALL INTO eatStuffedBit
 	
@@ -145,7 +144,7 @@ moreThan5ones: ;; Here to recognize frame delimiters and errors
 	sendITag """MT5""",CT.bInp1Cnt ; report in
 	qbne frameError, CT.bInp1Cnt, 6        ; It's a framing error if not exactly six 1s
         add CT.bInp1Cnt, CT.bInp1Cnt, 1        ; Assume it's another 1
-        qbne frameError, r4.b0, 0              ; Which is a framing error if so
+        qbbs frameError, r31, CT.bRXDATPin     ; Which is a framing error if so
 
 	;; otherwise FALL INTO completeFrameDelimiter
 	
@@ -164,11 +163,11 @@ checkExistingAlignment:  ;; Here we already have packet sync and are looking at 
 	;; otherwise FALL INTO frameError
 
 frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, whether or not synced
-	sendITag """FMER""",CT.bInpByte               ; report in
+	sendITag """FMER""",CT.wInpByte               ; report in
 	qbbc resetAfterDelimiter, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; Don't report a problem unless we're synced
 	clr CT.sTH.wFlags, CT.sTH.wFlags, PacketRunnerFlags.fPacketSync ; Blow packet sync
 	ldThreadID r14          ; arg1 is prudir
-	mov r15, CT.bInpByte    ; arg2 is number of bytes written
+	mov r15, CT.wInpByte    ; arg2 is number of bytes written
 	mov r16, r6             ; arg3 is first reg
 	mov r17, r7
 	mov r18, r8
@@ -189,28 +188,30 @@ achievePacketSync: ;; Here to achieve packet sync when we didn't already have it
 
 resetAfterDelimiter:  ;; Here to set up for new inbound packet
 	sendITag """RAD""",CT.rRunCount.r ; report in
-        ldi CT.bInpByte, 0         ; We are on byte 0
+        ldi CT.wInpByte, 0         ; We are on byte 0
         ldi CT.bInpBNum, 7         ; We are on bit 7 of byte 0
         ldi CT.bInpData, 0         ; And that byte is all 0s so far
         ldi CT.bInp1Cnt, 0         ; And we have seen 0 1s in a row
         jmp makeRisingEdge         ; And then we're done with this input bit
 
 handleGoodPacketDelimiter: ;; Here we finally have a finished packet!
-	sendITag """HGPD""",CT.bInpByte               ; report in
-        qbeq resetAfterDelimiter, CT.bInpByte, 0 ; But if it's zero-length, discard it!
+	sendITag """HGPD""",CT.wInpByte               ; report in
+        qbeq resetAfterDelimiter, CT.wInpByte, 0 ; But if it's zero-length, discard it!
 	
+	;; FALL INTO sendInFinishedPacket
+
 sendInFinishedPacket:       ;; Here we know the inbound packet is non-empty
 	sendITag """IPSP""",CT.sTH.wFlags   ; report in
         ldThreadID r14                      ; arg1 is prudir
-        mov r15, CT.bInpByte                ; arg2 is packet length
+        mov r15, CT.wInpByte                ; arg2 is packet length
         jal r3.w2, ppbSendInboundPacket     ; Push it to DDR for linux!  Foggin finally!
 	qbeq resetAfterDelimiter, r14, 0    ; Go set up for another if successful
         suspendThread                       ; If no room to ship we wait :(
         jmp sendInFinishedPacket            ; And then try again
 
 storeRealInputBit: ;; Here if not dealing with bitstuffed 0s, packet delimiters, or framing errors
-;	sendITag """SRIB""",r4.b0               ; report in
-        qbeq gotReal0, r4.b0, 0    ; No storing needed on zeros (because we cleared bInpData to start)
+;	sendITag """SRIB""",r31             ; report in
+        qbbc gotReal0, r31, CT.bRXDATPin    ; No storing needed on zeros (because we cleared bInpData to start)
         set CT.bInpData, CT.bInpData, CT.bInpBNum ; Otherwise set the bit we're on
         add CT.bInp1Cnt, CT.bInp1Cnt, 1           ; And increment the running 1s count
         jmp checkEndOfByte                        ; Go see if we've finished a byte
@@ -231,14 +232,16 @@ checkEndOfByte: ;; Here to increment and deal with end of byte processing
 
 storeThisInputByte: ;; Here to add a finished byte to the packet payload
 	sendITag """STIB""",CT.bInpData           ; report in
-	add r0, CT.rBufAddr, (MAX_PACKET_SIZE-1)  ; r0 = &(pdb->inbuffer[-1]), in effect
-        add CT.bInpByte, CT.bInpByte, 1           ; newbInpByte = oldbInpByte + 1
-	sbbo &CT.bInpData, r0, CT.bInpByte, 1     ; pdb->inbuffer[oldbInpByte + 1 - 1] = bInpData
+	qblt frameError, CT.wInpByte, 255         ; packet is too long if 255 < count
+	add r0, CT.rBufAddr, CT.wInpByte          ; r0 = &(pdb->outbuffer[wInpByte]),
+        add r0, r0, 255                           ; r0 = &(pdb->inbuffer[wInpByte-1]), in effect
+	sbbo &CT.bInpData, r0, 1, 1               ; pdb->inbuffer[wInpByte - 1 + 1] = bInpData
 
         ;; FALL INTO setupForNextInputByte
         
 setupForNextInputByte:  ;; Here to initialize for reading another byte
-	sendITag """SFNB""",CT.bInpByte ; report in
+	sendITag """SFNB""",CT.wInpByte ; report in
+        add CT.wInpByte, CT.wInpByte, 1           ; On to next byte
         ldi CT.bInpData, 0               ; Clear the byte data itself
         ldi CT.bInpBNum, 7               ; And set the bit number coming next
 

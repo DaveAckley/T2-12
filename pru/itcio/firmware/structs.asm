@@ -52,8 +52,7 @@ bOutLen:        .ubyte   ; length in bytes of outbound packet
 ;;; CT+4
 bInpData:       .ubyte  ; current bits being shifted in
 bInpBNum:       .ubyte  ; next bit number (0=LSB) to shift in
-bInpByte:       .ubyte   ; bytes already written of inbound packet
-bRSRV43:        .ubyte   ; reserved
+wInpByte:       .ushort  ; bytes already written of inbound packet
 ;;; CT+5
 bOut1Cnt:       .ubyte  ; current count of output 1s sent
 bInp1Cnt:       .ubyte  ; current count of input 1s received
