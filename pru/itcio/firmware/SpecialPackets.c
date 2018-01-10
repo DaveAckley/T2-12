@@ -194,6 +194,20 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
   if (len == 0) return 0; /* or assert? */
   switch (packet[0]) {
 
+  /* PACKET TYPE: 'C' Report and reset cycle counter */
+  case 'C':
+    if (len > 1) {
+      packet[1] = '+';
+      if (len > 7) {
+        *((uint32_t*) &packet[3]) = PRUX_CTRL.CYCLE;
+        if (len > 11) {
+          *((uint32_t*) &packet[7]) = PRUX_CTRL.STALL;
+        }
+      }
+    }
+    resetCycleCounter();
+    break;
+
   /* PACKET TYPE: '\177' Halt PRU immediately */
   case '\177': {
     if (len == 2 && packet[1] == '!')

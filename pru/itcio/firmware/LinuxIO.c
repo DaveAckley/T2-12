@@ -1,5 +1,4 @@
 
-#include "prux.h"
 #include "LinuxIO.h"
 #include "Buffers.h"
 #include "SpecialPackets.h"
@@ -10,7 +9,6 @@
 #include <pru_rpmsg.h>
 #include <pru_intc.h>
 #include <pru_cfg.h>
-#include <pru_ctrl.h>
 
 /*
  * Used to make sure the Linux drivers are ready for RPMsg communication
@@ -189,28 +187,6 @@ int CSendPacket(uint8_t * data, uint32_t len)
 {
   if (firstPacket) return 1; /* Not ready yet */
   return pru_rpmsg_send(&transport, firstDst, firstSrc, data, len);
-}
-
-
-/**
-   Reset and re-enable the cycle counter.  According to SPRU8FHA,
-   Table 29, page 80, the cycle counter (1) Does not wrap at
-   0xffffffff, but instead disables counting, and (2) Can be cleared
-   when it is disabled.
-
-   On the other hand, though, two points: (A) It should be highly
-   unlikely for the cycle counter to hit the max in the loop below,
-   and (B) I have code that, apparently, was successfully clearing the
-   cycle counter without disabling it first.
-
-   So given (A) and (b) we 'ought to be fine' just clearing the
-   counter on the fly, but out of an abundance of caution we are
-   writing and using this routine instead anyway.
- */
-static inline void resetCycleCounter() {
-  PRUX_CTRL.CTRL_bit.CTR_EN = 0;   /* disable cycle counter */
-  PRUX_CTRL.CYCLE = 0;             /* clear it while disabled */
-  PRUX_CTRL.CTRL_bit.CTR_EN = 1;   /* and re-enable counting */
 }
 
 void initLinuxIO() {
