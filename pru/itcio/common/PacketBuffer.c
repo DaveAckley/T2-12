@@ -88,9 +88,11 @@ unsigned int pbDropOldestPacket(struct PacketBuffer *pb)
 
 int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsigned length)
 {
+  int hadUsed;
   if (!pb || !data || length == 0) return -PBE_INVAL;
   if (length > 255) return -PBE_FBIG;
   if (pbAvailableBytes(pb) < length + 1) return -PBE_NOMEM;
+  hadUsed = pbUsedBytesInline(pb);
   pbStartWritingPendingPacket(pb);
   /*XXX LET'S GET SOME MEMCPY ACTION MOVING IN HERE*/
   if (pb->writePtr + length + 1 < pb->bufferSize) {
@@ -99,7 +101,7 @@ int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsig
   } else 
     while (length-- > 0) pbWriteByteInPendingPacketInline(pb, *data++);
   pbCommitPendingPacket(pb);
-  return 0;
+  return hadUsed==0; /*nonzero if had been empty */
 }
 
 int pbReadPacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsigned length)
