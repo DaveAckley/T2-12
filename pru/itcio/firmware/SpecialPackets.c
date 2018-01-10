@@ -198,10 +198,10 @@ unsigned processSpecialPacket(uint8_t * packet, uint16_t len)
   case 'C':
     if (len > 1) {
       packet[1] = '+';
-      if (len > 7) {
-        *((uint32_t*) &packet[3]) = PRUX_CTRL.CYCLE;
-        if (len > 11) {
-          *((uint32_t*) &packet[7]) = PRUX_CTRL.STALL;
+      if (len > 8) {
+        *((uint32_t*) &packet[4]) = PRUX_CTRL.CYCLE;
+        if (len > 12) {
+          *((uint32_t*) &packet[8]) = PRUX_CTRL.STALL;
         }
       }
     }
