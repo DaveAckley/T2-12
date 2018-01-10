@@ -50,8 +50,9 @@ my $pktssent = 0;
 my $pktsrcvd = 0;
 my $pkterror = 0;
 my $pktoverrun = 0;
+my %allunrcvd;
 while (scalar(@args)) {
-    my $pkt = rand() > 0.0 ? shift @args : pop @args;
+    my $pkt = rand() > 0.5 ? shift @args : pop @args;
     my $len;
     while (1) {
         processAvailablePackets();
@@ -60,6 +61,7 @@ while (scalar(@args)) {
         next if ($mode & O_NONBLOCK) and $!{EAGAIN};
         die "Error: $!";
     }
+    ++$allunrcvd{substr($pkt,1)};
     $pktssent++;
     $bytessent += $len;
 #    print "O$pktssent $pkt O$pktssent\n";
@@ -69,7 +71,7 @@ while (scalar(keys %rcvstoppers) || $pktsrcvd+$pkterror+$pktoverrun < $pktssent)
 #    print "SK=".scalar(keys %rcvstoppers)." $pktsrcvd+$pkterror+$pktoverrun < $pktssent\n";
     processAvailablePackets();
     Time::HiRes::usleep(100*++$loops);
-    last if $loops >= 1000;
+    last if $loops >= 250;
 }
 my $stop = Time::HiRes::time();
 die "Error: $!" unless defined($count) or ($mode & O_NONBLOCK) and $!{EAGAIN};
@@ -91,6 +93,10 @@ printf("sent %d rcvd %d %3.0f%% err %d ovr %d lost %d elapsed %f sec; sent %d by
        $pkterror, $pktoverrun,
        $pktssent-$pktsrcvd,
        $sec, $bytessent, $KBps, $Mbps);
+for my $p (sort keys %allunrcvd) {
+    my $v = $allunrcvd{$p};
+    print "$v $p\n" if defined($v) && $v != 0;
+}
 
 sub processAvailablePackets {
     my $count;
@@ -102,6 +108,8 @@ sub processAvailablePackets {
         } elsif ($type & 0x08) {
             ++$pkterror;
         } else {
+            print "HUH? ($pkt)\n" unless defined $allunrcvd{substr($pkt,1)};
+            --$allunrcvd{substr($pkt,1)};
             ++$rcvcount{$pkt};
             $bytesrcvd += $count;
             $pktsrcvd++;
