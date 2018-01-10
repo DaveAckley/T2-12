@@ -10,6 +10,10 @@ my $expandos = scalar(@ARGV);
 my $pktdev = "/dev/itc/packets";
 my $mode = O_RDWR;
 my $tag = scalar(localtime());
+my $mhz = `cpufreq-info | grep "current CPU frequency is"`;
+chomp $mhz;
+$mhz =~ /.*?([0-9]+) MHz.*?$/ or die "no match ($mhz)";
+$mhz = $1;
 my @args = ("-nb",
             "\x81${tag}GO1NE girl grill chief complaintive been w2orking on the rr all the live long \x01\xff\xff\xfe",
             "\x83${tag}GO3SE spot run down home base belong to us three us four us 5% dance \x07\xff\xff\xf8",
@@ -39,7 +43,7 @@ my %rcvstoppers = ("\205${tag}END\201"=>1,"\206${tag}END\202"=>1,"\207${tag}END\
 #print join("--\n",keys  %rcvstoppers);
 @args = (@args, @sndstoppers);
 use Time::HiRes;
-print "start $tag\n";
+print "start @ $mhz MHz [$tag]\n";
 my $start = Time::HiRes::time();
 sysopen(PKTS, $pktdev, $mode) or die "Can't open $pktdev: $!";
 my $pkt;
@@ -74,7 +78,7 @@ while (scalar(keys %rcvstoppers) || $pktsrcvd+$pkterror+$pktoverrun < $pktssent)
     last if $loops >= 250;
 }
 my $stop = Time::HiRes::time();
-die "Error: $!" unless defined($count) or ($mode & O_NONBLOCK) and $!{EAGAIN};
+#die "Error: $!" unless ($mode & O_NONBLOCK) and $!{EAGAIN};
 close(PKTS) or die "Can't close $pktdev: $!";
 my @rares = sort { if ($rcvcount{$a} != $rcvcount{$b}) { $rcvcount{$a} <=> $rcvcount{$b} } else { $a cmp $b } } keys %rcvcount;
 # for my $ky (@rares) {
@@ -93,10 +97,10 @@ printf("sent %d rcvd %d %3.0f%% err %d ovr %d lost %d elapsed %f sec; sent %d by
        $pkterror, $pktoverrun,
        $pktssent-$pktsrcvd,
        $sec, $bytessent, $KBps, $Mbps);
-for my $p (sort keys %allunrcvd) {
-    my $v = $allunrcvd{$p};
-    print "$v $p\n" if defined($v) && $v != 0;
-}
+ for my $p (sort keys %allunrcvd) {
+     my $v = $allunrcvd{$p};
+     print "$v $p\n" if defined($v) && $v != 0;
+ }
 
 sub processAvailablePackets {
     my $count;
