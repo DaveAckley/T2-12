@@ -177,6 +177,12 @@ int ship_packet_to_pru(unsigned prunum, unsigned wait, char * pkt, unsigned pktl
 
   ret = pbWritePacketIfPossible(dpb, pkt, pktlen);
   if (ret < 0) printk(KERN_ERR "special packet send failed (%d)\n", ret);
+
+  /* 0 len packet so LinuxThreadRunner/processPackets will check downbound queue */
+  if (ret == 0)
+    ret = rpmsg_send(devstate->rpmsg_dev, (void *)"", 0);
+
+  if (ret < 0) printk(KERN_ERR "special packet rpmsg kick failed (%d)\n", ret);
   else if (wait) {
     struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
     Dbgprintk(KERN_INFO "shippackettpru starting to wait\n");
@@ -260,6 +266,44 @@ static ssize_t itc_pkt_class_read_debug(struct class *c,
   return strlen(buf);
 }
 
+static uint32_t extract32(const char *p) {
+  int i;
+  uint32_t ret = 0;
+
+  for (i = 0; i < 4; ++i)
+    ret |= ((unsigned) p[i])<<(i<<3);
+  return ret;
+}
+
+static ssize_t itc_pkt_class_read_cyclectr(struct class *c,
+                                           struct class_attribute *attr,
+                                           char *buf)
+{
+  char msg[RPMSG_MAX_PACKET_SIZE];
+  int ret;
+  uint32_t pru, cycles[2], stalls[2];
+  int32_t pct[2];
+  for (pru = 0; pru < 2; ++pru) {
+    ret = send_msg_to_pru(pru, 1, msg, RPMSG_MAX_PACKET_SIZE, "C?__ccccssss-");
+    if (ret < 0) return ret;
+
+    if (msg[0]!='C' || msg[1] != '+' || msg[12] != '-') {
+      printk(KERN_WARNING "pru%u: Expected 'C+__ccccssss-' packet got '%s'\n",
+             pru, msg);
+      return -EIO;
+    }
+    cycles[pru] = extract32(&msg[3]);
+    stalls[pru] = extract32(&msg[7]);
+    if (cycles[pru] > 0) {
+      pct[pru] = 100 * (stalls[pru]>>7) / (cycles[pru]>>7); /*avoid 32 bit overflow*/
+    } else pct[pru] = -1;
+  }
+
+  return sprintf(buf,"%u %u %d%% %u %u %d%%\n",
+                 cycles[0], stalls[0], pct[0], 
+                 cycles[1], stalls[1], pct[1]);
+}
+
 static ssize_t itc_pkt_class_store_debug(struct class *c,
                                          struct class_attribute *attr,
                                          const char *buf,
@@ -302,15 +346,6 @@ static ssize_t itc_pin_write_handler(unsigned pru, unsigned prudir, unsigned bit
   if (ret < 0) return ret;
 
   return count;
-}
-
-static uint32_t extract32(const char *p) {
-  int i;
-  uint32_t ret = 0;
-
-  for (i = 0; i < 4; ++i)
-    ret |= ((unsigned) p[i])<<(i<<3);
-  return ret;
 }
 
 static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
@@ -399,6 +434,7 @@ static struct class_attribute itc_pkt_class_attrs[] = {
   FOR_XX_IN_ITC_ALL_DIR
   __ATTR(poke, 0200, NULL, itc_pkt_class_store_poke),
   __ATTR(debug, 0644, itc_pkt_class_read_debug, itc_pkt_class_store_debug),
+  __ATTR(cycles, 0444, itc_pkt_class_read_cyclectr, NULL),
   __ATTR_NULL,
 };
 #undef XX
@@ -615,6 +651,10 @@ static ssize_t itc_pkt_write(struct file *filp,
       
       if (ret==0)  {
         Dbgprintk(KERN_INFO "%s: writing %d\n", PBToString(pb), count);
+        Dbgprint_hex_dump(DBG_PKT_SENT,
+                          KERN_INFO, newMinor ? "]pru1: " : "]pru0: ",
+                          DUMP_PREFIX_NONE, 16, 1,
+                          driver_buf, count, true);
         ret = pbWritePacketIfPossible(pb, driver_buf, count);
         if (ret < 0) {
           dev_err(devstate->dev,
@@ -666,10 +706,14 @@ static struct PacketBuffer* getRandomNonEmptyPriorityPB(void)
 static unsigned all_priority_pbs_empty(void)
 {
   unsigned pbi;
+  unsigned ret = 0;
   for (pbi = 0; pbi < 6; ++pbi) {
-    if (!pbIsEmptyInline(S.fastInBufs[pbi])) return 0;
+    if (!pbIsEmptyInline(S.fastInBufs[pbi])) {
+      ++ret;
+      Dbgprintk(KERN_INFO "%u non-empty %u/%s\n", ret, pbi, PBToString(S.fastInBufs[pbi]));
+    }
   }
-  return 1;
+  return !ret;
 }
 
 static ssize_t itc_pkt_read(struct file *file, char __user *buf,
