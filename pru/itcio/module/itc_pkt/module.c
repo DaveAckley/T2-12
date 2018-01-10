@@ -179,9 +179,10 @@ int ship_packet_to_pru(unsigned prunum, unsigned wait, char * pkt, unsigned pktl
   if (ret < 0) printk(KERN_ERR "special packet send failed (%d)\n", ret);
 
   /* 0 len packet so LinuxThreadRunner/processPackets will check downbound queue */
-  if (ret == 0)
+  if (ret > 0) { /*positive means pb had been empty*/
     ret = rpmsg_send(devstate->rpmsg_dev, (void *)"", 0);
-
+  }
+    
   if (ret < 0) printk(KERN_ERR "special packet rpmsg kick failed (%d)\n", ret);
   else if (wait) {
     struct PacketBuffer * upb = PacketBufferFromPacketBufferStorageInline(sspp->upbound);
@@ -292,16 +293,16 @@ static ssize_t itc_pkt_class_read_cyclectr(struct class *c,
              pru, msg);
       return -EIO;
     }
-    cycles[pru] = extract32(&msg[3]);
-    stalls[pru] = extract32(&msg[7]);
+    cycles[pru] = extract32(&msg[4]);
+    stalls[pru] = extract32(&msg[8]);
     if (cycles[pru] > 0) {
-      pct[pru] = 100 * (stalls[pru]>>7) / (cycles[pru]>>7); /*avoid 32 bit overflow*/
+      pct[pru] = (int32_t) (1000u * (stalls[pru]>>10) / (cycles[pru]>>10)); /*avoid 32 bit overflow*/
     } else pct[pru] = -1;
   }
 
-  return sprintf(buf,"%u %u %d%% %u %u %d%%\n",
-                 cycles[0], stalls[0], pct[0], 
-                 cycles[1], stalls[1], pct[1]);
+  return sprintf(buf,"%u %u %d.%d%% %u %u %d.%d%%\n",
+                 cycles[0], stalls[0], pct[0]/10, pct[0]%10, 
+                 cycles[1], stalls[1], pct[1]/10, pct[1]%10);
 }
 
 static ssize_t itc_pkt_class_store_debug(struct class *c,
@@ -656,6 +657,15 @@ static ssize_t itc_pkt_write(struct file *filp,
                           DUMP_PREFIX_NONE, 16, 1,
                           driver_buf, count, true);
         ret = pbWritePacketIfPossible(pb, driver_buf, count);
+
+        if (ret > 0) { /*positive means pb had been empty before we wrote*/
+          char buf[3];
+          buf[0] = '\013';      /* ^K for controlled-kick packet */
+          buf[1] = 1<<sss.prudir; /* [1] is outbound empty->nonempty transitions */
+          buf[2] = 0;             /* [2] is inbound full->nonfull transitions (NYI) */
+          ret = rpmsg_send(devstate->rpmsg_dev, (void *)buf, 3);
+        }
+
         if (ret < 0) {
           dev_err(devstate->dev,
                   "FOB packet transmission failed %d\n",ret);
