@@ -86,14 +86,14 @@ $(PRU1_FW):	$(OBJ1_FILES) $(LINKER_COMMAND_FILE)
 	@echo 'LD	$@'
 	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) --map_file=$@.map -o $@ $^  --library=libc.a $(LIBS) &&\
 	head -15 $@.map | tail -1 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
-	head -19 $@.map | tail -2 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
+	head -20 $@.map | tail -2 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
 	echo
 
 $(PRU0_FW):	$(OBJ0_FILES) $(LINKER_COMMAND_FILE) 
 	@echo 'LD	$@' 
 	@$(PRU_CGT)/bin/lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) --map_file=$@.map -o $@ $^  --library=libc.a $(LIBS) &&\
 	head -15 $@.map | tail -1 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
-	head -19 $@.map | tail -2 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
+	head -20 $@.map | tail -2 | cut -b 1-14,54-63 | tr '\n' ' ' &&\
 	echo
 
 # CC
