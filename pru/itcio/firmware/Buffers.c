@@ -79,19 +79,21 @@ int ppbSendInboundPacket(unsigned prudir, unsigned char length) {
     // empty -> non-empty, and have itc_pkt.ko time out and poll all
     // buffers reasonably often as a backstop.
 
-    if (pbIsEmptyInline(pb))
-      pdb->instats.flags |= NEED_KICK;
-
-    if (pbWritePacketIfPossible(pb, pdb->inbuffer, length)) {
-      ++pdb->instats.packetStalls;
-      ret = -PBE_BUSY;
-    } else 
+    // Try the write
+    ret = pbWritePacketIfPossible(pb, pdb->inbuffer, length);
+    if (ret < 0) ++pdb->instats.packetStalls;  // no room at the inn (or bug)
+    else {                                     // bird is away
       ++pdb->instats.packetTransfers;
-
-    if (pdb->instats.flags & NEED_KICK) {
-      if (CSendPacket((uint8_t*) &sss,sizeof(sss))==0)
-        pdb->instats.flags &= ~NEED_KICK;
+      if (ret > 0) {
+        pdb->instats.flags |= NEED_KICK; // Buffer had been empty; need a kick
+        ret = 0;
+      }
     }
+  }
+  
+  if (pdb->instats.flags & NEED_KICK) {
+    if (CSendPacket((uint8_t*) &sss,sizeof(sss))==0)
+      pdb->instats.flags &= ~NEED_KICK;
   }
 
   return ret;
