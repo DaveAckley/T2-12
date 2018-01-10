@@ -5,6 +5,10 @@
 #pragma DATA_SECTION(pruDirData, ".asmbuf")
 struct PruDirs pruDirData;
 
+ struct PRUDirBuffers * pruDirToBuffers(unsigned prudir) {
+   return pruDirToBuffersInline(prudir);
+ }
+
 /*
 void ppbWriteInboundByte(unsigned prudir, unsigned char idxInPacket, unsigned byteToWrite) {
   struct PRUPacketBuffer * ppb = pruDirToInPPB(prudir);
@@ -107,6 +111,10 @@ int ppbReceiveOutboundPacket(unsigned prudir) {
   if (pbIsEmptyInline(pb)) return 0;  /*but shouldn't happen with sss.bulk<0*/
 
   len = pbReadPacketIfPossible(pb, &pdb->outbuffer[0], MAX_PACKET_SIZE);
+#if 0
+  if (prudir == 0)
+    CSendPacket((uint8_t*) &len, 4);
+#endif
   if (len <= 0) return 0;       /* len < 0 "can't happen" */
   ++pdb->outstats.packetTransfers;
   return len;

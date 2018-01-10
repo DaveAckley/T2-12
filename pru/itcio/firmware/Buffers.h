@@ -93,18 +93,10 @@ struct PruDirs {
 
 extern struct PruDirs pruDirData;
 
-inline struct PRUDirBuffers * pruDirToBuffers(unsigned prudir) {
+inline struct PRUDirBuffers * pruDirToBuffersInline(unsigned prudir) {
   return &pruDirData.pruDirBuffers[prudir&3];
 }
 
-/*
-inline struct PRUPacketBuffer * pruDirToInPPB(unsigned prudir) {
-  return &pruDirToBuffers(prudir)->in;
-}
-
-inline struct PRUPacketBuffer * pruDirToOutPPB(unsigned prudir) {
-  return &pruDirToBuffers(prudir)->out;
-}
-*/
+extern struct PRUDirBuffers * pruDirToBuffers(unsigned prudir) ;
 
 #endif /* BUFFERS_H */
