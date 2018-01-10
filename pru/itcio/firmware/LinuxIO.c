@@ -20,7 +20,7 @@ struct PacketBuffer * (inboundPacketBufferPtrs[8]);
 struct PacketBuffer * (outboundPacketBufferPtrs[8]);
 static uint8_t payload[RPMSG_BUF_SIZE];
 static struct pru_rpmsg_transport transport;
-static unsigned firstPacket = 1;
+static unsigned awaitingFirstPacket = 1;
 static uint16_t firstSrc, firstDst;
 static void * sharedStatePhysicalAddress = 0;
 struct SharedState * getSharedStatePhysical(void)
@@ -81,7 +81,7 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
   int len = 0;
   int i;
 
-  if (firstPacket) return 0; /* Not ready yet */
+  if (awaitingFirstPacket) return 0; /* Not ready yet */
 
   buf[len++] = 0xc1; /* here comes a 'local standard' packet type 1 */
 
@@ -144,7 +144,7 @@ int CSendTagFromThread(uint32_t prudir, const char * str, uint16_t val)
   int len = 0;
   int i;
 
-  if (firstPacket) return 0; /* Not ready yet */
+  if (awaitingFirstPacket) return 0; /* Not ready yet */
 
   buf[len++] = 0xc2; /* here comes a 'local standard' packet type 2 */
 
@@ -185,7 +185,7 @@ int CSendTagFromThread(uint32_t prudir, const char * str, uint16_t val)
 
 int CSendPacket(uint8_t * data, uint32_t len)
 {
-  if (firstPacket) return 1; /* Not ready yet */
+  if (awaitingFirstPacket) return 1; /* Not ready yet */
   return pru_rpmsg_send(&transport, firstDst, firstSrc, data, len);
 }
 
@@ -225,7 +225,7 @@ int CSendVal(const char * str1, const char * str2, uint32_t val)
   int len = 0;
   int i;
 
-  if (firstPacket) return 0; /* Not ready yet */
+  if (awaitingFirstPacket) return 0; /* Not ready yet */
   buf[len++] = 0xc1; /* here comes a 'local standard' packet type 1 */
 
   /* First the value in hex */
@@ -305,9 +305,13 @@ void fillFail(const char * msg, uint8_t * packet, uint16_t len)
 
 volatile register uint32_t __R31;
 
-int processPackets() {
+/* retval == 0 if first packet not yet seen, else retval >= 0x80000000
+ * If retval > 0, then retval&0xffff is new activity flags for PSS.wCheckDirs
+ */
+unsigned processPackets() {
   uint16_t src, dst, len;
   int once = 1;
+  int result = 0;
 
   /* Receive all rpmsg messages available */
   while (1) {
@@ -322,11 +326,11 @@ int processPackets() {
       break;
     else {
 
-      if (firstPacket) {
+      if (awaitingFirstPacket) {  /* And here it is! */
         /* linux sends an @ packet to give us startup info */
         firstSrc = src;
         firstDst = dst;
-        firstPacket = 0;
+        awaitingFirstPacket = 0;
         handleAtPacket(payload,len);
         /* ack 1st packet */
         pru_rpmsg_send(&transport, dst, src, payload, len);
@@ -338,8 +342,10 @@ int processPackets() {
         if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE) {
           payload[0] |= PKT_STD_ERROR_VALUE; /* No, no, you should not be here. */
           ret = 1;
-        }
-        else
+        } else if (payload[0] == '\013') { /* ^K special handled here */
+          result |= payload[1];
+          result |= payload[2]<<8;
+        } else
           ret = processSpecialPacket(payload,len);
           
         if (ret) {
@@ -351,7 +357,7 @@ int processPackets() {
   }
 
   /* Once we're going, also handle all available downbound packets */
-  if (!firstPacket) {
+  if (!awaitingFirstPacket) {
     struct SharedState * ss = getSharedStatePhysical();
     struct SharedStatePerPru * sspp = &ss->pruState[ON_PRU];
     struct PacketBuffer * dpb = PacketBufferFromPacketBufferStorageInline(sspp->downbound);
@@ -362,7 +368,9 @@ int processPackets() {
     sss.prudir = 4;
     sss.inbound = 1;
     sss.bulk = 0;
-      
+
+    result |= 0x80000000;  /*Set the not-awaitingFirstPacket flag*/
+
     while ((len = pbReadPacketIfPossible(dpb, payload, RPMSG_BUF_SIZE)) > 0) {
       unsigned ret;
       //      CSendPacket((uint8_t*) "gots", 4); // XXXX
@@ -382,7 +390,7 @@ int processPackets() {
       }
     }
   }
-  return firstPacket;
+  return result;
 }
 
 

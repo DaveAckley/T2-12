@@ -22,7 +22,7 @@
 
 extern void initLinuxIO();
 
-extern int processPackets();
+extern unsigned processPackets();
 
 extern int CSendVal(const char * str1, const char * str2, uint32_t val);
 
