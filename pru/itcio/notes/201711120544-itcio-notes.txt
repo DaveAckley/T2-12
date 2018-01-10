@@ -1,4 +1,4 @@
-{404}  -*- text -*-
+{405}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6846,3 +6846,30 @@ multiplies and crab, so checkpoint committing all this ahead of trying
 it.. 
 
 :403]
+[404:
+
+Tue Jan  9 18:00:18 2018 OK, so we now have /sys/class/itc_pkt/cycles
+to read, which reports and resets the cycle counts for both prus.  And
+using that we were able to see that something huge like over 70% of
+our pru cycles were stalled.  Which was a perfectly believable reason
+why we were seeing barely 1Mpbs lately.
+
+So poking around we figured out we were still polling for rpmsgs a lot
+-- like every four LinuxThreadRunner gos -- so we started pushing that
+down.  Now we've pushed the polling rate to 0, so linux has to
+rpmsg_send to get us into LinuxIO.c:processPackets.  So our special
+command processing now does that.
+
+And with that we've pushed the stall rate down to like 25%.  Which is
+still horrible horrible, but a _little_ less horrible:
+
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles ;./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1  ;cat /sys/class/itc_pkt/cycles 
+    193540210 44167567 22% 193961934 44431665 22%
+    start Tue Jan  9 18:06:21 2018
+    sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 7.505329 sec; sent 1553736 bytes; 207.02 KBps, 1.656 Mbps
+    2271230031 522327099 22% 2270752990 474218557 20%
+    root@beaglebone:/home/t2/T2-12# 
+
+Committing.
+
+:404]
