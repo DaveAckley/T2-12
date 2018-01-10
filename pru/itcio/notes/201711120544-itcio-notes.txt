@@ -1,4 +1,4 @@
-{405}  -*- text -*-
+{409}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6873,3 +6873,95 @@ still horrible horrible, but a _little_ less horrible:
 Committing.
 
 :404]
+[405:
+
+Wed Jan 10 03:44:12 2018 Well, got the stall percentage down two or
+three percent but that only helped a little.  Bummer.  The big delays
+must be elsewhere.
+
+So, now we have linux sending 'outbound buffer X just went non-empty'
+kicks to the prus, and the LinuxRunner thread saves that info in a new
+set of pru-wide shared flags that each PacketRunner thread checks.  If
+the flag is set, they look for another outbound packet.  If it turns
+out the queue is empty, they clear that flag.
+
+
+    root@beaglebone:/home/t2/T2-12# cpufreq-set -f 720MHz
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles ; ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 ; cat /sys/class/itc_pkt/cycles ;
+    2743485146 584139 0.0% 2742612346 585849 0.0%
+    start Wed Jan 10 03:43:06 2018
+    sent 6150 rcvd 6150 100% err 0 ovr 0 lost 0 elapsed 4.303607 sec; sent 775256 bytes; 180.14 KBps, 1.441 Mbps
+    1240575308 26206315 2.1% 1241296882 26242959 2.1%
+    root@beaglebone:/home/t2/T2-12# cpufreq-set -f 800MHz
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles ; ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 ; cat /sys/class/itc_pkt/cycles ;
+    1169462574 250308 0.0% 1169728772 253521 0.0%
+    start Wed Jan 10 03:43:18 2018
+    sent 6150 rcvd 6150 100% err 0 ovr 0 lost 0 elapsed 4.000756 sec; sent 775256 bytes; 193.78 KBps, 1.550 Mbps
+    1154233210 26163871 2.2% 1153601003 26203220 2.2%
+    root@beaglebone:/home/t2/T2-12# cpufreq-set -f 1000MHz
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles ; ./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 ; cat /sys/class/itc_pkt/cycles ;
+    1237781190 269115 0.0% 1237417690 266873 0.0%
+    start Wed Jan 10 03:43:30 2018
+    sent 6150 rcvd 6150 100% err 0 ovr 0 lost 0 elapsed 3.534868 sec; sent 775256 bytes; 219.32 KBps, 1.755 Mbps
+    1006341321 26016061 2.5% 1006606982 26055312 2.5%
+    root@beaglebone:/home/t2/T2-12# 
+
+:405]
+[406:
+
+Wed Jan 10 04:25:31 2018 So let's steal this now; it's the kfifo.c
+guts for memcpy on the ring around.
+
+        l = min(len, size - off);
+
+        memcpy(fifo->data + off, src, l);
+        memcpy(fifo->data, src + l, len - l);
+
+        smp_wmb();
+
+len = incoming packet len                         AKA length
+size = buffer size                                AKA pb->bufferSize
+off = location in buffer to start writing         AKA pb->writePtr
+src = ptr to data                                 AKA data
+
+Now how the heck does kfifo get the recordlen in there?  Could we
+reserve a data[-1] to preserve the memcpy?[407:
+
+Wed Jan 10 05:22:27 2018 Well, reserving data[-1] might be possible
+but it's not a lovely approach and I'm really out of time for now.
+
+Just committing where we are.  Sigh.
+
+:407]
+
+:406]
+[408: t
+
+Wed Jan 10 05:31:29 2018 I would say one thing though: The perl code
+in XConRoutingTest.pl makes a noticeable difference -- like 20%
+anyway.  The early early runs I was doing had a lot less counting and
+packet-checking and so on in the script, and that helped it go
+faster.  Here's three runs on the current script, differing just by
+adding back packet tracking and stats and stuff:
+
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles >/dev/null;./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1;cat /sys/class/itc_pkt/cycles
+    start @ 1000 MHz [Wed Jan 10 05:29:41 2018]
+    sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 6.376719 sec; sent 1553736 bytes; 243.66 KBps, 1.949 Mbps
+    1493611273 51933192 3.4% 1492575791 51959196 3.4%
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles >/dev/null;./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1;cat /sys/class/itc_pkt/cycles
+    start @ 1000 MHz [Wed Jan 10 05:30:11 2018]
+    sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 7.032979 sec; sent 1553736 bytes; 220.92 KBps, 1.767 Mbps
+    1916890648 51834124 2.7% 1915829672 51944809 2.7%
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles >/dev/null;./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1;cat /sys/class/itc_pkt/cycles
+    start @ 1000 MHz [Wed Jan 10 05:31:01 2018]
+    sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 7.718072 sec; sent 1553736 bytes; 201.31 KBps, 1.610 Mbps
+    2148886552 52112903 2.4% 2149604305 52333920 2.4%
+    root@beaglebone:/home/t2/T2-12# 
+
+We go from 200KBps to 220KBps to 243KBps changing nothing but the test
+script..
+
+So we're losing most of our speed elsewhere, but it's just a reminder
+that end-to-end performance does depend on _everything_in_between_..
+
+:408]
