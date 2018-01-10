@@ -31,7 +31,8 @@ ThreadHeader:   .struct
 sThis:          .tag ThreadLoc  ; Our thread storage location
 sNext:          .tag ThreadLoc  ; Next guy's storage location
 	
-wFlags:         .ushort  ; flags (two LSB are thread id aka prudir for 0..2, 3 for linux)
+bID:            .ubyte          ; prudir 0..2, 3 for linux
+bFlags:         .ubyte          ; flags
 
 wResAddr:       .ushort ; Resume address after context switch	
 ThreadHeaderLen:       .endstruct
@@ -65,24 +66,15 @@ rBufAddr:       .uint ; base address of our struct PruDirBuffers
 IOThreadLen:   .endstruct
 
 PacketRunnerFlags:  .enum
-fThreadIDBit0:  .emember 0      ; LSB of thread id (True if prudir is 1 or 3)
-fThreadIDBit1:  .emember 1      ; MSB of thread id (True if prudir is 2 or 3)
-fPacketSync:    .emember 2      ; True if good packet delimiter has been seen
-fByteStuffed:   .emember 3      ; True if this output byte should be bitstuffed
-fStuffThisBit:  .emember 4      ; True if we need to stuff a zero now regardless of fByteStuffed
-fReportITags:   .emember 5      ; True if reporting input tag events
-fReportOTags:   .emember 6      ; True if reporting output tag events
-fTagBurst:      .emember 7      ; True if inside a self-delimiting burst of tag reporting
-fRSRV8:         .emember 8      ; reserved
-fRSRV9:         .emember 9      ; reserved
-fRSRV10:        .emember 10     ; reserved
-fRSRV11:        .emember 11     ; reserved
-fRSRV12:        .emember 12     ; reserved
-fRSRV13:        .emember 13     ; reserved
-fRSRV14:        .emember 14     ; reserved
-fRSRV15:        .emember 15     ; reserved
-
-        .endenum
+fPacketSync:    .emember 0      ; True if good packet delimiter has been seen
+fByteStuffed:   .emember 1      ; True if this output byte should be bitstuffed
+fStuffThisBit:  .emember 2      ; True if we need to stuff a zero now regardless of fByteStuffed
+fReportITags:   .emember 3      ; True if reporting input tag events
+fReportOTags:   .emember 4      ; True if reporting output tag events
+fTagBurst:      .emember 5      ; True if inside a self-delimiting burst of tag reporting
+fRSRV6:         .emember 6      ; reserved
+fRSRV7:         .emember 7      ; reserved
+                .endenum
         
 ;;; LinuxThread: Everything needed for packet processing
 LinuxThread:    .struct        
@@ -100,3 +92,25 @@ CT:     .sassign CTReg, IOThread
 
 LT:     .sassign CTReg, LinuxThread
 
+;;; CheckDirs: A byte for outbound and a byte for inbound dirs to check
+CheckDirs:      .struct
+bCheckOut:       .ubyte      ; check for outbound packet if bOutDirs[prudir]
+bCheckIn:        .ubyte      ; check for inbound space if bInDirs[prudir]
+CheckDirsLen:  .endstruct
+
+;;; CheckU
+CheckU:     .union
+sCD:    .tag CheckDirs
+w:      .ushort
+        .endunion
+
+;;; PSSStruct: One reg for state shared within each PRU
+PSSStruct:      .struct
+sCU:            .tag CheckU
+wRSRV1:         .ushort          ; reserved
+PSSStructLen:   .endstruct     
+
+;;; PSS is PRU-wide Shared State!  It lives in R5
+        .asg R5, PSSReg
+PSS:    .sassign PSSReg, PSSStruct
+        
