@@ -108,19 +108,20 @@ int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsig
 int pbReadPacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsigned length)
 {
   unsigned plen, l, r;
+  int ret;
   if (!pb || !data || length == 0) return -PBE_INVAL;
   plen = pbGetLengthOfOldestPacket(pb);
   if (plen == 0) return 0;
-  if (plen > length) {
-    pbDropOldestPacket(pb);     /* Don't choke on this same error forever? */
-    return -PBE_FBIG;
-  }
+  if (plen > length) {                    /* If packet longer than buffer */
+    plen = length;                        /* Just read what we can */
+    ret = -PBE_FBIG;                      /* But return an error code */
+  } else ret = plen;
   r = (pb->readPtr + 1) & pb->bufferMask; /*where we start reading*/
   l = min(plen, pb->bufferSize - r);      /*amt of packet before wrap*/
   memcpy(data, &pb->buffer[r], l);        /*transfer that part, if any*/
   memcpy(data+l, &pb->buffer[0], plen-l); /*transfer the rest, if any*/
   pbDropOldestPacket(pb);
-  return plen;
+  return ret;
 }
 
 #ifdef __KERNEL__
