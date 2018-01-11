@@ -20,7 +20,7 @@
 #include <linux/jiffies.h>	    /* for time_before(), time_after() */
 
 /* define MORE_DEBUGGING to be more verbose and slow*/
-#define MORE_DEBUGGING 1
+/*#define MORE_DEBUGGING 1*/
 
 #ifndef MORE_DEBUGGING
 #define MORE_DEBUGGING 0
@@ -31,6 +31,15 @@ static ITCPacketDriverState S;
 static int debugflags = 0;
 module_param(debugflags, int, 0);
 MODULE_PARM_DESC(debugflags, "Extra debugging flags; 0 for none");
+
+static char * pruAndPruDirToDirName(unsigned pru, unsigned prudir) {
+  if (pru==0) 
+    switch(prudir) { case 0: return "ET"; case 1: return "SE"; case 2: return "SW"; default: return "0?"; }
+  else if (pru==1) 
+    switch(prudir) { case 0: return "WT"; case 1: return "NW"; case 2: return "NE"; default: return "1?"; }
+  else
+    return "??";
+}
 
 static int itcpktThreadRunner(void *arg) {
   const int jiffyTimeout = HZ/10;
@@ -204,15 +213,10 @@ int ship_packet_to_pru(unsigned prunum, unsigned wait, char * pkt, unsigned pktl
       ret = pbReadPacketIfPossible(upb, pkt, pktlen);
       Dbgprintk(KERN_INFO "shippacketpru read %d\n",ret);
       if (ret < 0) {
-        char buf[200];
-        int len;
-        len = pbReadPacketIfPossible(upb, buf, 200);
         printk(KERN_ERR "special packet response read failed (%d)\n", ret);
-        if (len >= 0)
-          Dbgprint_hex_dump(DBG_PKT_RCVD,
-                            KERN_INFO, prunum ? "{pru1: " : "{pru0: ",
-                            DUMP_PREFIX_NONE, 16, 1,
-                            buf, len, true);
+        print_hex_dump(KERN_INFO, prunum ? "{pru1: " : "{pru0: ",
+                       DUMP_PREFIX_NONE, 16, 1,
+                       pkt, pktlen, true);
       } else {
         Dbgprint_hex_dump(DBG_PKT_RCVD,
                           KERN_INFO, prunum ? "{pru1: " : "{pru0: ",
@@ -532,6 +536,16 @@ static int routeStandardPacket(PBID * sss, const unsigned char * buf, size_t len
   return 0;
 }
 
+static void processNotification(uint8_t* data)
+{
+  unsigned pru = data[0]&1;
+  unsigned prudir = data[1];
+
+  printk(KERN_INFO "!pru%d: %s %c%c\n",
+         pru, pruAndPruDirToDirName(pru,prudir),
+         data[2], data[3]);
+}
+
 static void processBufferKick(PBID* sss)
 {
   //  static unsigned kicks = 0;
@@ -829,7 +843,7 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
     u8 * d = (u8*) data;
     u8 type =  d[0];
 
-    if (type >= 2)
+    if (type >= 3)
       Dbgprint_hex_dump(DBG_PKT_RCVD,
                         KERN_INFO, minor ? "<pru1: " : "<pru0: ",
                         DUMP_PREFIX_NONE, 16, 1,
@@ -850,12 +864,19 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
       }
       printk(KERN_ERR "SUMMON THE REIMPLEMENTOR?  Routed packet arrived via rpmsg\n");
     } else {
-      if (type<2) { // Then it's a shared state buffer kick from PRU(type)
+      if (type<2) { // NULL or ^A: It's a shared state buffer kick from PRU(type&1)
 
         if (len != 4) {
           printk(KERN_ERR "Length %d buffer kick received, ignored\n",len);
         } else {
           processBufferKick((PBID*) data);
+        }
+      } else if (type<4) { // ^B or ^C: It's a notification from PRU(type&1)
+
+        if (len != 4) {
+          printk(KERN_ERR "Length %d notification received, ignored\n",len);
+        } else {
+          processNotification((char*)data);
         }
       } else {
         if (minor == 0) {
