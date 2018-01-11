@@ -1,4 +1,4 @@
-{414}  -*- text -*-
+{415}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -7104,3 +7104,43 @@ Thu Jan 11 03:22:33 2018 Committing.
 :412]
 
 :411]
+[414:
+
+Thu Jan 11 06:45:09 2018 OK well not quite shifted off yet..  Did
+three things:
+
+DONE 1 - Did some clean up to standardize a notion of 'notifications'
+         and get rid of those startup packets clogging
+         /dev/itc/pru[01].
+
+DONE 2 - Also modified packet buffer reading to read as much as
+         possible if the destination is too small, but then return
+         -EFBIG at the end.  This both can help debugging and also
+         gets the packet out of the pb.
+
+DONE 3 - Aaaand, created a clock timeout so that we'll wait only 65K
+         PacketRunner thread suspends for the far side to tick, and if
+         they can't manage that we blow sync with a frame error.  That
+         works quite nicely for detecting unplugged cables and such,
+         although 65K is short enough that we get some 'sync bouncing'
+         when making live connections, like this:
+
+    [ 8547.587551] !pru0: SE FE
+    [ 8547.590242] !pru1: NW FE
+
+Two frame error (FE) notifications occur when I pulled the SE/NW cable
+at 8547.
+
+    [ 8551.723388] !pru0: SE PS
+    [ 8551.726056] !pru0: SE FE
+    [ 8551.728637] !pru0: SE PS
+    [ 8551.769759] !pru1: NW PS
+
+When I reconnected the cable at 8551, the SE engine bounced sync once,
+while the NW engine's first packet sync (PS) held.
+
+And, DONE 3 appears not to slow the bit rate noticeably.
+
+Committing.
+
+:414]
