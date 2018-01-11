@@ -719,8 +719,9 @@ static unsigned all_priority_pbs_empty(void)
   unsigned ret = 0;
   for (pbi = 0; pbi < 6; ++pbi) {
     if (!pbIsEmptyInline(S.fastInBufs[pbi])) {
-      ++ret;
-      Dbgprintk(KERN_INFO "%u non-empty %u/%s\n", ret, pbi, PBToString(S.fastInBufs[pbi]));
+      return 0;
+      //      ++ret;
+      //      Dbgprintk(KERN_INFO "%u non-empty %u/%s\n", ret, pbi, PBToString(S.fastInBufs[pbi]));
     }
   }
   return !ret;
