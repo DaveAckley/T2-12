@@ -1,4 +1,4 @@
-{409}  -*- text -*-
+{414}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6693,7 +6693,7 @@ machine-oriented: There are two PRUs, ergo /dev/itc/pru0 and pru1..
 Could we do like /dev/itc/ET/bulk and /dev/itc/ET/prio ? and let you
 open whichever you want?  At my level of competence, it would be
 minors out the gazoo plus that awkward itc!pkt device notation, I
-guess.  
+guess.
 
 
 :395]
@@ -6780,7 +6780,7 @@ returns true if any of the priority pbs are non-empty..
 [398:
 
 Sun Jan  7 09:27:27 2018 OK, well, progress.  We have packets moving
-userspace to userspace, but things are still a little broken  -- 
+userspace to userspace, but things are still a little broken  --
 the packets tests/PKT/XConRoutingTest.pl is getting back look a little
 different than they used to and it's not recognizing them.  So that
 needs to be debugged, but time for a nap first.  Committing this
@@ -6843,7 +6843,7 @@ not detectably beyond.
 In any case, have just done a asm rehack to do the byte-level
 load/storing directly in asm instead of calling C and having it do
 multiplies and crab, so checkpoint committing all this ahead of trying
-it.. 
+it..
 
 :403]
 [404:
@@ -6863,12 +6863,12 @@ command processing now does that.
 And with that we've pushed the stall rate down to like 25%.  Which is
 still horrible horrible, but a _little_ less horrible:
 
-    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles ;./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1  ;cat /sys/class/itc_pkt/cycles 
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles ;./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1  ;cat /sys/class/itc_pkt/cycles
     193540210 44167567 22% 193961934 44431665 22%
     start Tue Jan  9 18:06:21 2018
     sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 7.505329 sec; sent 1553736 bytes; 207.02 KBps, 1.656 Mbps
     2271230031 522327099 22% 2270752990 474218557 20%
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 Committing.
 
@@ -6904,7 +6904,7 @@ out the queue is empty, they clear that flag.
     start Wed Jan 10 03:43:30 2018
     sent 6150 rcvd 6150 100% err 0 ovr 0 lost 0 elapsed 3.534868 sec; sent 775256 bytes; 219.32 KBps, 1.755 Mbps
     1006341321 26016061 2.5% 1006606982 26055312 2.5%
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 :405]
 [406:
@@ -6956,7 +6956,7 @@ adding back packet tracking and stats and stuff:
     start @ 1000 MHz [Wed Jan 10 05:31:01 2018]
     sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 7.718072 sec; sent 1553736 bytes; 201.31 KBps, 1.610 Mbps
     2148886552 52112903 2.4% 2149604305 52333920 2.4%
-    root@beaglebone:/home/t2/T2-12# 
+    root@beaglebone:/home/t2/T2-12#
 
 We go from 200KBps to 220KBps to 243KBps changing nothing but the test
 script..
@@ -6965,3 +6965,142 @@ So we're losing most of our speed elsewhere, but it's just a reminder
 that end-to-end performance does depend on _everything_in_between_..
 
 :408]
+[409:
+
+Wed Jan 10 09:21:21 2018 Well then:
+
+Before latest change:
+
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles >/dev/null;./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1;cat /sys/class/itc_pkt/cycles
+    start @ 1000 MHz [Wed Jan 10 09:13:48 2018]
+    sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 6.993387 sec; sent 1553736 bytes; 222.17 KBps, 1.777 Mbps
+    1910398315 51773613 2.7% 1909658122 51857291 2.7%
+
+1.777 Mbps.
+
+After latest change:
+
+    root@beaglebone:/home/t2/T2-12# cat /sys/class/itc_pkt/cycles >/dev/null;./tests/PKT/XConRoutingTest.pl 1 1 1 1 1 1 1 1 1 1 1;cat /sys/class/itc_pkt/cycles
+    start @ 1000 MHz [Wed Jan 10 09:20:54 2018]
+    sent 12294 rcvd 12294 100% err 0 ovr 0 lost 0 elapsed 3.649394 sec; sent 1553736 bytes; 425.75 KBps, 3.406 Mbps
+    1244492778 51731123 4.1% 1243601078 51682626 4.1%
+    root@beaglebone:/home/t2/T2-12#
+
+3.406 Mbps.
+
+Latest change: Putting the memcpy-if-no-wrap special cases into
+pbReadPacketIfPossibleToUser and pbWritePacketIfPossibleFromUser,
+except with copy_to_user and copy_from_user instead of memcpy.
+
+Thank Gob.
+[410:
+
+Wed Jan 10 09:30:55 2018 So, grepping for Mbps in this file, it
+appears 3.406 Mbps is a record for the time _since_ we started
+insisting that prus shouldn't take a packet they don't have room for.
+(Since :316:)
+
+I think we can call the mythical 5-6 Mbps numbers from before that
+time just out of bounds on functionality..  Although we would like to
+get closer to them again..  Let's say closer to 4 Mbps all in.
+
+:410]
+:409]
+[411:
+
+Thu Jan 11 02:03:19 2018 OK well it's time to tie a ribbon around this
+whole winter break hack run.  We never got to the 7s of :376:, and we
+can call them as good as beacon as any whenever we can return to this
+after things settle down.
+
+Additional cautions we now have about speed testing
+userspace->userspace:
+
+ - The speed numbers are noisy even with 100KBs of net transfers per
+   test.  At the very least, the first test or two needed to be
+   discarded if none have been run for a while.
+
+ - The amount of sanity-checking code in the speed tester matters
+   significantly.  We should take a command line arg to enable speed
+   testing vs error testing.
+
+ - Currently, the CPU frequency also seems to make a significant
+   difference.  This is massively unsurprising from one point of view,
+   but sometimes it seems the bottleneck is in the PRUs or the memory
+   system or wherever, and CPU freq matters less.
+
+On that point, right now we're talking differences like these:
+
+start @ 300 MHz [Thu Jan 11 02:40:15 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 2.548409 sec; sent 388396 bytes; 152.41 KBps, 1.219 Mbps
+
+start @ 300 MHz [Thu Jan 11 02:39:54 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 2.385296 sec; sent 388396 bytes; 162.83 KBps, 1.303 Mbps
+
+start @ 600 MHz [Thu Jan 11 02:38:41 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 1.266010 sec; sent 388396 bytes; 306.79 KBps, 2.454 Mbps
+
+start @ 600 MHz [Thu Jan 11 02:39:22 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 1.283531 sec; sent 388396 bytes; 302.60 KBps, 2.421 Mbps
+
+start @ 720 MHz [Thu Jan 11 02:01:59 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 1.129328 sec; sent 388396 bytes; 343.92 KBps, 2.751 Mbps
+
+start @ 720 MHz [Thu Jan 11 02:35:06 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 1.099277 sec; sent 388396 bytes; 353.32 KBps, 2.827 Mbps
+
+start @ 800 MHz [Thu Jan 11 02:34:00 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 1.005427 sec; sent 388396 bytes; 386.30 KBps, 3.090 Mbps
+
+start @ 800 MHz [Thu Jan 11 02:35:42 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 0.992389 sec; sent 388396 bytes; 391.37 KBps, 3.131 Mbps
+
+start @ 1000 MHz [Thu Jan 11 02:36:05 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 0.881985 sec; sent 388396 bytes; 440.37 KBps, 3.523 Mbps
+
+start @ 1000 MHz [Thu Jan 11 02:36:24 2018]
+sent 3078 rcvd 3078 100% err 0 ovr 0 lost 0 elapsed 0.842115 sec; sent 388396 bytes; 461.21 KBps, 3.690 Mbps
+[412:
+
+Thu Jan 11 02:48:49 2018 Which looks somewhat linear over the range:
+
+        Userspace Bandwidth (Mbps, via external loopback) vs CPU frequency
+
+    4 ++--------+---------+---------+--------+---------+---------+--------++
+      +         +         +         +        +     "speed-test.dat" **A*** +
+      |                                                                    A
+  3.5 ++                                                              *****A
+      |                                                     **********     |
+      |                                              **A****               |
+    3 ++                                         ****                     ++
+      |                                      **A*                          |
+  2.5 ++                               ******                             ++
+      |                           **A**                                    |
+      |                      *****                                         |
+    2 ++                *****                                             ++
+      |            *****                                                   |
+      |       *****                                                        |
+  1.5 ++ *****                                                            ++
+      A**                                                                  |
+      A         +         +         +        +         +         +         +
+    1 ++--------+---------+---------+--------+---------+---------+--------++
+     300       400       500       600      700       800       900       1000
+                                 CPU freq (MHz)
+
+
+at least at the granularity of good old gnuplot set term dumb.
+
+(And when those results seem totally pitiful to real communications
+folk who take a look, I can only say: I Know Right?  We SO need real
+communications folk to take a look!)
+
+(For the record we also note all those tests are with mfms running.)
+
+[413:
+
+Thu Jan 11 03:22:33 2018 Committing.
+
+:413]
+:412]
+
+:411]
