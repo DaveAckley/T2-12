@@ -36,10 +36,11 @@ for (my $i = 0; $i < $expandos; ++$i) {
 for (my $i = 0; $i < scalar(@args); ++$i) {
     $args[$i] .= $i;
 }
-my @sndstoppers = ("\201${tag}END\201",   "\202${tag}END\202",   "\203${tag}END\203", 
-                   "\205${tag}END\205",   "\206${tag}END\206",   "\207${tag}END\207");
-my %rcvstoppers = ("\205${tag}END\201"=>1,"\206${tag}END\202"=>1,"\207${tag}END\203"=>1,
-                   "\201${tag}END\205"=>1,"\202${tag}END\206"=>1,"\203${tag}END\207"=>1);
+my $s = "extra stuff to make bigger packets;aslkdfh;owier;o8q3wr;olasdhg;o2wih3tgobbbbb2wehg9we8gydo;ljsgh;lashdgn;lxkhn";
+my @sndstoppers = ("\201${tag}${s}END\201",   "\202${tag}${s}END\202",   "\203${tag}${s}END\203", 
+                   "\205${tag}${s}END\205",   "\206${tag}${s}END\206",   "\207${tag}${s}END\207");
+my %rcvstoppers = ("\205${tag}${s}END\201"=>1,"\206${tag}${s}END\202"=>1,"\207${tag}${s}END\203"=>1,
+                   "\201${tag}${s}END\205"=>1,"\202${tag}${s}END\206"=>1,"\203${tag}${s}END\207"=>1);
 #print join("--\n",keys  %rcvstoppers);
 @args = (@args, @sndstoppers);
 use Time::HiRes;
@@ -58,14 +59,14 @@ my %allunrcvd;
 while (scalar(@args)) {
     my $pkt = rand() > 0.5 ? shift @args : pop @args;
     my $len;
+    processAvailablePackets();
     while (1) {
-        processAvailablePackets();
         $len = syswrite(PKTS, $pkt);
         last if defined($len);
         next if ($mode & O_NONBLOCK) and $!{EAGAIN};
         die "Error: $!";
     }
-    ++$allunrcvd{substr($pkt,1)};
+#    ++$allunrcvd{substr($pkt,1)};
     $pktssent++;
     $bytessent += $len;
 #    print "O$pktssent $pkt O$pktssent\n";
@@ -97,10 +98,7 @@ printf("sent %d rcvd %d %3.0f%% err %d ovr %d lost %d elapsed %f sec; sent %d by
        $pkterror, $pktoverrun,
        $pktssent-$pktsrcvd,
        $sec, $bytessent, $KBps, $Mbps);
- for my $p (sort keys %allunrcvd) {
-     my $v = $allunrcvd{$p};
-     print "$v $p\n" if defined($v) && $v != 0;
- }
+# for my $p (sort keys %allunrcvd) {my $v = $allunrcvd{$p}; print "$v $p\n" if defined($v) && $v != 0;}
 
 sub processAvailablePackets {
     my $count;
@@ -112,8 +110,8 @@ sub processAvailablePackets {
         } elsif ($type & 0x08) {
             ++$pkterror;
         } else {
-            print "HUH? ($pkt)\n" unless defined $allunrcvd{substr($pkt,1)};
-            --$allunrcvd{substr($pkt,1)};
+#            print "HUH? ($pkt)\n" unless defined $allunrcvd{substr($pkt,1)};
+#            --$allunrcvd{substr($pkt,1)};
             ++$rcvcount{$pkt};
             $bytesrcvd += $count;
             $pktsrcvd++;
