@@ -153,9 +153,6 @@ startStateMachines:
         saveThisThread                             ; Stash thread 3
         ;; Done with by-hand thread inits
 
-        ;; Report in             
-        sendVal PRUX_STR,""" Releasing the hounds""", CT.sTH.wResAddr ; Report in
-
         ;; Thread 3 is still loaded
         jmp CT.sTH.wResAddr     ; Resume it
 	exitFunc 2

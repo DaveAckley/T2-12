@@ -57,7 +57,7 @@ wInpByte:       .ushort  ; bytes already written of inbound packet
 ;;; CT+5
 bOut1Cnt:       .ubyte  ; current count of output 1s sent
 bInp1Cnt:       .ubyte  ; current count of input 1s received
-wRSRV2:         .ushort
+wSpinCount:     .ushort ; Timer for seeing clock edges
 ;;; CT+6
 rRunCount:      .tag UB4
 ;;; CT+7

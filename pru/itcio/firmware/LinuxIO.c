@@ -74,6 +74,13 @@ static const char * (prudirnames[3]) = {
 #endif
 };
 
+int CSendReg(uint32_t reg)
+{
+  uint32_t buf = reg;
+  if (awaitingFirstPacket) return 0; /* Not ready yet */
+  return CSendPacket((uint8_t*) &buf,sizeof(buf));  /* Send it */
+}
+
 int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
 {
   enum { BUF_LEN = 50 };
@@ -181,7 +188,6 @@ int CSendTagFromThread(uint32_t prudir, const char * str, uint16_t val)
   
   return 1;  
 }
-
 
 int CSendPacket(uint8_t * data, uint32_t len)
 {

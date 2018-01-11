@@ -22,8 +22,9 @@ PacketRunner:
 	ldi CT.bInpBNum, 7             ; Init 7 says And next bit number to read is bit 7
 	ldi CT.bInp1Cnt, 0             ; Init 0 says No run of 1s have been seen on input
 	ldi CT.bOut1Cnt, 0             ; Init 0 says we haven't transmitted any run of 1s lately
-        ldi CT.wRSRV2, ('d'<<8+'a')    ; XXXX: Make visible
 
+        notify2 "'U'","'P'"               ; Report we're starting
+	
         ;; FALL INTO getNextStuffedBit
 	
 getNextStuffedBit:  ;; Here to find next output bit to transmit
@@ -110,11 +111,15 @@ makeFallingEdge:  ;; Here to make a falling edge
 	sendOTag """MFE""",CT.bOutBNum ; report in as output event
 	sendITag """MFE""",CT.bInpBNum ; now report in as an input event
         clr r30, r30, CT.bTXRDYPin      ; TXRDY falls
+	ldi CT.wSpinCount, 0            ; Init our clock timeout
 	saveResumePoint lowCheckClockPhases ; Set where to resume to and save this context
 	
 	;; FALL INTO clockLowLoop
 	
-clockLowLoop:  resumeNextThread          ; Context switch, without saving, to wait after falling edge
+clockLowLoop:
+        add CT.wSpinCount, CT.wSpinCount, 1 ; Count times waiting for clock edge
+        qbeq frameError,CT.wSpinCount, 0    ; Declare frame error if we loop
+        resumeAgain
 lowCheckClockPhases:
         .if ON_PRU == 0
           qbbc clockLowLoop, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 0, you 0, we're good
@@ -171,23 +176,13 @@ frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, w
 	sendITag """FMER""",CT.wInpByte               ; report in
 	qbbc resetAfterDelimiter, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Don't report a problem unless we're synced
 	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Blow packet sync
-	ldThreadID r14          ; arg1 is prudir
-	mov r15, CT.wInpByte    ; arg2 is number of bytes written
-	mov r16, r6             ; arg3 is first reg
-	mov r17, r7
-	mov r18, r8
-	mov r19, r9
-	mov r20, r10
-	mov r21, r11
-	mov r22, r12
-	mov r23, r13
-        jal r3.w2, ppbReportFrameError ; Notify upstairs that we got problems down heah
+	notify2 "'F'","'E'"            ; Report frame error, sync lost
         jmp resetAfterDelimiter
 
 achievePacketSync: ;; Here to achieve packet sync when we didn't already have it
 	sendITag """APS""",CT.sTH.bFlags               ; report in
         set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Achieve packet sync
-	sendFromThread """PS""", CT.rRunCount.r ; Report that
+	notify2 "'P'","'S'"                            ; Report sync gained
 
 	;; FALL INTO resetAfterDelimiter
 
@@ -257,10 +252,15 @@ makeRisingEdge: ;; Here to make a rising clock edge
 	sendOTag """MRE""",CT.rRunCount.r      ; now report in as output event
         set r30, r30, CT.bTXRDYPin        ; TXRDY rises
 	add CT.rRunCount.r,  CT.rRunCount.r, 1 ; Count rising edges
-        saveResumePoint highCheckClockPhases ; Set where to resume to, and save this context
+	ldi CT.wSpinCount, 0                   ; Init our clock timeout
+	saveResumePoint highCheckClockPhases 
 	
 	;; FALL INTO clockHighLoop
-clockHighLoop:  resumeNextThread          ; Context switch, without saving, to wait after rising edge
+clockHighLoop:
+        add CT.wSpinCount, CT.wSpinCount, 1 ; Count times waiting for clock edge
+        qbeq frameError,CT.wSpinCount, 0    ; Declare frame error if we loop
+        resumeAgain
+        
 highCheckClockPhases:
         .if ON_PRU == 0 
           qbbs clockHighLoop, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 1, you 1, we're good
