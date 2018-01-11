@@ -86,37 +86,39 @@ unsigned int pbDropOldestPacket(struct PacketBuffer *pb)
   return pbDropOldestPacketInline(pb);
 }
 
+static inline unsigned min(unsigned a, unsigned b) { if (a<b) return a; return b; }
+
 int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsigned length)
 {
   int hadUsed;
+  unsigned l, w;
   if (!pb || !data || length == 0) return -PBE_INVAL;
   if (length > 255) return -PBE_FBIG;
   if (pbAvailableBytes(pb) < length + 1) return -PBE_NOMEM;
   hadUsed = pbUsedBytesInline(pb);
-  pbStartWritingPendingPacket(pb);
-  /*XXX LET'S GET SOME MEMCPY ACTION MOVING IN HERE*/
-  if (pb->writePtr + length + 1 < pb->bufferSize) {
-    memcpy(&pb->buffer[pb->writePtr + 1], data, length);
-    pb->writeIdx = length;
-  } else 
-    while (length-- > 0) pbWriteByteInPendingPacketInline(pb, *data++);
-  pbCommitPendingPacket(pb);
+  w = (pb->writePtr + 1) & pb->bufferMask; /*where we start writing packet data*/
+  l = min(length, pb->bufferSize - w);     /*amt of packet before wrap*/
+  memcpy(&pb->buffer[w], data, l);         /*transfer that part, if any*/
+  memcpy(&pb->buffer[0], data+l, length-l); /*transfer the rest, if any*/
+  pb->writeIdx = length;                    /*set up to stash length separately, sigh*/
+  pbCommitPendingPacket(pb);                /*move writeptr; make packet visible*/
   return hadUsed==0; /*nonzero if had been empty */
 }
 
 int pbReadPacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsigned length)
 {
-  unsigned plen, i;
+  unsigned plen, l, r;
   if (!pb || !data || length == 0) return -PBE_INVAL;
   plen = pbGetLengthOfOldestPacket(pb);
   if (plen == 0) return 0;
-  if (plen > length) return -PBE_FBIG;
-  pbStartReadingOldestPacket(pb);
-  if (pb->readPtr + plen + 1 < pb->bufferSize) 
-    memcpy(data, &pb->buffer[pb->readPtr + 1], plen);
-  else  /*XXX LET'S GET SOME DOUBLE-SPLIT MEMCPY ACTION MOVING IN HERE*/
-    for (i = 0; i < plen; ++i)
-      data[i] = pbReadByteFromOldestPacketInline(pb);
+  if (plen > length) {
+    pbDropOldestPacket(pb);     /* Don't choke on this same error forever? */
+    return -PBE_FBIG;
+  }
+  r = (pb->readPtr + 1) & pb->bufferMask; /*where we start reading*/
+  l = min(plen, pb->bufferSize - r);      /*amt of packet before wrap*/
+  memcpy(data, &pb->buffer[r], l);        /*transfer that part, if any*/
+  memcpy(data+l, &pb->buffer[0], plen-l); /*transfer the rest, if any*/
   pbDropOldestPacket(pb);
   return plen;
 }
@@ -125,45 +127,42 @@ int pbReadPacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsign
 #include <asm/uaccess.h>           /* Required for the copy to user function */
 int pbWritePacketIfPossibleFromUser(struct PacketBuffer *pb, void __user * from, unsigned length)
 {
-  u8 byte;
   u8 __user * cfrom = (u8*) from;
-  unsigned i;
+  unsigned l, w;
   if (!pb || !from || length == 0) return -PBE_INVAL;
   if (length > 255) return -PBE_FBIG;
   if (pbAvailableBytes(pb) < length + 1) return -PBE_NOMEM;
-  pbStartWritingPendingPacket(pb);
 
-  /*XXX LET'S GET SOME MEMCPYISH ACTION MOVING IN HERE*/
-  for (i = 0; i < length; ++i) {
-    int ret = copy_from_user(&byte, &cfrom[i], 1);
-    if (ret != 0) {
-      printk(KERN_ERR "pb: copy_from_user failed\n");
-      return -PBE_FAULT;
-    }
-    pbWriteByteInPendingPacketInline(pb, byte);
+  w = (pb->writePtr + 1) & pb->bufferMask; /*where we start writing packet data*/
+  l = min(length, pb->bufferSize - w);     /*amt of packet before wrap*/
+  if (copy_from_user(&pb->buffer[w], cfrom, l) || /*transfer part before wrap if any*/
+      copy_from_user(&pb->buffer[0], cfrom+l, length-l)) { /*and part after wrap if any*/
+    printk(KERN_ERR "pb: copy_from_user failed\n");
+    return -PBE_FAULT;
   }
+  pb->writeIdx = length;        /* set up to stash length */
   pbCommitPendingPacket(pb);
   return 0;
 }
 
 int pbReadPacketIfPossibleToUser(struct PacketBuffer *pb, void __user * to, unsigned length)
 {
-  unsigned plen, i;
+  unsigned plen, l, r;
   int error = 0;
   u8 __user * cto = (u8*) to;
   if (!pb || !to || length == 0) return -PBE_INVAL;
   plen = pbGetLengthOfOldestPacket(pb);
   if (plen == 0) return 0;
-  if (plen > length) return -PBE_FBIG;
-  pbStartReadingOldestPacket(pb);
-  /*XXX LET'S GET SOME MEMCPY ACTION MOVING IN HERE*/
-  for (i = 0; i < plen; ++i) {
-    u8 byte = (u8) pbReadByteFromOldestPacketInline(pb);
-    error = copy_to_user(&cto[i], &byte, 1);
-    if (error < 0)
-      break;
+  if (plen > length) error = -PBE_FBIG;
+  else {
+    r = (pb->readPtr + 1) & pb->bufferMask; /*where we start reading*/
+    l = min(plen, pb->bufferSize - r);      /*amt of packet before wrap*/
+    if (copy_to_user(cto, &pb->buffer[r], l) || /*transfer part before wrap if any*/
+        copy_to_user(cto+l, &pb->buffer[0], plen-l)) {/*and part after wrap if any*/
+      printk(KERN_ERR "pb: copy_to_user failed\n");
+      error = -PBE_FAULT;
+    }
   }
-
   pbDropOldestPacket(pb);
   if (error < 0) return error;
   return plen;
