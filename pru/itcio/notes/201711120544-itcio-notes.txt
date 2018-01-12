@@ -1,4 +1,4 @@
-{415}  -*- text -*-
+{416}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -7144,3 +7144,69 @@ And, DONE 3 appears not to slow the bit rate noticeably.
 Committing.
 
 :414]
+[415:
+
+Fri Jan 12 05:26:41 2018 OK, committing a bit more stuff.  Was being
+bugged by the fact that when writing a packet, we write the bulk of
+the packet with a memcpy, but then go back and punch in the packet
+length with a single byte write afterwards.
+
+Wrote an asm variation on memcpy I called 'prememcpy', that takes a
+fourth argument that is a single extra byte to prepend to the second
+argument data as part of the overall third argument length.  Instead
+of:
+
+  void *memcpy(void *dest, const void *src, size_t n);
+
+it's
+
+  void *prememcpy(void *dest, const void *src, size_t n, unsigned extrabyte);
+  
+where now we only read n-1 bytes from src but still write n bytes to
+dest.
+
+Then wrote a special PRU-side pbWritePacketIfPossible that uses
+prememcpy.
+
+Then discovered it didn't help a whole lot -- maybe a little, but not
+a lot -- and remembered about write posting, which means that final
+extra byte write will often not hurt very much anyway.
+
+Leaving it in anyway.  Superstitiously feel like the numbers are a
+little better, and it's hard to see how they would be worse.
+
+Also firmed up XConRoutingTest.pl a bit, to do checking or speed based
+on a '-check' command line flag, and just take a single number saying
+how many times to double the number of packets sent.
+
+And small tweaks here and there.
+
+Current xcon output looks like this:
+
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 10
+    start @ 1000 MHz (no checking) [Fri Jan 12 05:37:09 2018]
+    sent 6150 rcvd 6150 100% err 0 ovr 0 lost 0 elapsed 1.705605 sec; sent 775922 bytes; 454.92 KBps, 3.639 Mbps
+    stall ratio: pru0 = 2.4%, pru1 = 2.4%
+    root@beaglebone:/home/t2/T2-12#
+
+or
+
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl -check 8
+    start @ 1000 MHz (checking) [Fri Jan 12 05:38:07 2018]
+    sent 1542 rcvd 1542 100% err 0 ovr 0 lost 0 elapsed 0.570729 sec; sent 193778 bytes; 339.53 KBps, 2.716 Mbps
+    stall ratio: pru0 = 1.9%, pru1 = 1.9%
+    root@beaglebone:/home/t2/T2-12# 
+
+or
+
+    root@beaglebone:/home/t2/T2-12# ./tests/PKT/XConRoutingTest.pl 
+    start @ 1000 MHz (no checking) [Fri Jan 12 05:41:10 2018]
+    sent 12 rcvd 12 100% err 0 ovr 0 lost 0 elapsed 0.006248 sec; sent 1580 bytes; 252.88 KBps, 2.023 Mbps
+    stall ratio: pru0 = 0.3%, pru1 = 0.3%
+    root@beaglebone:/home/t2/T2-12# 
+
+So that's the story Jerry.
+
+Committing.
+
+:415]
