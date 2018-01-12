@@ -67,6 +67,7 @@ COBJ1_FILES+=$(SHARED_STATE_COBJ_FILES)
 # 'Standard organization' asm source files
 ASRC_FILES+=PacketRunner.asm
 ASRC_FILES+=Threads.asm
+ASRC_FILES+=prememcpy.asm
 AOBJ0_FILES:=$(patsubst %.asm,$(GEN_DIR)/%_pru0.object,$(ASRC_FILES))
 AOBJ1_FILES:=$(patsubst %.asm,$(GEN_DIR)/%_pru1.object,$(ASRC_FILES))
 

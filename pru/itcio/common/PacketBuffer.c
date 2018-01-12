@@ -88,6 +88,7 @@ unsigned int pbDropOldestPacket(struct PacketBuffer *pb)
 
 static inline unsigned min(unsigned a, unsigned b) { if (a<b) return a; return b; }
 
+#ifndef __TI_COMPILER_VERSION__  /*symbol used as a proxy for "compiling for prus"*/
 int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsigned length)
 {
   int hadUsed;
@@ -104,6 +105,33 @@ int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsig
   pbCommitPendingPacket(pb);                /*move writeptr; make packet visible*/
   return hadUsed==0; /*nonzero if had been empty */
 }
+#else
+
+extern void * prememcpy(void * to, void * from, unsigned size, unsigned firstbyte);
+
+int pbWritePacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsigned length)
+{
+  int hadUsed;
+  unsigned l, r, w;
+  if (!pb || !data || length == 0) return -PBE_INVAL;
+  if (length > 255) return -PBE_FBIG;
+  if (pbAvailableBytes(pb) < length + 1) return -PBE_NOMEM;
+  hadUsed = pbUsedBytesInline(pb);
+  w = pb->writePtr;              /*where we start writing pktlen + packet data*/
+  l = length + 1;                /*total amount to write (with length to read) */
+  r = pb->bufferSize - w;        /*room in buffer before wrap*/
+  if (r >= l)                    /*if all fits before wrap*/
+    prememcpy(&pb->buffer[w], data, l, length);  /*write whole thing in place */
+  else {
+    prememcpy(&pb->buffer[w], data, r, length);  /*transfer first part with prepended length */
+    memcpy(&pb->buffer[0], data+(r-1), l-r);     /*transfer the rest*/
+  }
+
+  /* Packet becomes visible to reader when writePtr is updated. */
+  pb->writePtr = (pb->writePtr + l) & pb->bufferMask;
+  return hadUsed==0; /*nonzero if had been empty */
+}
+#endif
 
 int pbReadPacketIfPossible(struct PacketBuffer *pb, unsigned char * data, unsigned length)
 {
