@@ -23,7 +23,7 @@ PacketRunner:
 	ldi CT.bInp1Cnt, 0             ; Init 0 says No run of 1s have been seen on input
 	ldi CT.bOut1Cnt, 0             ; Init 0 says we haven't transmitted any run of 1s lately
 
-        notify2 "'U'","'P'"               ; Report we're starting
+        notify2 UP                     ; Report we're starting
 	
         ;; FALL INTO getNextStuffedBit
 	
@@ -176,13 +176,13 @@ frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, w
 	sendITag """FMER""",CT.wInpByte               ; report in
 	qbbc resetAfterDelimiter, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Don't report a problem unless we're synced
 	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Blow packet sync
-	notify2 "'F'","'E'"            ; Report frame error, sync lost
+	notify2 FE            ; Report frame error, sync lost
         jmp resetAfterDelimiter
 
 achievePacketSync: ;; Here to achieve packet sync when we didn't already have it
 	sendITag """APS""",CT.sTH.bFlags               ; report in
         set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Achieve packet sync
-	notify2 "'P'","'S'"                            ; Report sync gained
+	notify2 PS                                     ; Report sync gained
 
 	;; FALL INTO resetAfterDelimiter
 

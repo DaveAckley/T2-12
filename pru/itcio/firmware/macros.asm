@@ -105,23 +105,27 @@ $M2?:  .cstring STR2
 ;;;;;;;;
 ;;;: macro notify2: Send a ^B/^C notification, source identified, plus two bytes
 ;;;  INPUTS:
-;;;    BYTE1: OP(255) byte to include
-;;;    BYTE2: OP(255) byte to include
+;;;    SYMBOL: Two character symbol to send
 ;;;  OUTPUTS: None
 ;;;  NOTES:
+;;;  - Note the argument is a plain symbol, like UP, not "UP" nor
+;;;    "'UP'" nor 'U','P', etc
 ;;;  - TRASHES R4+CALLER-SAVE REGS
 	;CSendPacket(uint8_t * data, uint32_t len)
 	.ref CSendPacket
-notify2:        .macro BYTE1, BYTE2
+notify2:        .macro SYMBOL
+        .if ($symlen(SYMBOL) != 2)
+        .emsg SYMBOL must be two bytes long
+        .else
 	ldi r4.b0, (2|ON_PRU) ; First byte is ^B for pru0, ^C for pru1
         mov r4.b1, CT.sTH.bID  ; Second byte is prudir
-        ldi r4.b2, BYTE1       ; Third byte is BYTE1
-        ldi r4.b3, BYTE2       ; Fourth byte is BYTE2
+        ldi r4.w2, ':SYMBOL(1):'|(':SYMBOL(2):'<<8)  ; Third and fourth is symbol
 	saveRegs 6             ; Save current R3.w2 + initted R4
 	add r14, r2, 2         ; saved r4 starts at sp+2
         ldi r15, 4             ; len = 4
         jal r3.w2, CSendPacket ; ship it
 	restoreRegs 6          ; Restore r3.w2 + initted R4
+	.endif
         .endm
 	
 ;;;;;;;;
