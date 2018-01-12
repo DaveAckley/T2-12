@@ -5,15 +5,34 @@ use lib $FindBin::Bin;
 use Fcntl;
 use Errno qw(EAGAIN);
 
-my $expandos = scalar(@ARGV);
+my $check = 0;
+if (scalar(@ARGV) && $ARGV[0] eq "-check") {
+    $check = 1;
+    shift @ARGV;
+}
+
+my $expandos = 0;
+if (scalar(@ARGV) == 1) {
+    if ($ARGV[0] =~ /^(\d+)$/) {
+        $expandos = $1;
+        shift @ARGV;
+    } else {
+        die "$0 [-check] [EXPANDCOUNT]\n";
+    }
+}
+
+scalar(@ARGV);
     
 my $pktdev = "/dev/itc/packets";
 my $mode = O_RDWR;
 my $tag = scalar(localtime());
+
 my $mhz = `cpufreq-info | grep "current CPU frequency is"`;
 chomp $mhz;
 $mhz =~ /.*?([0-9]+) MHz.*?$/ or die "no match ($mhz)";
 $mhz = $1;
+
+
 my @args = ("-nb",
             "\x81${tag}GO1NE girl grill chief complaintive been w2orking on the rr all the live long \x01\xff\xff\xfe",
             "\x83${tag}GO3SE spot run down home base belong to us three us four us 5% dance \x07\xff\xff\xf8",
@@ -44,7 +63,10 @@ my %rcvstoppers = ("\205${tag}${s}END\201"=>1,"\206${tag}${s}END\202"=>1,"\207${
 #print join("--\n",keys  %rcvstoppers);
 @args = (@args, @sndstoppers);
 use Time::HiRes;
-print "start @ $mhz MHz [$tag]\n";
+my $xcheck = "(no checking) ";
+$xcheck = "(checking) " if $check;
+print "start @ $mhz MHz ${xcheck}[$tag]\n";
+`cat /sys/class/itc_pkt/cycles >/dev/null`;
 my $start = Time::HiRes::time();
 sysopen(PKTS, $pktdev, $mode) or die "Can't open $pktdev: $!";
 my $pkt;
@@ -66,7 +88,7 @@ while (scalar(@args)) {
         next if ($mode & O_NONBLOCK) and $!{EAGAIN};
         die "Error: $!";
     }
-#    ++$allunrcvd{substr($pkt,1)};
+    ++$allunrcvd{substr($pkt,1)} if $check;
     $pktssent++;
     $bytessent += $len;
 #    print "O$pktssent $pkt O$pktssent\n";
@@ -98,7 +120,11 @@ printf("sent %d rcvd %d %3.0f%% err %d ovr %d lost %d elapsed %f sec; sent %d by
        $pkterror, $pktoverrun,
        $pktssent-$pktsrcvd,
        $sec, $bytessent, $KBps, $Mbps);
-# for my $p (sort keys %allunrcvd) {my $v = $allunrcvd{$p}; print "$v $p\n" if defined($v) && $v != 0;}
+if ($check) { for my $p (sort keys %allunrcvd) {my $v = $allunrcvd{$p}; print "$v $p\n" if defined($v) && $v != 0;} }
+my $cycles = `cat /sys/class/itc_pkt/cycles`;
+chomp $cycles;
+my @f = split(/ +/,$cycles);
+print "stall ratio: pru0 = $f[2], pru1 = $f[5]\n";
 
 sub processAvailablePackets {
     my $count;
@@ -110,8 +136,10 @@ sub processAvailablePackets {
         } elsif ($type & 0x08) {
             ++$pkterror;
         } else {
-#            print "HUH? ($pkt)\n" unless defined $allunrcvd{substr($pkt,1)};
-#            --$allunrcvd{substr($pkt,1)};
+            if ($check){  
+                print "HUH? ($pkt)\n" unless defined $allunrcvd{substr($pkt,1)};
+                --$allunrcvd{substr($pkt,1)};
+            }
             ++$rcvcount{$pkt};
             $bytesrcvd += $count;
             $pktsrcvd++;
