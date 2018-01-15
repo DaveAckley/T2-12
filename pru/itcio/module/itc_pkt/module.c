@@ -55,7 +55,8 @@ static int itcpktThreadRunner(void *arg) {
 
     for (i = 0; i <= 1; ++i) {
       ITCDeviceState * devstate = S.dev_packet_state[i];
-      wake_up_interruptible(&devstate->specialWaitQ);
+      if (devstate)             /* Might not have been opened yet */
+        wake_up_interruptible(&devstate->specialWaitQ);
     }
 
     set_current_state(TASK_INTERRUPTIBLE);
