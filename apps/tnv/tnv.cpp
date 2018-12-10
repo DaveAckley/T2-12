@@ -69,22 +69,27 @@ static void print5(int count) { printf("BUTTON %s",count < 2000 ? "DOWN" : "UP")
 static void print6(int count) {  }
 
 static struct channelHandler {
+  unsigned channelnum;
   const char * adcname;
   void (*printer)(int);
+  int takeReading() {
+    int val = readChannel(channelnum);
+    return val;
+  }
 } adcHandlers[] = {
-  { "GRDVLT_A", print0 },
-  { "CTRTMP_A", print1 },
-  { "EDGTMP_A", print2 },
-  { "ADCRSRV2", print3 },
-  { "ADCRSRV1", print4 },
-  { "USER_ACT", print5 },
-  { "ADCLIGHT", print6 },
+  { 0, "GRDVLT_A", print0 },
+  { 1, "CTRTMP_A", print1 },
+  { 2, "EDGTMP_A", print2 },
+  { 3, "ADCRSRV2", print3 },
+  { 4, "ADCRSRV1", print4 },
+  { 5, "USER_ACT", print5 },
+  { 6, "ADCLIGHT", print6 },
 };
 
 int main(int argc, char **argv) {
   for (int i = 0; i < 7; ++i) {
     struct channelHandler & ch = adcHandlers[i];
-    int raw = readChannel(i);
+    int raw = ch.takeReading();
     printf("%d %s = %4d raw ", i, ch.adcname, raw);
     if (ch.printer) ch.printer(raw);
     printf("\n");
