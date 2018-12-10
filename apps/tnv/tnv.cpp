@@ -52,68 +52,42 @@ int readChannel(unsigned chn) {
   return count;
 }
 
-unsigned conditionOlive(unsigned raw, int argc, char **argv) {
-  unsigned adder = 115;
-  unsigned shifter = 6;
-  if (argc > 1) {
-    adder = atoi(argv[1]);
-    if (argc > 2)
-      shifter = atoi(argv[2]);
-  }
-  return ~((raw+adder)>>shifter)&0x3f;
+static void print0(int count) { printf("Vgrid = %f V", gridVoltage(count)); }
+static void print1(int count) {
+  printf("ctrtmp = %d C  (%f F)",
+	 getCentigradeFromCount(count),
+	 getFloatFarenheitFromCount(count));
 }
-
-unsigned readOlive() {
-  unsigned bits = 8;
-  unsigned samples = 1<<bits;
-  unsigned sum = 0;
-  for (unsigned i = 0; i < samples; ++i)
-    sum += readChannel(3);
-  return sum/samples;
+static void print2(int count) {
+  printf("edgtmp = %d C  (%f F)",
+	 getCentigradeFromCount(count),
+	 getFloatFarenheitFromCount(count));
 }
+static void print3(int count) { }
+static void print4(int count) { }
+static void print5(int count) { printf("BUTTON %s",count < 2000 ? "DOWN" : "UP"); }
+static void print6(int count) {  }
 
-static const char * dirs[] = {"SE", "NW", "WT", "ET", "SW", "NE" };
-void printOlive(unsigned raw, unsigned cooked)
-{
-  printf("olive = 0x%02x (0x%03x / %d raw)", cooked, raw, raw);
-  for (unsigned i = 0; i < 6; ++i) {
-    if (cooked&(1<<i)) printf(" %s",dirs[i]);
-    else               printf(" --");
-  }
-  printf("\n");
-}
-
-void altcook(unsigned raw)
-{
-  unsigned unit = 64;
-  printf("alt(raw=%d/0x%02x,unit=%d) ",raw,raw,unit);
-  for (unsigned i = 0; i < 6; ++i) {
-    if (raw/unit > 0 && (raw/unit*unit)%(2*unit) > 0) {
-      printf(" --");
-      //      raw -= unit;
-    }
-    else
-      printf(" %s", dirs[i]);
-
-    unit += unit;
-  }
-  printf("\n");
-}
+static struct channelHandler {
+  const char * adcname;
+  void (*printer)(int);
+} adcHandlers[] = {
+  { "GRDVLT_A", print0 },
+  { "CTRTMP_A", print1 },
+  { "EDGTMP_A", print2 },
+  { "ADCRSRV2", print3 },
+  { "ADCRSRV1", print4 },
+  { "USER_ACT", print5 },
+  { "ADCLIGHT", print6 },
+};
 
 int main(int argc, char **argv) {
-  unsigned rawolive = readOlive();
-  unsigned olivecount = conditionOlive(rawolive,argc,argv);
-  unsigned ctrcount = readChannel(1);
-  unsigned edgecount = readChannel(2);
-  unsigned gridvcount = readChannel(0);
-  printf("Vgrid = %f V\n", gridVoltage(gridvcount));
-  printf("ctrtmp = %d C  (%f F)\n",
-	 getCentigradeFromCount(ctrcount),
-	 getFloatFarenheitFromCount(ctrcount));
-  printf("edgtmp = %d C  (%f F)\n",
-	 getCentigradeFromCount(edgecount),
-	 getFloatFarenheitFromCount(edgecount));
-  printOlive(rawolive,olivecount);
-  altcook(rawolive);
+  for (int i = 0; i < 7; ++i) {
+    struct channelHandler & ch = adcHandlers[i];
+    int raw = readChannel(i);
+    printf("%d %s = %4d raw ", i, ch.adcname, raw);
+    if (ch.printer) ch.printer(raw);
+    printf("\n");
+  }
   return 0;
 }
