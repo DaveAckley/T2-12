@@ -484,6 +484,20 @@ static const struct file_operations itc_pkt_fops = {
 };
 
 
+static const char * getDirName(u8 dir) {
+  switch (dir) {
+  case 0: return "N?";  /* what what? */
+  case 1: return "NE";
+  case 2: return "ET";
+  case 3: return "SE";
+  case 4: return "S?";  /* on T2 you say? */
+  case 5: return "SW";
+  case 6: return "WT";
+  case 7: return "NW";
+  }
+  return "??";
+}
+
 static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
                        void *data , int len , void *priv,
                        u32 src )
@@ -505,13 +519,13 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
     // ITC data if first byte MSB set
     if (type&0x80) {
       if (type&0x10) {
-        printk(KERN_ERR "Packet overrun reported on size %d packet\n",len);
+        printk(KERN_ERR "(%s) Packet overrun reported on size %d packet\n",getDirName(type&0x7),len);
       }
       if (type&0x08) {
-        printk(KERN_ERR "Packet error reported on size %d packet\n",len);
+        printk(KERN_ERR "(%s) Packet error reported on size %d packet\n",getDirName(type&0x7),len);
       }
       if (len > ITC_MAX_PACKET_SIZE) {
-        printk(KERN_ERR "Truncating overlength (%d) packet\n",len);
+        printk(KERN_ERR "(%s) Truncating overlength (%d) packet\n",getDirName(type&0x7),len);
         len = ITC_MAX_PACKET_SIZE;
       }
 
