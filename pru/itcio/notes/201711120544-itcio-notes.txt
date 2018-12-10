@@ -1,4 +1,4 @@
-{328}  -*- text -*-
+{330}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5444,3 +5444,44 @@ buffers.'
 
 :324]
 :323]
+[328:
+
+Mon Dec 10 03:52:19 2018 So, um, note the date vs :327?.  Well it's
+still 2018.
+
+So, re :311: etc above, we are still seeing packet errors on SE<->NW
+loopback connections.
+
+:328]
+[329:
+
+Mon Dec 10 03:58:13 2018 Umm, it seems like using config-pin to set
+P9_91 (aka P9_41B in my world) is VASTLY reducing the packet errors?!
+
+But not utterly eliminating them..
+
+But the remaining ones are only from SE, whereas they used to be also
+from NW:
+
+    [41108.624085] (NW) Packet error reported on size 37 packet
+    [41108.828482] (NW) Packet error reported on size 37 packet
+    [41108.855371] (SE) Packet error reported on size 37 packet
+    [41109.159267] (NW) Packet error reported on size 37 packet
+    [41109.171790] (SE) Packet error reported on size 37 packet
+    [41109.337415] (NW) Packet error reported on size 37 packet
+    [41109.733398] (NW) Packet error reported on size 37 packet
+    [41109.957471] (SE) Packet error reported on size 37 packet
+    [41109.965933] (NW) Packet error reported on size 37 packet
+    [41110.136163] (NW) Packet error reported on size 37 packet
+    [41110.377340] (SE) Packet error reported on size 37 packet
+    [41119.313264] (SE) Packet error reported on size 37 packet
+    [41128.847363] (SE) Packet error reported on size 37 packet
+    [41132.468231] (SE) Packet error reported on size 37 packet
+    [41135.380607] (SE) Packet error reported on size 37 packet
+    [41157.153075] (SE) Packet error reported on size 89 packet
+    [41178.534859] (SE) Packet error reported on size 113 packet
+    [41193.595731] (SE) Packet error reported on size 37 packet
+    [41200.883386] (SE) Packet error reported on size 37 packet
+    [41213.166653] (SE) Packet error reported on size 54 packet
+
+:329]
