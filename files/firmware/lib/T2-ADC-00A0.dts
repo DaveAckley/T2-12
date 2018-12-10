@@ -34,16 +34,19 @@
 
 			status = "okay";
 			adc {
-			        /* 20171005 T2: Now using AIN0-3:
+			        /* 201812100456 T2: Now using all ADCs (if only as reserved):
 				   AIN0 <-> GRDVLT_A
 				   AIN1 <-> CTRTMP_A
 				   AIN2 <-> EDGTMP_A
-				   AIN3 <-> OLIVE_A
+				   AIN3 <-> ADCRSRV2
+                                   AIN4 <-> ADCRSRV1
+                                   AIN5 <-> USER_ACT_A
+                                   AIN6 <-> ADCPIN (WOULD-BE LIGHT SENSOR)
 				*/				   
-				ti,adc-channels = <0 1 2 3>;
-				ti,chan-step-avg = <16 16 16 16>;
-				ti,chan-step-opendelay = <0x98 0x98 0x98 0x98>;
-				ti,chan-step-sampledelay = <0x0 0x0 0x0 0x4>;
+				ti,adc-channels = <0 1 2 3 4 5 6>;
+				ti,chan-step-avg = <16 16 16 16 16 16 16>;
+				ti,chan-step-opendelay = <0x98 0x98 0x98 0x98 0x98 0x98 0x98>;
+				ti,chan-step-sampledelay = <0x0 0x0 0x0 0x0 0x0 0x0 0x0>;
 			};
 		};
 	};
