@@ -125,7 +125,13 @@ lowCheckClockPhases:
         .else                            ; ON_PRU == 1
 	  qbbs clockLowLoop, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 0, you 1, we're good
         .endif  
-
+	
+        ;; 201812100415 XXX TRY 'DEBOUNCING' BY REQUIRING TWO CONSISTENT CLOCK READS BEFORE TRUSTING AN EDGE
+        .if ON_PRU == 0
+          qbbc clockLowLoop, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 0, you 0, we're good
+        .else                            ; ON_PRU == 1
+	  qbbs clockLowLoop, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 0, you 1, we're good
+        .endif  
 	;; FALL INTO captureInputBit
 
 captureInputBit:  ;; Here to sample RXDAT and handle it appropriately
@@ -262,6 +268,12 @@ makeRisingEdge: ;; Here to make a rising clock edge
 	;; FALL INTO clockHighLoop
 clockHighLoop:  resumeNextThread          ; Context switch, without saving, to wait after rising edge
 highCheckClockPhases:
+        .if ON_PRU == 0 
+          qbbs clockHighLoop, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 1, you 1, we're good
+        .else                            ; ON_PRU == 1
+	  qbbc clockHighLoop, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 1, you 0, we're good
+        .endif
+	;; 201812100415 XXX TRY 'DEBOUNCING' BY REQUIRING TWO CONSISTENT CLOCK READS BEFORE TRUSTING AN EDGE
         .if ON_PRU == 0 
           qbbs clockHighLoop, r31, CT.bRXRDYPin  ; PRU0 is MATCHER: if me 1, you 1, we're good
         .else                            ; ON_PRU == 1
