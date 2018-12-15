@@ -1,4 +1,4 @@
-{330}  -*- text -*-
+{331}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5485,3 +5485,38 @@ from NW:
     [41213.166653] (SE) Packet error reported on size 54 packet
 
 :329]
+[330:
+
+Sat Dec 15 04:23:08 2018 So we're trying to refesh the tests/XCON
+stuff and/or make some new stuff.  And it seems clear that the
+original testing stuff -- using special packets to read and write pru
+pins -- was written before packets actually started moving, and now
+the packet processing is foggenup the testing stuff.
+
+And it seems clear we want a programmatic way to disable packet
+processing so that we can have 'unimpeded' access to the pru pins via
+special packets.
+
+We considered taking over
+
+fFlagRsrv6:     .emember 6
+
+in structs.asm and making it like
+
+fFlagDisable:   .emember 6
+
+or something, but that would cost us an instruction every time we
+needed to check it.  It seems like a much better way to disable packet
+processing would be to change the resume address in threads 0-2 to be
+IdleThreadRunner.
+
+And then to reenable, change them to PacketRunner?  That will cause
+packet processing to reinitialize, losing sync and dropping any
+in-progress packet.  Which doesn't seem like such a bad thing to have
+happen after taking over complete control of the pru ITC pins and
+doing who-knows-what with them.
+
+So let's plan on going that way, via some special enable/disable
+packet from linux, when we get back here.  But sleep now.
+
+:330]
