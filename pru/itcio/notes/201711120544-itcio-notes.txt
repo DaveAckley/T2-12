@@ -1,4 +1,4 @@
-{331}  -*- text -*-
+{365}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5517,6 +5517,471 @@ happen after taking over complete control of the pru ITC pins and
 doing who-knows-what with them.
 
 So let's plan on going that way, via some special enable/disable
-packet from linux, when we get back here.  But sleep now.
+packet from linux, when we get back here.  But sleep now.[331:
+
+Sat Dec 15 08:40:27 2018 OK, have a couple hours here.  Thinking we
+shouldn't reenable to PacketRunner but to wherever will cause a
+framing error (if we had sync).  We'd like to explicitly clear out any
+pending packet, not just restart the thread oblivious to it.[332:
+
+Sat Dec 15 08:42:59 2018 So, frameError in PacketRunner.asm seems to
+be the obvious place, but it's not currently a global.  Where does the
+thread enable/disable actually take place?[333:
+
+Sat Dec 15 08:54:50 2018 Was thinking in processPacketEnginePacket in
+SpecialPackets.c.[334:
+
+Sat Dec 15 09:12:43 2018 OK been playing with 'P' packets to remind
+myself how they work.  Something like:
+
+    root@beaglebone:/home/t2/T2-12# echo "Pfh?d1?i--------------------------------------" > /dev/itc/pru0
+    root@beaglebone:/home/t2/T2-12# head -1 /dev/itc/pru0
+    Pfh.d1.i00000002x00000000---------------------
+    root@beaglebone:/home/t2/T2-12# 
+
+to read the inbound packet stats for dir 1 on pru0.  (Pru0/dir1 == SE
+according to prux.h)
+[335:
+
+Sat Dec 15 09:15:55 2018 So, can we have some new 'P' subsyntax for
+enabling, disabling, and checking the 'enablement' of a dir on a pru?
+[336:
+
+Sat Dec 15 09:17:07 2018 Currently used:
+
+  'd' + '0'..'2': set prudir
+  '?'           : report arrival at this position in packet
+  'f' + 'h'|'r' : set reporting format to hex or raw registers bytes
+  ' '           : ignore, continue
+  '#'           : ignore, continue
+  'p'           : report pru# in hex in next byte
+  'i'           : report inbound statistics for current prudir
+  'I'           : do 'i' then reset those statistics
+  'o'           : report outbound statistics for current prudir
+  'O'           : do 'o' then reset those statistics
+
+Anything else causes parsing of that packet to stop and the current
+result returned to Linux.
+
+Sooooo, perhaps:
+
+  'D' to disable current prudir,
+  'E' to enable current prudir
+[340: Not this  :340]  'e' to report enablement of current prudir
+
+?  On 'e' though, why is it that we're supposed to spend precious PRU
+code space telling linux about something it should already know?  And
+how would 'e' work?  Compare the resume address to frameError?  I
+guess that's 'reliable' since PacketRunner never resumes to frameError
+on its own.. but still.  Maybe just 'D' and 'E'?
+
+So halt-all would be like
+
+    root@beaglebone:/home/t2/T2-12# echo "Pd0Dd1Dd2D?" > /dev/itc/pru0 ; echo "Pd0Dd1Dd2D?" > /dev/itc/pru1
+    root@beaglebone:/home/t2/T2-12# head -1 /dev/itc/pru0 ;  head -1 /dev/itc/pru1
+    root@beaglebone:/home/t2/T2-12# 
+
+and then we 'could' play around reading and writing individual pins in
+a loopback, for as long as we wanted.  And then
+
+
+    root@beaglebone:/home/t2/T2-12# echo "Pd0Ed1Ed2E?" > /dev/itc/pru0 ; echo "Pd0Ed1Ed2E?" > /dev/itc/pru1
+    root@beaglebone:/home/t2/T2-12# head -1 /dev/itc/pru0 ;  head -1 /dev/itc/pru1
+    root@beaglebone:/home/t2/T2-12# 
+
+to (re)release the hounds, blowing sync first wherever we had it.[337:
+
+Sat Dec 15 09:36:35 2018 Let's give it a try.  Need to stop about an
+hour from now no matter what.[338:
+
+Sat Dec 15 09:37:55 2018 Hmm, while we're in here, could we consider
+having prudir-mapped pin reading and writing too?  Rather than having
+to decode R30 and R31 dumps on the linux side?  Even though that's
+putting more work on the small guy, the small guy does already have
+the necessary pin#s mapped out in its thread structs..
+
+But packetengine processing is happening in C on the linux thread.  It
+would have to dig those constants out of the suspended threads in the
+scatchpad, or burn code space to develop them again.
+
+Screw it.  Linux-side just needs to grow up and take care of it.  My
+software maintenance brain wants to put those details with the PRU.  I
+have to fight against that and say that the PRU code is meant (soon)
+to be pretty 'firm' firmware, and things like the pin number to itc
+function mapping is already cast in stone.  So the linux <-> pru
+interfaces do not represent interactions among equals.  Nobody gets
+upset that software has instruction opcodes 'hardcoded' into it even
+though it's the hardware side that defined those opcodes.
+
+It's just now when the earth is so young and its crust is still soft,
+that it feels to me like SW<->SW design concerns should be relevant.
+
+But no.  At least not this time.
+
+[339:
+
+Sat Dec 15 10:03:49 2018 So, I don't know if I'll really be able to
+get into this before breaking for the afternoon events -- it seems
+like this should be a call into Threads.asm, and there isn't an exact
+pattern-match for the code we'll need to modify the stored thread
+state in place.  copyOutScratchPad seems about as close as we have and
+we'll probably start there.[341:
+
+Sat Dec 15 10:18:43 2018 Well, actually I'm wrong.  I thought I had to
+be at the convocation thing at noon, but it really seems I have to be
+there at 4pm.
+
+So let's go go go here.  Another cup of coffee first.
+[342:
+
+Sat Dec 15 10:26:45 2018 OK, so let's make
+
+        ;;  void setPacketRunnerEnable(uint32_t prudir, uint32_t boolEnableValue)
+        ;;  R14: 0..2
+        ;;  R15: zero to disable, non-zero to enable
+
+or the like.
+
+So, reloading PRU asm/thread brain here.  'CT', the 'pointer' to the
+current thread, is R6, and the whole thread structure runs R6-R13.
+There are (mainly) two kinds of threads - the IOThread, which is what
+the tree PacketRunner threads use, and the LinuxThread, which only the
+linux thread uses.
+
+Both thread types begin with a struct ThreadHeader, which is two
+registers long.  From structs.asm:
+
+    ;;; ThreadHeader: Enough info to save, load, and context switch a thread
+    ThreadHeader:   .struct
+    sThis:          .tag ThreadLoc  ; Our thread storage location
+    sNext:          .tag ThreadLoc  ; Next guy's storage location
+
+    bID:            .ubyte  ; thread id (prudir for 0..2, 3 for linux)
+    bFlags:         .ubyte  ; flags
+    wResAddr:       .ushort ; Resume address after context switch	
+    ThreadHeaderLen:       .endstruct
+
+A ThreadLoc (simplifying slightly) is a short mostly used as two bytes:
+
+    bOffsetRegs:    .ubyte      ; offset in registers  (to load in r0.b0)
+    bLenBytes:      .ubyte      ; length in bytes      (to load in r0.b1)
+
+(though those fields are technically part of ThreadCoord.)
+
+Of particular importance for our purposes, the wResAddr is the last
+two bytes of the thread header, at (for example) bytes CT+6 and CT+7.
+
+For setPacketRunnerEnable(prudir, boolEnableValue), we want to end up
+doing something like
+
+  offset = compute offset of thread prudir in PRUX_SCRATCH
+  r0.b0 = offset + 6   (offset to resaddr within prudir saved thread)
+  r0.b1 = 2            (because we're going to write two bytes)
+  r0.w2 = boolEnableValue ? $CODE(frameError) : $CODE(IdleThreadRunner)
+  xout PRUX_SCRATCH, &r0.w2, b1     (stash selected resumeAddress)
+
+Now at the moment the bOffsetRegs for each thread is precomputed
+separately and applied during startStateMachines.. But it's just
+prudir*CTRegs == prudir*8, or prudir<<3 right?  Or wait, no, because
+the offset is computed relative to the beginning of the struct in the
+register file?  So it's not 0 for the first thread?  But
+startStateMachines is definitely passing 0*CTRegs == 0 as the first
+argument to initThis.  Ah: Because the first thread goes in scratchpad
+registers 6..13, not 0..7, so the _offset_ for the first thread is
+indeed 0 -- so long as we always xin/xout it relative to CT.
+
+[343:
+
+Sat Dec 15 11:00:26 2018 OK, so let's stick with the proven
+copyOutScratchPad approach and just say we'll load the whole thread
+header even though we only mean to change the last two bytes of it.
+Then prudir<<3 will give us the correct offset.
+
+So, we'd be thinking something like:
+
+	;; void setPacketRunnerEnable(uint32_t prudir, uint32_t boolEnableValue)
+        ;;  R14: 0..2
+        ;;  R15: zero to disable, non-zero to enable
+        .def setPacketRunnerEnable
+setPacketRunnerEnable:
+        ;; NOTE NON-STANDARD PROLOGUE
+	sub r2, r2, 8           ; Get room for first two regs of CT
+        sbbo &CT, r2, 0, 8      ; Store CT & CT+1 on stack
+        lsl r0.b0, r14, 3       ; r0.b0 = prudir*8 // offset to read
+        ldi r0.b1, 8            ; r0.b1 = size of thread header
+        xin PRUX_SCRATCH, &CT, b1 ; load thread header
+        ldi CT.sTH.wResAddr,$CODE(frameError)  ; assume we're re-enabling
+        qbne spre1, r15, 0      ; jump if guessed right
+        ldi CT.sTH.wResAddr,$CODE(IdleThreadRunner)  ; no, we're disabling
+spre1:  xout PRUX_SCRATCH, &CT, b1 ; stash modified thread header
+
+        ;; NOTE NON-STANDARD EPILOGUE
+        lbbo &CT, r2, 0, 8      ; Restore CT and CT+1
+        add r2, r2, 8           ; Pop stack
+        JMP r3.w2               ; Return
+
+
+:343]
+
+:342]
+:341]
+
+:339]
+
+
+:338]
+
+:337]
+  
+:336]
+:335]
+
+:334]
+
+:333]
+
+:332]
+
+:331]
 
 :330]
+[344:
+
+Sat Dec 15 12:34:48 2018 Well, it compiled with setPacketRunnerEnable.
+We're not calling it yet though.  Let's see if we can install this and
+still seem to work first.[345:
+
+Sat Dec 15 12:50:39 2018 Well seems so.  If we hook this up, how are
+we going to know if it's working?
+
+How is it that we send a single packet by hand?  We have a
+theoretically functional ET-WT loopback -- can't we send a packet
+through it now, and see that not working after?  How how how?[346:
+
+Sat Dec 15 12:52:14 2018 Need a packet with the first byte having
+PKT_ROUTED_STD_VALUE set -- the high bit.  So, 0x80 + the prudir, is
+that it?[347:
+
+Sat Dec 15 12:53:52 2018 No, it's actually the Dirs.h dir we specify,
+in three bits, and LinuxIO figures out which PRU to send it to.[348:
+
+Sat Dec 15 12:55:19 2018 Umm no that's not right -- we have two prus
+each with its own LinuxThread running on it.  We use the Dirs.h dir,
+but also have to send it to the right PRU, is that it?  Time to look
+at the LKM side of things a bit..[349:
+
+Sat Dec 15 12:57:42 2018 I guess it's routeStandardPacket that figures
+out the PRU.  Based on the packet header, it returns the minor device
+corresponding to the appropriate PRU, or else negative on error.  And
+routeStandardPacket gets called when userspace writes to
+/dev/itc/packets, I think.  Let's try it.  Want to go out ET and come
+in WT.[350:
+
+Sat Dec 15 13:19:32 2018 So ET is 2.  So 0x82 is routed to east.
+That's Â‚.[351:
+
+Sat Dec 15 13:21:33 2018 Okaaaay, so doing this:
+
+    root@beaglebone:/home/t2/T2-12# echo -n "Â‚hit here" >/dev/itc/packets 
+
+got me this:
+
+    root@beaglebone:/home/t2/T2-12# cat /dev/itc/packets 
+    Â[PKTYP]re  C-c C-c
+
+and why is that?  Do we need some subtype beyond just the routing
+info?  Man my brain has so rotted.[352:
+
+Sat Dec 15 21:08:45 2018 Back from my presumably final UNM SOE
+convocation.
+
+:352][353:
+
+Sat Dec 15 21:09:33 2018 So my problem is how can we be seeing
+'[PKTYP]' in a response when it SEEMS like that's only possible on
+'special' packets but I'm sending a (non-special) 'routable' packet.
+
+[354:
+
+Sat Dec 15 21:11:03 2018 So how do we turn up debugging in itc_pkt?
+
+    root@beaglebone:/home/t2/T2-12# echo f > /sys/class/itc_pkt/debug 
+    root@beaglebone:/home/t2/T2-12# 
+
+Then
+
+    root@beaglebone:/home/t2/T2-12# echo -n "Â†WESTONGO going west wanghit herehongo" >/dev/itc/packets 
+    root@beaglebone:/home/t2/T2-12#
+
+giving us
+
+    [Dec15 21:12] set debug f
+    [ +26.562397] Routing 'c2'+39 packet to PRU0
+    [  +0.014071] <pru0: c2 5b 50 4b 54 59 50 5d 47 4f 20 67 6f 69 6e 67  .[PKTYP]GO going
+    [  +0.008021] <pru0: 20 77 65 73 74 20 77 61 6e 67 68 69 74 20 68 65   west wanghit he
+    [  +0.007953] <pru0: 72 65 68 6f 6e 67 6f                             rehongo
+
+So.  Should 'c2' go to PRU0?[355:
+
+Sat Dec 15 21:14:34 2018 Wait.  Why is it (0x)c2?  I thought it was
+going to be (0x)86?[356:
+
+Sat Dec 15 21:20:04 2018 OK so it seems it's some kind of awful
+perhaps utf8-related fuckup?  Because echoing a literal \206 byte
+fucks up, but have echo do the interpretation works:
+
+    root@beaglebone:/home/t2/T2-12# echo -n -e "\x82EASTOBANG going east wanghit herehongo" >/dev/itc/packets 
+    root@beaglebone:/home/t2/T2-12# cat /dev/itc/packets 
+    †EASTOBANG going east wanghit herehongo  C-c C-c
+    root@beaglebone:/home/t2/T2-12# 
+
+with the logging showing:
+
+    [Dec15 21:19] Routing '82'+39 packet to PRU0
+    [  +0.016759] <pru1: 86 45 41 53 54 4f 42 41 4e 47 20 67 6f 69 6e 67  .EASTOBANG going
+    [  +0.008017] <pru1: 20 65 61 73 74 20 77 61 6e 67 68 69 74 20 68 65   east wanghit he
+    [  +0.007947] <pru1: 72 65 68 6f 6e 67 6f                             rehongo
+
+where we send it to PRU0 and it comes back from PRU1.  Finally.
+
+So we can detect if packets are moving.[357:
+
+Sun Dec 16 05:08:01 2018 OK, so.  We successfully sent packets ET and
+WT, and NE and SW, but SE and NW do seem to be fucked up.  So we'll
+need to investigate that.  But we can use the ones that work to test
+if the packetrunner enabling/disabling is working.
+
+Actually, disabling our side of a loopback is going to stall the
+packetrunner thread at the far side, since our clocks will stop
+arriving.  Can we currently handle that at all, or do we just stall
+forever?
+
+..The packetrunner thread itself will just stall.  It's happy to
+resumeNextThread back to clockHighLoop or clockLowLoop forever.
+Is/could the linux thread be checking in on the packetrunner threads,
+though? [358:
+
+Sun Dec 16 05:43:44 2018 So, we already have rRunCount, a whole 32 bit
+register, in the IOThread struct, counting rising edges.  Now if
+somebody else were to shadow that, and check in every so often to make
+sure it was changing, presumably we could determine where reliable
+interclocking was occurring and where it was not.  If it was not, and
+we had sync, we could break it, and 'presumably linux would be
+notified'..
+
+We'd really rather not try to detect timeout in the clock edge wait
+loop, itself, because then we'd need to also save the thread context
+over and over again.
+
+Could we have packetrunners call into C every so often even if they're
+only getting delimiters, so C could do the timeout management?[359:
+
+Sun Dec 16 06:23:21 2018 Suppose we always go to ipbSendPacket, even
+if the length is zero.[360:
+
+Sun Dec 16 06:24:05 2018 ipbSendPacket is already got an 'if (length)'
+in it.  We have a struct InboundPacketBuffer to work with.  
+
+:360]
+
+:359]
+
+:358]
+
+:357]
+
+:356]
+
+:355]
+
+:354]
+
+:353]
+
+:351]
+
+:350]
+
+
+:349]
+
+:348]
+
+:347]
+
+:346]
+
+:345]
+
+:344]
+[361:
+
+Sun Dec 16 11:45:11 2018 OK so we're drafting R5 to be 'RC', a resume
+count incremented by LinuxThreadRunner, and available (within asm)
+globally to all threads.  The idea is whenever a PacketRunner finishes
+a byte it copies RC to a private copy.. where?  In CT.rRSRV2?  How
+about in CT.rRunCount?  What's that doing now?  rRunCount currently
+counts rising edges.  Which is a perfectly good thing to count, but
+it's not linked to any basis of comparison.
+
+rRunCount is reported it in various status tags (in particular, in the
+PS 'achieved packet sync' tag) but is it otherwise unused?  NO, it IS
+used by the 'tag burst' debugging stuff -- startTagBurst, sendTag, ..,
+in macros.asm.  So maybe we shouldn't fuck with that.[362:
+
+Sun Dec 16 14:28:04 2018 Post lunch and darkroom planning.
+
+So let's say, for now (heh), we draft CT.rRSRV2 to become CT.rRiseRC
+-- the global resume count as of the last PacketRunner rising edge.
+
+And let's say we alter LinuxThreadRunner to call a special
+'monitorPacketRunners' function every N RC increments for an N of
+perhaps 512 or 1024.  monitorPacketRunners will dig out the sTH.bflags
+of each PacketRunner thread state.  And for each thread that has
+fPacketSync, it will dig out the rRiseRC and unsigned subtract it from
+RC.  That result should be less than N or else we set that packet's
+resAddr to frameError to blow its sync.
+
+We need N to be large enough so that any reasonable combination of
+normal processing delays on the far end will have completed in time
+for us to successfully make a rising edge during N resumes, if in fact
+the connection is still alive.  The downside for N being too large is
+just that disconnection detection gets slower.
+
+And then, if that thread didn't have fPacketSync, or just lost it, we
+update its rRiseRC to the current RC.
+
+That way, the rRiseRC won't lag much more than N behind the RC,
+whether the PacketRunner thread has sync or not, so we don't have a
+count to infinity problem.
+
+:362]
+
+:361]
+[363:
+
+Mon Dec 17 01:38:02 2018 OK so some pretty okay stuff.  Looking like
+there is an issue in the NW packet lines -- connecting SE<->WT gets
+2PS, while NW<->ET does not.  Possibly a second issue about the lock
+lines but that may be pulldown stuff, still unresolved.
+
+Need to sleep again but current issue is: We finally implemented
+prudir disable and enable commands on 'D' and 'E' in the 'P' command,
+but our implementation of 'D' doesn't stick: We change the resume
+address to IdleThreadRunner, but that later leads to a timeout
+detection in monitorPacketThreads, which changes the resume address to
+frameError and thus reenables the thread.  Hmm but maybe if I blow
+packet sync when I disable, then it won't do a frameError on
+timeout..  That should actually do it, but it shows the fragility of
+sending messages on state changes instead of sending ongoing status
+messages like in every monitorPacketThreads entry.[364:
+
+Mon Dec 17 01:50:27 2018 Yes, that works, but we really need to start
+reporting all PS on an ongoing basis.
+
+But committing this stuff for now.  It's been hanging for days just on
+this one T2..
+
+:364]
+
+:363]
