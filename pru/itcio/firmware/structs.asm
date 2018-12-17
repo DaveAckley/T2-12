@@ -55,7 +55,7 @@ bRSRV1:         .ubyte
 bOut1Cnt:       .ubyte  ; current count of output 1s sent
 bInp1Cnt:       .ubyte  ; current count of input 1s received
 
-rRSRV2:         .uint
+rRiseRC:         .uint          ; RC value as of last rising edge
 rRunCount:      .tag UB4
         
 bInpByte:       .ubyte   ; bytes already written of inbound packet
@@ -71,17 +71,21 @@ fStuffThisBit:  .emember 2      ; True if we need to stuff a zero now regardless
 fReportITags:   .emember 3      ; True if reporting input tag events
 fReportOTags:   .emember 4      ; True if reporting output tag events
 fTagBurst:      .emember 5      ; True if inside a self-delimiting burst of tag reporting
-fFlagRsrv6:     .emember 6
+fForcedError:   .emember 6      ; True if frame error internally-induced (by timeout or enabling)
 fFlagRsrv7:     .emember 7
         .endenum
         
 ;;; LinuxThread: Everything needed for packet processing
 LinuxThread:    .struct        
 sTH:            .tag ThreadHeader ; sTH takes two regs
-rCTRLAddress:   .uint             ; precompute PRUX_CTRL_ADDR
-wResumeCount:   .ushort           ; Use resumes instead of CYCLEs for time base
-wRSRV1:         .ushort           ; reserved
+rScratch1:      .uint             ; scratch reg
+rScratch2:      .uint             ; scratch reg
 LinuxThreadLen: .endstruct     
+
+;;; RC is R5, used as a dedicated _global_ Resume Count
+;;;   It is OUTSIDE of thread structs and is never saved or loaded
+;;;   It is incremented whenever LinuxThreadRunner resumes
+	.asg R5, RC
 
 ;;; CT is the Current Thread!  It lives in R6-R13!
 	.eval IOThreadLen/4, CTRegs
