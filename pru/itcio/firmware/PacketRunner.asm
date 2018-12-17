@@ -180,7 +180,7 @@ checkExistingAlignment:  ;; Here we already have packet sync and are looking at 
 frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, whether or not synced
 	sendITag """FMER""",CT.bInpByte               ; report in
 	qbbc resetAfterDelimiter, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Don't report a problem unless we're synced
-	sendFromThread F, E, R7 ; Report frame error, supplying CT+1 == bID, bFlags, and wResAddr
+	sendFromThread F, R7       ; Report frame error, supplying CT+1 == bID, bFlags, and wResAddr
 
 	;; mov r14, CT.sTH.bID     ; arg1 is prudir
 	;; mov r15, CT.bInpByte    ; arg2 is number of bytes written
@@ -199,8 +199,8 @@ frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, w
 
 achievePacketSync: ;; Here to achieve packet sync when we didn't already have it
 	sendITag """APS""",CT.sTH.bFlags               ; report in
-        set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Achieve packet sync
-	sendFromThread P, S, RC ; Report that
+        set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Packet Sync achieved
+	sendFromThread P, RC                           ; Report that
 
 	;; FALL INTO resetAfterDelimiter
 

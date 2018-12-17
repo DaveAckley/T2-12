@@ -30,23 +30,21 @@ $M2?:  .cstring STR2
         .endm
 
 ;;;;;;;;
-;;;: macro sendFromThread: Print a two byte code and a value, with thread identified
+;;;: macro sendFromThread: Print a one byte code and a value, with thread identified
 ;;;  INPUTS:
-;;;    CHAR1: First char to print
-;;;    CHAR2: Second char to print
+;;;    CODE: Byte code to print
 ;;;    VAL: Value to print (reg or imm)
 ;;;  OUTPUTS: None
 ;;;  NOTES:
 ;;;  - WARNING: MUST NOT BE USED IN LEAF FUNCTIONS!
 ;;;  - TRASHES CALLER-SAVE REGS
-        ;int CSendFromThread(uint32_t prudir, uint32_t code1, uint32_t code2, uint32_t val) 
+        ;int CSendFromThread(uint32_t prudir, uint32_t code, uint32_t val) 
 	.ref CSendFromThread
-sendFromThread:        .macro CODE1, CODE2, REGVAL
+sendFromThread:        .macro CODE, REGVAL
 	saveRegs 2              ; Save current R3.w2
-        mov r17, REGVAL         ; Get value to report before trashing anything else
+        mov r16, REGVAL         ; Set up third arg, value, before trashing anything else
         mov r14, CT.sTH.bID     ; First arg is prudir
-        ldi r15, ':CODE1:'      ; First code char
-        ldi r16, ':CODE2:'      ; Second code char
+        ldi r15, ':CODE:'       ; Second arg is byte code
         jal r3.w2, CSendFromThread 
 	restoreRegs 2           ; Restore r3.w2 
         .endm

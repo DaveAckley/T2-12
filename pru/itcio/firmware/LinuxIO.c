@@ -22,11 +22,11 @@ static struct pru_rpmsg_transport transport;
 static unsigned firstPacket = 1;
 static uint16_t firstSrc, firstDst;
 
-static const char * (prudirnames[3]) = {
+static const char * (prudirnames[4]) = {
 #if ON_PRU == 0
-  "ET","SE","SW"
+  "ET","SE","SW","p0"
 #else
-  "WT","NW","NE"
+  "WT","NW","NE","p1"
 #endif
 };
 
@@ -34,7 +34,7 @@ uint8_t hexifyBottom(uint32_t dig) {
   dig &= 0xf;
   return dig < 10 ? '0' + dig : 'a' - 10 + dig;
 }
-int CSendFromThread(uint32_t prudir, uint32_t code1, uint32_t code2, uint32_t val) 
+int CSendFromThread(uint32_t prudir, uint32_t code, uint32_t val) 
 {
   enum { BUF_LEN = 50 };
   char buf[BUF_LEN];
@@ -44,12 +44,12 @@ int CSendFromThread(uint32_t prudir, uint32_t code1, uint32_t code2, uint32_t va
   if (firstPacket) return 0; /* Not ready yet */
 
   buf[len++] = 0xc3; /* here comes a 'local standard' packet type 3 */
+  buf[len++] = code; /* Then the code byte */
   buf[len++] = '0'+ON_PRU; /* Then the pru */
-  buf[len++] = hexifyBottom(prudir); /* And bottom four bits of prudir */
-  buf[len++] = code1; /* Then code bytes */
-  buf[len++] = code2; /* .. */
+  buf[len++] = hexifyBottom(prudir); /* Then bottom four bits of prudir */
+  buf[len++] = hexifyBottom(val);   /* And the bottom four bits of val */
   buf[len++] = ':';  /* Colon to mark end of 'machine-readable' zone */
-  if (prudir < 3) {
+  if (prudir < 4) {
     buf[len++] = prudirnames[prudir][0];
     buf[len++] = prudirnames[prudir][1];
   } else {

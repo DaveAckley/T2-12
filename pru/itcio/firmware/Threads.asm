@@ -72,22 +72,23 @@ nextContext:
 	.asg 6, MPT_STACK_BYTES
 monitorPacketThreads:      
 	enterFunc MPT_STACK_BYTES      ; Save r3.w2 + r4
-;	sendFromThread M, P, RC    ; Debug info
-        ldi r4, 3                   ; Init loop counter
-mpt1:   qbeq mpt3, r4, 0            ; Done if counter 0
-        sub r4, r4, 1               ; Decrement counter
+        ldi r4, 0x0300              ; R4.b1==3, R4.b0==0 Init loop counter, clear status
+mpt1:   qbeq mpt3, r4.b1, 0         ; Done if counter 0
+        sub r4.b1, r4.b1, 1         ; Decrement counter
         loadNextThread              ; Pull in next PacketRunner state
         sub r0, RC, CT.rRiseRC      ; Compute RCs since its last rise time
 	lsr r0, r0, 13              ; Drop bottom 13 bits (8192 RCs)
         qbeq mpt1, r0, 0            ; OK, jump ahead if last edge younger than that
+	set R4.b0, R4.b0, CT.sTH.bID     ; Set bad bit corresponding to prudir
         mov CT.rRiseRC, RC          ; Reset count if we failed
 	qbbc mpt2, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Jump ahead if sync was already blown
 	set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fForcedError ; Mark this frameError as our doing
         ldi CT.sTH.wResAddr,$CODE(frameError)  ; Force thread to frameError (which will blow sync)
-	sendFromThread T, O, CT.rRiseRC    ; And report we timed-out the thread
+	sendFromThread T, CT.rRiseRC           ; And report we timed-out the thread
 mpt2:   saveThisThread                         ; Stash thread back
         jmp mpt1                               ; And loop
-mpt3:   loadNextThread           ; Loop back around to the linux thread
+mpt3:   loadNextThread                         ; Loop back around to the linux thread
+	sendFromThread M, R4                   ; Send Monitor Packet with prudir-not-clocking status
 	exitFunc MPT_STACK_BYTES ; Done
 
 ;;; LINUX thread runner 

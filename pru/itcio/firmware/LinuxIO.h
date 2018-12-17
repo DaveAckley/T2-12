@@ -24,7 +24,7 @@ extern int processPackets();
 
 extern int CSendVal(const char * str1, const char * str2, uint32_t val);
 
-extern int CSendFromThread(uint32_t prudir, uint32_t code1, uint32_t code2, uint32_t val);
+extern int CSendFromThread(uint32_t prudir, uint32_t code, uint32_t val);
 
 extern int CSendTagFromThread(uint32_t prudir, const char * str, uint16_t val);
 
