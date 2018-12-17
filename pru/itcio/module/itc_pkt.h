@@ -12,8 +12,22 @@
 #include <linux/uaccess.h>
 #include <linux/poll.h>
 
-#define PRU_MAX_DEVICES 2       /* PRU0, PRU1*/
-#define MINOR_DEVICES (PRU_MAX_DEVICES+1)  /* +1 for the ITC packet interface */
+typedef enum packet_header_bits {
+  PKT_HDR_BITMASK_STANDARD  = 0x80,
+  PKT_HDR_BITMASK_LOCAL     = 0x40,
+  PKT_HDR_BITMASK_RSRV1     = 0x20,
+
+  // Standard Routed bits
+  PKT_HDR_BITMASK_OVERRUN   = 0x10,
+  PKT_HDR_BITMASK_ERROR     = 0x08,
+  PKT_HDR_BITMASK_DIR       = 0x07,
+
+  // Standard Local bits
+  PKT_HDR_BITMASK_LOCAL_TYPE= 0x1f
+} PacketHeaderBits;
+
+#define MAX_PRU_DEVICES 2       /* PRU0, PRU1*/
+#define MINOR_DEVICES (MAX_PRU_DEVICES+1)  /* +1 for the ITC packet interface */
 #define RPMSG_BUF_SIZE 512
 
 /*Note RPMSG takes up to 500+ but the ITCs need the length to fit in a byte */
@@ -62,6 +76,7 @@ typedef struct itc_pkt_driver_state {
   SpecialPacketFIFO special1Kfifo;  /* buffer for inbound special packets from PRU1 */
   struct mutex      standardLock;   /* lock for reading standard packets */
   int               open_pru_minors;/* how many of our minors have (ever?) been opened */
+  uint32_t          itcEnabledStatus; /* dirnum -> packet enabled status one hex digit per */
   ITCDeviceState    * (dev_packet_state[MINOR_DEVICES]); /* ptrs to all our device states */
 } ITCPacketDriverState;
 

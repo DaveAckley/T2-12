@@ -38,6 +38,7 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
 #if MORE_DEBUGGING
    s->debugFlags = 0xf; // default some debugging on
 #endif
+   s->itcEnabledStatus = 0;  // Assume all dirs disabled
 }
 
 __printf(5,6) int send_msg_to_pru(unsigned prunum,
@@ -119,6 +120,15 @@ static ssize_t itc_pkt_class_store_poke(struct class *c,
   }
   return -EINVAL;
 }
+
+static ssize_t itc_pkt_class_read_status(struct class *c,
+                                        struct class_attribute *attr,
+                                        char *buf)
+{
+  sprintf(buf,"%08x\n",S.itcEnabledStatus);
+  return strlen(buf);
+}
+
 
 static ssize_t itc_pkt_class_read_debug(struct class *c,
                                         struct class_attribute *attr,
@@ -267,6 +277,7 @@ static struct class_attribute itc_pkt_class_attrs[] = {
   FOR_XX_IN_ITC_ALL_DIR
   __ATTR(poke, 0200, NULL, itc_pkt_class_store_poke),
   __ATTR(debug, 0644, itc_pkt_class_read_debug, itc_pkt_class_store_debug),
+  __ATTR(status, 0444, itc_pkt_class_read_status, NULL),
   __ATTR_NULL,
 };
 #undef XX
@@ -498,6 +509,50 @@ static const char * getDirName(u8 dir) {
   return "??";
 }
 
+static int mapPruAndPrudirToDirNum(int pru, int prudir) {
+  switch ((pru<<3)|prudir) {
+#define XX(dir)                                                         \
+  case (ITC_DIR_TO_PRU(dir)<<3) | ITC_DIR_TO_PRUDIR(dir): return ITC_DIR_TO_DIR_NUM(dir);
+FOR_XX_IN_ITC_ALL_DIR
+#undef XX
+  default: return -1;
+  }
+}
+
+// See firmware/LinuxIO.c:CSendFromThread for 0xc3 packet format
+static void handleLocalStandard3(int minor, u8* bytes, int len)
+{
+  u8 code, pru, prudir, val4;
+  if (len < 6 || bytes[5] != ':') {
+    printk(KERN_ERR "Malformed locstd3 (len=%d)\n",len);
+    return;
+  }
+  
+  code = bytes[1];
+  pru = bytes[2]-'0';
+  prudir = bytes[3]-'0';
+  val4 = bytes[4]-'0';
+  switch (code) {
+  default:
+    printk(KERN_INFO "Unhandled locstd3 '%c' (pru=%d, prudir=%d, val4 =%x)\n",code,pru,prudir,val4);
+    break;
+  case 'M': // val4 is three-bits of per-pru disabled status
+    // 'M' comes from the linux thread so prudir, above, is 3
+    {
+      int i;
+
+      for (i = 0; i < 3; ++i) {
+        int enabled = !(val4&(1<<i));
+        int dirnum4 = mapPruAndPrudirToDirNum(pru,i)<<2;
+        
+        S.itcEnabledStatus &= ~(0xf<<dirnum4);
+        if (enabled) S.itcEnabledStatus |= (0x1<<dirnum4);
+      }
+    }
+    break;
+  }
+}
+
 static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
                        void *data , int len , void *priv,
                        u32 src )
@@ -514,23 +569,41 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
 
   if (len > 0) {
     int wake = -1;
-    u8 type =  *(u8*) data;
+    u8 * bytes = (u8*) data;
+    u8 type = bytes[0];
 
-    // ITC data if first byte MSB set
-    if (type&0x80) {
-      if (type&0x10) {
-        printk(KERN_ERR "(%s) Packet overrun reported on size %d packet\n",getDirName(type&0x7),len);
-      }
-      if (type&0x08) {
-        printk(KERN_ERR "(%s) Packet error reported on size %d packet\n",getDirName(type&0x7),len);
-      }
-      if (len > ITC_MAX_PACKET_SIZE) {
-        printk(KERN_ERR "(%s) Truncating overlength (%d) packet\n",getDirName(type&0x7),len);
-        len = ITC_MAX_PACKET_SIZE;
-      }
+    if (type&PKT_HDR_BITMASK_STANDARD) {   // Standard packet
+      if (!(type&PKT_HDR_BITMASK_LOCAL)) { // Standard routed packet
+        if (type&PKT_HDR_BITMASK_OVERRUN) {
+          printk(KERN_ERR "(%s) Packet overrun reported on size %d packet\n",getDirName(type&0x7),len);
+        }
+        if (type&PKT_HDR_BITMASK_ERROR) {
+          printk(KERN_ERR "(%s) Packet error reported on size %d packet\n",getDirName(type&0x7),len);
+        }
+        if (len > ITC_MAX_PACKET_SIZE) {
+          printk(KERN_ERR "(%s) Truncating overlength (%d) packet\n",getDirName(type&0x7),len);
+          len = ITC_MAX_PACKET_SIZE;
+        }
 
-      kfifo_in(&S.itcPacketKfifo, data, len);
-      wake_up_interruptible(&S.itcPacketWaitQ);
+        kfifo_in(&S.itcPacketKfifo, data, len);
+        wake_up_interruptible(&S.itcPacketWaitQ);
+      } else {                             // Standard local packet
+        switch (type&PKT_HDR_BITMASK_LOCAL_TYPE) {
+        default:
+        case 0:
+          printk(KERN_ERR "Illegal standard local packet %d\n",type&PKT_HDR_BITMASK_LOCAL_TYPE);
+          break;
+        case 1:
+          printk(KERN_INFO "DEBUG%d %s\n",minor,&bytes[1]);
+          break;
+        case 2:
+          printk(KERN_INFO "VALUE%d %s\n",minor,&bytes[1]);
+          break;
+        case 3:
+          handleLocalStandard3(minor, bytes, len);
+          break;
+        }
+      }
     } else if (minor == 0) {
       kfifo_in(&S.special0Kfifo, data, len);
       wake = 0;
@@ -814,11 +887,15 @@ static int __init itc_pkt_init (void)
 
   initITCPacketDriverState(&S);
 
+  printk(KERN_INFO "OOKE %08x\n", S.itcEnabledStatus);
+
   ret = class_register(&itc_pkt_class_instance);
   if (ret) {
     pr_err("Failed to register class\n");
     goto fail_class_register;
   }
+
+  printk(KERN_INFO "KOOK %08x\n", S.itcEnabledStatus);
 
   /*  itc_pkt_class_instance.dev_groups = itc_pkt_groups;   */
 
