@@ -30,7 +30,11 @@ static const char * (prudirnames[3]) = {
 #endif
 };
 
-int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
+uint8_t hexifyBottom(uint32_t dig) {
+  dig &= 0xf;
+  return dig < 10 ? '0' + dig : 'a' - 10 + dig;
+}
+int CSendFromThread(uint32_t prudir, uint32_t code1, uint32_t code2, uint32_t val) 
 {
   enum { BUF_LEN = 50 };
   char buf[BUF_LEN];
@@ -39,39 +43,45 @@ int CSendFromThread(uint32_t prudir, const char * str, uint32_t val)
 
   if (firstPacket) return 0; /* Not ready yet */
 
-  buf[len++] = 0xc1; /* here comes a 'local standard' packet type 1 */
-
-  buf[len++] = '0'+ON_PRU;
+  buf[len++] = 0xc3; /* here comes a 'local standard' packet type 3 */
+  buf[len++] = '0'+ON_PRU; /* Then the pru */
+  buf[len++] = hexifyBottom(prudir); /* And bottom four bits of prudir */
+  buf[len++] = code1; /* Then code bytes */
+  buf[len++] = code2; /* .. */
+  buf[len++] = ':';  /* Colon to mark end of 'machine-readable' zone */
   if (prudir < 3) {
     buf[len++] = prudirnames[prudir][0];
     buf[len++] = prudirnames[prudir][1];
   } else {
-    buf[len++] = 'a'+prudir;
+    buf[len++] = hexifyBottom(prudir>>4);
+    buf[len++] = hexifyBottom(prudir);
   }
-  buf[len++] = ':';
+
+  buf[len++] = ' ';  /* A space */
   
-  /* Next the value in hex */
+  /* Finally the value in hex */
   for (i = 0; i < 8; ++i) {
     uint8_t h = val>>28;
-    buf[len++] = h < 10 ? '0' + h : 'a' - 10 + h;
+    buf[len++] = hexifyBottom(h);
     val <<= 4;
   }
-
-  /* Then a space */
-  buf[len++] = ' ';
-
-  /* Then as much of the string that fits */
-  if (str) while (len < BUF_LEN-1 && *str) buf[len++] = *str++;
 
   /* Send it */
   pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);
 
   /* Distract the destroyer to give our packet time to get away */
+
+  /* UMM WHAT IS THIS DOING HERE, AGAIN, PLS?  WE'RE USING LOCAL
+     STANDARD PACKET TYPE 1's FOR INCREASING NUMBERS OF THINGS.  DO WE
+     REALLY NEED THIS?  I THOUGHT THIS KIND OF THING WAS JUST FOR
+     DESPERATION REPORT-IN-BEFORE-DYING TYPE MESSAGES.
+
   {
     volatile unsigned wastoid = 0;
     while (++wastoid < 2000000) ;
   }
   
+  */
 
   return 1;  
 }
