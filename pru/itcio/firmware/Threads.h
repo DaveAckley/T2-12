@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 extern void mainLoop(void);
+extern void setPacketRunnerEnable(uint32_t prudir, uint32_t boolEnableValue);
 extern void copyOutScratchPad(uint8_t * packet, uint16_t len);
 extern unsigned addfuncasm(unsigned a, unsigned b);
 

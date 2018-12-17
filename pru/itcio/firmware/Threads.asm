@@ -67,14 +67,40 @@ nextContext:
         jmp CT.sTH.wResAddr         ; and resume it
                 
 
+;;;;;;;
+;;; monitorPacketThreads: Runs in LinuxThread only!
+	.asg 6, MPT_STACK_BYTES
+monitorPacketThreads:      
+	enterFunc MPT_STACK_BYTES      ; Save r3.w2 + r4
+;	sendFromThread M, P, RC    ; Debug info
+        ldi r4, 3                   ; Init loop counter
+mpt1:   qbeq mpt3, r4, 0            ; Done if counter 0
+        sub r4, r4, 1               ; Decrement counter
+        loadNextThread              ; Pull in next PacketRunner state
+        sub r0, RC, CT.rRiseRC      ; Compute RCs since its last rise time
+	lsr r0, r0, 13              ; Drop bottom 13 bits (8192 RCs)
+        qbeq mpt1, r0, 0            ; OK, jump ahead if last edge younger than that
+        mov CT.rRiseRC, RC          ; Reset count if we failed
+	qbbc mpt2, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Jump ahead if sync was already blown
+	set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fForcedError ; Mark this frameError as our doing
+        ldi CT.sTH.wResAddr,$CODE(frameError)  ; Force thread to frameError (which will blow sync)
+	sendFromThread T, O, CT.rRiseRC    ; And report we timed-out the thread
+mpt2:   saveThisThread                         ; Stash thread back
+        jmp mpt1                               ; And loop
+mpt3:   loadNextThread           ; Loop back around to the linux thread
+	exitFunc MPT_STACK_BYTES ; Done
+
 ;;; LINUX thread runner 
 LinuxThreadRunner:
+	add RC, RC, 1                  ; Bump Resume Count in R5
         qbbs ltr1, r31, HOST_INT_BIT   ; Process packets if host int from linux is set..
-        add LT.wResumeCount,  LT.wResumeCount, 1 ; Otherwise, bump resume count
-	and r0.b0, LT.wResumeCount, 0x3
-        qbne ltr2, r0.b0, 0            ; And do processing every 4 resumes
+	and r0, RC, 0x3                ; r0 == 0 every 4 resumes
+        qbne ltr2, r0, 0               ; Also do processing then
 ltr1:   jal r3.w2, processPackets      ; Surface to C level, check for linux action
-ltr2:   resumeAgain                    ; Save, switch, resume at LinuxThreadRunner
+ltr2:   lsl r0, RC, 11                 ; Bottom 21 bits of RC to top of r0
+        qbne ltr3, r0, 0               ; do packetThread monitoring every 2M RCs
+        jal r3.w2, monitorPacketThreads
+ltr3:   resumeAgain                    ; Save, switch, resume at LinuxThreadRunner
 
 ;;; Idle thread runner 
 IdleThreadRunner:
@@ -131,10 +157,12 @@ startStateMachines:
         saveThisThread                             ; Stash thread 2
 	
         initThis 3*CTRegs, LinuxThreadLen, 3, LinuxThreadRunner ; Thread ID 3 at shift 3*CTRegs
-	ldi32 LT.rCTRLAddress, PRUX_CTRL_ADDR      ; Precompute per-PRU CTRL regs base address
         initNext 0*CTRegs, IOThreadLen             ; Next is back to thread 0
         saveThisThread                             ; Stash thread 3
         ;; Done with by-hand thread inits
+
+        ;; Init global 'resume counter'
+        ldi RC, 0
 
         ;; Report in             
         sendVal PRUX_STR,""" Releasing the hounds""", CT.sTH.wResAddr ; Report in
@@ -144,9 +172,10 @@ startStateMachines:
 	exitFunc 2
 
 	;; void copyOutScratchPad(uint8_t * packet, uint16_t len)
-        ;; R14: ptr to destination start
-        ;; R15: bytes to copy
-        ;; R17: index
+        ;;  R14: ptr to destination start-4
+        ;;  R15: bytes to copy-4
+        ;; Local variable:
+        ;;  R17: index
         .def copyOutScratchPad
 copyOutScratchPad:
         ;; NOTE NON-STANDARD PROLOGUE
@@ -173,3 +202,29 @@ cosp2:
         add r2, r2, 8           ; Pop stack
         JMP r3.w2               ; Return
 
+
+	;; void setPacketRunnerEnable(uint32_t prudir, uint32_t boolEnableValue)
+        ;;  R14: 0..2
+        ;;  R15: zero to disable, non-zero to enable
+        .def setPacketRunnerEnable
+setPacketRunnerEnable:
+        ;; NOTE NON-STANDARD PROLOGUE
+	sub r2, r2, 8           ; Get room for first two regs of CT
+        sbbo &CT, r2, 0, 8      ; Store CT & CT+1 on stack
+        lsl r0.b0, r14, 3       ; r0.b0 = prudir*8 // offset to read
+        ldi r0.b1, 8            ; r0.b1 = size of thread header
+        xin PRUX_SCRATCH, &CT, b1 ; load thread header
+	.ref frameError           ; In PacketRunner.asm
+	set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fForcedError ; Mark this frameError as our doing
+        ldi CT.sTH.wResAddr,$CODE(frameError)  ; assume we're re-enabling
+        qbne spre1, r15, 0      ; jump if guessed right
+        ldi CT.sTH.wResAddr,$CODE(IdleThreadRunner)  ; no, we're disabling
+	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Blow packet sync so no frameError generated now
+spre1:  xout PRUX_SCRATCH, &CT, b1 ; stash modified thread header
+
+        ;; NOTE NON-STANDARD EPILOGUE
+        lbbo &CT, r2, 0, 8      ; Restore CT and CT+1
+        add r2, r2, 8           ; Pop stack
+        JMP r3.w2               ; Return
+
+        

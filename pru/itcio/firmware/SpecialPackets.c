@@ -111,7 +111,7 @@ void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
   IOS * ios = &iostream;
   int32_t ch;
   uint32_t prudir = 0;
-  int32_t doreset = 0;
+  int32_t cmdflag = 0;
   uint8_t format = 'r';
   struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
   struct OutboundRingBuffer * orb = pruDirToORB(prudir);
@@ -119,8 +119,15 @@ void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
   initIOS(ios, argspace, arglen);
 
   while ((ch = readIOS(ios)) >= 0) {
-    doreset = 0;
+    cmdflag = 0;
     switch (ch) {
+
+    case 'E':
+      cmdflag = 1;              /* E: enable prudir */
+    case 'D':                   /* D: disable prudir */
+      setPacketRunnerEnable(prudir, cmdflag); /* enable or disable prudir */
+      break;
+
     case 'd': {                 /* d: set prudir */
       ch = readIOS(ios);
       if (ch >= '0' && ch <= '2') {
@@ -132,6 +139,7 @@ void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
         return;
       break;
     }
+
     case '?': {                 /* ?: Query arrival at this position */
       writePrevIOS(ios,'.');    /* .: We got here */
       break;
@@ -151,19 +159,19 @@ void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
       break;
     }
 
-    case 'I': doreset = 1;      /* I: Report and reset inbound stats for prudir */
+    case 'I': cmdflag = 1;      /* I: Report and reset inbound stats for prudir */
       // FALL THROUGH
     case 'i': {                 /* i: Report inbound stats for prudir */
       writeFormat32IOS(ios,ipb->packetsReceived,format);
       writeIOS(ios,'x');
       writeFormat32IOS(ios,ipb->packetsRejected,format);
-      if (doreset) {
+      if (cmdflag) {
         ipb->packetsReceived = 0;
         ipb->packetsRejected = 0;
       }
       break;
     }
-    case 'O': doreset = 1;      /* O: Report and reset outbount stats for prudir */
+    case 'O': cmdflag = 1;      /* O: Report and reset outbount stats for prudir */
       // FALL THROUGH
     case 'o': {                 /* o: Report outbound stats for prudir */
       writeFormat32IOS(ios,orb->packetsAdded,format);
@@ -171,7 +179,7 @@ void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
       writeFormat32IOS(ios,orb->packetsRemoved,format);
       writeIOS(ios,'x');
       writeFormat32IOS(ios,orb->packetsRejected,format);
-      if (doreset) {
+      if (cmdflag) {
         orb->packetsAdded = 0;
         orb->packetsRemoved = 0;
         orb->packetsRejected = 0;
