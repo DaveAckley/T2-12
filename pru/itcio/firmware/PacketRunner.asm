@@ -24,7 +24,6 @@ PacketRunner:
 	ldi CT.bOut1Cnt, 0             ; Init 0 says we haven't transmitted any run of 1s lately
         ldi CT.bRSRV0, 'a'             ; XXXX: Make visible
         ldi CT.bRSRV1, 'b'             ; XXXX: Make visible
-        ldi32 CT.rRSRV2, 0x1eacbeda    ; XXXX: Make visible
 	ldi CT.bRSRV43, 'z'            ; XXXX: Make visible
 
         ;; FALL INTO getNextStuffedBit
@@ -177,27 +176,31 @@ checkExistingAlignment:  ;; Here we already have packet sync and are looking at 
 	
 	;; otherwise FALL INTO frameError
 
+        .def frameError         ; Make public so setPacketRunnerEnable can see it
 frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, whether or not synced
 	sendITag """FMER""",CT.bInpByte               ; report in
 	qbbc resetAfterDelimiter, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Don't report a problem unless we're synced
+	sendFromThread F, E, R7 ; Report frame error, supplying CT+1 == bID, bFlags, and wResAddr
+
+	;; mov r14, CT.sTH.bID     ; arg1 is prudir
+	;; mov r15, CT.bInpByte    ; arg2 is number of bytes written
+	;; mov r16, r6             ; arg3 is first reg
+	;; mov r17, r7
+	;; mov r18, r8
+	;; mov r19, r9
+	;; mov r20, r10
+	;; mov r21, r11
+	;; mov r22, r12
+	;; mov r23, r13
+        ;; jal r3.w2, ipbReportFrameError ; Notify upstairs that we got problems down heah
 	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Blow packet sync
-	mov r14, CT.sTH.bID     ; arg1 is prudir
-	mov r15, CT.bInpByte    ; arg2 is number of bytes written
-	mov r16, r6             ; arg3 is first reg
-	mov r17, r7
-	mov r18, r8
-	mov r19, r9
-	mov r20, r10
-	mov r21, r11
-	mov r22, r12
-	mov r23, r13
-        jal r3.w2, ipbReportFrameError ; Notify upstairs that we got problems down heah
+	clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fForcedError ; Possible forced error now dealt with
         jmp resetAfterDelimiter
 
 achievePacketSync: ;; Here to achieve packet sync when we didn't already have it
 	sendITag """APS""",CT.sTH.bFlags               ; report in
         set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Achieve packet sync
-	sendFromThread """PS""", CT.rRunCount.r ; Report that
+	sendFromThread P, S, RC ; Report that
 
 	;; FALL INTO resetAfterDelimiter
 
@@ -213,8 +216,6 @@ handleGoodPacketDelimiter: ;; Here we finally have a finished packet!
 	sendITag """HGPD""",CT.bInpByte               ; report in
         qbeq resetAfterDelimiter, CT.bInpByte, 0 ; But if it's zero-length, discard it!
 	sendITag """IPSP""",CT.sTH.bID               ; report in
-	;; sendFromThread """sd""", CT.sTH.bID ; XXX report prudir
-	;; sendFromThread """s@""", CT.bInpByte ; XXX report len
         mov r14, CT.sTH.bID                      ; arg1 is prudir
         mov r15, CT.bInpByte                     ; arg2 is length
         jal r3.w2, ipbSendPacket                 ; Send the packet off to linux!  Foggin finally!
@@ -263,6 +264,7 @@ makeRisingEdge: ;; Here to make a rising clock edge
 	sendOTag """MRE""",CT.rRunCount.r      ; now report in as output event
         set r30, r30, CT.bTXRDYPin        ; TXRDY rises
 	add CT.rRunCount.r,  CT.rRunCount.r, 1 ; Count rising edges
+	mov CT.rRiseRC, RC          ; Record we're making a rising edge at this RC
         saveResumePoint highCheckClockPhases ; Set where to resume to, and save this context
 	
 	;; FALL INTO clockHighLoop
