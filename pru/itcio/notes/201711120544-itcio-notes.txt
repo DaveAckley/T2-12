@@ -1,4 +1,4 @@
-{365}  -*- text -*-
+{370}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -5985,3 +5985,55 @@ this one T2..
 :364]
 
 :363]
+[365:
+
+Mon Dec 17 09:18:47 2018 Screw it let's go to single byte
+sendFromThread codes, and start documenting them.  For now we'll work
+hard to stay in uppercase ASCII but a full byte will be available.
+
+F: Frame Error
+M: Monitor PacketThreads
+P: Packet Sync
+T: Timed Out packetThread 
+[366:
+
+Mon Dec 17 09:41:24 2018 OK, so the more-easily-lkm-parseable 0xc3
+packets are now being generated.  I included one hex byte with the
+bottom four bits of the val in the structured data -- since
+conveniently four bits suffice to report the packet thread disabled
+status..
+
+The issue is these things are spamming /dev/itc/packets now, and we
+want to get them out of there by having itc_pkt handle them itself.
+But that kind of seems we'd need either an ioctl or a new minor to
+report them, like /dev/itc/status.  Can we REALLY imagine standing up
+such a thing with barely more than 24 hours til T2sday Update?[368:
+
+Mon Dec 17 13:59:21 2018 Well, so we did.  And apps/t2/pktstat/pktstat
+reports the results once a second.
+
+:368]
+
+:366]
+:365]
+[367:
+
+Mon Dec 17 13:50:56 2018 OK actual debugging attempt:
+
+Observations:
+
+    NW doesn't PS against ET but ET does PS against WT.
+    NW doesn't PS against SE but SE does PS against WT.
+
+    SE doesn't LS against NW but ET does LS against NW.
+    SE doesn't LS against WT but WT does LS againet ET.
+
+It kind of looks like NW has a packet problem and SE has a lock
+problem?[369:
+
+Mon Dec 17 14:01:16 2018 Well, let's commit this stuff, shut this baby
+down, and take a closer look at the board..
+
+:369]
+
+:367]
