@@ -123,7 +123,7 @@ static void __exit itc_exit(void){
 static int dev_open(struct inode *inodep, struct file *filep){
 
    numberOpens++;
-   printk(KERN_INFO "ITC: Device has been opened %d time(s)\n", numberOpens);
+   printk(KERN_INFO "ITC: " DEVICE_NAME " has been opened %d time(s)\n", numberOpens);
    return 0;
 }
 
@@ -203,7 +203,7 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
  */
 static int dev_release(struct inode *inodep, struct file *filep){
    mutex_unlock(&itc_mutex);                      // release the mutex (i.e., lock goes up)
-   printk(KERN_INFO "ITC: Device successfully closed\n");
+   printk(KERN_INFO "ITC: " DEVICE_NAME " successfully closed\n");
    return 0;
 }
 
