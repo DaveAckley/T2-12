@@ -1,4 +1,4 @@
-{370}  -*- text -*-
+{372}  -*- text -*-
 [0:
 
 Sun Nov 12 12:54:47 2017 Yay we finally have 'go.el' on the tiles!  Or
@@ -6026,14 +6026,34 @@ Observations:
     NW doesn't PS against SE but SE does PS against WT.
 
     SE doesn't LS against NW but ET does LS against NW.
-    SE doesn't LS against WT but WT does LS againet ET.
+    SE doesn't LS against WT but WT does LS against ET.
 
 It kind of looks like NW has a packet problem and SE has a lock
 problem?[369:
 
 Mon Dec 17 14:01:16 2018 Well, let's commit this stuff, shut this baby
 down, and take a closer look at the board..
+[370:
 
+Mon Dec 17 14:38:49 2018 Well I _did_ find two iffy solder joints, one
+on the NW driver and one on the SE.  So I touched them up that was
+encouraging but it doesn't appear to have solved the problem.  NW
+still dosn't PS against SE or ET.  ET still LS against NW..  Ah but I
+can get SE to LS against WT -- if I tap the connector before seating
+it to generate some spurious edges anyway -- and I _think_ that didn't
+work before.  (But maybe I just wasn't tapping enough before.)
+
+[371:
+
+Mon Dec 17 15:33:21 2018 Hmm, also, SE does LS against SW.. Pretty
+reliably.  I wonder if I could be facing cable problems in here.  At
+the moment there's pretty much no good alternative to wiggling these
+ribbon cable plugs out by their ribbon.  Maybe I should shut down and
+move the power connector somewhere other than SW and see if that
+changes the picture.
+
+:371]
+:370]
 :369]
 
 :367]
