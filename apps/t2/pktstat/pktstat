@@ -1,0 +1,24 @@
+#!/usr/bin/perl -w  # -*- perl -*-
+
+my $statdev = "/sys/class/itc_pkt/status";
+open(STATHDL, "<$statdev")
+    or die "Can't read '$statdev': $!";
+
+my @dirnames = ("NT", "NE", "ET", "SE", "ST", "SW", "WT", "NW");
+
+while(<STATHDL>) {
+    chomp;
+    my @stats = reverse split //;
+    my $enabled = 0;
+    for (my $i = 0; $i < scalar(@dirnames); ++$i) {
+        my $state = "   ";
+        if ($stats[$i] eq "1") {
+            $state = "$dirnames[$i] ";
+            ++$enabled;
+        }
+        print $state;
+    }
+    print " Active: $enabled\n";
+    seek STATHDL, 0, 0;
+    sleep 1;
+}
