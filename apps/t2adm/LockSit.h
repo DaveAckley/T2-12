@@ -101,7 +101,7 @@ public:
   {
     for (int i = BRICK_DIR_MIN; i < BRICK_DIR_COUNT; ++i)
       locks[i].Init((BrickDir) i);
-    itcfd = open(DEVICE_NAME, O_RDONLY);
+    itcfd = open(DEVICE_NAME, O_RDWR);
     dieNeg(itcfd,DEVICE_NAME " open");
   }
   void CheckITCStatus() ;
