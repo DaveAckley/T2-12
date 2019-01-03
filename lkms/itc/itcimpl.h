@@ -82,7 +82,7 @@ typedef struct itcInfo {
   ITCState state;
   ITCCounter enteredCount[STATE_COUNT];
   ITCCounter interruptsTaken;
-  ITCCounter edgesMissed;
+  ITCCounter edgesMissed[2]; // PIN_IRQLK or PIN_IGRLK
   JiffyUnit lastActive;
   JiffyUnit lastReported;
   unsigned magicWaitTimeouts;

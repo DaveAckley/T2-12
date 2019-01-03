@@ -144,9 +144,10 @@ void itcIteratorShuffle(ITCIterator * itr) {
 static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned value, unsigned int irq)
 {
   itc->interruptsTaken++;
-  if (unlikely(value == itc->pinStates[pin]))
-    itc->edgesMissed++;
-  else
+  if (unlikely(value == itc->pinStates[pin])) {
+    if (pin < 2)
+      itc->edgesMissed[pin]++;
+  } else
     itc->pinStates[pin] = value;
   updateState(itc,false);
   return (irq_handler_t) IRQ_HANDLED;
@@ -170,7 +171,8 @@ void itcInitStructure(ITCInfo * itc)
   int i;
 
   itc->interruptsTaken = 0;
-  itc->edgesMissed = 0;
+  itc->edgesMissed[0] = 0;
+  itc->edgesMissed[1] = 0;
   itc->lastActive = jiffies;
   itc->lastReported = jiffies-1;
 
@@ -221,7 +223,7 @@ void itcInitStructures(void) {
       if (err) {
         printk(KERN_INFO "ITC failed to allocate pin%3d: %d\n", g->gpio, err);
       } else {
-        //        printk(KERN_INFO "ITC allocated pin%3d for %s\n", g->gpio, g->label); 
+        printk(KERN_INFO "ITC allocated pin%3d for %s\n", g->gpio, g->label); 
       }
     }
   }
@@ -251,6 +253,8 @@ void itcInitStructures(void) {
 			 NULL);                                               \
     if (result)                                                               \
       printk(KERN_INFO "ITC %s: irq#=%d, result=%d\n", gp->label, in, result);\
+    else                                                                      \
+      printk(KERN_INFO "ITC %s: OK irq#=%d for gpio=%d\n", gp->label, in, gp->gpio); \
   }
 #define XX(DC,fr,p1,p2,p3,p4) ZZ(DC,_IRQLK) ZZ(DC,_IGRLK)
     DIRDATAMACRO()
@@ -371,7 +375,7 @@ void make_reports(void)
     }
     */
     if (md.itcInfo[i].lastReported == md.itcInfo[i].lastActive) continue;
-    printk(KERN_INFO "ITC %s(%s): o%d%d i%d%d, f%lu, r%lu, at%lu, ac%lu, gr%lu, co%lu, it%lu, em%lu\n",
+    printk(KERN_INFO "ITC %s(%s): o%d%d i%d%d, f%lu, r%lu, at%lu, ac%lu, gr%lu, co%lu, it%lu, emQ%lu, emG%lu\n",
 	   itcDirName(md.itcInfo[i].direction),
 	   getStateName(md.itcInfo[i].state),
 	   md.itcInfo[i].pinStates[PIN_ORQLK],
@@ -385,7 +389,8 @@ void make_reports(void)
 	   md.itcInfo[i].enteredCount[sGIVE],
 	   md.itcInfo[i].enteredCount[sRACE],
 	   md.itcInfo[i].interruptsTaken,
-	   md.itcInfo[i].edgesMissed
+	   md.itcInfo[i].edgesMissed[0],
+	   md.itcInfo[i].edgesMissed[1]
 	   );
     md.itcInfo[i].lastReported = md.itcInfo[i].lastActive;
   }
