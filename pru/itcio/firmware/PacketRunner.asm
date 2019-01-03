@@ -131,6 +131,7 @@ lowCheckClockPhases:
         .else                            ; ON_PRU == 1
 	  qbbs clockLowLoop, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 0, you 1, we're good
         .endif  
+
 	;; FALL INTO captureInputBit
 
 captureInputBit:  ;; Here to sample RXDAT and handle it appropriately
@@ -281,5 +282,6 @@ highCheckClockPhases:
         .else                            ; ON_PRU == 1
 	  qbbc clockHighLoop, r31, CT.bRXRDYPin  ; PRU1 is MISMATCHER: if me 1, you 0, we're good
         .endif
+
         jmp getNextStuffedBit   ; And THEN DO IT ALL AGAIN
        
