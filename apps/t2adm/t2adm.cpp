@@ -80,7 +80,7 @@ int main() {
     ls.DrawITCStatus();
     hnc.MvPrintW(0,0,"");
     hnc.Refresh();
-    hnc.NapMS(1000/2); // 2 FPS
+    hnc.NapMS(1000/3); // 3 FPS
   }
   hnc.Shutdown();
   return 1;
