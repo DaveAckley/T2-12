@@ -1,0 +1,44 @@
+{1}  -*- text -*-
+[0:
+
+Mon Jan 14 07:11:57 2019 Command to report and clear the per-pru
+inbound and outbound packet statistics:
+
+# echo f >/sys/class/itc_pkt/debug ; echo -n "Ppxfh?I________/________?" | tee /dev/itc/pru0 > /dev/itc/pru1 ;echo -n "Ppxfh?O________-________;________?" | tee /dev/itc/pru0 > /dev/itc/pru1 ; echo 0 >/sys/class/itc_pkt/debug
+
+Prints to /var/log/syslog stuff like:
+
+ [47894.219009] set debug f
+ [47894.275069] <pru1: 50 70 31 66 68 2e 49 30 30 30 30 30 62 64 30 78  Pp1fh.I00000bd0x
+ [47894.283007] <pru1: 30 30 30 30 30 30 30 30 2e                       00000000.
+ [47894.297566] <pru0: 50 70 30 66 68 2e 49 30 30 30 30 30 62 64 30 78  Pp0fh.I00000bd0x
+ [47894.305450] <pru0: 30 30 30 30 30 30 30 30 2e                       00000000.
+ [47894.365153] <pru1: 50 70 31 66 68 2e 4f 30 30 30 30 30 62 64 30 2f  Pp1fh.O00000bd0/
+ [47894.373090] <pru1: 30 30 30 30 30 62 64 30 78 30 30 30 30 30 30 30  00000bd0x0000000
+ [47894.380946] <pru1: 30 2e                                            0.
+ [47894.389832] <pru0: 50 70 30 66 68 2e 4f 30 30 30 30 30 62 64 30 2f  Pp0fh.O00000bd0/
+ [47894.397732] <pru0: 30 30 30 30 30 62 64 30 78 30 30 30 30 30 30 30  00000bd0x0000000
+ [47894.405565] <pru0: 30 2e                                            0.
+ [47894.418199] set debug 0
+
+where the important bits are:
+
+
+   Pp1fh.I00000bd0x
+          ^^^^^^^^      pru1 inbound packets received
+   00000000.
+   ^^^^^^^^             pru1 inbound packets rejected for no rpmsg buffer space
+   Pp0fh.I00000bd0x     (ditto pru0)
+   00000000.            (ditto pru0)
+   Pp1fh.O00000bd0/
+          ^^^^^^^^      pru1 outbound packets added to back of ring buffer
+   00000bd0x0000000
+   ^^^^^^^^             pru1 outbound packets removed from front of ring buffer
+   0.
+   ^        ^^^^^^^     pru1 outbound packets rejected for no room in ring buffer
+   Pp0fh.O00000bd0/     (ditto pru0)
+   00000bd0x0000000     (ditto pru0)
+   0.                   (ditto pru0)
+
+
+:0]
