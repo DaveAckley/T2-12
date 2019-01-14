@@ -12,6 +12,39 @@ my $pktmode = O_RDWR|O_NONBLOCK;
 my $lockdev = "/dev/itc/locks";
 #my $lockmode = O_WRONLY;
 my $lockmode = O_RDWR;
+my $oneshot = 0;
+my $dontReallyLock = 0;
+my $dontEvenTryLocking = 0;
+
+my %argproc = (
+    once => sub { $oneshot = 1; },
+    nolock => sub { $dontReallyLock = 1; },
+    notrylock => sub { $dontEvenTryLocking = 1; },
+    packetlen => \&setPacketLengthCommand,
+    help => \&usageDie,
+);
+
+sub usageDie {
+    my $msg = shift;
+    print STDERR "Error: $msg\n" if defined $msg;
+    print STDERR "Usage: $0 [OPTARGS]\n";
+    print STDERR "Arguments:\n";
+    foreach my $a (keys %argproc) {
+        print "  $a\n";
+    }
+    exit 1;
+}
+
+sub processArgs {
+    my @args = @_;
+    foreach my $arg (@args) {
+        usageDie "Malformed argument '$arg'" unless $arg =~ /^([[:alpha:]]\w*)(.*?)$/;
+        my ($key,$rest) = ($1,$2);
+        my $proc = $argproc{$key};
+        usageDie "Unrecognized argument '$key'" unless defined $proc;
+        &$proc($key,$rest);
+    }
+}
 
 sub initLockDev {
     sysopen(LOCKS, $lockdev, $lockmode) or die "Can't open locks $lockdev: $!";
@@ -85,8 +118,12 @@ sub readLock {
 sub lockTry {
     my $dir6 = shift;
     assertDir6($dir6);
-    my $byte = chr(1<<$dir6); #REAL ONE
-    #my $byte = chr(0); #XXX NO REAL ACQUIRES.  WHAT HAPPENS THEN?
+    my $byte;
+    if ($dontReallyLock) {
+        $byte = chr(0);
+    } else {
+        $byte = chr(1<<$dir6); #REAL ONE
+    }
     writeLockByte($byte);
     my $state = readLock();
     return $state != ord($byte);
@@ -101,6 +138,8 @@ sub lockFree {
 }
 
 sub writeLockByte {
+    return if $dontEvenTryLocking;
+
     my $byte = shift;
     #printf("s'%s' '%c' o%03o 0x%02x %d\n",$byte, ord($byte), ord($byte), ord($byte), ord($byte));
 
@@ -117,7 +156,7 @@ sub flashLock {
         ++$fails;
         ++$GLOBAL_STATS{lockAcquireFails};
     }
-    sleep $sleep;
+#    sleep $sleep;
     if (lockFree()) {
         ++$fails;
         ++$GLOBAL_STATS{lockReleaseFails};
@@ -163,7 +202,15 @@ sub dir8ToDir6 {
     return  $dir6from8[$dir8];
 }
 
-my $STD_PKT_LEN = 112;
+my $STD_PKT_LEN = 113;
+sub setPacketLengthCommand {
+    my ($key,$rest) = @_;
+    usageDie "packetlen=1..250" unless $rest =~ /=(\d+)$/;
+    my $len = $1;
+    usageDie "packetlen=1..250" unless $len >= 1 && $len <= 250;
+    $STD_PKT_LEN = $len;
+    print "Packet length set to $STD_PKT_LEN\n";
+}
 my $GLOBAL_PKT_COUNTER = 0;
 # Info per itc/dir6: {
 #   pktCountSent (also tag)
@@ -307,8 +354,8 @@ sub runOneCond {
         sendAllUnderCond($cond7);
     }
     if ($cond7 < 6) { # 0..5 are actual locking attempts
-        my $wait = rand(0.2);
-        sleep $wait;
+        my $wait = rand(0.1);
+#        sleep $wait;
         flashLock($cond7,$wait);    
     }
     do {
@@ -341,6 +388,7 @@ sub processAvailablePackets {
 
 
 sub main {
+    processArgs(@ARGV);
     initLockDev();
     initPktDev();
     initPktStats();
@@ -358,6 +406,7 @@ sub main {
     $drain = processAvailablePackets(1); # Check again
     printf("%d late packets\n",$drain);
     printGlobalStats();
+    last if $oneshot;
     sleep 1;
     printf("Going again\n");
     }
