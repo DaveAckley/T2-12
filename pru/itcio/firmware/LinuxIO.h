@@ -28,6 +28,8 @@ extern int CSendFromThread(uint32_t prudir, uint32_t code, uint32_t val);
 
 extern int CSendTagFromThread(uint32_t prudir, const char * str, uint16_t val);
 
+/** Return 0 (PRU_RPMSG_SUCCESS) if the packet shipped to Linux OK, else 
+    negative if no buffer space or packet too big */
 extern int CSendPacket(uint8_t * data, uint32_t len);
 
 extern void fillFail(const char * msg, uint8_t * packet, uint16_t len);
