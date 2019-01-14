@@ -6,6 +6,7 @@ use Fcntl;
 use Errno qw(EAGAIN);
 use Digest::MD5 qw(md5);
 use List::Util qw(shuffle);
+use Time::HiRes qw(usleep);
 
 my $pktdev = "/dev/itc/packets";
 my $pktmode = O_RDWR|O_NONBLOCK;
@@ -15,6 +16,7 @@ my $lockmode = O_RDWR;
 my $oneshot = 0;
 my $dontReallyLock = 0;
 my $dontEvenTryLocking = 0;
+my $STD_PKT_LEN = 113;
 
 my %argproc = (
     once => sub { $oneshot = 1; },
@@ -33,6 +35,15 @@ sub usageDie {
         print "  $a\n";
     }
     exit 1;
+}
+
+sub setPacketLengthCommand {
+    my ($key,$rest) = @_;
+    usageDie "packetlen=1..250" unless $rest =~ /=(\d+)$/;
+    my $len = $1;
+    usageDie "packetlen=1..250" unless $len >= 1 && $len <= 250;
+    $STD_PKT_LEN = $len;
+    print "Packet length set to $STD_PKT_LEN\n";
 }
 
 sub processArgs {
@@ -72,8 +83,9 @@ sub eexit {
 }
 
 sub printGlobalStats {
-    printf("%d packets sent containing %d bytes\n",
+    printf("%d %d-byte packets sent containing %d bytes\n",
            $GLOBAL_STATS{packetsSent},
+           $STD_PKT_LEN,
            $GLOBAL_STATS{bytesSent});
     printf("%d packets rcvd containing %d bytes\n",
            $GLOBAL_STATS{packetsRcvd},
@@ -149,14 +161,14 @@ sub writeLockByte {
 
 sub flashLock {
     my ($dir,$sleep) = @_;
-    $sleep ||= 1.5;
+    $sleep ||= 1000000;
     $GLOBAL_STATS{lockFlashes}++;
     my $fails = 0;
     if (lockTry($dir)) {
         ++$fails;
         ++$GLOBAL_STATS{lockAcquireFails};
     }
-#    sleep $sleep;
+    usleep $sleep;
     if (lockFree()) {
         ++$fails;
         ++$GLOBAL_STATS{lockReleaseFails};
@@ -202,15 +214,6 @@ sub dir8ToDir6 {
     return  $dir6from8[$dir8];
 }
 
-my $STD_PKT_LEN = 113;
-sub setPacketLengthCommand {
-    my ($key,$rest) = @_;
-    usageDie "packetlen=1..250" unless $rest =~ /=(\d+)$/;
-    my $len = $1;
-    usageDie "packetlen=1..250" unless $len >= 1 && $len <= 250;
-    $STD_PKT_LEN = $len;
-    print "Packet length set to $STD_PKT_LEN\n";
-}
 my $GLOBAL_PKT_COUNTER = 0;
 # Info per itc/dir6: {
 #   pktCountSent (also tag)
@@ -354,12 +357,12 @@ sub runOneCond {
         sendAllUnderCond($cond7);
     }
     if ($cond7 < 6) { # 0..5 are actual locking attempts
-        my $wait = rand(0.1);
-#        sleep $wait;
+        my $wait = rand(25000)+1;
+        usleep $wait;
         flashLock($cond7,$wait);    
     }
     do {
-        sleep 0.1;
+        usleep 100000;
     } while (processAvailablePackets() > 0);
 }
 
