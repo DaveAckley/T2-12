@@ -6,6 +6,8 @@
 
 #include "ruleset.h"                /* get macros and constants */
 
+/*#define REPORT_LOCK_STATE_CHANGES*/
+
 DECLARE_WAIT_QUEUE_HEAD(userWaitQ); /* For user context sleeping during lock negotiations */
 
 DEFINE_SPINLOCK(mdLock);             /* For protecting access to md */
@@ -375,6 +377,7 @@ void make_reports(void)
     }
     */
     if (md.itcInfo[i].lastReported == md.itcInfo[i].lastActive) continue;
+#ifdef REPORT_LOCK_STATE_CHANGES
     printk(KERN_INFO "ITC %s(%s): o%d%d i%d%d, f%lu, r%lu, at%lu, ac%lu, gr%lu, co%lu, it%lu, emQ%lu, emG%lu\n",
 	   itcDirName(md.itcInfo[i].direction),
 	   getStateName(md.itcInfo[i].state),
@@ -392,12 +395,14 @@ void make_reports(void)
 	   md.itcInfo[i].edgesMissed[0],
 	   md.itcInfo[i].edgesMissed[1]
 	   );
+#endif
     md.itcInfo[i].lastReported = md.itcInfo[i].lastActive;
   }
 }
 
 void setState(ITCInfo * itc, ITCState newState) {
   if (itc->state != newState) {
+#ifdef REPORT_LOCK_STATE_CHANGES
     printk(KERN_INFO "ITC %s: %s->%s o%d%d i%d%d\n",
            itcDirName(itc->direction),
            getStateName(itc->state),
@@ -406,7 +411,7 @@ void setState(ITCInfo * itc, ITCState newState) {
            itc->pinStates[PIN_OGRLK],
            itc->pinStates[PIN_IRQLK],
            itc->pinStates[PIN_IGRLK]);
-
+#endif
     itc->pinStates[PIN_ORQLK] = (outputsForState[newState]>>1)&1;
     itc->pinStates[PIN_OGRLK] = (outputsForState[newState]>>0)&1;
     itc->lastActive = md.moduleLastActive = jiffies;
@@ -546,7 +551,9 @@ int itcThreadRunner(void *arg) {
     set_current_state(TASK_RUNNING);
 
     if (md.userRequestActive && time_before(md.userRequestTime + jiffyTimeout/10, jiffies)) {
+#ifdef REPORT_LOCK_STATE_CHANGES
       printk(KERN_INFO "itcThreadRunner: Clearing userRequestActive\n");
+#endif
       md.userRequestActive = 0;
       wake_up_interruptible(&userWaitQ);
     }
