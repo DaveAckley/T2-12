@@ -1,0 +1,192 @@
+{13}  -*- text -*-
+[0:
+
+Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
+userspace interaction/communication model for intertile stuff, and we
+then perhaps the current missing link is we need an explicit 'neighbor
+tile' abstraction.  Something that's not about the intertile
+connection, but about the tile at the far end -- whether we currently
+have a such a neighbor or not.
+
+Unsure if it belongs in /dev, /sys/class, or something more userspace,
+but perhaps like /dev/tile/ET etc.  For at least some users, we'd like
+connection and disconnection events to be reported as just more
+packets on some channel that stays open across such things.
+
+And this abstraction would naturally be the place to handle those
+currently-unhandled locstd 'P' and 'F' packets that we are currently
+dumping to syslog like lost babies.  The /dev/tile/DIR object would
+change status as a result, and that would be somehow visible more
+broadly in userspace.
+
+Perhaps we should draft a standard local packet type for 'tile event
+notices' right now, so that our tile model can have an OoB way to
+notify consumers about such changes.
+
+OK, currently 201812171048-packet-format-notes.txt:1: has our
+'documentation' for the defined local standard packet types.  0..3 (of
+31) are currently in use.  Just take 4?  What is its name?[1:
+
+Sat Jan 19 12:57:57 2019 'Tile Event Packet'?  TEP?  None of the std
+loc packet types seem to have manifest constant names yet.[2:
+
+Sat Jan 19 12:59:31 2019 And what is the TEP syntax?  Well, we finally
+will not have the direction encoded in it, because that's now implicit
+in which tile we are talking to.
+
+So:
+TEP := TEP_PKT_TYPE + EVENT_TYPE + OPT_ARGS
+TEP_PKT_TYPE := 0xc4
+OPT_ARGS     := BYTE*
+
+EVENT_TYPE   :=
+ 0x00      Illegal
+ 0x01      Connect
+ 0x02      Disconnect
+ 0x03-0xff Reserved
+
+[3:
+
+Sat Jan 19 16:04:54 2019 The tile models, I guess, should provide
+services by something like port number, so packets can be
+demultiplexed by the tile model.
+
+And I guess the userspace 'server' we're thinking of is the "actual"
+tile that the remote tile models are modeling.
+[4:
+
+Sat Jan 19 17:21:36 2019 Looking at some FUSE tutorials..  I know
+there's plenty of people hating on FUSE but it might be at least a
+transition technology for us here as we try to figure out what we
+actually want our LKMs to do for us.
+[5:
+
+Sun Jan 20 01:06:31 2019 Well, fuse is about what you'd expect -- a
+giant pile of callbacks with a lot of fiddly details about
+unimplemented flags and fuse-versions and so forth.  We can certainly
+figure it out if we really want to but I'd rather have a clearer idea
+what we want out of it before we try.
+
+[6:
+
+Sun Jan 20 01:08:10 2019 What are our main use cases?
+
+1. mfmt2 would like to sit on one fd -- preferably via select() but
+   perhaps block on a thread -- and receive all intertile mfm packets.
+
+2. mfmt2 would also like to select() on one fd to know when it can
+   send an intertile packet?
+
+3. some 'physics daemon' would like to announce and monitor the tile's
+   current physics 'version stamp' and do background intertile
+   updating of newer versions.
+
+4. at a minimum the physics daemon would manage mfz files; as a
+   step-up it could propagate like the T2 repo as well.
+
+
+5. 'general intertile communications', whatever that might mean?
+
+[7:
+
+Sun Jan 20 04:25:04 2019 Given that it's all about 1 & 2, really, what
+about if we draft the reserved bit in
+
+    FIRST BYTE
+
+     Standard Routed Packet Header
+      STND LOCL RSV1
+     +----------------------------------------+
+     |  1 |  0 |  0 |OVRN||EROR|DIR2|DIR1|DIR0|
+     +----------------------------------------+
+
+(from /home/t2/T2-12/pru/itcio/notes/201812171048-packet-format-notes.txt:0 )
+
+to be the 'mfm bit'?
+
+      STND LOCL MFMT
+     +----------------------------------------+
+     |  1 |  0 | 1  |OVRN||EROR|DIR2|DIR1|DIR0|
+     +----------------------------------------+
+
+So anything with MFMT set is 'MFM traffic' that would be routed to and
+from like /dev/itc/mfm or something, and mfmt2 would select or block
+on that.[8:
+
+Sun Jan 20 04:33:55 2019 So, everybody else would do what?  Go through
+some single daemon that managed packet services for everybody except
+mfm?  And that guy would expect packets like what, perhaps:
+
+
+      BYTE 0                                   BYTE 1
+      STND LOCL MFMT
+     +----------------------------------------++---------------------------------------+
+     |  1 |  0 | 0  |OVRN||EROR|DIR2|DIR1|DIR0||DST3|DST2|DST1|DST0|SRC3|SRC2|SRC1|SRC0|
+     +----------------------------------------++---------------------------------------+
+
+and we'd support up to sixteen random packet service ports.  Or I
+suppose we could go to a three byte header, jeez.[9:
+
+Sun Jan 20 04:54:44 2019 And how would people offer and use those
+services.  Open /dev/itc/svc/ff for RDWR|NONBLOCK or something?  But
+then do we even need a distinct source port, or is everything peer to
+peer?  That would be flavorful.
+
+:9]
+
+
+:8]
+
+:7]
+
+
+:6]
+
+:5]
+:4]
+:3]
+
+
+:2]
+
+:1]
+
+:0]
+[10:
+
+Sun Jan 20 08:02:15 2019 But, I need to see something anything proof
+of concept minimal crap actually working here, for me to feel
+comfortable.
+
+I want a Perl script daemon that
+
+1. Watches the modification date of some counter file, and reloads it
+   whenever it changes.
+
+2. And advertises its counter value by sending it to all active
+   neighbors every minute or so.
+
+3. And tracks the counters of all active neighbors by monitoring their
+   counter value advertisements.
+
+4. And 
+
+:10]
+[11:
+
+Wed Jan 30 22:37:52 2019 Aaand, to make the guts of that work, we need
+a way to send a file.  Which is a stream of bytes, plus metadata,
+which has to be packetized, sent, received, and reassembled.
+
+Aaaaad, damn the NIH torpedoes aaand damn the RTW (Reinventing The
+Wheel) nay-sayers and let's just MAKE OUR OWWWWWWWWN.
+
+[12:
+
+Wed Jan 30 22:40:56 2019 So.  We need packet formats for metadata and
+data stream.  We have some structure for such things already set up,
+so we should find that.
+
+:12]
+
+:11]
