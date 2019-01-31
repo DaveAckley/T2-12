@@ -1,4 +1,4 @@
-{2}  -*- text -*-
+{3}  -*- text -*-
 [0:
 
 Mon Dec 17 10:48:43 2018 Collecting up our facts on the ground ahead
@@ -35,7 +35,8 @@ Standard Local Packet Types:
   0    0xc0    Illegal 
   1    0xc1    Labeled value packet (macros.asm: sendVal)
   2    0xc2    Thread Debug Packet (macros.asm: sendTag (when debugging enabled))
-  3    0xc3    Thread Status Packet (macros.asm: sendFromThread)
-  4-31 0xc4-0xdf        Reserved. Illegal?
-
+  3    0xc3    Thread Status Packet (macros.asm: sendFromThread)[2:
+  4    0xc4    Tile Event Packet (some as-yet-unnamed LKM?)
+  5-31 0xc5-0xdf        Reserved. Illegal?
+  :2]
 :1]
