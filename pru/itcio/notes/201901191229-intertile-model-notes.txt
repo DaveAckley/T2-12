@@ -1,4 +1,4 @@
-{13}  -*- text -*-
+{17}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -131,7 +131,92 @@ Sun Jan 20 04:54:44 2019 And how would people offer and use those
 services.  Open /dev/itc/svc/ff for RDWR|NONBLOCK or something?  But
 then do we even need a distinct source port, or is everything peer to
 peer?  That would be flavorful.
+[13:
 
+Thu Jan 31 00:36:25 2019 So, we're back here, and we have a public
+challenge to get software moving between tiles before next t2sday.
+
+So, picking up the discussion in :8:, we need to pull the trigger on a
+format for STND,!LOCL,!MFMT packets.
+
+Do we NEED source ports?  Well, why do source ports exist?  So that
+multiple 'clients' can talk to one 'server'.  Now, in basic intertile
+land, we are ONLY talking to neighboring tiles and are NOT routing
+beyond that.  And the source DIRECTION is already present in the BYTE0
+header, so clients on different neighboring tiles are already
+distinguishable.
+
+So these multiple clients, if we had them, would have to be all on a
+SINGLE neighboring tile.  Do we really need that?  Well, what if we
+wanted to update a bunch of files amongst our neighbors?  We might be
+newer on some files and some of our neighbors might be newer on
+others.  It would be arguably convenient to just start flows for each
+file that has to move in any direction and let their packets get
+interleaved however, rather than having to (go to all the onerous
+extra trouble to) make a user-level queue or whatever for the files
+destined for each neighbor.
+[14:
+
+Thu Jan 31 02:40:10 2019 So I guess that example isn't
+super-compelling to me.  To the contrary, if we had a peer-to-peer
+'managed file update service', we could (more easily) get different
+pieces of files from different neighbors and so on.  (Eventually.)
+
+Are there other cases to consider for source ports?[15:
+
+Thu Jan 31 02:46:01 2019 ..I'm just not seeing it.  Screw it, let's go
+full-on peer-to-peer and deal with any fall-out as we have to.  Worst
+case we can always create a source port model underneath some
+peer-to-peer service.
+
+So, we'd be saying something like
+
+      BYTE 0                                   BYTE 1
+      STND LOCL MFMT
+     +----------------------------------------++---------------------------------------+
+     |  1 |  0 | 0  |OVRN||EROR|DIR2|DIR1|DIR0||RSV1|RSV0|SVC5|SVC4|SVC3|SVC2|SVC1|SVC0|
+     +----------------------------------------++---------------------------------------+
+
+where we offer up to 63 services (reserving service 0 as null), and
+hold a couple of bits for the future.
+
+Aaand we can go ahead and draft a few services here, at least
+provisionally?
+
+Say service 1 is a .. what?  Version number?  Liveness ping?  Maybe we
+should stick to our knitting here and just say like service 8 is
+'managed file update'.  We want a service that just falls towards
+having the newest version of all managed files that any neighbor knows
+about.  We'll have a directory of the current king of the hill files,
+each with a version number and a checksum..[16:
+
+Thu Jan 31 03:17:26 2019 Stop stop stop.  Crawl before fly my god you
+have to get something running here.  A directory of MFZ files that are
+all to be considered 'legitimates physics-es'.  All have to be signed
+by a known key.  We go by the timestamp in the mfz to decide if a file
+is newer.  As an idle background process, we send random mfz+timestamp
+info to random neighbors every so often.  If we receive word about an
+MFZ that we don't have or that's newer than what we do have, we
+request that file.  The source starts streaming it to us.  We assemble
+it in a temporary directory.  When/if it arrives completely and we
+verify it locally, we (atomically-ish) cut it over into the live
+directory, and that's when it will start getting broadcast to our
+neighbors.
+
+Somehow we have a way -- perhaps a different service in fact -- of
+saying it's time to change physics, which we handle by shutting down
+MFM and restarting it on a new MFZ.
+
+For now we still won't have intertile events, so there's no issue yet
+of mfm needing to check that neighbors are on the same MFZ.
+
+:16]
+
+:15]
+
+:14]
+
+:13]
 :9]
 
 
@@ -169,7 +254,7 @@ I want a Perl script daemon that
 3. And tracks the counters of all active neighbors by monitoring their
    counter value advertisements.
 
-4. And 
+4. And
 
 :10]
 [11:
