@@ -84,11 +84,13 @@ sub loadMFZs {
     closedir DIR or die "Can't close $dir: $!";
 }
 
+my $CDM_PKT_TYPE = 0x03;
+
 sub sendCDMTo {
     my ($dest, $type, $args) = @_;
     die if $dest < 1 or $dest > 7 or $dest == 4;
     die if length($type) != 1;
-    my $pkt = chr(0x80+$dest).$type;
+    my $pkt = chr(0x80+$dest).chr($CDM_PKT_TYPE).$type;
     $pkt .= $args if defined $args;
     print "SENDIT($pkt)\n";
     writePacket($pkt);
