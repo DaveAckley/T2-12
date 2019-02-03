@@ -107,6 +107,11 @@ sub doBackgroundWork {
     if (rand() > 0.95) { $continueEventLoop = 0; print "BAH\n"; }
 }
 
+sub processPacket {
+    my $pkt = shift;
+    print "GOTSTON PKT($pkt)\n";
+}
+
 sub now {
     return time()>>1;
 }
