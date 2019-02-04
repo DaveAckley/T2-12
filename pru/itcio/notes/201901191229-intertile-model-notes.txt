@@ -1,4 +1,4 @@
-{17}  -*- text -*-
+{40}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -275,3 +275,319 @@ so we should find that.
 :12]
 
 :11]
+[17:
+
+Sat Feb  2 23:50:04 2019 Aaaand we're back.  [18:
+
+Sun Feb  3 01:04:12 2019 So we're making 'cdm.pl', a demo 'common data
+manager' script that, as far as I can tell right now, will have
+essentially no user interface at all.  It will hog all the packets on
+/dev/itc/packets -- a device which should, once mfmt2 exists, NOT
+include mfm traffic -- and build a model of its own and its neighbors
+common data, and automatically send updates as needed so that
+everybody falls towards having an equivalent view of what counts as
+the latest common data.  cdm.pl will generate output along the lines
+of log messages about what's going on, but that's about it.
+
+But first, nap.[19:
+
+Sun Feb  3 02:36:19 2019 Well, maybe not nap yet.
+
+Structures for file/directory model:
+
+ @content => (sha512-of-content content-length-bytes path-to-content)
+
+
+:19]
+
+:18]
+
+
+:17]
+[20:
+
+Sun Feb  3 04:44:54 2019 OK, say service 3 is CDM_PKT_TYPE.  Format
+is:
+
+      BYTE 0                                   BYTE 1                                   BYTE 2
+      STND LOCL MFMT
+     +----------------------------------------++---------------------------------------++----------------+
+     |  1 |  0 | 0  |OVRN||EROR|DIR2|DIR1|DIR0||   0|   0|   0|   0|   0|   0|   1|   1|| CDM PKT TYPE   |...
+     +----------------------------------------++---------------------------------------++----------------+
+
+ => 0x80 | dir, 0x03, code, args..  Why service 3?  Because that's ^C
+for 'CDM'?  Whatever.
+
+And our first code is 'A'live, a liveness ping.  Let's implement that
+and foggen PROCESS A PACKET.[21:
+
+Sun Feb  3 05:17:49 2019 OK, so there it is.  Mr NW sent
+'\203^CA' packets and Mr SE sent '\207^CA' packets, and Mr NW received
+'\203^CA' packets and Mr SE received '\207^CA' packets.
+
+Which seems like they could just be talking to themselves.. but the
+dirs get remapped from dst->src as they move intertile.  (Which I just
+confirmed by adding a random number payload to distinguish the 'A'
+packet.)
+
+So.  Progress.  Now nap.  (What _is_ happening to those packets we're
+sending to unconnected tiles, hmm?)
+
+:21]
+
+:20]
+[22:
+
+Sun Feb  3 11:47:53 2019 OK, so, let's have a primitive neighbor model
+to maintain and grow:
+
+ - Direction to ngb
+ - Time we last got an Alive pkt from them
+ - Time we last sent an Alive pkt to them
+
+I guess we ought to do 'object hash' style.  This is likely to grow
+hunh?
+
+Also, maybe we shouldn't use wall-clock time, but just
+count-of-background-works or something.  We really want to avoid
+leaning on absolute time if we don't need it.  We'll call an entry to
+doBackgroundWork a.. what?  'Ticks' is way too overloaded already.
+'Tocks'?  Just makes you look around for ticks.
+
+'Background Work' -> 'Borks'?  Probably too distracting.. 'Clicks'?
+Maybe.  'Clacks'?  Ooh, better :).  Like machinery!  Big old
+steam-powered machinery suitable for slow background tasks.
+
+[23:
+
+Sun Feb  3 12:27:00 2019 Do we actually need even clacks, in the sense
+of it being an absolute count of doBackgroundWork calls?  We're facing
+count-to-infinity if we want absolute clacks.  And all we really need
+is 'clack intervals' anyway, right?  Couldn't we do countdowns
+instead?  And we don't even need countdowns if we seriously drink our
+own koolaid and do 'stats instead of state'.  Every time we pick a ngb
+to consider, we have some odds of sending it an Alive..  And if we
+have it flagged as alive, we have some odds of clearing that flag.
+Like 1 in 25 to send our Alive, 1 in 100 to clear their alive.
+
+Going all-stats might be get pretty raggedy, though, for something
+we're thinking of as fairly low-level.  Could mix it, stats to send
+our alive but a countdown to expire their Alive?  Or countdown for
+both but reset them to random range.  Or countup with random
+expiration. [24:
+
+Sun Feb  3 13:07:20 2019 Now, wait a minute.  Do we even need
+aliveness packets given we have the credible and much lower-level
+notion of packet sync?  Well, it's not about need, it's about
+robustness.  If we have PS but aren't getting alive packets, our
+neighbor has got problems in middle management.
+
+Suppose we create an apoptosis signal packet -- a pretty low-level
+one, that's handled in the LKM.  One such packet doesn't mean much,
+but getting them frequently from multiple neighbors should be a sign
+that we should try to make a note of the situation somewhere and then
+reboot.
+
+:24]
+
+:23]
+
+:22]
+[25:
+
+Sun Feb  3 14:21:27 2019 Well, we have two reserved bits in byte 1 of
+standard routed tile (as opposed to mfm) packets.  I'm wondering about
+drafting either or both as a 'network level' indicator or something,
+like:
+
+ 00 User space
+ 01 LKM
+ 10 PRU reserved
+ 11 Illegal reserved
+
+where 'normal' cdm packets would be 00 but apoptosis packets would be
+01.
+
+I suppose a more 'port-like' approach would be just reserve a low
+range of service numbers to be 'system' level.[26:
+
+Sun Feb  3 14:42:03 2019 BUT IN ANY FOGGEN EVENT I SHOULDN'T BE
+DESIGNING INTERTILE APOPTOSIS RIGHT THE FOG NOW.  Sheesh.
+
+:26]
+
+:25]
+[27:
+
+Mon Feb  4 00:38:22 2019 OK, also want a data model to describe our
+view of the common/ directory.  At least, stuff about file paths,
+sizes, and checksums.  We're still struggling to define our
+relationship with wall-clock time: We don't think we really need it,
+and we don't think it's all that scalable, but it's what the
+filesystem is going to be using so what do we do?
+
+Fundamental data model question: When should some content count as a
+new version of an existing name?[28:
+
+Mon Feb  4 00:52:59 2019 All we really have at the moment is the
+internal timestamp on mfz files.  We can get at that using the
+extended version of 'mfzrun verify':
+
+    ackley@coldaynell:~/PART4/code/D$ ./MFM/bin/mfzrun ../E/MFM/res/elements/demos/ForkBombs.mfz VERIFY
+    SIGNATURE_CHECK [OK]
+    INNER_CHECKSUM [2aafbf-aa30-a86bc6]
+    INNER_TIMESTAMP [1536398164]
+    SIGNING_HANDLE [MFM-DEMOS-20180908031520-ulam-3.0.12-ackley]
+    HANDLE_FINGERPRINT [e1bf-234-7029]
+    HANDLE_PUBKEY [-----BEGIN RSA PUBLIC KEY-----
+    MIGJAoGBALdLR5qmGltWAx7Kt5yBAiNQbElAT9UuAjVNZCdHYTuTRckeyhNNF0VS
+    0mKBAKAyzLXIG4yXJVCw5s/lx2J3DCcXOv62tNDL8uPpqM3PiGlSv+R5iSvDv27m
+    mNpHxXYIwfrpaHLPSngPyYa3P31r8gRCka+K8IiF9dimYMjan+N/AgMBAAE=
+    -----END RSA PUBLIC KEY-----
+    ]
+
+which absolutely does depend on absolute time, but, because it's also
+signed by someone we've been told to trust, we're inclined to believe
+that successive INNER_TIMESTAMPs will be legitimately comparable
+within a given mfz name.[29:
+
+Mon Feb  4 01:18:56 2019 Another natural, modrun possibility is
+working off a git repo and deriving version precedence from successive
+commits on a given path.  But that brings an awful lot of
+infrastructure with it -- not necessarily bad infrastructure, but not
+necessarily infrastructure we want to fundamentally depend upon
+either.
+
+Back in IXM-land a decade ago, we had 'green boot', 'blue boot', and
+'red boot'.  Green boot accepted wall-clock-newer code from anybody,
+blue required wall-clock-newer plus matching the current 'program id',
+and red wouldn't accept new code at all without a physical button
+press during boot up.
+
+We could say a physical button-press is required to add something to
+/data/common?  But how would that work?  We accept any contents in
+/data/common when cdm.pl starts up, so put new crap in then restart.
+
+[30:
+
+Mon Feb  4 01:34:39 2019 Well, fog it, we have to get off the dime
+here.  For today let's only consider .mfz files, let's checksum them
+externally and recheck the checksums from time to time, and when they
+change we use mfzrun VERIFY to get the internal timestamp, and if the
+internal timestamp beats what we're holding we propagate it.
+
+One practical problem is that mfzrun VERIFY is only in the github,
+it's not in the MFM-4.0.12 that the tiles are using.  Now, I guess for
+the moment we could just use 'mfzrun list' and take the time of the
+MFZPUBKEY.DAT file as proxy for the 'internal timestamp'.
+
+Let's do that.  Damn the torpedoes.
+
+[31:
+
+Mon Feb  4 01:40:45 2019 So, one cdm background task is load/refresh
+an .mfz file.
+
+The file info we'll keep is:
+
+  [path, length, checksum, signing-handle, timestamp]
+
+The file info we'll send to neighbors is
+
+  [path, timestamp]
+
+So our data model, for now, will be:
+
+ %dataModel =
+   [path => [length, checksum, signing-handle, inner-timestamp]]
+   [path => [length, checksum, signing-handle, inner-timestamp]]
+[33:
+
+Mon Feb  4 08:35:41 2019 Well, now we're wondering we should have
+'available-from' and 'bytes-needed' (or something) as well, in the
+file info.  Otherwise we're going to have to have that info
+elsewhere, right, and somehow link it to this?
+
+Well, finish the mfz metadata gathering first, then come back to
+this. 
+
+:33]
+and that's all..[32:
+
+Mon Feb  4 02:11:10 2019 Well, let's also keep an array of files to
+check, that we can munch through one by one without hoping to keep a
+directory handle open for long periods of time..
+
+:32]
+
+:31]
+
+:30]
+:29]
+
+:28]
+
+:27]
+[34:
+
+Mon Feb  4 09:54:10 2019 Well, alright, finally, here we are needing
+to announce the existence of a file an alive cdm neighbor.  What's the
+CDM packet type and format for that?
+
+'B' because it's next after 'A'?  Doh.  'B' for 'Be aware'? 'C' for
+content?  'F' for file?  'I' for info?  'M' for MFZ?
+
+'F' for file I guess.
+
+0x80 | dir, 0x03, 'F', len+filename, len+checksum, len+innertimestamp?
+How big is that??
+
+max    1/1   1/2   1/3 1/4 36/40     1/41 16/57    1/58 10/68
+
+:34]
+[35:
+
+Mon Feb  4 10:33:01 2019 Well, I suspect I now know what happens once
+the tx buffers fill up..  I suspect this is what happens:
+
+    Feb  4 10:27:59 beaglebone kernel: [127827.790882] itc_pkt rpmsg0: timeout waiting for a tx buffer
+    Feb  4 10:27:59 beaglebone kernel: [127827.796695] itc_pkt itc!pru0: Transmission on rpmsg bus failed -512
+    Feb  4 10:29:11 beaglebone kernel: [127899.741438] itc_pkt rpmsg0: timeout waiting for a tx buffer
+    Feb  4 10:29:11 beaglebone kernel: [127899.747269] itc_pkt itc!pru0: Transmission on rpmsg bus failed -512
+    Feb  4 10:29:47 beaglebone kernel: [127935.828735] itc_pkt rpmsg0: timeout waiting for a tx buffer
+    Feb  4 10:29:47 beaglebone kernel: [127935.834543] itc_pkt itc!pru0: Transmission on rpmsg bus failed -512
+    Feb  4 10:30:45 beaglebone kernel: [127993.699574] itc_pkt rpmsg1: timeout waiting for a tx buffer
+    Feb  4 10:30:45 beaglebone kernel: [127993.705409] itc_pkt itc!pru1: Transmission on rpmsg bus failed -512
+
+And sitting here I can't think of any existing way to flush tx buffers
+except reboot or possibly reload itc_pkt.ko..[36:
+
+Mon Feb  4 10:40:01 2019 Well, in this case
+
+    Error: Bad address at ./apps/t2/cdm/cdm.pl line 49.
+    root@beaglebone:/home/t2/T2-12# modprobe -r itc_pkt
+    root@beaglebone:/home/t2/T2-12# modprobe itc_pkt
+    root@beaglebone:/home/t2/T2-12#
+
+seemed to work (it shut down and rebooted the PRUs and everything), so
+we'll go with that for now..
+[37:
+
+Mon Feb  4 10:51:43 2019 Maybe we shouldn't even queue a packet for
+transmission unless we believe we have PS.  You shouldn't try to route
+a packet toward an ITC unless you believe it has PS.  [38:
+
+Mon Feb  4 11:23:59 2019 OK, we think we can do that pretty
+reasonably..  What errno do we want to throw if you try it?[39:
+
+Mon Feb  4 11:27:53 2019 Well, let's try -EHOSTUNREACH and see how we
+like that..
+
+:39]
+
+:38]
+
+:37]
+:36]
+
+:35]
