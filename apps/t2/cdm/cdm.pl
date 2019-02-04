@@ -3,6 +3,8 @@ use Fcntl;
 use File::Path qw(make_path);
 use Errno qw(EAGAIN);
 use Time::HiRes;
+use List::Util qw/shuffle/;
+use Digest::SHA qw(sha512_hex);
 
 my $CDM_PKT_TYPE = 0x03;
 my $CDM_PKT_TYPE_BYTE = chr($CDM_PKT_TYPE);
@@ -113,7 +115,73 @@ sub randDir {
     return $dir; # 1,2,3,5,6,7
 }
 
+my %dataModel;
+my @pendingPaths;
 my %hoodModel;
+
+sub loadCommonFiles {
+    if (!opendir(COMMON, $commonDir)) {
+        print "WARNING: Can't load $commonDir: $!\n";
+        return;
+    }
+    @pendingPaths = shuffle readdir COMMON;
+    closedir COMMON or die "Can't close $commonDir: $!\n";
+}
+
+my $digester = Digest::SHA->new(256);
+
+sub checksumWholeFile {
+    my $path = shift;
+    $digester->reset();
+    $digester->addfile($path);
+    my $cs = $digester->b64digest();
+    print " $path => $cs\n";
+    return $cs;
+}
+
+sub checkCommonFile {
+    if (scalar(@pendingPaths) == 0) {
+        loadCommonFiles();
+        return;
+    }
+    my $filename = shift @pendingPaths;
+    return unless defined $filename && $filename =~ /[.]mfz$/;
+
+    my $path = "$commonDir/$filename";
+    print "CHECKING $path\n";
+    my $finfo = getFinfo($path);
+
+    # Need checksum?
+    if (!defined $finfo->{checksum}) {
+        $finfo->{checksum} = checksumWholeFile($path);
+        return; # That's enough for now..
+    }
+
+
+}
+
+sub newFinfo {
+    my $path = shift;
+    die unless defined $path && -r $path;
+    return {
+        path => $path,
+        length => -s _,
+        modtime => -M _,
+        checksum => undef,
+        signingHandle => undef,
+        innerTimestamp => undef
+    };
+}
+
+sub getFinfo {
+    my $path = shift;
+    my $finfo;
+    while (!defined($finfo = $dataModel{$path})) {
+        $dataModel{$path} = newFinfo($path);
+    }
+    return $finfo;
+}
+
 
 sub newNgb {
     my $dir = shift;
@@ -130,7 +198,8 @@ sub newNgb {
 sub printHash {
     my $href = shift;
     foreach my $key (sort keys %{$href}) {
-        print " $key ".$href->{$key}."\n";
+        my $v = $href->{$key};
+        print " $key ".($v ? $v : "undef")."\n";
     }
 }
 
@@ -143,26 +212,47 @@ sub getNgbInDir {
     return $ngb;
 }
 
+sub oddsOf {
+    my ($this, $outof) = @_;
+    return rand($outof) < $this;
+}
+
+sub oneIn {
+    return oddsOf(1, shift);
+}
+
 sub getRandomNgb {
     return getNgbInDir(randDir());
 }
 
+sub getRandomAliveNgb {
+    my $ngb;
+    my $count = 0;
+    foreach my $k (keys %hoodModel) {
+        my $v = $hoodModel{$k};
+        $ngb = $v if $v->{isAlive} && oneIn(++$count);
+    }
+    return $ngb; # undef if none alive
+}
+
 my $continueEventLoop = 1;
 sub doBackgroundWork {
+
+    # ALIVENESS MGMT
     my $ngb = getRandomNgb();
-    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 100) {
+#    print getDirName($ngb->{dir})." alive ".$ngb->{isAlive}." clacks ".$ngb->{clacksSinceAliveRcvd}."\n";
+    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 20) {
         $ngb->{isAlive} = 0;
         print getDirName($ngb->{dir})." is dead\n";
     }
     
-    if (rand(++$ngb->{clacksSinceAliveSent}) > 50) {
+    if (rand(++$ngb->{clacksSinceAliveSent}) > 10) {
         $ngb->{clacksSinceAliveSent} = 0;
-#        printHash($ngb);
         sendCDMTo($ngb->{dir},'A');
-        return;
     }
-    print "DOB\n";
-    if (rand() > 0.95) { $continueEventLoop = 0; print "BAH\n"; }
+
+    # COMMON MGMT
+    checkCommonFile();
 }
 
 sub processPacket {
@@ -177,8 +267,8 @@ sub processPacket {
         if ($bytes[2] eq "A") {
             my $ngb = getNgbInDir($srcDir);
             $ngb->{clacksSinceAliveRcvd} = 0;
-            if (!$ngp->{isAlive}) {
-                $ngp->{isAlive} = 1;
+            if (!$ngb->{isAlive}) {
+                $ngb->{isAlive} = 1;
                 print getDirName($srcDir)." is alive\n";
             }
             return;
