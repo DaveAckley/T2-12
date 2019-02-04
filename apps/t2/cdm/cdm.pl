@@ -4,8 +4,21 @@ use File::Path qw(make_path);
 use Errno qw(EAGAIN);
 use Time::HiRes;
 
+my $CDM_PKT_TYPE = 0x03;
+my $CDM_PKT_TYPE_BYTE = chr($CDM_PKT_TYPE);
+
 my $pktdev = "/dev/itc/packets";
 my $mode = O_RDWR|O_NONBLOCK;
+
+my @dirnames = ("NT", "NE", "ET", "SE", "ST", "SW", "WT", "NW");
+
+sub getDirName {
+    my $dir = shift;
+    die unless defined $dir;
+    return $dirnames[$dir] if defined $dirnames[$dir];
+    return "Bad dir '$dir'";
+}
+
 sub openPackets {
     sysopen(PKTS, $pktdev, $mode) or die "Can't open $pktdev: $!";
 }
@@ -84,8 +97,6 @@ sub loadMFZs {
     closedir DIR or die "Can't close $dir: $!";
 }
 
-my $CDM_PKT_TYPE = 0x03;
-
 sub sendCDMTo {
     my ($dest, $type, $args) = @_;
     die if $dest < 1 or $dest > 7 or $dest == 4;
@@ -102,16 +113,78 @@ sub randDir {
     return $dir; # 1,2,3,5,6,7
 }
 
+my %hoodModel;
+
+sub newNgb {
+    my $dir = shift;
+    my $longAgo = 1000000;
+    die unless defined $dir;
+    return {
+        dir => $dir,
+        clacksSinceAliveSent => $longAgo,
+        clacksSinceAliveRcvd => $longAgo,
+        isAlive => 0,
+    };
+}
+
+sub printHash {
+    my $href = shift;
+    foreach my $key (sort keys %{$href}) {
+        print " $key ".$href->{$key}."\n";
+    }
+}
+
+sub getNgbInDir {
+    my $dir = shift;
+    my $ngb;
+    while (!defined($ngb = $hoodModel{$dir})) {
+        $hoodModel{$dir} = newNgb($dir);
+    }
+    return $ngb;
+}
+
+sub getRandomNgb {
+    return getNgbInDir(randDir());
+}
+
 my $continueEventLoop = 1;
 sub doBackgroundWork {
-    sendCDMTo(randDir(),'A');
+    my $ngb = getRandomNgb();
+    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 100) {
+        $ngb->{isAlive} = 0;
+        print getDirName($ngb->{dir})." is dead\n";
+    }
+    
+    if (rand(++$ngb->{clacksSinceAliveSent}) > 50) {
+        $ngb->{clacksSinceAliveSent} = 0;
+#        printHash($ngb);
+        sendCDMTo($ngb->{dir},'A');
+        return;
+    }
     print "DOB\n";
     if (rand() > 0.95) { $continueEventLoop = 0; print "BAH\n"; }
 }
 
 sub processPacket {
     my $pkt = shift;
-    print "GOTSTON PKT($pkt)\n";
+    if (length($pkt) < 3) {
+        print "Short packet '$pkt' ignored\n";
+        return;
+    }
+    my @bytes = split(//,$pkt);
+    my $srcDir = ord($bytes[0])&0x07;
+    if ($bytes[1] eq $CDM_PKT_TYPE_BYTE) {
+        if ($bytes[2] eq "A") {
+            my $ngb = getNgbInDir($srcDir);
+            $ngb->{clacksSinceAliveRcvd} = 0;
+            if (!$ngp->{isAlive}) {
+                $ngp->{isAlive} = 1;
+                print getDirName($srcDir)." is alive\n";
+            }
+            return;
+        }
+    }
+    print "UNHANDLED PKT($pkt)\n";
 }
 
 sub now {
@@ -138,7 +211,6 @@ sub eventLoop {
         Time::HiRes::usleep($usleep);
         if ($usleep < $maxu) {
             $usleep += $incru; 
-            print "NOW $usleep\n";
         }
     }
     print "$lastBack time\n";
