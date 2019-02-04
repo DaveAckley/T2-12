@@ -334,11 +334,43 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   return 0;
 }
 
+static int mapPruAndPrudirToDirNum(int pru, int prudir) {
+  switch ((pru<<3)|prudir) {
+#define XX(dir)                                                         \
+  case (ITC_DIR_TO_PRU(dir)<<3) | ITC_DIR_TO_PRUDIR(dir): return ITC_DIR_TO_DIR_NUM(dir);
+FOR_XX_IN_ITC_ALL_DIR
+#undef XX
+  default: return -1;
+  }
+}
+
+static void setITCEnabledStatus(int pru, int prudir, int enabled) {
+  int dirnum4 = mapPruAndPrudirToDirNum(pru,prudir)<<2;
+  S.itcEnabledStatus &= ~(0xf<<dirnum4);
+  if (enabled) S.itcEnabledStatus |= (0x1<<dirnum4);
+}
+
+#if 0
+static int isITCEnabledStatus(int pru, int prudir) {
+  int dirnum4 = mapPruAndPrudirToDirNum(pru,prudir)<<2;
+  return (S.itcEnabledStatus>>dirnum4)&0x1;
+}
+#endif
+
+static int isITCEnabledStatusByITCDir(int itcDir) {
+  int dirnum4 = itcDir<<2;
+  return (S.itcEnabledStatus>>dirnum4)&0x1;
+}
+
 static int routeStandardPacket(const unsigned char * buf, size_t len)
 {
+  int itcDir;
   if (len == 0) return -EINVAL;
   if ((buf[0] & 0x80) == 0) return -ENXIO; /* only standard packets can be routed */
-  switch (buf[0] & 0x7) {
+  itcDir = buf[0] & 0x7;
+  if (!isITCEnabledStatusByITCDir(itcDir)) return -EHOSTUNREACH;
+  switch (itcDir) {
+    
   default: return -ENODEV;
 #define XX(dir) case ITC_DIR_TO_DIR_NUM(dir): return ITC_DIR_TO_PRU(dir);
 FOR_XX_IN_ITC_ALL_DIR    
@@ -509,16 +541,6 @@ static const char * getDirName(u8 dir) {
   return "??";
 }
 
-static int mapPruAndPrudirToDirNum(int pru, int prudir) {
-  switch ((pru<<3)|prudir) {
-#define XX(dir)                                                         \
-  case (ITC_DIR_TO_PRU(dir)<<3) | ITC_DIR_TO_PRUDIR(dir): return ITC_DIR_TO_DIR_NUM(dir);
-FOR_XX_IN_ITC_ALL_DIR
-#undef XX
-  default: return -1;
-  }
-}
-
 // See firmware/LinuxIO.c:CSendFromThread for 0xc3 packet format
 static void handleLocalStandard3(int minor, u8* bytes, int len)
 {
@@ -536,6 +558,19 @@ static void handleLocalStandard3(int minor, u8* bytes, int len)
   default:
     printk(KERN_INFO "Unhandled locstd3 '%c' (pru=%d, prudir=%d, val4 =%x)\n",code,pru,prudir,val4);
     break;
+
+  case 'P': // Announcing packet sync on pru,prudir
+    setITCEnabledStatus(pru,prudir,1);
+    break;
+    
+  case 'F': // Announcing sync failure on pru,prudir
+    printk(KERN_INFO "Packet framing error reported (pru=%d, prudir=%d, val4 =%x)\n",pru,prudir,val4);
+    /* FALL THROUGH */
+
+  case 'T': // Announcing timeout on pru,prudir
+    setITCEnabledStatus(pru,prudir,0);
+    break;
+
   case 'M': // val4 is three-bits of per-pru disabled status
     // 'M' comes from the linux thread so prudir, above, is 3
     {
@@ -543,10 +578,7 @@ static void handleLocalStandard3(int minor, u8* bytes, int len)
 
       for (i = 0; i < 3; ++i) {
         int enabled = !(val4&(1<<i));
-        int dirnum4 = mapPruAndPrudirToDirNum(pru,i)<<2;
-        
-        S.itcEnabledStatus &= ~(0xf<<dirnum4);
-        if (enabled) S.itcEnabledStatus |= (0x1<<dirnum4);
+        setITCEnabledStatus(pru,i,enabled);
       }
     }
     break;
