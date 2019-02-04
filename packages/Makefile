@@ -11,6 +11,9 @@ PACKAGES+=libpam-systemd
 # For the debugging-perl-packet-daemon
 PACKAGES+=libproc-daemon-perl
 
+# For time parsing if we still end up needing that
+PACKAGES+=libdatetime-format-strptime-perl 
+
 # For FUSE if we end up using it
 #PACKAGES+=fuse libfuse-dev
 
