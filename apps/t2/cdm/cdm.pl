@@ -5,9 +5,12 @@ use Errno qw(EAGAIN);
 use Time::HiRes;
 use List::Util qw/shuffle/;
 use Digest::SHA qw(sha512_hex);
+use DateTime::Format::Strptime;
 
 my $CDM_PKT_TYPE = 0x03;
 my $CDM_PKT_TYPE_BYTE = chr($CDM_PKT_TYPE);
+
+my $MAX_MFZ_NAME_LENGTH = 28+4; # 4 for '.mfz'
 
 my $pktdev = "/dev/itc/packets";
 my $mode = O_RDWR|O_NONBLOCK;
@@ -38,10 +41,14 @@ sub readPacket {
         
 
 sub writePacket {
-    my $pkt = shift;
+    my ($pkt,$ignoreUnreach) = @_;
     while (1) {
         my $len = syswrite(PKTS, $pkt);
         return if defined $len;
+        if ($ignoreUnreach && $!{EHOSTUNREACH}) {
+            print "Host unreachable, ignored\n";
+            return;
+        }
         die "Error: $!" unless $!{EAGAIN};
         print "BLOCKING\n";
         Time::HiRes::usleep(100);
@@ -82,23 +89,6 @@ sub checkInitDirs {
     }
 }
 
-sub loadMFZ {
-    my $path = shift;
-    print "loadMFZ $path\n";
-}
-
-sub loadMFZs {
-    my $dir = shift;
-    opendir DIR, $dir or die "Can't open $dir: $!";
-    while (my $entry = readdir DIR) {
-        my $path = "$dir/$entry";
-        if ($entry =~ /[.]mfz$/) {
-            loadMFZ($path);
-        }
-    }
-    closedir DIR or die "Can't close $dir: $!";
-}
-
 sub sendCDMTo {
     my ($dest, $type, $args) = @_;
     die if $dest < 1 or $dest > 7 or $dest == 4;
@@ -106,7 +96,7 @@ sub sendCDMTo {
     my $pkt = chr(0x80+$dest).chr($CDM_PKT_TYPE).$type;
     $pkt .= $args if defined $args;
     print "SENDIT($pkt)\n";
-    writePacket($pkt);
+    writePacket($pkt,1);
 }
 
 sub randDir {
@@ -134,9 +124,41 @@ sub checksumWholeFile {
     my $path = shift;
     $digester->reset();
     $digester->addfile($path);
-    my $cs = $digester->b64digest();
-    print " $path => $cs\n";
+    my $cs = $digester->digest();
+    my $hexcs = unpack("H*",$cs);
+    print " $path => $hexcs\n";
     return $cs;
+}
+
+sub checkMFZDataFor {
+    my $finfo = shift;
+    return 0 if defined $finfo->{innerTimestamp}; # Or some refreshment maybe?
+
+    #### REPLACE THIS WITH 'mfzrun VERIFY' ONCE AVAILABLE
+    my $path = $finfo->{path};
+    my $cmd = "mfzrun $path list";
+    my $output = `$cmd`;
+    if ($output !~ s/^SIGNED BY RECOGNIZED HANDLE: (:?[a-zA-Z][-., a-zA-Z0-9]{0,62}) \(//) {
+        print "Handle of $path not found in '$output'\n";
+        return 0;
+    }
+    my $handle = $1;
+    if ($output !~ s/^\s+MFZPUBKEY.DAT\s+\d+\s+([A-Za-z0-9: ]+)$//m) {
+        print "Timestamp of $path not found in '$output'\n";
+        return 0;
+    }
+    my $timestamp = $1;
+
+    my $strp = DateTime::Format::Strptime->new(
+        pattern   => '%a %b %e %H:%M:%S %Y',
+        );
+    my $dt = $strp->parse_datetime( $timestamp );
+    my $epoch = $dt->strftime("%s");
+    print " $handle/$timestamp => $epoch\n";
+
+    $finfo->{signingHandle} = $handle;
+    $finfo->{innerTimestamp} = $epoch;
+    return 1;
 }
 
 sub checkCommonFile {
@@ -146,10 +168,22 @@ sub checkCommonFile {
     }
     my $filename = shift @pendingPaths;
     return unless defined $filename && $filename =~ /[.]mfz$/;
+    if (length($filename) > $MAX_MFZ_NAME_LENGTH) {  #### XXX WOAH
+        print "MFZ filename too long '$filename'\n";
+        return;
+    }
 
     my $path = "$commonDir/$filename";
-    print "CHECKING $path\n";
-    my $finfo = getFinfo($path);
+    my $finfo = getFinfo($filename);
+
+    # Check if modtime change
+    my $modtime = -M $path;
+    if ($modtime != $finfo->{modtime}) {
+        print "MODTIME CHANGE $path\n";
+        $finfo->{modtime} = $modtime;
+        $finfo->{checksum} = undef;
+        $finfo->{innerTimestamp} = undef;
+    }
 
     # Need checksum?
     if (!defined $finfo->{checksum}) {
@@ -157,14 +191,23 @@ sub checkCommonFile {
         return; # That's enough for now..
     }
 
+    # Need MFZ info?
+    if (checkMFZDataFor($finfo)) {
+        return; # That's plenty for now..
+    }
 
+    # This file is ready.  Maybe announce it to somebody?
+    my $aliveNgb = getRandomAliveNgb();
+    return unless defined $aliveNgb && oneIn(3);
+    announceFileTo($aliveNgb,$finfo);
 }
 
 sub newFinfo {
-    my $path = shift;
+    my ($path,$filename) = @_;
     die unless defined $path && -r $path;
     return {
         path => $path,
+        filename => $filename,
         length => -s _,
         modtime => -M _,
         checksum => undef,
@@ -174,10 +217,11 @@ sub newFinfo {
 }
 
 sub getFinfo {
-    my $path = shift;
+    my $filename = shift;
+    my $path = "$commonDir/$filename";
     my $finfo;
     while (!defined($finfo = $dataModel{$path})) {
-        $dataModel{$path} = newFinfo($path);
+        $dataModel{$path} = newFinfo($path,$filename);
     }
     return $finfo;
 }
@@ -223,6 +267,20 @@ sub oneIn {
 
 sub getRandomNgb {
     return getNgbInDir(randDir());
+}
+
+sub announceFileTo {
+    my ($aliveNgb,$finfo) = @_;
+    my $fileAnnouncementCode = "F";
+    my $pkt = chr(0x80+$aliveNgb->{dir}).chr($CDM_PKT_TYPE).$fileAnnouncementCode;
+    my $filename = $finfo->{filename};
+    $pkt .= chr(length($filename)).$filename;
+    my $rawcs = $finfo->{checksum};
+    $pkt .= chr(length($rawcs)).$rawcs;
+    my $innertimestamp = $finfo->{innerTimestamp};
+    $pkt .= chr(length($innertimestamp)).$innertimestamp;
+    print STDERR "ANNOUNCE($pkt)\n";
+    writePacket($pkt);
 }
 
 sub getRandomAliveNgb {
@@ -303,8 +361,6 @@ sub eventLoop {
             $usleep += $incru; 
         }
     }
-    print "$lastBack time\n";
-    loadMFZs($commonDir)
 }
 
 sub main {
