@@ -62,6 +62,7 @@ sub closePackets {
 my $baseDir = "/data";
 my @subDirs = ("archive", "common", "pending", "unique");
 my $commonDir = "$baseDir/common";
+my $pendingDir = "$baseDir/pending";
 
 sub checkInitDir {
     my $dir = shift;
@@ -124,7 +125,7 @@ sub checksumWholeFile {
     my $path = shift;
     $digester->reset();
     $digester->addfile($path);
-    my $cs = $digester->digest();
+    my $cs = substr($digester->digest(),0,16);
     my $hexcs = unpack("H*",$cs);
     print " $path => $hexcs\n";
     return $cs;
@@ -160,6 +161,8 @@ sub checkMFZDataFor {
 
     $finfo->{signingHandle} = $handle;
     $finfo->{innerTimestamp} = $epoch;
+    $finfo->{currentLength} = $finfo->{length};
+    $finfo->{checkedLength} = $finfo->{length};
     $finfo->{seqno} = ++$globalCheckedFilesCount;
     return 1;
 }
@@ -178,6 +181,12 @@ sub checkCommonFile {
 
     my $path = "$commonDir/$filename";
     my $finfo = getFinfo($filename);
+
+    # Check if file is incomplete
+    if ($finfo->{currentLength} < $finfo->{length}) {
+        requestFileChunk($finfo);
+        return; # and that's all we do for now.
+    }
 
     # Check if modtime change
     my $modtime = -M $path;
@@ -205,7 +214,48 @@ sub checkCommonFile {
     announceFileTo($aliveNgb,$finfo);
 }
 
-sub newFinfo {
+### MAJOR BATTLE DAMAGE REPORTING SIR
+# sub getRemoteFinfo {
+#     my ($filename, $length, $checksum, $time, $dir, $remoteSeqno) = @_;
+#     defined $remoteSeqno or die;
+#     my $path = "$commonDir/$filename";
+#     my $finfo = $dataModel{$path};
+#     if (!defined($finfo)) {
+#         if (-r $path) {
+#             $finfo = newFinfoExisting($path,$filename);
+#             if (defined($finfo->{seqno})) {  # If we have a completed record..
+#                 if ($checksum ne $finfo->{checksum}) {
+#                     # Uh-oh, we have a conflict on a name.
+#                     # Largest inner timestamp wins
+#                     if ($time < $finfo->{innerTimestamp}) {
+#                         # We win.  Tell caller to screw off
+#                         return undef;
+#                     }
+#                 }
+#             } else {
+#                 return undef; # We are still developing our own record.  Screw yours for now.
+#             }
+#         } else {
+#             # Here if we have no local file for remote content.
+#         }
+#     }
+#     ## We're here if we've never heard of this content,
+#     ## or we have an incomplete record
+#     $finfo = {
+#             path => $path,
+#             filename => $filename,
+#             length => $length,
+#             modtime => undef,
+#             checksum => undef,
+#             signingHandle => undef,
+#             innerTimestamp => undef,
+#             seqno => undef,
+#             otherSeqnos => [],
+#         };
+#     }
+# }
+
+sub newFinfoExisting {
     my ($path,$filename) = @_;
     die unless defined $path && -r $path;
     return {
@@ -217,6 +267,9 @@ sub newFinfo {
         signingHandle => undef,
         innerTimestamp => undef,
         seqno => undef,
+        currentLength => -s _,
+        checkedLength => 0,
+        otherSeqnos => [],
     };
 }
 
@@ -225,7 +278,7 @@ sub getFinfo {
     my $path = "$commonDir/$filename";
     my $finfo;
     while (!defined($finfo = $dataModel{$path})) {
-        $dataModel{$path} = newFinfo($path,$filename);
+        $dataModel{$path} = newFinfoExisting($path,$filename);
     }
     return $finfo;
 }
@@ -273,21 +326,18 @@ sub getRandomNgb {
     return getNgbInDir(randDir());
 }
 
-sub announceFileTo {
-    my ($aliveNgb,$finfo) = @_;
-    my $fileAnnouncementCode = "F";
-    my $pkt = chr(0x80+$aliveNgb->{dir}).chr($CDM_PKT_TYPE).$fileAnnouncementCode;
-    my $filename = $finfo->{filename};
-    $pkt .= chr(length($filename)).$filename;
-    my $rawcs = $finfo->{checksum};
-    $pkt .= chr(length($rawcs)).$rawcs;
-    my $innertimestamp = $finfo->{innerTimestamp};
-    $pkt .= chr(length($innertimestamp)).$innertimestamp;
-    my $seqno = $finfo->{seqno};
-    die unless defined $seqno;
-    $pkt .= chr(length($seqno)).$seqno;
-    print STDERR "ANNOUNCE($pkt)\n";
-    writePacket($pkt);
+sub getLenArgFrom {
+    my ($lenPos,$bref) = @_;
+    my $len = ord($bref->[$lenPos]);
+    my $content = join("",@$bref[$lenPos+1..$lenPos+$len]);
+    my $nextLenPos = $lenPos+$len+1;
+    return ($content,$nextLenPos);
+}
+
+sub addLenArgTo {
+    my ($str,$arg) = @_;
+    $str .= chr(length($arg)).$arg;
+    return $str;
 }
 
 sub getRandomAliveNgb {
@@ -320,21 +370,96 @@ sub doBackgroundWork {
     checkCommonFile();
 }
 
-sub getLenArgFrom {
-    my ($lenPos,$bref) = @_;
-    my $len = ord($bref->[$lenPos]);
-    my $content = join("",@$bref[$lenPos+1..$lenPos+$len]);
-    my $nextLenPos = $lenPos+$len+1;
-    return ($content,$nextLenPos);
+sub announceFileTo {
+    my ($aliveNgb,$finfo) = @_;
+    die unless defined $finfo->{seqno};
+    my $fileAnnouncementCode = "F";
+    my $pkt = chr(0x80+$aliveNgb->{dir}).chr($CDM_PKT_TYPE).$fileAnnouncementCode;
+    $pkt = addLenArgTo($pkt,$finfo->{filename});
+    $pkt = addLenArgTo($pkt,$finfo->{length});
+    $pkt = addLenArgTo($pkt,$finfo->{checksum});
+    $pkt = addLenArgTo($pkt,$finfo->{innerTimestamp});
+    $pkt = addLenArgTo($pkt,$finfo->{seqno});
+    print STDERR "ANNOUNCE($pkt)\n";
+    writePacket($pkt);
+}
+
+sub touchFile {
+    my $path = shift;
+    open TMP, ">", $path or die "Can't touch $path: $!";
+    close TMP or die "Can't close touched $path: $!";
+}
+
+sub checkAnnouncedFile {
+    my ($filename,$contentLength,$checksum,$timestamp,$seqno,$dir) = @_;
+    die unless defined $dir;
+
+    ## Ignore complete and matched in common
+    my $commonPath = "$commonDir/$filename";
+    my $finfo = $dataModel{$commonPath};
+    return if # ignore announcement 
+        defined $finfo               # exists
+        && defined $finfo->{seqno}   # and is complete
+        && $finfo->{checksum} eq $checksum;  # and matches
+    return if # ignore announcement 
+        defined $finfo               # exists
+        && !defined $finfo->{seqno}; # but isn't complete
+
+    ## Create in pending if absent from common and pending
+    my $pendingPath = "$pendingDir/$filename";
+    my $pfinfo = $dataModel{$pendingPath};
+    if (!defined($finfo) && !defined($pfinfo)) {
+        $pfinfo = {
+            path => $pendingPath,
+            filename => $filename,
+            length => $contentLength,
+            modtime => undef,
+            checksum => $checksum,
+            signingHandle => undef,
+            innerTimestamp => $timestamp,
+            seqno => undef,  # local seqno not set til complete
+            currentLength => 0,
+            checkedLength => 0,
+            otherSeqnos => [],
+        };
+        $pfinfo->{otherSeqnos}->[$dir] = $seqno;
+        touchFile($pendingPath);
+        $dataModel{$pendingPath} = $pfinfo;
+        return;
+    }
+
+    ## Matched in pending: Refresh sku
+    if (!defined($finfo) && defined($pfinfo)) {
+        $pfinfo->{otherSeqnos}->[$dir] = $seqno;
+        return;
+    }
+
+    ## Complete but mismatch in common
+    if (defined($finfo) 
+        && defined($finfo->{seqno})
+        && $finfo->{checksum} ne $checksum) {
+        print STDERR "COMMON CHECKSUM MISMATCH UNIMPLEMENTED, IGNORED $filename\n";
+        return;
+    }
+
+    ## Complete but mismatch in common
+    if (defined($pfinfo) 
+        && defined($pfinfo->{seqno})
+        && $pfinfo->{checksum} ne $checksum) {
+        print STDERR "PENDING CHECKSUM MISMATCH UNIMPLEMENTED, IGNORED $filename\n";
+        return;
+    }
 }
 
 sub processFileAnnouncement {
     my @bytes = @_;
     my $bref = \@bytes;
+    my $dir = ord($bytes[0])&0x7;
     # [0:2] known to be CDM F type
     my $lenPos = 3;
-    my ($filename, $checksum, $timestamp, $seqno);
+    my ($filename, $contentLength, $checksum, $timestamp, $seqno);
     ($filename,$lenPos) = getLenArgFrom($lenPos,$bref);
+    ($contentLength,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($checksum,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($timestamp,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($seqno,$lenPos) = getLenArgFrom($lenPos,$bref);
@@ -342,6 +467,12 @@ sub processFileAnnouncement {
         print "Expected $lenPos bytes got ".scalar(@bytes)."\n";
     }
     print "AF(fn=$filename,cs=$checksum,ts=$timestamp,seq=$seqno)\n";
+    checkAnnouncedFile($filename,$contentLength,$checksum,$timestamp,$seqno,$dir);
+}
+
+sub getSKUForDir {
+    my ($finfo,$dir) = @_;
+
 }
 
 sub processPacket {
