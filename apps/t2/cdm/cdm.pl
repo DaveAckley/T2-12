@@ -130,9 +130,11 @@ sub checksumWholeFile {
     return $cs;
 }
 
+my $globalCheckedFilesCount = 0;
+
 sub checkMFZDataFor {
     my $finfo = shift;
-    return 0 if defined $finfo->{innerTimestamp}; # Or some refreshment maybe?
+    return 0 if defined $finfo->{seqno}; # Or some refreshment maybe?
 
     #### REPLACE THIS WITH 'mfzrun VERIFY' ONCE AVAILABLE
     my $path = $finfo->{path};
@@ -158,6 +160,7 @@ sub checkMFZDataFor {
 
     $finfo->{signingHandle} = $handle;
     $finfo->{innerTimestamp} = $epoch;
+    $finfo->{seqno} = ++$globalCheckedFilesCount;
     return 1;
 }
 
@@ -212,7 +215,8 @@ sub newFinfo {
         modtime => -M _,
         checksum => undef,
         signingHandle => undef,
-        innerTimestamp => undef
+        innerTimestamp => undef,
+        seqno => undef,
     };
 }
 
@@ -279,6 +283,9 @@ sub announceFileTo {
     $pkt .= chr(length($rawcs)).$rawcs;
     my $innertimestamp = $finfo->{innerTimestamp};
     $pkt .= chr(length($innertimestamp)).$innertimestamp;
+    my $seqno = $finfo->{seqno};
+    die unless defined $seqno;
+    $pkt .= chr(length($seqno)).$seqno;
     print STDERR "ANNOUNCE($pkt)\n";
     writePacket($pkt);
 }
@@ -313,6 +320,30 @@ sub doBackgroundWork {
     checkCommonFile();
 }
 
+sub getLenArgFrom {
+    my ($lenPos,$bref) = @_;
+    my $len = ord($bref->[$lenPos]);
+    my $content = join("",@$bref[$lenPos+1..$lenPos+$len]);
+    my $nextLenPos = $lenPos+$len+1;
+    return ($content,$nextLenPos);
+}
+
+sub processFileAnnouncement {
+    my @bytes = @_;
+    my $bref = \@bytes;
+    # [0:2] known to be CDM F type
+    my $lenPos = 3;
+    my ($filename, $checksum, $timestamp, $seqno);
+    ($filename,$lenPos) = getLenArgFrom($lenPos,$bref);
+    ($checksum,$lenPos) = getLenArgFrom($lenPos,$bref);
+    ($timestamp,$lenPos) = getLenArgFrom($lenPos,$bref);
+    ($seqno,$lenPos) = getLenArgFrom($lenPos,$bref);
+    if (scalar(@bytes) != $lenPos) {
+        print "Expected $lenPos bytes got ".scalar(@bytes)."\n";
+    }
+    print "AF(fn=$filename,cs=$checksum,ts=$timestamp,seq=$seqno)\n";
+}
+
 sub processPacket {
     my $pkt = shift;
     if (length($pkt) < 3) {
@@ -329,6 +360,10 @@ sub processPacket {
                 $ngb->{isAlive} = 1;
                 print getDirName($srcDir)." is alive\n";
             }
+            return;
+        }
+        if ($bytes[2] eq "F") {
+            processFileAnnouncement(@bytes);
             return;
         }
     }
