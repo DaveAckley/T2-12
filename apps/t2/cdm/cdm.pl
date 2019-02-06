@@ -208,7 +208,7 @@ sub lexDecode {
         my $num = substr($rest,0,$len);
         substr($rest,0,$len) = "";
         return ($num,$rest);
-    } elsif ($lex =~ s/^[0-8]//) {
+    } elsif ($lex =~ s/^([0-8])//) {
         my $len = $1;
         my $num = substr($lex,0,$len);
         substr($lex,0,$len) = "";
