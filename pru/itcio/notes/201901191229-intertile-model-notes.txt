@@ -1,4 +1,4 @@
-{40}  -*- text -*-
+{56}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -538,7 +538,7 @@ CDM packet type and format for that?
 content?  'F' for file?  'I' for info?  'M' for MFZ?
 
 'F' for file I guess.
-
+[45: SEE :44: BELOW  :45]
 0x80 | dir, 0x03, 'F', len+filename, len+checksum, len+innertimestamp?
 How big is that??
 
@@ -591,3 +591,217 @@ like that..
 :36]
 
 :35]
+[40:
+
+Mon Feb  4 19:14:13 2019 OK, back in town getting stuff set up
+again.[41:
+
+Mon Feb  4 20:51:08 2019 Well that took longer than it should've but
+we're now correctly parsing the CDM F type packet info, and we need to
+decide how to store that info before we actually have the file in.
+
+Let's start by adding a status field to finfo.  Status "Got"
+means we have the whole file, it checks, and we can serve pieces of it
+to anybody that asks.  Status "Need" means we are missing some or all
+of the file.  ..Or more minimally, we could just have a count of the
+bytes-from-the-front that we currently think we do have, and if that's
+less than the length we ask somebody for the next segment.  How do we
+know who to ask?  Keep a list of dirs that have offered it.  Pick at
+random.  Drop dirs from the list every so often.  [42:
+
+Mon Feb  4 21:32:54 2019 So, add 'currentLength', initially 0, and
+'checkedLength', also initially 0.  When 'currentLength' is less than
+'length', request a chunk starting at currentLength from anybody is
+advertising the content.
+
+When currentLength reaches length, go on to mfzrun checking, and when
+that succeeds, set checkedLength to length.   Once checkedLength is
+equal to length, start advertising the file.
+
+Request a chunk with a CDM C type packet, for 'chunk' or 'content'
+Format of C type is:
+
+0x80 | dir, 0x03, 'C', len+filename, len+checksum, len+startingIndex
+
+Host seeing a 'C' packet immediately checks if they have the file and
+its checkedLength is greater than the requested starting index.  If
+so, host replies with a CDM D type packet providing 'data'.  Format of
+D type is:
+
+0x80 | dir, 0x03, 'D', len+filename, len+checksum, len+startingIndex
+
+[43:
+
+Mon Feb  4 21:55:30 2019 OK well it's obviously a huge drag to have to
+send the file name and checksum over and over in every C type
+request.  We're going to add a 'tag' to the 'F' packet advertisement
+-- like a stock number -- that is locally unique to the advertiser and
+which can be used to refer to the content when talking to that
+advertiser.  We'll take some bits from the file name, the checksum,
+and the innertimestamp, and append an incrementing number.
+
+SKU:  firstLetterOfFilename+4hexchecksumprefix+3loworderdigitsoftime+lexincr
+
+SKU lexincr is assigned when the content is checked.  The point of the
+identifying info is to help disambiguate the case where a neighbor cdm
+restarts, for whatever reason, and starts handing out the same
+lexincrs.
+
+[44:
+
+Mon Feb  4 22:13:23 2019 So F type becomes
+
+0x80 | dir, 0x03, 'F', len+filename, len+checksum, len+innertimestamp, len+incr
+
+and when we receive an F we need to store the incr with the associated
+dir that we got it from.
+[47:
+
+Mon Feb  4 23:04:11 2019 Umm don't we need the content length too?
+Else how do we know when we're done?
+
+Adding length to F type.  Also fuck it let's cut the checksum in half.
+
+:47]
+And we need to refactor the F parsing to make the len+foo stripping
+much more automatic..
+
+:44]
+
+:43]
+:42]
+
+
+
+:41]
+
+:40]
+[46:
+
+Mon Feb  4 22:43:13 2019 And we're going to have to be veeeery careful
+about making and distributing updates that affect the cdm protocol
+itself.  We ultimately want to distribute cdm using cdm, which means
+adjacent protocol versions must always be forward and backward
+compatible. 
+
+While at the moment we don't even have a cdm protocol version.
+
+I think a basic rule is that we shouldn't get pissed if there's extra
+crap at the end of a packet, and future versions must only add shit at
+the end, or else deal with the backward compatibility.
+
+But anyway, we're just accepting that as technical debt at the moment.
+CONTENT MUST MOVE!  NOW NOW NOW. 
+
+ :46]
+[48:
+
+Tue Feb  5 00:36:11 2019 So, we really need to keep the pending files
+separate from the 'good content' files.  If cdm restarts with
+incomplete files sitting in /data/common, it's going to be a huge mess
+at best.  Much better to keep in-progress files separate and only cut
+them into common when they are complete and checked.
+
+So when we get an advertisement we have a few cases:
+
+(1) We find it complete and matched in common/.  We ignore the
+    advertisement.  Also ignore it if the name is in common/ but we
+    can't check it yet.
+
+(2) It's absent from common/ and pending/.  We create a record for it
+    pending/, with the dir and sku of the advertiser.
+
+(3) It's present and matched in pending/.  We add or refresh the dir
+    and seqno in the record.
+
+(4) We find it complete but mismatching in common/.  If we dominate,
+    ignore the advertisement.  If they dominate, remove our complete
+    from common/ (or move it to archive/ somehow) and continue at (2)
+
+(5) We find it complete but mismatching in pending/.  If we dominate,
+    ignore the advertisement.  If they dominate, remove our pending
+    from pending/ and continue at (2).
+
+Beyond that, we 'just' flush pending/ when we start up, And Then
+Everything Just Works No Really.
+
+:48][49:
+
+Tue Feb  5 02:58:42 2019 Well, we have to get to shooting the video
+and we're not 'technically' going to have INTERTILE S/W in a form I
+would consider acceptable if I was grading my work.  But so be it;
+tons of yada progress yada.
+
+So current state is we have announcements getting sent and received
+and processed plausibly -- leading to stubs in pending/ with metadata,
+but we aren't requesting or sending the data chunks.
+
+:49]
+[50:
+
+Wed Feb  6 03:52:20 2019 Well, t2sup#217 released an hour late, which
+was a bummer, but at least it's out there.  Main extra delay was
+zillions of tiny renders trying to get the webcam tile footage mostly
+synced to the screengrab audio.
+
+(Plus trying to get the damn CDM stuff working first.  Ahem.)
+
+Now let's foggen get CDM actually MOVING some effen FILES. 
+
+Where we we?  Last design snarl I remember was realizing we really did
+want to distinguish common/ and pending/ and to build incoming files
+in pending/.
+
+In the implementation, I wasn't sure whether I wanted %dataModel to
+contain both although I thought not at first.  But then in the rush I
+put both common/ and pending/ stuff in there and it wasn't an instant
+disaster because the keys are full paths.  It may well be an issue if
+I try to iterate over %dataModel, but that will depend on why I'm
+iterating over %dataModel..
+
+[51:
+
+Wed Feb  6 04:11:42 2019 So let's try to see how we'll get to
+requesting pieces of that we need![52:
+
+Wed Feb  6 04:13:14 2019 Right now we go to checkAnnouncedFile, where
+we do (the easy part of) the logic in :48: above.  We create a
+pending/ record for the file, with no seqno and currentLength and
+checkedLength both 0.  So now we 'just' have to find that record at
+some appropriate time -- under our own initiative, without another
+packet coming in.  And that's why we could want pendingModel separate
+from dataModel.  Or rename dataModel to commonModel and make
+pendingModel as a sibling.
+
+Let's try that.[53:
+
+Wed Feb  6 04:27:11 2019 Right now we are keying on the path
+(including the 'common') instead of on the filename.  But I'd think
+we'd want to go with the filename instead, and have the common vs
+pending distinction in the surrounding table, so we could move finfo
+records between tables as we move the associated files between
+directories.
+
+Let's try to key on filenames, just that much, and get that
+established to our current level of functioning.[54:
+
+Wed Feb  6 05:53:42 2019 Well, we cleaned things up a bit.  Still
+struggling with whether finfo's contain their path or not.  Seems like
+they need to but then we have to update that when they move.  Let's
+have them store their current subdir, remember to update that, and
+then build the path when we need it.[55:
+
+Wed Feb  6 06:37:18 2019 OK, did that.  Pushing all this mess out and
+then we circle back around to pulling files.
+
+:55]
+
+:54]
+
+:53]
+
+:52]
+
+:51]
+
+:50]
