@@ -1,4 +1,4 @@
-{56}  -*- text -*-
+{67}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -620,14 +620,14 @@ equal to length, start advertising the file.
 
 Request a chunk with a CDM C type packet, for 'chunk' or 'content'
 Format of C type is:
-
+[59: SEE :58: BELOW  :59]
 0x80 | dir, 0x03, 'C', len+filename, len+checksum, len+startingIndex
 
 Host seeing a 'C' packet immediately checks if they have the file and
 its checkedLength is greater than the requested starting index.  If
 so, host replies with a CDM D type packet providing 'data'.  Format of
 D type is:
-
+[60: DITTO SEE :58:  :60]
 0x80 | dir, 0x03, 'D', len+filename, len+checksum, len+startingIndex
 
 [43:
@@ -650,7 +650,7 @@ lexincrs.
 [44:
 
 Mon Feb  4 22:13:23 2019 So F type becomes
-
+[62: SEE :61: BELOW  :62]
 0x80 | dir, 0x03, 'F', len+filename, len+checksum, len+innertimestamp, len+incr
 
 and when we receive an F we need to store the incr with the associated
@@ -670,9 +670,6 @@ much more automatic..
 
 :43]
 :42]
-
-
-
 :41]
 
 :40]
@@ -794,6 +791,43 @@ then build the path when we need it.[55:
 Wed Feb  6 06:37:18 2019 OK, did that.  Pushing all this mess out and
 then we circle back around to pulling files.
 
+[56:
+
+Wed Feb  6 06:42:49 2019 OK dammit its file pulling time.  Wooly bully
+file pully.  First off we'll make a background step to check into
+pending for something to do.[57:
+
+Wed Feb  6 07:21:15 2019 OK, so have we defined packets for file
+transfer yet? ..yes, back in :42:, but I guess we need to redo it to
+include the sku..
+
+[58: 
+
+Wed Feb  6 07:40:21 2019 
+
+Request a chunk with a CDM C type packet, for 'chunk' or 'content'
+Format of C type is:
+
+0x80 | dir, 0x03, 'C', len+filename, len+sku, len+startingIndex
+
+A CDM D type packet provides 'data'.  Format of D type is:
+
+0x80 | dir, 0x03, 'D', len+filename, len+sku, len+startingIndex, len+data
+
+How much data in a D?  Well, something up to the rest of the packet, I
+guess.  Filename, sku, startingIndex are all variable length.  Could
+we go just with the sku in type C and type D?  Review the sku!
+
+:43: Well the problem is what happens if a remote cdm restarts and
+therefore restarts its 'unique' incrementing numbers?  Well so what?
+We'll probably want a 'nack' D format anyway for when people ask for a
+sku that we don't have, for whatever reason.  So let's redo.
+
+:58]
+
+:57]
+
+:56]
 :55]
 
 :54]
@@ -805,3 +839,71 @@ then we circle back around to pulling files.
 :51]
 
 :50]
+[61:
+
+Wed Feb  6 08:09:56 2019 Redoing the doc for type F, C, and D:
+
+F type: File announcment
+
+0x80 | dir, 0x03, 'F', len+filename, len+contentlength, len+checksum, len+innertimestamp, len+seqno
+
+C type: Content request
+
+0x80 | dir, 0x03, 'C', len+sku, len+startingIndex
+
+D type: Data reply
+
+0x80 | dir, 0x03, 'D', len+sku, len+startingIndex, len+data
+
+Note the startingIndex and data 'lens' will be 0 if sku is invalid
+
+:61]
+[63:
+
+Wed Feb  6 08:41:33 2019 OK, implementing that stuff.  Just changed
+otherSeqnos from an array ref to a hash ref, because scanning the
+array for a random neighbor pick seems a pain.  But that raised the
+question: How do we age information out of otherSeqnos?  We don't want
+to be wasting time sending C types to neighbors that won't respond.
+
+One possibility is to only keep the most-recently-announced neighbor
+with the content, rather than trying to keep all of them.  We may end
+up pounding a single guy for a while, even though other neighbors
+might have the content, but, hey, the guy did advertise having the
+content..  And if another advertisement comes in while we're pulling
+content, we'll switch.
+
+Well, let's try that.  [64:
+
+Wed Feb  6 08:48:46 2019 But it's a (dir,seqno) pair we have to
+remember, not just one item...  Arrays or hashes do that naturally..
+Maybe whenever an advertisement comes in we'll randomly age out
+previous occupants.
+
+:64]
+
+:63]
+[65:
+
+Wed Feb  6 09:56:14 2019 OK, we're sending C type requests finally:
+
+    REQUEST(ƒC
+    c9273844110)
+
+making the neighbors say:
+
+    UNHANDLED PKT(\207^CC
+    c9273844110)
+
+So it's time for a D type handler and then push all this again..
+
+:65]
+[66:
+
+Wed Feb  6 10:13:14 2019 Aaaand how do we map from sku back to finfo?
+You'd really think I'd see this type of thing coming by now.  I guess
+we keep a seqno->filename map on top of everything else.  Add to it
+whenever we burn a seqno.  Map only grows on content churn which is
+expected to be low.
+
+:66]
