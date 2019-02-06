@@ -59,10 +59,12 @@ sub closePackets {
     close(PKTS) or die "Can't close $pktdev: $!";
 }
 
-my $baseDir = "/data";
-my @subDirs = ("archive", "common", "pending", "unique");
-my $commonDir = "$baseDir/common";
-my $pendingDir = "$baseDir/pending";
+my $baseDir = "/cdm";
+my $commonSubdir = "common";
+my $pendingSubdir = "pending";
+my @subDirs = ($commonSubdir, $pendingSubdir);
+my $commonPath = "$baseDir/$commonSubdir";
+my $pendingPath = "$baseDir/pending";
 
 sub checkInitDir {
     my $dir = shift;
@@ -80,7 +82,10 @@ sub checkInitDir {
     }
     return 0;
 }
+
 sub checkInitDirs {
+
+    checkInitDir($baseDir);
 
     foreach my $sub (@subDirs) {
         my $path = "$baseDir/$sub";
@@ -106,17 +111,19 @@ sub randDir {
     return $dir; # 1,2,3,5,6,7
 }
 
-my %dataModel;
-my @pendingPaths;
+## hash of dir -> hash of filename -> finfo
+my %cdmModel = map { ($_, {}) } @subDirs;
+
+my @pathsToLoad;
 my %hoodModel;
 
 sub loadCommonFiles {
-    if (!opendir(COMMON, $commonDir)) {
-        print "WARNING: Can't load $commonDir: $!\n";
+    if (!opendir(COMMON, $commonPath)) {
+        print "WARNING: Can't load $commonPath: $!\n";
         return;
     }
-    @pendingPaths = shuffle readdir COMMON;
-    closedir COMMON or die "Can't close $commonDir: $!\n";
+    @pathsToLoad = shuffle readdir COMMON;
+    closedir COMMON or die "Can't close $commonPath: $!\n";
 }
 
 my $digester = Digest::SHA->new(256);
@@ -133,12 +140,19 @@ sub checksumWholeFile {
 
 my $globalCheckedFilesCount = 0;
 
+sub getFinfoPath {
+    my $finfo = shift;
+    my $subdir = $finfo->{subdir} or die;
+    my $filename = $finfo->{filename} or die;
+    return "$baseDir/$subdir/$filename";
+}
+
 sub checkMFZDataFor {
     my $finfo = shift;
     return 0 if defined $finfo->{seqno}; # Or some refreshment maybe?
 
     #### REPLACE THIS WITH 'mfzrun VERIFY' ONCE AVAILABLE
-    my $path = $finfo->{path};
+    my $path = getFinfoPath($finfo);
     my $cmd = "mfzrun $path list";
     my $output = `$cmd`;
     if ($output !~ s/^SIGNED BY RECOGNIZED HANDLE: (:?[a-zA-Z][-., a-zA-Z0-9]{0,62}) \(//) {
@@ -168,19 +182,19 @@ sub checkMFZDataFor {
 }
 
 sub checkCommonFile {
-    if (scalar(@pendingPaths) == 0) {
+    if (scalar(@pathsToLoad) == 0) {
         loadCommonFiles();
         return;
     }
-    my $filename = shift @pendingPaths;
+    my $filename = shift @pathsToLoad;
     return unless defined $filename && $filename =~ /[.]mfz$/;
     if (length($filename) > $MAX_MFZ_NAME_LENGTH) {  #### XXX WOAH
         print "MFZ filename too long '$filename'\n";
         return;
     }
 
-    my $path = "$commonDir/$filename";
-    my $finfo = getFinfo($filename);
+    my $finfo = getFinfoFromCommon($filename);
+    my $path = getFinfoPath($finfo) || die "No path";
 
     # Check if file is incomplete
     if ($finfo->{currentLength} < $finfo->{length}) {
@@ -214,75 +228,62 @@ sub checkCommonFile {
     announceFileTo($aliveNgb,$finfo);
 }
 
-### MAJOR BATTLE DAMAGE REPORTING SIR
-# sub getRemoteFinfo {
-#     my ($filename, $length, $checksum, $time, $dir, $remoteSeqno) = @_;
-#     defined $remoteSeqno or die;
-#     my $path = "$commonDir/$filename";
-#     my $finfo = $dataModel{$path};
-#     if (!defined($finfo)) {
-#         if (-r $path) {
-#             $finfo = newFinfoExisting($path,$filename);
-#             if (defined($finfo->{seqno})) {  # If we have a completed record..
-#                 if ($checksum ne $finfo->{checksum}) {
-#                     # Uh-oh, we have a conflict on a name.
-#                     # Largest inner timestamp wins
-#                     if ($time < $finfo->{innerTimestamp}) {
-#                         # We win.  Tell caller to screw off
-#                         return undef;
-#                     }
-#                 }
-#             } else {
-#                 return undef; # We are still developing our own record.  Screw yours for now.
-#             }
-#         } else {
-#             # Here if we have no local file for remote content.
-#         }
-#     }
-#     ## We're here if we've never heard of this content,
-#     ## or we have an incomplete record
-#     $finfo = {
-#             path => $path,
-#             filename => $filename,
-#             length => $length,
-#             modtime => undef,
-#             checksum => undef,
-#             signingHandle => undef,
-#             innerTimestamp => undef,
-#             seqno => undef,
-#             otherSeqnos => [],
-#         };
-#     }
-# }
+# For files we have locally and completely
+sub newFinfoLocal {
+    my ($filename,$indir) = @_;
+    my $finfo = newFinfoBare($filename);
+    $finfo->{subdir} = $indir;
+    my $path = getFinfoPath($finfo);
+    die "Can't read $path: $!" unless defined $path && -r $path;
+    $finfo->{length} = -s _;
+    $finfo->{modtime} = -M _;
+    $finfo->{currentLength} = -s _;
+    return $finfo;
+}
 
-sub newFinfoExisting {
-    my ($path,$filename) = @_;
-    die unless defined $path && -r $path;
+sub newFinfoBare {
+    my ($filename) = @_;
+    defined $filename or die;
     return {
-        path => $path,
         filename => $filename,
-        length => -s _,
-        modtime => -M _,
+        subdir => undef,
+        length => undef,
+        modtime => undef,
         checksum => undef,
         signingHandle => undef,
         innerTimestamp => undef,
         seqno => undef,
-        currentLength => -s _,
+        currentLength => undef,
         checkedLength => 0,
         otherSeqnos => [],
     };
 }
 
-sub getFinfo {
+sub getFinfoFromCommon {
     my $filename = shift;
-    my $path = "$commonDir/$filename";
+    return getFinfoFrom($filename,$commonSubdir);
+}
+sub getFinfoFromPending {
+    my $filename = shift;
+    return getFinfoFrom($filename,$pendingSubdir);
+}
+
+sub getSubdirModel {
+    my $subdir = shift;
+    my $href = $cdmModel{$subdir};
+    defined $href or die "Bad subdir '$subdir'";
+    return $href
+}
+
+sub getFinfoFrom {
+    my ($filename,$subdir) = @_;
+    my $href = getSubdirModel($subdir);
     my $finfo;
-    while (!defined($finfo = $dataModel{$path})) {
-        $dataModel{$path} = newFinfoExisting($path,$filename);
+    while (!defined($finfo = $href->{$filename})) {
+        $href->{$filename} = newFinfoLocal($filename,$subdir);
     }
     return $finfo;
 }
-
 
 sub newNgb {
     my $dir = shift;
@@ -395,36 +396,31 @@ sub checkAnnouncedFile {
     die unless defined $dir;
 
     ## Ignore complete and matched in common
-    my $commonPath = "$commonDir/$filename";
-    my $finfo = $dataModel{$commonPath};
-    return if # ignore announcement 
+    my $commonref = getSubdirModel($commonSubdir);
+    my $finfo = $commonref->{$filename};
+    return if # ignore announcement if the file
         defined $finfo               # exists
         && defined $finfo->{seqno}   # and is complete
         && $finfo->{checksum} eq $checksum;  # and matches
-    return if # ignore announcement 
+    return if # also ignore announcement if the file
         defined $finfo               # exists
         && !defined $finfo->{seqno}; # but isn't complete
 
     ## Create in pending if absent from common and pending
-    my $pendingPath = "$pendingDir/$filename";
-    my $pfinfo = $dataModel{$pendingPath};
+    my $pendingref = getSubdirModel($pendingSubdir);
+    my $pfinfo = $pendingref->{$filename};
     if (!defined($finfo) && !defined($pfinfo)) {
-        $pfinfo = {
-            path => $pendingPath,
-            filename => $filename,
-            length => $contentLength,
-            modtime => undef,
-            checksum => $checksum,
-            signingHandle => undef,
-            innerTimestamp => $timestamp,
-            seqno => undef,  # local seqno not set til complete
-            currentLength => 0,
-            checkedLength => 0,
-            otherSeqnos => [],
-        };
+        
+        $pfinfo = newFinfoBare($filename);
+        $pfinfo->{length} = $contentLength;
+        $pfinfo->{checksum} = $checksum;
+        $pfinfo->{innerTimestamp} = $timestamp;
+        $pfinfo->{currentLength} = 0;
+        $pfinfo->{checkedLength} = 0;
         $pfinfo->{otherSeqnos}->[$dir] = $seqno;
-        touchFile($pendingPath);
-        $dataModel{$pendingPath} = $pfinfo;
+        touchFile("$pendingPath/$filename");
+
+        $pendingref->{$filename} = $pfinfo;
         return;
     }
 
