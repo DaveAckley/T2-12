@@ -1,6 +1,7 @@
 #!/usr/bin/perl -w  # -*- perl -*-
 use Fcntl;
 use File::Path qw(make_path remove_tree);
+use File::Copy qw(move);
 use Errno qw(EAGAIN);
 use Time::HiRes;
 use List::Util qw/shuffle/;
@@ -153,6 +154,7 @@ sub assignSeqnoForFilename {
     die unless defined $filename;
     my $seqno = ++$globalCheckedFilesCount;
     $seqnoMap{$seqno} = $filename;
+    print "Assigning seqno $seqno for $filename\n";
     return $seqno;
 }
 
@@ -169,7 +171,7 @@ sub checkMFZDataFor {
 
     #### REPLACE THIS WITH 'mfzrun VERIFY' ONCE AVAILABLE
     my $path = getFinfoPath($finfo);
-    my $cmd = "mfzrun $path list";
+    my $cmd = "mfzrun -kd /cdm/pubkeys $path list";
     my $output = `$cmd`;
     if ($output !~ s/^SIGNED BY RECOGNIZED HANDLE: (:?[a-zA-Z][-., a-zA-Z0-9]{0,62}) \(//) {
         print "Handle of $path not found in '$output'\n";
@@ -193,13 +195,43 @@ sub checkMFZDataFor {
     $finfo->{innerTimestamp} = $epoch;
     $finfo->{currentLength} = $finfo->{length};
     $finfo->{checkedLength} = $finfo->{length};
-    $finfo->{seqno} = assignSeqnoForFilename($finfo->{filename});
     return 1;
+}
+
+sub killPending {
+    die "WRITEMEEEE\n";
 }
 
 sub checkAndReleasePendingFile {
     my $finfo = shift;
-    die "GOT THERE $finfo";
+
+    print "checkAndReleasePendingFile $finfo\n";
+
+    # Make sure the checksum matches
+    my $path = getFinfoPath($finfo);
+    my $localChecksum = checksumWholeFile($path);
+    return killPending($finfo,"Bad checksum")
+        if $localChecksum ne $finfo->{checksum};
+    print "checkAndReleasePendingFile $localChecksum OK\n";
+
+    return killPending($finfo,"Bad MFZ verify")
+        if !checkMFZDataFor($finfo);
+
+    print "checkAndReleasePendingFile MFZ verified OK\n";
+
+    $finfo->{subdir} = $commonSubdir;
+    my $newpath = getFinfoPath($finfo);
+    move($path,$newpath) or die "Couldn't move $path -> $newpath: $!";
+
+    my $filename = $finfo->{filename};
+    my $pref = getSubdirModel($pendingSubdir);
+    my $cref = getSubdirModel($commonSubdir);
+    my $seqno = assignSeqnoForFilename($filename);
+    $finfo->{seqno} = $seqno;
+
+    delete $pref->{$filename}; # Remove metadata from pending
+    $cref->{$filename} = $finfo; # Add it to common
+    print "RELEASED $filename\n";
 }
 
 sub lexDecode {
@@ -238,9 +270,11 @@ sub generateSKU {
     return $sku;
 }
 
-sub checkSKUIn {
-    my ($sku,$subdir) = @_;
-    defined $subdir or die;
+sub checkSKUInDir {
+    my ($sku,$dir) = @_;
+    defined $dir or die;
+    $dir >= 0 && $dir <= 8 or die;
+    my $subdir = ($dir == 8) ? $commonSubdir : $pendingSubdir;
     $sku =~ /^(.)([0-9a-fA-F]{2})([0-9a-fA-F]{2})(\d\d\d)(.+)$/
         or return undef;
     my ($fnchar,$cs0,$cs1,$bottim,$lexsi) = ($1,hex($2),hex($3),$4,$5);
@@ -251,7 +285,13 @@ sub checkSKUIn {
 
 print "gotseqn $seqno OK\n";
     print "ZKDKMAP:".%seqnoMap."\n";
-    my $filename = $seqnoMap{$seqno};
+    my $filename;
+    if ($dir == 8) {
+        $filename = $seqnoMap{$seqno};
+    } else {
+        my $ngb = getNgbInDir($dir);
+        $filename = $ngb->{contentOffered}->{$seqno};
+    }
     defined $filename or return undef;
 print "gotfn $filename OK\n";
     substr($filename,0,1) eq $fnchar or return undef;
@@ -337,6 +377,8 @@ sub checkCommonFile {
 
     # Need MFZ info?
     if (checkMFZDataFor($finfo)) {
+        # OK, it checked out.  Give it a seqno
+        $finfo->{seqno} = assignSeqnoForFilename($finfo->{filename});
         return 1; # That's plenty for now..
     }
 
@@ -405,6 +447,10 @@ sub refreshProvider {
     # Refresh us
     $finfo->{otherSeqnos}->[$dir] = $seq;
     print "FRESH $dir $finfo ".$finfo->{filename}." ".$finfo->{otherSeqnos}->[$dir]."\n";
+
+    # Set/Update remote content-offered
+    my $ngb = getNgbInDir($dir);
+    $ngb->{contentOffered}->{$seq} = $finfo->{filename};
 }
 
 sub getFinfoFromCommon {
@@ -442,6 +488,7 @@ sub newNgb {
         clacksSinceAliveSent => $longAgo,
         clacksSinceAliveRcvd => $longAgo,
         isAlive => 0,
+        contentOffered => {}, # seqno -> filename
     };
 }
 
@@ -570,6 +617,7 @@ sub checkAnnouncedFile {
     if (!defined($finfo) && !defined($pfinfo)) {
         
         $pfinfo = newFinfoBare($filename);
+        $pfinfo->{subdir} = $pendingSubdir;
         $pfinfo->{length} = $contentLength;
         $pfinfo->{checksum} = $checksum;
         $pfinfo->{innerTimestamp} = $timestamp;
@@ -631,7 +679,7 @@ sub processChunkRequest {
     my ($sku, $startingIndex);
     ($sku,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($startingIndex,$lenPos) = getLenArgFrom($lenPos,$bref);
-    my $finfo = checkSKUIn($sku,$commonSubdir);
+    my $finfo = checkSKUInDir($sku,8);
     if (!defined($finfo)) {
         sendChunkDeniedTo($dir,$sku);
         return;
@@ -657,7 +705,7 @@ sub processDataReply {
         print "BAD SKU '$sku' REJECTED DO SOMETHING XXX\n";
         return;
     }
-    my $finfo = checkSKUIn($sku,$pendingSubdir);
+    my $finfo = checkSKUInDir($sku,$dir);
     if (!defined($finfo)) {
         print "WE ARE NOT WAITING FOR '$sku'\n";
         return;
@@ -667,7 +715,7 @@ sub processDataReply {
         print "WE WANT $curlen NOT $startingIndex FROM $sku\n";
         return;
     }
-
+    print "WRITGONGO $curlen\n";
     my ($data,$hack16);
     ($data,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($hack16,$lenPos) = getLenArgFrom($lenPos,$bref);
@@ -714,7 +762,7 @@ sub sendCommonChunkTo {
     my $hack16 = hack16($data);
     $pkt = addLenArgTo($pkt,$data);
     $pkt = addLenArgTo($pkt,$hack16);
-    print "DATA: $maxWanted bytes at $startingIndex to $dir\n";
+    print "DATA: $maxWanted bytes at $startingIndex to $sku for $dir\n";
     writePacket($pkt);
 }
 
@@ -731,7 +779,8 @@ sub writeDataToPendingFile {
         return;
     }
     close $fh or die "Can't close $path: $!";
-    $finfo->{currentLength} += length($wrote);
+    $finfo->{currentLength} += $writeLen;
+    print "WROTE $writeLen to $startingIndex of $path\n";
 }
 
 sub getDataFromCommonFile {
