@@ -426,10 +426,11 @@ sub checkCommonFile {
     # Check if modtime change
     my $modtime = -M $path;
     if (!defined($finfo->{modtime}) || $modtime != $finfo->{modtime}) {
-        DPVRB("MODTIME CHANGE $path");
+        DPSTD("MODTIME CHANGE $path");
         $finfo->{modtime} = $modtime;
         $finfo->{checksum} = undef;
         $finfo->{innerTimestamp} = undef;
+        $finfo->{seqno} = undef;
     }
 
     # Need checksum?
@@ -699,10 +700,19 @@ sub checkAnnouncedFile {
         defined $finfo               # exists
         && !defined $finfo->{seqno}; # but isn't complete
 
+    my $completeButCommonSeemsOlder =
+        defined($finfo) 
+        && defined($finfo->{seqno})
+        && $finfo->{checksum} ne $checksum
+        && defined($finfo->{innerTimestamp})
+        && $finfo->{innerTimestamp} < $timestamp;
+
     ## Create in pending if absent from common and pending
+    ## or allegedly obsolete in common
     my $pendingref = getSubdirModel($pendingSubdir);
     my $pfinfo = $pendingref->{$filename};
-    if (!defined($finfo) && !defined($pfinfo)) {
+    if ($completeButCommonSeemsOlder ||
+        (!defined($finfo) && !defined($pfinfo))) {
         
         $pfinfo = newFinfoBare($filename);
         $pfinfo->{subdir} = $pendingSubdir;
@@ -728,11 +738,15 @@ sub checkAnnouncedFile {
     if (defined($finfo) 
         && defined($finfo->{seqno})
         && $finfo->{checksum} ne $checksum) {
+        my $existingTimestamp = $finfo->{innerTimestamp};
+        return unless defined($existingTimestamp);
+        # We've heard about something allegedly newer than what we have
+        # We need to get it into pending for final checks
         print STDERR "COMMON CHECKSUM MISMATCH UNIMPLEMENTED, IGNORED $filename\n";
         return;
     }
 
-    ## Complete but mismatch in common
+    ## Complete but mismatch in pending
     if (defined($pfinfo) 
         && defined($pfinfo->{seqno})
         && $pfinfo->{checksum} ne $checksum) {
