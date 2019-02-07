@@ -383,7 +383,7 @@ sub checkCommonFile {
 
     # Check if modtime change
     my $modtime = -M $path;
-    if ($modtime != $finfo->{modtime}) {
+    if (!defined($finfo->{modtime}) || $modtime != $finfo->{modtime}) {
         print "MODTIME CHANGE $path\n";
         $finfo->{modtime} = $modtime;
         $finfo->{checksum} = undef;
@@ -747,7 +747,7 @@ sub processDataReply {
     ($sku,$lenPos) = getLenArgFrom($lenPos,$bref);
     my $oldLenPos = $lenPos;
     ($startingIndex,$lenPos) = getLenArgFrom($lenPos,$bref);
-    if ($oldLenPos == $lenPos+1) {
+    if ($oldLenPos + 1 == $lenPos) {
         print "SKU '$sku' rejected by $dir\n";
         dropProviderForSKU($dir,$sku);
         return;
