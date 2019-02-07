@@ -8,6 +8,13 @@ use List::Util qw/shuffle/;
 use Digest::SHA qw(sha512_hex);
 use DateTime::Format::Strptime;
 
+use warnings FATAL => 'all';
+$SIG{__DIE__} = sub {
+    die @_ if $^S;
+    require Carp; 
+    Carp::confess ;
+};
+
 my $CDM_PKT_TYPE = 0x03;
 my $CDM_PKT_TYPE_BYTE = chr($CDM_PKT_TYPE);
 
@@ -17,6 +24,25 @@ my $pktdev = "/dev/itc/packets";
 my $mode = O_RDWR|O_NONBLOCK;
 
 my @dirnames = ("NT", "NE", "ET", "SE", "ST", "SW", "WT", "NW");
+
+my $DEBUG_FLAG_PACKETS = 1;
+my $DEBUG_FLAG_DEBUG = $DEBUG_FLAG_PACKETS<<1;
+my $DEBUG_FLAG_STANDARD = $DEBUG_FLAG_DEBUG<<1;
+my $DEBUG_FLAG_VERBOSE = $DEBUG_FLAG_STANDARD<<1;
+my $DEBUG_FLAG_ALL = 0xffffffff;
+
+my $DEBUG_FLAGS = $DEBUG_FLAG_STANDARD;
+
+sub DPF {
+    my ($flags,$msg) = @_;
+    return unless $DEBUG_FLAGS & $flags;
+    print "$msg\n";
+}
+
+sub DPPKT { DPF($DEBUG_FLAG_PACKETS,shift); }
+sub DPSTD { DPF($DEBUG_FLAG_STANDARD,shift); }
+sub DPVRB { DPF($DEBUG_FLAG_VERBOSE,shift); }
+sub DPDBG { DPF($DEBUG_FLAG_DEBUG,shift); }
 
 sub getDirName {
     my $dir = shift;
@@ -34,7 +60,7 @@ sub readPacket {
     my $count;
     if (defined($count = sysread(PKTS, $pkt, 512))) {
         return if $count == 0;
-        print "GOT PACKET($pkt)\n";
+        DPPKT("GOT PACKET($pkt)");
         return $pkt;
     }
     return undef;
@@ -47,11 +73,11 @@ sub writePacket {
         my $len = syswrite(PKTS, $pkt);
         return if defined $len;
         if ($ignoreUnreach && $!{EHOSTUNREACH}) {
-            print "Host unreachable, ignored\n";
+            DPPKT("Host unreachable, ignored");
             return;
         }
         die "Error: $!" unless $!{EAGAIN};
-        print "BLOCKING\n";
+        DPVRB("WRITE BLOCKING");
         Time::HiRes::usleep(100);
     }
 }
@@ -72,22 +98,22 @@ my $pendingPath = "$baseDir/pending";
 sub flushPendingDir {
     my $count = remove_tree($pendingPath);
     if ($count > 1) {
-        print "Flushed $count $pendingPath files\n";
+        DPSTD("Flushed $count $pendingPath files");
     }
 }
 
 sub checkInitDir {
     my $dir = shift;
     if (-d $dir) {
-        print "Found $dir\n";
+        DPSTD("Found $dir");
         return 1;
     }
     if (-e $dir) {
-        print "$dir exists but is not a directory\n";
+        DPSTD("$dir exists but is not a directory");
         return 0;
     }
     if (make_path($dir)) {
-        print "Made $dir\n";
+        DPSTD("Made $dir");
         return 1;
     }
     return 0;
@@ -111,7 +137,7 @@ sub sendCDMTo {
     die if length($type) != 1;
     my $pkt = chr(0x80+$dest).chr($CDM_PKT_TYPE).$type;
     $pkt .= $args if defined $args;
-    print "SENDIT($pkt)\n";
+    DPPKT("SENDIT($pkt)");
     writePacket($pkt,1);
 }
 
@@ -129,7 +155,7 @@ my %hoodModel;
 
 sub loadCommonFiles {
     if (!opendir(COMMON, $commonPath)) {
-        print "WARNING: Can't load $commonPath: $!\n";
+        DPSTD("WARNING: Can't load $commonPath: $!");
         return;
     }
     @pathsToLoad = shuffle readdir COMMON;
@@ -144,7 +170,7 @@ sub checksumWholeFile {
     $digester->addfile($path);
     my $cs = substr($digester->digest(),0,16);
     my $hexcs = unpack("H*",$cs);
-    print " $path => $hexcs\n";
+    DPVRB(" $path => $hexcs");
     return $cs;
 }
 
@@ -156,7 +182,7 @@ sub assignSeqnoForFilename {
     die unless defined $filename;
     my $seqno = ++$globalCheckedFilesCount;
     $seqnoMap{$seqno} = $filename;
-    print "Assigning seqno $seqno for $filename\n";
+    DPSTD("Assigning seqno $seqno for $filename");
     return $seqno;
 }
 
@@ -178,16 +204,16 @@ sub checkMFZDataFor {
 
     if ($output =~ /.*?signer handle '(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})' is not recognized!/) {
         my $badhandle = $1;
-        print "Unrecognized handle '$badhandle' in $path\n";
+        DPSTD("Unrecognized handle '$badhandle' in $path");
         return 0;
     }
     if ($output !~ s/^SIGNED BY RECOGNIZED HANDLE: (:?[a-zA-Z][-., a-zA-Z0-9]{0,62}) \(//) {
-        print "Handle of $path not found in '$output'\n";
+        DPSTD("Handle of $path not found in '$output'");
         return 0;
     }
     my $handle = $1;
     if ($output !~ s/^\s+MFZPUBKEY.DAT\s+\d+\s+([A-Za-z0-9: ]+)$//m) {
-        print "Timestamp of $path not found in '$output'\n";
+        DPSTD("Timestamp of $path not found in '$output'");
         return 0;
     }
     my $timestamp = $1;
@@ -197,7 +223,7 @@ sub checkMFZDataFor {
         );
     my $dt = $strp->parse_datetime( $timestamp );
     my $epoch = $dt->strftime("%s");
-    print " $handle/$timestamp => $epoch\n";
+    DPSTD(" $handle/$timestamp => $epoch");
 
     $finfo->{signingHandle} = $handle;
     $finfo->{innerTimestamp} = $epoch;
@@ -213,26 +239,26 @@ sub killPending {
     $subdir or die "No subdir";
     my $path = getFinfoPath($finfo);
     unlink $path;
-    print "Purged pending '$path': $reason\n";
+    DPSTD("Purged pending '$path': $reason");
     $finfo->{purgatory} = 1;
 }
 
 sub checkAndReleasePendingFile {
     my $finfo = shift;
 
-    print "checkAndReleasePendingFile $finfo\n";
+    DPDBG("checkAndReleasePendingFile $finfo");
 
     # Make sure the checksum matches
     my $path = getFinfoPath($finfo);
     my $localChecksum = checksumWholeFile($path);
     return killPending($finfo,"Bad checksum")
         if $localChecksum ne $finfo->{checksum};
-    print "checkAndReleasePendingFile $localChecksum OK\n";
+    DPDBG("checkAndReleasePendingFile $localChecksum OK");
 
     return killPending($finfo,"Bad MFZ verify")
         if !checkMFZDataFor($finfo);
 
-    print "checkAndReleasePendingFile MFZ verified OK\n";
+    DPDBG("checkAndReleasePendingFile MFZ verified OK");
 
     $finfo->{subdir} = $commonSubdir;
     my $newpath = getFinfoPath($finfo);
@@ -244,11 +270,11 @@ sub checkAndReleasePendingFile {
     my $seqno = assignSeqnoForFilename($filename);
     $finfo->{seqno} = $seqno;
     $finfo->{modtime} = -M $newpath;
-    print "checkAndReleasePendingFile MFZ modtime ".$finfo->{modtime}."\n";
+    DPDBG("checkAndReleasePendingFile MFZ modtime ".$finfo->{modtime});
 
     delete $pref->{$filename}; # Remove metadata from pending
     $cref->{$filename} = $finfo; # Add it to common
-    print "RELEASED $filename\n";
+    DPSTD("RELEASED $filename");
 }
 
 sub lexDecode {
@@ -283,7 +309,7 @@ sub generateSKU {
                       ord(substr($finfo->{checksum},1,1)),
                       $finfo->{innerTimestamp}%1000,
                       lexEncode($seqno));
-    print "SKU($sku)\n";
+    DPDBG("SKU($sku)");
     return $sku;
 }
 
@@ -295,13 +321,11 @@ sub checkSKUInDir {
     $sku =~ /^(.)([0-9a-fA-F]{2})([0-9a-fA-F]{2})(\d\d\d)(.+)$/
         or return undef;
     my ($fnchar,$cs0,$cs1,$bottim,$lexsi) = ($1,hex($2),hex($3),$4,$5);
-    print "cdddsk ($fnchar,$cs0,$cs1,$bottim,$lexsi)\n";
+    DPDBG("cdddsk ($fnchar,$cs0,$cs1,$bottim,$lexsi)");
 
     my ($seqno,undef) = lexDecode($lexsi);
     defined $seqno or return undef;
 
-print "gotseqn $seqno OK\n";
-    print "ZKDKMAP:".%seqnoMap."\n";
     my $filename;
     if ($dir == 8) {
         $filename = $seqnoMap{$seqno};
@@ -310,19 +334,17 @@ print "gotseqn $seqno OK\n";
         $filename = $ngb->{contentOffered}->{$seqno};
     }
     defined $filename or return undef;
-#print "gotfn $filename OK\n";
     substr($filename,0,1) eq $fnchar or return undef;
-#print "cSKU fnchar $fnchar OK\n";
 
     my $finfo = getFinfoFrom($filename,$subdir);
     defined $finfo or return undef;
-#print "cSKU finfo $finfo OK\n";
+    DPDBG("cSKU finfo $finfo OK");
     ord(substr($finfo->{checksum},0,1)) == $cs0 or return undef;
-#print "cSKU cs0 $cs0 OK\n";
+    DPDBG("cSKU cs0 $cs0 OK");
     ord(substr($finfo->{checksum},1,1)) == $cs1 or return undef;
-#print "cSKU cs1 $cs1 OK\n";
+    DPDBG("cSKU cs1 $cs1 OK");
     $finfo->{innerTimestamp}%1000 == $bottim or return undef;
-#print "cSKU ts $bottim OK\n";
+    DPDBG("cSKU ts $bottim OK");
 
     return $finfo;
 }
@@ -363,7 +385,7 @@ sub issueContentRequest {
 
     my ($dir,$seqno) = selectProvider($finfo);
     if (!defined($dir) || !defined($seqno)) {
-        print "No provider found for $filename in $finfo?\n";
+        DPSTD("No provider found for $filename in $finfo?");
         return;
     }
     my $sku = generateSKU($finfo,$seqno);
@@ -373,15 +395,15 @@ sub issueContentRequest {
     $pkt = addLenArgTo($pkt,$sku);
     $pkt = addLenArgTo($pkt,$cur);
     $finfo->{timeCount} = 3;  # don't spam requests too fast
-    print STDERR "REQUEST($pkt)\n";
+    DPPKT("REQUEST($pkt)");
     writePacket($pkt);
 }
 
 sub preinitCommon {
-    print "Preloading common\n";
+    DPSTD("Preloading common");
     my $count = 0;
     while (checkCommonFile(0)) { ++$count; }
-    print "Preload complete after $count steps\n";
+    DPVRB("Preload complete after $count steps");
 }
 
 sub checkCommonFile {
@@ -394,7 +416,7 @@ sub checkCommonFile {
     my $filename = shift @pathsToLoad;
     return 1 unless defined $filename && $filename =~ /[.]mfz$/;
     if (length($filename) > $MAX_MFZ_NAME_LENGTH) {  #### XXX WOAH
-        print "MFZ filename too long '$filename'\n";
+        DPSTD("MFZ filename too long '$filename'");
         return 1;
     }
 
@@ -404,7 +426,7 @@ sub checkCommonFile {
     # Check if modtime change
     my $modtime = -M $path;
     if (!defined($finfo->{modtime}) || $modtime != $finfo->{modtime}) {
-        print "MODTIME CHANGE $path\n";
+        DPVRB("MODTIME CHANGE $path");
         $finfo->{modtime} = $modtime;
         $finfo->{checksum} = undef;
         $finfo->{innerTimestamp} = undef;
@@ -425,7 +447,7 @@ sub checkCommonFile {
 
     # Ensure it really is ready
     if (!defined($finfo->{seqno})) {
-        print "FAILED TO VALIDATE '$path' -- deleting\n";
+        DPSTD("FAILED TO VALIDATE '$path' -- deleting");
         my $cref = getSubdirModel($commonSubdir);
         delete $cref->{$filename};
         unlink $path or die "Couldn't unlink '$path'";
@@ -483,7 +505,7 @@ sub dropProviderForSKU {
         if (existingSKU eq $sku) {
             my $filename = $finfo->{filename};
             delete $pref->{$filename};
-            print "Dropped $dir as provider of $sku\n";
+            DPSTD("Dropped $dir as provider of $sku");
             return;
         }
     }
@@ -512,7 +534,7 @@ sub refreshProvider {
 
     # Refresh us
     $finfo->{otherSeqnos}->[$dir] = $seq;
-    print "FRESH $dir $finfo ".$finfo->{filename}." ".$finfo->{otherSeqnos}->[$dir]."\n";
+    DPDBG("FRESH $dir $finfo ".$finfo->{filename}." ".$finfo->{otherSeqnos}->[$dir]);
 
     # Set/Update remote content-offered
     my $ngb = getNgbInDir($dir);
@@ -605,7 +627,7 @@ sub getLenArgFrom {
 
 sub addLenArgTo {
     my ($str,$arg) = @_;
-    print "Undefined arg supplied at '$str'" unless defined $arg;
+    DPSTD("Undefined arg supplied at '$str'") unless defined $arg;
     $str .= chr(length($arg)).$arg;
     return $str;
 }
@@ -625,10 +647,9 @@ sub doBackgroundWork {
 
     # ALIVENESS MGMT
     my $ngb = getRandomNgb();
-#    print getDirName($ngb->{dir})." alive ".$ngb->{isAlive}." clacks ".$ngb->{clacksSinceAliveRcvd}."\n";
-    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 20) {
+    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 25) {
         $ngb->{isAlive} = 0;
-        print getDirName($ngb->{dir})." is dead\n";
+        DPSTD(getDirName($ngb->{dir})." is dead");
     }
     
     if (rand(++$ngb->{clacksSinceAliveSent}) > 10) {
@@ -653,7 +674,7 @@ sub announceFileTo {
     $pkt = addLenArgTo($pkt,$finfo->{checksum});
     $pkt = addLenArgTo($pkt,$finfo->{innerTimestamp});
     $pkt = addLenArgTo($pkt,$finfo->{seqno});
-    print STDERR "ANNOUNCE($pkt)\n";
+    DPPKT("ANNOUNCE($pkt)");
     writePacket($pkt);
 }
 
@@ -732,9 +753,9 @@ sub processFileAnnouncement {
     ($timestamp,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($seqno,$lenPos) = getLenArgFrom($lenPos,$bref);
     if (scalar(@{$bref}) != $lenPos) {
-        print "Expected $lenPos bytes got ".scalar(@{$bref})."\n";
+        DPSTD("Expected $lenPos bytes got ".scalar(@{$bref}));
     }
-    print "AF(fn=$filename,cs=$checksum,ts=$timestamp,seq=$seqno)\n";
+    DPPKT("AF(fn=$filename,cs=$checksum,ts=$timestamp,seq=$seqno)");
     checkAnnouncedFile($filename,$contentLength,$checksum,$timestamp,$seqno,$dir);
 }
 
@@ -752,7 +773,7 @@ sub processChunkRequest {
         return;
     }
     my $filename = $finfo->{filename};
-    print "CR(sku=$sku,fn=$filename,si=$startingIndex)\n";
+    DPPKT("CR(sku=$sku,fn=$filename,si=$startingIndex)");
     sendCommonChunkTo($finfo,$dir,$sku,$startingIndex);
 }
 
@@ -769,29 +790,30 @@ sub processDataReply {
     my $oldLenPos = $lenPos;
     ($startingIndex,$lenPos) = getLenArgFrom($lenPos,$bref);
     if ($oldLenPos + 1 == $lenPos) {
-        print "SKU '$sku' rejected by $dir\n";
+        DPVRB("SKU '$sku' rejected by $dir");
         dropProviderForSKU($dir,$sku);
         return;
     }
     my $finfo = checkSKUInDir($sku,$dir);
     if (!defined($finfo)) {
-        print "WE ARE NOT WAITING FOR '$sku'\n";
+        DPSTD("WE ARE NOT WAITING FOR '$sku'");
         return;
     }
     my $curlen = $finfo->{currentLength};
     if ($curlen != $startingIndex) {
-        print "WE WANT $curlen NOT $startingIndex FROM $sku\n";
+        DPSTD("WE WANT $curlen NOT $startingIndex FROM $sku");
         return;
     }
-    print "WRITGONGO $curlen\n";
     my ($data,$hack16);
     ($data,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($hack16,$lenPos) = getLenArgFrom($lenPos,$bref);
     my $check16 = hack16($data);
     if ($hack16 ne $check16) {
-        print "CHECKSUM FAILURE DROPPING PACKET\n";
+        DPSTD("CHECKSUM FAILURE DROPPING PACKET");
         return;
     }
+    DPSTD("Starting reception of ".$finfo->{filename}." from ".getDirName($dir))
+        if $startingIndex == 0;
     writeDataToPendingFile($finfo, $startingIndex, $data);
     if ($finfo->{currentLength} < $finfo->{length}) {  # We still want more
         issueContentRequest($finfo); # so go ahead ask for more
@@ -806,7 +828,7 @@ sub sendChunkDeniedTo {
     my $pkt = chr(0x80+$dir).chr($CDM_PKT_TYPE).$dataChunkCode;
     $pkt = addLenArgTo($pkt,$sku);
     $pkt .= chr(0);
-    print "DENIED($pkt)\n";
+    DPPKT("DENIED($pkt)");
     writePacket($pkt,0);
 }
 
@@ -828,14 +850,18 @@ sub sendCommonChunkTo {
         - 3                       # for 2+hack16 'checksum'
         ;
 
+    DPSTD("Starting delivery of ".$finfo->{filename}." ($sku) to ".getDirName($dir)) 
+        if $startingIndex==0;
     if ($maxWanted > $maxRemaining) {
         $maxWanted = $maxRemaining;
+    } else {
+        DPSTD("Sending last of ".$finfo->{filename}." ($sku) to ".getDirName($dir));
     }
     my $data = getDataFromCommonFile($finfo, $startingIndex, $maxWanted);
     my $hack16 = hack16($data);
     $pkt = addLenArgTo($pkt,$data);
     $pkt = addLenArgTo($pkt,$hack16);
-    print "DATA: $maxWanted bytes at $startingIndex to $sku for $dir\n";
+    DPPKT("DATA: $maxWanted bytes at $startingIndex to $sku for ".getDirName($dir));
     writePacket($pkt);
 }
 
@@ -848,12 +874,12 @@ sub writeDataToPendingFile {
     my $writeLen = length($data);
     my $wrote = syswrite $fh, $data, $writeLen;
     if ($wrote != $writeLen) {
-        print "Wanted to write $writeLen at $startingIndex of $filename, but only wrote $wrote\n";
+        DPSTD("Wanted to write $writeLen at $startingIndex of $filename, but only wrote $wrote");
         return;
     }
     close $fh or die "Can't close $path: $!";
     $finfo->{currentLength} += $writeLen;
-    print "WROTE $writeLen to $startingIndex of $path\n";
+    DPVRB("WROTE $writeLen to $startingIndex of $path");
 }
 
 sub getDataFromCommonFile {
@@ -865,7 +891,7 @@ sub getDataFromCommonFile {
     my $data;
     my $read = sysread $fh, $data, $maxWanted;
     if ($read != $maxWanted) {
-        print "Wanted $maxWanted at $startingIndex of $filename, but got $read\n";
+        DPSTD("Wanted $maxWanted at $startingIndex of $filename, but got $read");
     }
     close $fh or die "Can't close $path: $!";
     return $data;
@@ -883,7 +909,7 @@ sub hack16 {
 sub processPacket {
     my $pkt = shift;
     if (length($pkt) < 3) {
-        print "Short packet '$pkt' ignored\n";
+        DPSTD("Short packet '$pkt' ignored");
         return;
     }
     my @bytes = split(//,$pkt);
@@ -894,7 +920,7 @@ sub processPacket {
             $ngb->{clacksSinceAliveRcvd} = 0;
             if (!$ngb->{isAlive}) {
                 $ngb->{isAlive} = 1;
-                print getDirName($srcDir)." is alive\n";
+                DPSTD(getDirName($srcDir)." is alive");
             }
             return;
         }
@@ -911,7 +937,7 @@ sub processPacket {
             return;
         }
     }
-    print "UNHANDLED PKT($pkt)\n";
+    DPSTD("UNHANDLED PKT($pkt)");
 }
 
 sub now {
