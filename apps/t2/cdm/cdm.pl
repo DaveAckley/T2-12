@@ -150,6 +150,7 @@ my %seqnoMap;
 
 sub assignSeqnoForFilename {
     my $filename = shift;
+    die unless defined $filename;
     my $seqno = ++$globalCheckedFilesCount;
     $seqnoMap{$seqno} = $filename;
     return $seqno;
@@ -192,7 +193,7 @@ sub checkMFZDataFor {
     $finfo->{innerTimestamp} = $epoch;
     $finfo->{currentLength} = $finfo->{length};
     $finfo->{checkedLength} = $finfo->{length};
-    $finfo->{seqno} = assignSeqnoForFilename();
+    $finfo->{seqno} = assignSeqnoForFilename($finfo->{filename});
     return 1;
 }
 
@@ -237,20 +238,34 @@ sub generateSKU {
     return $sku;
 }
 
-sub checkSKU {
-    my $sku = shift;
+sub checkSKUIn {
+    my ($sku,$subdir) = @_;
+    defined $subdir or die;
     $sku =~ /^(.)([0-9a-fA-F]{2})([0-9a-fA-F]{2})(\d\d\d)(.+)$/
         or return undef;
     my ($fnchar,$cs0,$cs1,$bottim,$lexsi) = ($1,hex($2),hex($3),$4,$5);
-    my $seqno = lexDecode($lexsi);
+    print "cdddsk ($fnchar,$cs0,$cs1,$bottim,$lexsi)\n";
+
+    my ($seqno,undef) = lexDecode($lexsi);
     defined $seqno or return undef;
 
+print "gotseqn $seqno OK\n";
+    print "ZKDKMAP:".%seqnoMap."\n";
     my $filename = $seqnoMap{$seqno};
     defined $filename or return undef;
+print "gotfn $filename OK\n";
     substr($filename,0,1) eq $fnchar or return undef;
+print "cSKU fnchar $fnchar OK\n";
+
+    my $finfo = getFinfoFrom($filename,$subdir);
+    defined $finfo or return undef;
+print "cSKU finfo $finfo OK\n";
     ord(substr($finfo->{checksum},0,1)) == $cs0 or return undef;
+print "cSKU cs0 $cs0 OK\n";
     ord(substr($finfo->{checksum},1,1)) == $cs1 or return undef;
+print "cSKU cs1 $cs1 OK\n";
     $finfo->{innerTimestamp}%1000 == $bottim or return undef;
+print "cSKU ts $bottim OK\n";
 
     return $finfo;
 }
@@ -591,9 +606,8 @@ sub checkAnnouncedFile {
 }
 
 sub processFileAnnouncement {
-    my @bytes = @_;
-    my $bref = \@bytes;
-    my $dir = ord($bytes[0])&0x7;
+    my $bref = shift;
+    my $dir = ord($bref->[0])&0x7;
     # [0:2] known to be CDM F type
     my $lenPos = 3;
     my ($filename, $contentLength, $checksum, $timestamp, $seqno);
@@ -602,35 +616,146 @@ sub processFileAnnouncement {
     ($checksum,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($timestamp,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($seqno,$lenPos) = getLenArgFrom($lenPos,$bref);
-    if (scalar(@bytes) != $lenPos) {
-        print "Expected $lenPos bytes got ".scalar(@bytes)."\n";
+    if (scalar(@{$bref}) != $lenPos) {
+        print "Expected $lenPos bytes got ".scalar(@{$bref})."\n";
     }
     print "AF(fn=$filename,cs=$checksum,ts=$timestamp,seq=$seqno)\n";
     checkAnnouncedFile($filename,$contentLength,$checksum,$timestamp,$seqno,$dir);
 }
 
 sub processChunkRequest {
-    my @bytes = @_;
-    my $bref = \@bytes;
-    my $dir = ord($bytes[0])&0x7;
+    my $bref = shift;
+    my $dir = ord($bref->[0])&0x7;
     # [0:2] known to be CDM C type
     my $lenPos = 3;
     my ($sku, $startingIndex);
     ($sku,$lenPos) = getLenArgFrom($lenPos,$bref);
     ($startingIndex,$lenPos) = getLenArgFrom($lenPos,$bref);
-    my $finfo = checkSKU($sku);
+    my $finfo = checkSKUIn($sku,$commonSubdir);
     if (!defined($finfo)) {
-        print "Bad SKU $sku\n";
+        sendChunkDeniedTo($dir,$sku);
         return;
     }
     my $filename = $finfo->{filename};
     print "CR(sku=$sku,fn=$filename,si=$startingIndex)\n";
-    # XXXX DO ME DO ME
+    sendCommonChunkTo($finfo,$dir,$sku,$startingIndex);
 }
 
-sub getSKUForDir {
-    my ($finfo,$dir) = @_;
+my $MAX_D_TYPE_PACKET_LENGTH = 200;
+my $dataChunkCode = "D";
 
+sub processDataReply {
+    my $bref = shift;
+    my $dir = ord($bref->[0])&0x7;
+    # [0:2] known to be CDM D type
+    my $lenPos = 3;
+    my ($sku, $startingIndex);
+    ($sku,$lenPos) = getLenArgFrom($lenPos,$bref);
+    my $oldLenPos = $lenPos;
+    ($startingIndex,$lenPos) = getLenArgFrom($lenPos,$bref);
+    if ($oldLenPos == $lenPos) {
+        print "BAD SKU '$sku' REJECTED DO SOMETHING XXX\n";
+        return;
+    }
+    my $finfo = checkSKUIn($sku,$pendingSubdir);
+    if (!defined($finfo)) {
+        print "WE ARE NOT WAITING FOR '$sku'\n";
+        return;
+    }
+    my $curlen = $finfo->{currentLength};
+    if ($curlen != $startingIndex) {
+        print "WE WANT $curlen NOT $startingIndex FROM $sku\n";
+        return;
+    }
+
+    my ($data,$hack16);
+    ($data,$lenPos) = getLenArgFrom($lenPos,$bref);
+    ($hack16,$lenPos) = getLenArgFrom($lenPos,$bref);
+    my $check16 = hack16($data);
+    if ($hack16 ne $check16) {
+        print "CHECKSUM FAILURE DROPPING PACKET\n";
+        return;
+    }
+    writeDataToPendingFile($finfo, $startingIndex, $data);
+}
+
+sub sendChunkDeniedTo {
+    my ($dir, $sku) = @_;
+
+    my $pkt = chr(0x80+$dir).chr($CDM_PKT_TYPE).$dataChunkCode;
+    $pkt = addLenArgTo($pkt,$sku);
+    $pkt .= chr(0);
+    print "DENIED($pkt)\n";
+    writePacket($pkt,0);
+}
+
+sub sendCommonChunkTo {
+    my ($finfo, $dir, $sku, $startingIndex) = @_;
+    defined $startingIndex or die;
+    my $length = $finfo->{length};
+    my $maxWanted = $length - $startingIndex;
+    $maxWanted = 0 if $maxWanted < 0;
+
+    my $pkt = chr(0x80+$dir).chr($CDM_PKT_TYPE).$dataChunkCode;
+    $pkt = addLenArgTo($pkt,$sku);
+    $pkt = addLenArgTo($pkt,$startingIndex);
+
+    my $maxRemaining = 
+        $MAX_D_TYPE_PACKET_LENGTH # Max size
+        - length($pkt)            # Currently used
+        - 1                       # for length of data
+        - 3                       # for 2+hack16 'checksum'
+        ;
+
+    if ($maxWanted > $maxRemaining) {
+        $maxWanted = $maxRemaining;
+    }
+    my $data = getDataFromCommonFile($finfo, $startingIndex, $maxWanted);
+    my $hack16 = hack16($data);
+    $pkt = addLenArgTo($pkt,$data);
+    $pkt = addLenArgTo($pkt,$hack16);
+    print "DATA: $maxWanted bytes at $startingIndex to $dir\n";
+    writePacket($pkt);
+}
+
+sub writeDataToPendingFile {
+    my ($finfo, $startingIndex, $data) = @_;
+    my $filename = $finfo->{filename};
+    my $path = "$baseDir/pending/$filename";
+    open my $fh,'+<',$path or die "Can't update $path: $!";
+    sysseek $fh, $startingIndex, 0 or die "Can't seek $path to $startingIndex: $!";
+    my $writeLen = length($data);
+    my $wrote = syswrite $fh, $data, $writeLen;
+    if ($wrote != $writeLen) {
+        print "Wanted to write $writeLen at $startingIndex of $filename, but only wrote $wrote\n";
+        return;
+    }
+    close $fh or die "Can't close $path: $!";
+    $finfo->{currentLength} += length($wrote);
+}
+
+sub getDataFromCommonFile {
+    my ($finfo, $startingIndex, $maxWanted) = @_;
+    my $filename = $finfo->{filename};
+    my $path = "$baseDir/common/$filename";
+    open my $fh,'<',$path or die "Can't read $path: $!";
+    sysseek $fh, $startingIndex, 0 or die "Can't seek $path to $startingIndex: $!";
+    my $data;
+    my $read = sysread $fh, $data, $maxWanted;
+    if ($read != $maxWanted) {
+        print "Wanted $maxWanted at $startingIndex of $filename, but got $read\n";
+    }
+    close $fh or die "Can't close $path: $!";
+    return $data;
+}
+
+sub hack16 {
+    my $str = shift;
+    my $h = 0xfeed;
+    for my $i (0 .. (length ($str) - 1)) {
+        $h = (($h<<1)^ord(substr($str,$i,1))^($h>>11))&0xffff;
+    }
+    return chr(($h>>8)&0xff).chr($h&0xff);
 }
 
 sub processPacket {
@@ -652,11 +777,15 @@ sub processPacket {
             return;
         }
         if ($bytes[2] eq "F") {
-            processFileAnnouncement(@bytes);
+            processFileAnnouncement(\@bytes);
             return;
         }
         if ($bytes[2] eq "C") {
-            processChunkRequest(@bytes);
+            processChunkRequest(\@bytes);
+            return;
+        }
+        if ($bytes[2] eq "D") {
+            processDataReply(\@bytes);
             return;
         }
     }

@@ -853,9 +853,9 @@ C type: Content request
 
 D type: Data reply
 
-0x80 | dir, 0x03, 'D', len+sku, len+startingIndex, len+data
+Format 1 (C denied): 0x80 | dir, 0x03, 'D', len+sku, 0, 
 
-Note the startingIndex and data 'lens' will be 0 if sku is invalid
+Format 2 (Has data): 0x80 | dir, 0x03, 'D', len+sku, len+startingIndex, len+data, 2+hack16
 
 :61]
 [63:
@@ -905,5 +905,8 @@ You'd really think I'd see this type of thing coming by now.  I guess
 we keep a seqno->filename map on top of everything else.  Add to it
 whenever we burn a seqno.  Map only grows on content churn which is
 expected to be low.
+
+And we're only going to serve content from common/, so we only need to
+look for finfos there.
 
 :66]
