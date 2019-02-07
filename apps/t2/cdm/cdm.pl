@@ -243,6 +243,8 @@ sub checkAndReleasePendingFile {
     my $cref = getSubdirModel($commonSubdir);
     my $seqno = assignSeqnoForFilename($filename);
     $finfo->{seqno} = $seqno;
+    $finfo->{modtime} = -M $newpath;
+    print "checkAndReleasePendingFile MFZ modtime ".$finfo->{modtime}."\n";
 
     delete $pref->{$filename}; # Remove metadata from pending
     $cref->{$filename} = $finfo; # Add it to common
@@ -350,6 +352,14 @@ sub checkPendingFile {
         --$finfo->{timeCount};
         return;
     }
+    issueContentRequest($finfo);
+}
+
+sub issueContentRequest {
+    my ($finfo) = @_;
+    my $cur = $finfo->{currentLength};
+    my $len = $finfo->{length};
+
     my ($dir,$seqno) = selectProvider($finfo);
     if (!defined($dir) || !defined($seqno)) {
         print "No provider found for $filename in $finfo?\n";
@@ -361,7 +371,7 @@ sub checkPendingFile {
     my $pkt = chr(0x80+$dir).chr($CDM_PKT_TYPE).$contentRequestCode;
     $pkt = addLenArgTo($pkt,$sku);
     $pkt = addLenArgTo($pkt,$cur);
-    $finfo->{timeCount} = 1;  # don't spam requests too fast
+    $finfo->{timeCount} = 3;  # don't spam requests too fast
     print STDERR "REQUEST($pkt)\n";
     writePacket($pkt);
 }
@@ -585,6 +595,7 @@ sub getLenArgFrom {
 
 sub addLenArgTo {
     my ($str,$arg) = @_;
+    print "Undefined arg supplied at '$str'" unless defined $arg;
     $str .= chr(length($arg)).$arg;
     return $str;
 }
@@ -772,6 +783,11 @@ sub processDataReply {
         return;
     }
     writeDataToPendingFile($finfo, $startingIndex, $data);
+    if ($finfo->{currentLength} < $finfo->{length}) {  # We still want more
+        issueContentRequest($finfo); # so go ahead ask for more
+        my $rateLimiterUsec = 100_000; # But no more than 10Hz
+        Time::HiRes::usleep($rateLimiterUsec);
+    }
 }
 
 sub sendChunkDeniedTo {
