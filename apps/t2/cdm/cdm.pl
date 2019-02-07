@@ -64,7 +64,7 @@ my $baseDir = "/cdm";
 my $commonSubdir = "common";
 my $pendingSubdir = "pending";
 my $logSubdir = "log";
-my $pubkeySubdir = "pubkeys";
+my $pubkeySubdir = "public_keys";
 my @subDirs = ($commonSubdir, $pendingSubdir,$logSubdir,$pubkeySubdir);
 my $commonPath = "$baseDir/$commonSubdir";
 my $pendingPath = "$baseDir/pending";
@@ -173,7 +173,7 @@ sub checkMFZDataFor {
 
     #### REPLACE THIS WITH 'mfzrun VERIFY' ONCE AVAILABLE
     my $path = getFinfoPath($finfo);
-    my $cmd = "echo Q | mfzrun -kd /cdm/$pubkeySubdir $path list";
+    my $cmd = "echo Q | mfzrun -kd /cdm $path list";
     my $output = `$cmd`;
 
     if ($output =~ /.*?signer handle '(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})' is not recognized!/) {
@@ -446,7 +446,7 @@ sub newFinfoBare {
         signingHandle => undef,
         innerTimestamp => undef,
         seqno => undef,
-        currentLength => undef,
+        currentLength => 0,
         checkedLength => 0,
         timeCount => 0,
         otherSeqnos =>[],
