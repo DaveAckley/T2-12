@@ -1,4 +1,4 @@
-{75}  -*- text -*-
+{76}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -977,7 +977,13 @@ do.
     supply input to a subprocess?[73:
 
 Wed Feb  6 23:13:34 2019 We can check the exit status of 'mfzmake
-canvalidate HANDLE' to know if HANDLE is usable.[74:
+canvalidate HANDLE' to know if HANDLE is usable.[75:
+
+Thu Feb  7 00:40:02 2019 But, umm, excuse me, meester, MEESTER?  How
+do we know what the handle _IS_, until we look into the .mfz file,
+which we can't do without mfzrun hanging waiting for input?
+
+:75][74:
 
 Thu Feb  7 00:10:21 2019 Now, down the road, we'd really like for
 different handles to be valid for different .mfz's, so we could let

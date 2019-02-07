@@ -171,8 +171,14 @@ sub checkMFZDataFor {
 
     #### REPLACE THIS WITH 'mfzrun VERIFY' ONCE AVAILABLE
     my $path = getFinfoPath($finfo);
-    my $cmd = "mfzrun -kd /cdm/pubkeys $path list";
+    my $cmd = "echo Q | mfzrun -kd /cdm/pubkeys $path list";
     my $output = `$cmd`;
+
+    if ($output =~ /.*?signer handle '(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})' is not recognized!/) {
+        my $badhandle = $1;
+        print "Unrecognized handle '$badhandle' in $path\n";
+        return 0;
+    }
     if ($output !~ s/^SIGNED BY RECOGNIZED HANDLE: (:?[a-zA-Z][-., a-zA-Z0-9]{0,62}) \(//) {
         print "Handle of $path not found in '$output'\n";
         return 0;
@@ -199,7 +205,14 @@ sub checkMFZDataFor {
 }
 
 sub killPending {
-    die "WRITEMEEEE\n";
+    my ($finfo, $reason) = @_;
+    my $filename = $finfo->{filename};
+    my $subdir = $finfo->{subdir};
+    $subdir or die "No subdir";
+    my $path = getFinfoPath($finfo);
+    unlink $path;
+    print "Purged pending '$path': $reason\n";
+    $finfo->{purgatory} = 1;
 }
 
 sub checkAndReleasePendingFile {
@@ -293,19 +306,19 @@ print "gotseqn $seqno OK\n";
         $filename = $ngb->{contentOffered}->{$seqno};
     }
     defined $filename or return undef;
-print "gotfn $filename OK\n";
+#print "gotfn $filename OK\n";
     substr($filename,0,1) eq $fnchar or return undef;
-print "cSKU fnchar $fnchar OK\n";
+#print "cSKU fnchar $fnchar OK\n";
 
     my $finfo = getFinfoFrom($filename,$subdir);
     defined $finfo or return undef;
-print "cSKU finfo $finfo OK\n";
+#print "cSKU finfo $finfo OK\n";
     ord(substr($finfo->{checksum},0,1)) == $cs0 or return undef;
-print "cSKU cs0 $cs0 OK\n";
+#print "cSKU cs0 $cs0 OK\n";
     ord(substr($finfo->{checksum},1,1)) == $cs1 or return undef;
-print "cSKU cs1 $cs1 OK\n";
+#print "cSKU cs1 $cs1 OK\n";
     $finfo->{innerTimestamp}%1000 == $bottim or return undef;
-print "cSKU ts $bottim OK\n";
+#print "cSKU ts $bottim OK\n";
 
     return $finfo;
 }
@@ -319,6 +332,12 @@ sub checkPendingFile {
 
     my $filename = $fnames[createInt($count)];
     my $finfo = $pref->{$filename};
+
+    if (defined($finfo->{purgatory})) {
+        delete $pref->{$filename} if oneIn(25); # Just ignore this guy for a while
+        return;                                 # then delete him to try again
+    }
+
     my $len = $finfo->{length};
     my $cur = $finfo->{currentLength};
     if ($len == $cur) {
@@ -382,6 +401,15 @@ sub checkCommonFile {
         return 1; # That's plenty for now..
     }
 
+    # Ensure it really is ready
+    if (!defined($finfo->{seqno})) {
+        print "FAILED TO VALIDATE '$path' -- deleting\n";
+        my $cref = getSubdirModel($commonSubdir);
+        delete $cref->{$filename};
+        unlink $path or die "Couldn't unlink '$path'";
+        return 1;
+    }
+
     # This file is ready.  Maybe announce it to somebody?
     my $aliveNgb = getRandomAliveNgb();
     if (defined $aliveNgb && oneIn(3)) {
@@ -421,6 +449,22 @@ sub newFinfoBare {
         timeCount => 0,
         otherSeqnos =>[],
     };
+}
+
+sub dropProviderForSKU {
+    my ($dir,$sku) = @_;
+    my $pref = getSubdirModel($pendingSubdir);
+    for my $finfo (values %{$pref}) {
+        my $seq = $finfo->{otherSeqnos}->[$dir];
+        next unless defined $seq;
+        my $existingSKU = generateSKU($finfo,$seq);
+        if (existingSKU eq $sku) {
+            my $filename = $finfo->{filename};
+            delete $pref->{$filename};
+            print "Dropped $dir as provider of $sku\n";
+            return;
+        }
+    }
 }
 
 sub selectProvider {
@@ -701,8 +745,9 @@ sub processDataReply {
     ($sku,$lenPos) = getLenArgFrom($lenPos,$bref);
     my $oldLenPos = $lenPos;
     ($startingIndex,$lenPos) = getLenArgFrom($lenPos,$bref);
-    if ($oldLenPos == $lenPos) {
-        print "BAD SKU '$sku' REJECTED DO SOMETHING XXX\n";
+    if ($oldLenPos == $lenPos+1) {
+        print "SKU '$sku' rejected by $dir\n";
+        dropProviderForSKU($dir,$sku);
         return;
     }
     my $finfo = checkSKUInDir($sku,$dir);
