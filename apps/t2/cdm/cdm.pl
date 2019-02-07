@@ -377,13 +377,22 @@ sub issueContentRequest {
     writePacket($pkt);
 }
 
+sub preinitCommon {
+    print "Preloading common\n";
+    my $count = 0;
+    while (checkCommonFile(0)) { ++$count; }
+    print "Preload complete after $count steps\n";
+}
+
 sub checkCommonFile {
+    my $announceOK = shift;
+
     if (scalar(@pathsToLoad) == 0) {
         loadCommonFiles();
         return 1; # did work
     }
     my $filename = shift @pathsToLoad;
-    return unless defined $filename && $filename =~ /[.]mfz$/;
+    return 1 unless defined $filename && $filename =~ /[.]mfz$/;
     if (length($filename) > $MAX_MFZ_NAME_LENGTH) {  #### XXX WOAH
         print "MFZ filename too long '$filename'\n";
         return 1;
@@ -425,7 +434,7 @@ sub checkCommonFile {
 
     # This file is ready.  Maybe announce it to somebody?
     my $aliveNgb = getRandomAliveNgb();
-    if (defined $aliveNgb && oneIn(3)) {
+    if ($announceOK && defined $aliveNgb && oneIn(3)) {
         announceFileTo($aliveNgb,$finfo);
         return 1;
     }
@@ -628,7 +637,7 @@ sub doBackgroundWork {
     }
 
     # COMMON MGMT
-    return if checkCommonFile();
+    return if checkCommonFile(1);
 
     # PENDING MGMT
     return if checkPendingFile();
@@ -936,6 +945,7 @@ sub eventLoop {
 sub main {
     flushPendingDir();
     checkInitDirs();
+    preinitCommon();
     openPackets();
     eventLoop();
     closePackets();
