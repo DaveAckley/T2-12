@@ -359,6 +359,7 @@ sub issueContentRequest {
     my ($finfo) = @_;
     my $cur = $finfo->{currentLength};
     my $len = $finfo->{length};
+    my $filename = $finfo->{filename};
 
     my ($dir,$seqno) = selectProvider($finfo);
     if (!defined($dir) || !defined($seqno)) {
