@@ -1,4 +1,4 @@
-{67}  -*- text -*-
+{75}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -907,6 +907,96 @@ whenever we burn a seqno.  Map only grows on content churn which is
 expected to be low.
 
 And we're only going to serve content from common/, so we only need to
-look for finfos there.
+look for finfos there.[67:
+
+Wed Feb  6 17:44:37 2019 Buuut we receive content into pending/, so we 
+also have to look for finfos by sku in there.  We can't just have the
+one global seqno map and use it for inbound D types.  seqno's are only
+unique on per-neighbor, we have to store and look them up on that
+basis.  Now, we have this neighborModel, don't we?  ..%hoodModel.
+What all's in there?[68:
+
+Wed Feb  6 21:05:23 2019 Well it seems the top level of the two-level
+%cdmModel hash is really about the same thing as the %hoodModel and
+they ought to be merged together.  But do I have the strength to do
+that before seeing this damn thing work even once?
+
+What's the alternative?  What's the quick hack to try?  Add a
+seqno->filename map as like $hoodModel->{$dir}->{contentOffered},
+update that as announcements are seen, and look up skus in that.
+
+Yeah well let's try that.[69:
+
+Wed Feb  6 21:22:04 2019 Well the checkSKUIn stuff needs refactored
+even for the hack, though.  Passing the subdir isn't what we really
+want.
+
+If we redid the %hoodModel to be on top, and used some special code to
+represent ourselves in the hood, it would probably be significantly
+cleaner in the end..  But let's get this working first, gah down boy.
+So we need to redo checkSKUIn to be checkSKUInDir, and use dir==8 to
+mean ourselves?  For ourselves we look in subdir common when we need
+the file, for other dirs we use pending.  And we're adding
+contentOffered to the hoodModel guys..
+
+:69]
+
+:68]
+
+:67]
+
 
 :66]
+[70:
+
+Wed Feb  6 22:05:15 2019 OK, well, at VERY long last, we have
+demonstrated INTERTILE S/W movement.
+
+"clams.mfz, come here, I need you"
+
+and all 863 bytes of clams.mfz is now in pending/, with the same
+md5sum as the machine it originated on.
+
+[71:
+
+Wed Feb  6 22:06:56 2019 So, final step in this first round
+implementation: Discover the file is complete and move it into
+common/.
+
+At that point it should start to move another hop All By It Selfs.
+
+[72:
+
+Wed Feb  6 23:08:19 2019 OK, making progress releasing the arrived
+.mfz.  Currently we're hanging because the 'mfzrun list' is
+complaining about an unrecognized handle and asking us what we want to
+do.
+
+(1) What does 'mfzrun verify' do with an unrecognized handle?
+(2) How can we detect an unrecognized handle without having to 
+    supply input to a subprocess?[73:
+
+Wed Feb  6 23:13:34 2019 We can check the exit status of 'mfzmake
+canvalidate HANDLE' to know if HANDLE is usable.[74:
+
+Thu Feb  7 00:10:21 2019 Now, down the road, we'd really like for
+different handles to be valid for different .mfz's, so we could let
+people update their mfmt2 load, for example, without being able to
+modify the CDM system itself.  So we'd like the CDM to control
+HANDLES.mfz that somehow contains a mapping from .MFZ file to valid
+handles for signing on it.
+
+But for now it's fine that clams.mfz fails because we don't know its
+handle.
+
+For now let's just add a /cdm/pubkeys directory and -kd to that..
+
+
+:74]
+
+:73]
+
+:72]
+:71]
+
+:70]
