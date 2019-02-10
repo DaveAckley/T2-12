@@ -12,6 +12,8 @@
 #include <linux/uaccess.h>
 #include <linux/poll.h>
 
+#include "pin_info_maps.h"
+  
 typedef enum packet_header_bits {
   PKT_HDR_BITMASK_STANDARD  = 0x80,
   PKT_HDR_BITMASK_LOCAL     = 0x40,
@@ -49,6 +51,7 @@ typedef enum debug_flags {
   DBG_PKT_RCVD      = 0x00000001,
   DBG_PKT_SENT      = 0x00000002,
   DBG_PKT_ROUTE     = 0x00000004,
+  DBG_PKT_ERROR     = 0x00000008,
 } DebugFlags;
 
 #define DBGIF(mask) if ((mask)&S.debugFlags)
@@ -66,6 +69,16 @@ typedef struct itc_dev_state {
   dev_t devt;
 } ITCDeviceState;
 
+/* per dirnum */
+typedef struct itc_traffic_stats {
+  uint32_t dirNum;
+  uint32_t bytesSent, bytesReceived;
+  uint32_t packetsSent, packetsReceived;
+  uint32_t packetSyncAnnouncements;
+  uint32_t syncFailureAnnouncements;
+  uint32_t timeoutAnnouncements;
+} ITCTrafficStats;
+
 /* 'global' state, so far as we can structify it */
 typedef struct itc_pkt_driver_state {
   DebugFlags        debugFlags;
@@ -77,6 +90,7 @@ typedef struct itc_pkt_driver_state {
   struct mutex      standardLock;   /* lock for reading standard packets */
   int               open_pru_minors;/* how many of our minors have (ever?) been opened */
   uint32_t          itcEnabledStatus; /* dirnum -> packet enabled status one hex digit per */
+  ITCTrafficStats   itcStats[ITC_DIR_COUNT]; /* statistics per ITC (0 and 4 unused in T2) */
   ITCDeviceState    * (dev_packet_state[MINOR_DEVICES]); /* ptrs to all our device states */
 } ITCPacketDriverState;
 
@@ -90,6 +104,4 @@ extern ITCDeviceState * make_itc_minor(struct device * dev,
                                        int minor_obtained,
                                        int * err_ret);
 
-#include "pin_info_maps.h"
-  
 #endif /* ITC_PKT_H */

@@ -13,6 +13,8 @@
 #define ITC_DIR_TO_DIR_NUM__NW 7
 #define ITC_DIR_TO_DIR_NUM(dir) ITC_DIR_TO_DIR_NUM__##dir
 
+#define ITC_DIR_COUNT (ITC_DIR_TO_DIR_NUM__NW + 1)
+
 /* direction to pru# */
 #define ITC_DIR_TO_PRU__NE 1
 #define ITC_DIR_TO_PRU__ET 0
