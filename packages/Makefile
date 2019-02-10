@@ -4,6 +4,15 @@ PACKAGES+=inotify-tools
 PACKAGES+=git g++
 PACKAGES+=software-properties-common python-software-properties
 
+# Generally useful framebuffer manager?
+PACKAGES+=fbset
+
+# Prereqs for Graphics::FrameBuffer if we end up using it
+#PACKAGES+=libimager-perl libmath-bezier-perl libmath-gradient-perl libtest-most-perl
+#jessie doesn't have: libfile-map-perl libperlio-layers-perl ??
+# For home-building File::Map
+# libtest-fatal-perl libtest-warnings-perl
+
 # For our (possible future) interactive services
 PACKAGES+=libsystemd-dev
 PACKAGES+=libpam-systemd
@@ -16,6 +25,9 @@ PACKAGES+=libdatetime-format-strptime-perl
 
 # For FUSE if we end up using it
 #PACKAGES+=fuse libfuse-dev
+
+# For Perl SDL if we end up using it
+PACKAGES+=libalien-sdl-perl libmodule-build-perl
 
 # For sdlsplash
 PACKAGES+=libsdl1.2-dev libsdl-image1.2-dev libsdl-ttf2.0-dev
