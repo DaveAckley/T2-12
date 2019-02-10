@@ -1,4 +1,4 @@
-{76}  -*- text -*-
+{77}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -1006,3 +1006,31 @@ For now let's just add a /cdm/pubkeys directory and -kd to that..
 :71]
 
 :70]
+[76:
+
+Thu Feb  7 15:44:59 2019 OK, well we now have INTERTILE S/W so that's
+a thing.  But it still has a lot of problems and missing bits, and
+we're going to have to push back and rethink our guts now that we have
+some sense of the issues.  So maybe we'll branch off to logistics and
+parts acquisition for a bit, and then circle back around here with a
+redesign.  Looking for a somewhat principled way to deal with:
+
+ 1. New versions of existing files found on the filesystem
+ 2. New versions of existing files arriving on the wire
+ 3. The need to delete files somehow
+
+and also, possibly
+
+ 4. The ability to decouple names from content and maintain a content
+    cache so that giving
+
+and also
+
+ 5. A daemon wrapper loop so that cdm can restart itself (after getting
+    an update) simply by exiting.
+
+and also
+
+ 6. Include full checksum + signing handle and fingerprint in announcements?
+
+:76]
