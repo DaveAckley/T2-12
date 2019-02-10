@@ -69,9 +69,10 @@ sub readPacket {
 
 sub writePacket {
     my ($pkt,$ignoreUnreach) = @_;
+    $ignoreUnreach ||= 1; # Default to ignore unreachable hosts
     while (1) {
         my $len = syswrite(PKTS, $pkt);
-        return if defined $len;
+        return 1 if defined $len;
         if ($ignoreUnreach && $!{EHOSTUNREACH}) {
             DPPKT("Host unreachable, ignored");
             return;
@@ -138,7 +139,7 @@ sub sendCDMTo {
     my $pkt = chr(0x80+$dest).chr($CDM_PKT_TYPE).$type;
     $pkt .= $args if defined $args;
     DPPKT("SENDIT($pkt)");
-    writePacket($pkt,1);
+    writePacket($pkt);
 }
 
 sub randDir {
@@ -843,7 +844,7 @@ sub sendChunkDeniedTo {
     $pkt = addLenArgTo($pkt,$sku);
     $pkt .= chr(0);
     DPPKT("DENIED($pkt)");
-    writePacket($pkt,0);
+    writePacket($pkt);
 }
 
 sub sendCommonChunkTo {
@@ -927,7 +928,11 @@ sub processPacket {
         return;
     }
     my @bytes = split(//,$pkt);
-    my $srcDir = ord($bytes[0])&0x07;
+    my $byte0 = ord($bytes[0]);
+    if ($byte0&0x08) {
+        print "Packet error reported on '$pkt'\n";
+    }
+    my $srcDir = $byte0&0x07;
     if ($bytes[1] eq $CDM_PKT_TYPE_BYTE) {
         if ($bytes[2] eq "A") {
             my $ngb = getNgbInDir($srcDir);
