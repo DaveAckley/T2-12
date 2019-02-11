@@ -686,12 +686,12 @@ sub doBackgroundWork {
 
     # ALIVENESS MGMT
     my $ngb = getRandomNgb();
-    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 25) {
+    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 24) {
         $ngb->{isAlive} = 0;
         DPSTD(getDirName($ngb->{dir})." is dead");
     }
     
-    if (rand(++$ngb->{clacksSinceAliveSent}) > 10) {
+    if (rand(++$ngb->{clacksSinceAliveSent}) > 6) {
         $ngb->{clacksSinceAliveSent} = 0;
         sendCDMTo($ngb->{dir},'A');
     }
