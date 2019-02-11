@@ -15,6 +15,16 @@
 
 #define ITC_DIR_COUNT (ITC_DIR_TO_DIR_NUM__NW + 1)
 
+/* According to T2-12-pinmap-233, the following mappings hold:
+ * TERMINAL  TXRDY              TXDAT               RXRDY              RXDAT
+ *   ET      P9_28 pru0 r30_3   P9_42B pru0 r30_4   P9_31 pru0 r31_0   P9_29 pru0 r31_1
+ *   SE      P9_27 pru0 r30_5   P9_41B pru0 r30_6   P9_30 pru0 r31_2   P8_16 pru0 r31_14
+ *   SW      P9_25 pru0 r30_7   P8_12  pru0 r30_14  P8_15 pru0 r31_15  P9_24 pru0 r31_16
+ *   WT      P8_45 pru1 r30_0   P8_46  pru1 r30_1   P8_39 pru1 r31_6   P8_40 pru1 r31_7
+ *   NW      P8_27 pru1 r30_8   P8_29  pru1 r30_9   P8_43 pru1 r31_2   P8_44 pru1 r31_3
+ *   NE      P8_28 pru1 r30_10  P8_30  pru1 r30_11  P8_41 pru1 r31_4   P8_42 pru1 r31_5
+ */
+
 /* direction to pru# */
 #define ITC_DIR_TO_PRU__NE 1
 #define ITC_DIR_TO_PRU__ET 0
