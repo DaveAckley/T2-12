@@ -1,0 +1,12 @@
+[Unit]
+Description=Boot time cdm processing
+Requires=t2-splash-screen.service
+After=t2-splash-screen.service
+
+[Service]
+Type=oneshot
+#cdm.sh installed by ../../apps/cdm/
+ExecStart=/opt/scripts/t2/cdm.sh
+
+[Install]
+WantedBy=multi-user.target
