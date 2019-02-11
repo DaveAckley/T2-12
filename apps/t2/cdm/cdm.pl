@@ -130,6 +130,22 @@ sub checkInitDirs {
             die "Problem with '$path'";
         }
     }
+
+    # Ensure our base key is in there
+    my $keyPath = "$baseDir/$pubkeySubdir/t2%2dcdm%2ddebug%2d10.pub";
+    if (!(-e $keyPath)) {
+        print "Initting $keyPath\n";
+        open HDL,">",$keyPath or die "Can't write $keyPath: $!";
+        print HDL <<'EOF';
+[MFM-Handle:t2-cdm-debug-10]
+-----BEGIN RSA PUBLIC KEY-----
+MIGJAoGBAN3tnrIiSZIvfiRmZacHAQLAm5dNJZyegbZ9bwJVBNel0RmDM4UYsISG
+IGFyOtuDEgPtZ+EsJqlHc03nXDDfRD7SEoXmT9kITlHilY8kLuc2dIfc1WKHc00x
+uC1z+luJYDt84zXeEa2lOcnYUipYiiTH0v0O9hUy6wvz9lrERpDxAgMBAAE=
+-----END RSA PUBLIC KEY-----
+EOF
+      close HDL or die "Close $keyPath: $!";
+    }
 }
 
 sub sendCDMTo {
