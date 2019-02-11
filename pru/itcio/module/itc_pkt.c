@@ -422,8 +422,8 @@ static int routeStandardPacket(const unsigned char * buf, size_t len)
 
   switch (itcDir) {
     
-  default: newminor = -ENODEV;
-#define XX(dir) case ITC_DIR_TO_DIR_NUM(dir): newminor = ITC_DIR_TO_PRU(dir);
+  default: newminor = -ENODEV; break;
+#define XX(dir) case ITC_DIR_TO_DIR_NUM(dir): newminor = ITC_DIR_TO_PRU(dir); break;
 FOR_XX_IN_ITC_ALL_DIR    
 #undef XX
   }
