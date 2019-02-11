@@ -424,6 +424,15 @@ sub checkCommonFile {
     my $finfo = getFinfoFromCommon($filename);
     my $path = getFinfoPath($finfo) || die "No path";
 
+    # Check if file vanished
+    if (!-e $path) {
+        DPSTD("Common file vanished: $path");
+        # What to do with finfo??  Let's ditch it
+        my $cref = getSubdirModel($commonSubdir);
+        delete $cref->{$filename};
+        return 1;
+    }
+
     # Check if modtime change
     my $modtime = -M $path;
     if (!defined($finfo->{modtime}) || $modtime != $finfo->{modtime}) {
