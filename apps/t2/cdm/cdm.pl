@@ -154,12 +154,12 @@ my %cdmModel = map { ($_, {}) } @subDirs;
 my @pathsToLoad;
 my %hoodModel;
 
-sub loadCommonFiles {
+sub loadCommonMFZFiles {
     if (!opendir(COMMON, $commonPath)) {
         DPSTD("WARNING: Can't load $commonPath: $!");
         return;
     }
-    @pathsToLoad = shuffle readdir COMMON;
+    @pathsToLoad = grep { /[.]mfz$/ } shuffle readdir COMMON;
     closedir COMMON or die "Can't close $commonPath: $!\n";
 }
 
@@ -411,11 +411,29 @@ sub checkCommonFile {
     my $announceOK = shift;
 
     if (scalar(@pathsToLoad) == 0) {
-        loadCommonFiles();
-        return 1; # did work
+        ## Between dir loads.  Let's check our finfos
+        my $cref = getSubdirModel($commonSubdir);
+        my $deaders = 0;
+        my @finfos = values %{$cref};
+        foreach my $finfo (@finfos) {
+            my $path = getFinfoPath($finfo);
+            
+            # Check if file vanished
+            if (!-e $path) {
+                ++$deaders;
+                DPSTD("Common file vanished: $path");
+                # What to do with finfo??  Let's ditch it
+                delete $cref->{$finfo->{filename}};
+            }
+        }
+        return 1 if $deaders > 0;
+        loadCommonMFZFiles();
+
+        return (scalar(@pathsToLoad) > 0 ? 1 : 0); # did work
     }
+    
     my $filename = shift @pathsToLoad;
-    return 1 unless defined $filename && $filename =~ /[.]mfz$/;
+    return 1 unless defined $filename; # ??
     if (length($filename) > $MAX_MFZ_NAME_LENGTH) {  #### XXX WOAH
         DPSTD("MFZ filename too long '$filename'");
         return 1;
@@ -424,15 +442,9 @@ sub checkCommonFile {
     my $finfo = getFinfoFromCommon($filename);
     my $path = getFinfoPath($finfo) || die "No path";
 
-    # Check if file vanished
-    if (!-e $path) {
-        DPSTD("Common file vanished: $path");
-        # What to do with finfo??  Let's ditch it
-        my $cref = getSubdirModel($commonSubdir);
-        delete $cref->{$filename};
-        return 1;
-    }
-
+    # Don't continue, but didn't do work, if the file has vanished
+    return 0 unless -e $path;
+    
     # Check if modtime change
     my $modtime = -M $path;
     if (!defined($finfo->{modtime}) || $modtime != $finfo->{modtime}) {
