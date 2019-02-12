@@ -1000,6 +1000,70 @@ sub now {
     return time()>>1;
 }
 
+my $userButtonLastKnownState;
+my $userButtonDevice = "/sys/bus/iio/devices/iio:device0/in_voltage5_raw";
+sub readButtonState {
+    open BUT, "<", $userButtonDevice or die "open $userButtonDevice: $!";
+    my $val = <BUT>;
+    close BUT or die "close $userButtonDevice: $!";
+    chomp $val;
+    my $buttonPressed = ($val < 2000) ? 1 : 0;
+    return $buttonPressed;
+}
+    
+sub checkUserButton {
+    my $buttonPressed = readButtonState();
+    # Require three matching readings for debounce
+    return 0 
+        if $buttonPressed != readButtonState() 
+        or $buttonPressed != readButtonState();
+
+    my $userButtonPressDetected = 0;
+    if (defined($userButtonLastKnownState) && !$userButtonLastKnownState && $buttonPressed) {
+        $userButtonPressDetected = 1;
+    }
+    $userButtonLastKnownState = $buttonPressed;
+    return $userButtonPressDetected;
+}
+
+my $statPID;
+my $statProgPath = "/home/t2/GITHUB/GFB/T2-GFB/stat13.pl";
+sub checkForStat {
+    my $ps = `ps wwwaxu`;
+    my @lines = grep { m!^root\s+(\d+)\s+[^\n]+$statProgPath$! } split(/\n/,$ps);
+    my $count = scalar(@lines);
+    return if $count == 0;
+    if ($count > 1) {
+        print STDERR "WARNING: MULTIPLE MATCHES:\n".join(" \n",@lines)."\n";
+    }
+    my @fields = split(/\s+/,$lines[0]);
+    $statPID = $fields[1];
+}
+
+sub controlStatProg {
+    my $statsRunning = shift;
+    checkForStat();
+    if (!$statsRunning) {
+        if (defined $statPID) { 
+            my $kilt = kill 'INT', $statPID;
+            print "Killed $statPID ($kilt)\n";
+        } else {
+            print "No statpid?\n";
+        }
+        $statPID = undef;
+    } else {
+        system("nohup $statProgPath &") unless defined $statPID;
+    }
+    sleep 1;
+}
+
+my $debugPanelShouldBeDisplayed = 0;
+sub toggleDebugPanel {
+    $debugPanelShouldBeDisplayed = $debugPanelShouldBeDisplayed ? 0 : 1;
+    controlStatProg($debugPanelShouldBeDisplayed);
+    print "TGOPANEL($debugPanelShouldBeDisplayed)\n";
+}
+
 sub eventLoop {
     my $lastBack = now();
     my $incru = 10000;
@@ -1007,6 +1071,9 @@ sub eventLoop {
     my $maxu = 500000;
     my $usleep = $minu;
     while ($continueEventLoop) {
+        if (checkUserButton()) {
+            toggleDebugPanel();
+        }
         if (my $packet = readPacket()) {
             processPacket($packet);
             $usleep = $minu;
