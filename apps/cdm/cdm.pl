@@ -423,10 +423,13 @@ sub preinitCommon {
     DPVRB("Preload complete after $count steps");
 }
 
+my $lastCommonModtime = 0;
 sub checkCommonFile {
     my $announceOK = shift;
 
-    if (scalar(@pathsToLoad) == 0) {
+    if (scalar(@pathsToLoad) == 0 ||
+        (-M $commonPath != $lastCommonModtime)) {
+        $lastCommonModtime = -M $commonPath;
         ## Between dir loads.  Let's check our finfos
         my $cref = getSubdirModel($commonSubdir);
         my $deaders = 0;
@@ -686,12 +689,12 @@ sub doBackgroundWork {
 
     # ALIVENESS MGMT
     my $ngb = getRandomNgb();
-    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 24) {
+    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 30) {
         $ngb->{isAlive} = 0;
         DPSTD(getDirName($ngb->{dir})." is dead");
     }
     
-    if (rand(++$ngb->{clacksSinceAliveSent}) > 6) {
+    if (rand(++$ngb->{clacksSinceAliveSent}) > 5) {
         $ngb->{clacksSinceAliveSent} = 0;
         sendCDMTo($ngb->{dir},'A');
     }
