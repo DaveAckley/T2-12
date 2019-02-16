@@ -757,18 +757,21 @@ sub checkAnnouncedFile {
     my $pfinfo = $pendingref->{$filename};
     if ($completeButCommonSeemsOlder ||
         (!defined($finfo) && !defined($pfinfo))) {
-        
-        $pfinfo = newFinfoBare($filename);
-        $pfinfo->{subdir} = $pendingSubdir;
-        $pfinfo->{length} = $contentLength;
-        $pfinfo->{checksum} = $checksum;
-        $pfinfo->{innerTimestamp} = $timestamp;
-        $pfinfo->{currentLength} = 0;
-        $pfinfo->{checkedLength} = 0;
-        refreshProvider($pfinfo,$dir,$seqno);
-        touchFile("$pendingPath/$filename");
 
-        $pendingref->{$filename} = $pfinfo;
+        # But don't do this if we already have a pending going?
+        if (!defined($pfinfo)) {
+            $pfinfo = newFinfoBare($filename);
+            $pfinfo->{subdir} = $pendingSubdir;
+            $pfinfo->{length} = $contentLength;
+            $pfinfo->{checksum} = $checksum;
+            $pfinfo->{innerTimestamp} = $timestamp;
+            $pfinfo->{currentLength} = 0;
+            $pfinfo->{checkedLength} = 0;
+            refreshProvider($pfinfo,$dir,$seqno);
+            touchFile("$pendingPath/$filename");
+            $pendingref->{$filename} = $pfinfo;
+        }
+
         return;
     }
 
@@ -784,8 +787,12 @@ sub checkAnnouncedFile {
         && $finfo->{checksum} ne $checksum) {
         my $existingTimestamp = $finfo->{innerTimestamp};
         return unless defined($existingTimestamp);
+
+        # Ignore older announcments
+        return if $finfo->{innerTimestamp} > $timestamp;
+
         # We've heard about something allegedly newer than what we have
-        # We need to get it into pending for final checks
+        # We don't actually think this case should happen anymore, so complain
         print STDERR "COMMON CHECKSUM MISMATCH UNIMPLEMENTED, IGNORED $filename\n";
         return;
     }
