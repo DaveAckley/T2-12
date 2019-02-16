@@ -1,4 +1,4 @@
-{80}  -*- text -*-
+{82}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -1057,6 +1057,21 @@ just that to get it out to the neighbors.
 Also seemed to have an issue that calling refreshProvider during a
 file transfer could blow the transfer by deleting the pending record
 where we were keeping our progress or something?  Saw something like
-that but it's not diagnosed yet.
+that but it's not diagnosed yet.[80:
+
+Sat Feb 16 14:20:12 2019 OK, we seem to be propagating updated
+versions of a given name.  So that's nice, though the code is gross.
+
+A remaining issue is we're saying 'COMMON CHECKSUM MISMATCH
+UNIMPLEMENTED, IGNORED' in response to an -- I think -- out-of-date
+announcement.. [81:
+
+Sat Feb 16 14:38:33 2019 OK, shut that up, I think.  Committing this,
+though I believe detecting new common/ content in a running cdm is
+still untested.
+
+:81]
+
+:80]
 
 :79]
