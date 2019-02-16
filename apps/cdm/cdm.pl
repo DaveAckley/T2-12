@@ -467,8 +467,11 @@ sub checkCommonFile {
     # Check if modtime change
     my $modtime = -M $path;
     if (!defined($finfo->{modtime}) || $modtime != $finfo->{modtime}) {
-        DPSTD("MODTIME CHANGE $path");
+        my $newlen = -s $path;
+        DPSTD("MODTIME CHANGE $path size $newlen");
         $finfo->{modtime} = $modtime;
+        $finfo->{length} = $newlen;
+        $finfo->{currentLength} = $newlen;
         $finfo->{checksum} = undef;
         $finfo->{innerTimestamp} = undef;
         $finfo->{seqno} = undef;
