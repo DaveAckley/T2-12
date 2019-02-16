@@ -1,4 +1,4 @@
-{77}  -*- text -*-
+{80}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -1034,3 +1034,29 @@ and also
  6. Include full checksum + signing handle and fingerprint in announcements?
 
 :76]
+[77:
+
+Sat Feb 16 03:16:06 2019 OK, we need to advance the cdm story a little
+bit.  And obvious next stop is updating existing files.  We already
+have an official place for that to die, no?[78:
+
+Sat Feb 16 04:02:54 2019 Yeah, around cdm.pl:778, in
+checkAnnouncedFile.  ..But actually we have code trying to handle
+outdated common starting at 744.  I guess we need to see that code
+blow up to see where we are.
+
+:78]
+
+:77]
+[79:
+
+Sat Feb 16 13:46:18 2019 OK, well one issue is that we weren't
+updating the file length when we saw a modtime change.  Committing
+just that to get it out to the neighbors.
+
+Also seemed to have an issue that calling refreshProvider during a
+file transfer could blow the transfer by deleting the pending record
+where we were keeping our progress or something?  Saw something like
+that but it's not diagnosed yet.
+
+:79]
