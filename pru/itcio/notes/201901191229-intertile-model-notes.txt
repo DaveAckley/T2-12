@@ -1,4 +1,4 @@
-{82}  -*- text -*-
+{103}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -1075,3 +1075,378 @@ still untested.
 :80]
 
 :79]
+[82:
+
+Sat Feb 16 15:20:53 2019 OK, well, one test of updating a common/ file
+while cdm is running appeared to work, so I think maybe we're
+galloping on to the next level up.
+
+I think we should start a quick sort of 'command-line content manager'
+script that will implement deletion by updating and releasing a
+CDM-STATE.mfz file.  There would eventually be a CDM-CODE.mfz as well,
+and perhaps a CDM-CONFIG.mfz.  They probably ought to correspond to
+distinct subdirs of /cdm, and contain complete copies of same..[83:
+
+Sat Feb 16 17:14:29 2019 So let's move here on this.  What is/are the
+dir names? /cdm/{state|code|config}? /cdm/CDM/{state|code|config}?
+/cdm/CDM-{STATE|CODE|CONFIG}?
+
+Well, we're going to be special-casing the handling of these things
+somehow, so how is that going to be done?  If it works directly off
+the .mfz file name, then..
+
+Let's say.. what's the difference between 'state' and 'config'?  Not
+really sure yet I guess.  But where do the deleteds go?  In state,
+that seems clear.  Where do the rules about what's handled specially
+go?  In config?
+
+/cdm/cdm/config/triggers.map
+
+  -> A file mapping common/.mfz filenames to special actions, where
+     special actions are like 'unpack to dir X', and 'restart service
+     X'.  We don't put these triggers within the .mfz itself,
+     apparently, because we want a pretense of separating code and
+     data?
+
+/cdm/cdm/state/deleteds.map
+
+  -> A file containing a list of common/.mfz filenames + checksums.
+     Every file on the list is (currently) 'deleted': It should be
+     removed from common/ if it found, and it should not be announced
+     or accepted.
+
+  .. And we'll have a finfo for this?  Separate from the cmd-state.mfz
+  that contains it?  Or no, just as part of triggering on cdm-state
+  we'll reload this thing.  And at boot time?  That does seem like a
+  finfo.  But this file, itself, is not shared.  When a new version of
+  it appears, we don't pick it up and announce it.
+
+What if there's no explicit 'unpacked' directory at all?  We'll have a
+current CDM-STATE.mfz file in common/, and we'll have a special rule
+so that on loading that (right after checksum success time, I guess),
+we'll unpack it into /tmp or memory and process the info immediately.
+
+Could it be a common/MFMT2-STATE.mfz that starts up mfmt2 (aka mfms at
+the moment)?  So there wouldn't even be a systemd service to start up
+mfm, just cdm?  And then cdm would start up mfm, etc?  That makes a
+certain amount of sense.  Not sure how we make it robust though.
+
+I guess mfmt2 needs a layer or two of robustness on its own.  A driver
+script that just restarts it if it dies.  We'll see.[84:
+
+Sun Feb 17 00:40:26 2019 So I realized the fact that we can just
+wily-nily rename files and have them look new is evidence of the fact
+that we can't or shouldn't rely just on file names for 'magic
+triggering' purposes, or we open ourselves to DoS attacks at least.
+Even filename + handle won't do it, since it's easy to copy signed
+files to a new filename.
+
+The signature applies only to the content, not to the filename.
+
+So when we want to trigger on a special file, we want the manifest
+inside the file to have the form we are expecting.  It should contain
+the file(s) we expect, and we would know that because we go looking
+for them as part of triggering.
+
+So overall we'd say, for a rule to trigger, all this must hold:
+
+(1) File name must match MFZ NAME 
+(2) Handle/pubkey must be in AUTHORIZED SET
+(3) Manifest must contain FILE PATHS
+
+at which point whatever are the TRIGGER ACTIONS are to be performed.
+
+Now: This triggering is supposed to establish constraints between the
+(latest recognized) trigger file and the files it updates.  In
+particular, meaning that if a trigger-controlled file is modified
+locally, those modifications are liable to be overwritten by the
+trigger file being re-run at some point.  Like a 'git checkout foo'
+overwriting local modifications to 'foo'.
+
+The question is: When should a 'git checkout foo' be run
+automatically?  Never?  Boot time only?  cdm.pl startup?  At random
+intervals whenever cdm.pl is running?
+
+Let's say cdm.pl startup for now.  But let's write the code so it
+could be called at other times, yes.
+
+[85:
+
+Sun Feb 17 02:06:32 2019 All this discussion was also making me think
+that maybe triggered .mfzs should only contain one path?  Expecting
+cdm to be iterating through some random .mfz file... sniff, cdm has
+much bigger and more important things to be doing.
+
+But that circles back around to the synchronized updates issue.  If we
+can only have one file per trigger mfz how do we update both cdm.pl
+and stat13.pl in a synchronized way?  We'd have to add another level
+of zipping, and then what have we accomplished except hide the paths
+that will actually be ordered?
+
+[86:
+
+Sun Feb 17 02:49:21 2019 So we need to relax a little bit, here, I
+think.  If the file name is right and the pubkey is right and some
+single, top-level 'MFZ-NAME.txt' file exists and matches, then that's
+it, we're good to go.  We position all the other contained files
+anywhere in the fricken file system, and restart some services or
+whatever. 
+
+We could generate MFZ-NAME.txt automatically in mfzmake, couldn't we?
+It needs to be down in the inner zip, like MFZPUBKEY.DAT but unlike
+MFZSIG.DAT.  So we'd call it MFZNAME.DAT I guess.
+
+What happens if you try to pack a file names MFZPUBKEY.DAT?[87:
+
+Sun Feb 17 03:08:01 2019 Ah, good boy:
+
+    root@beaglebone:/# mfzmake make t2-cdm-debug-10 norg2.mfz MFZPUBKEY.DAT last-clams-before-deletion-is-possible.txt
+
+    Error: 'MFZPUBKEY.DAT' is handled automatically, cannot pack it explicitly
+    Type '/usr/bin/mfzmake help' for help
+    root@beaglebone:/# 
+
+[88:
+
+Sun Feb 17 03:13:25 2019 Aaaaahhummm, except, bad boy:
+
+    root@beaglebone:/# mfzmake make t2-cdm-debug-10 norg2.mfz ./MFZPUBKEY.DAT last-clams-before-deletion-is-possible.txt
+    Wrote 'norg2.mfz'
+    root@beaglebone:/#
+
+and then:
+
+    norg2.mfz
+
+    M Filemode      Length  Date         Time      File
+    - ----------  --------  -----------  --------  ----------
+      -rw-r--r--       172  17-Feb-2019  03:11:04  MFZSIG.DAT
+      -rw-rw-rw-       689  17-Feb-2019  03:11:04  MFZ.ZIP
+    - ----------  --------  -----------  --------  ----------
+                           861                         2 files
+                       
+and
+    MFZ.ZIP
+    
+    M Filemode      Length  Date         Time      File
+    - ----------  --------  -----------  --------  ------------------------------------------
+      -rw-r--r--       280  17-Feb-2019  03:11:04  MFZPUBKEY.DAT
+      -rw-rw-rw-         7  17-Feb-2019  03:07:08  MFZPUBKEY.DAT
+      -rw-rw-rw-        10  16-Feb-2019  15:15:06  last-clams-before-deletion-is-possible.txt
+    - ----------  --------  -----------  --------  ------------------------------------------
+                         297                         3 files
+
+So really we ought to ban MFZPUBKEY.DAT and MFZNAME.DAT from _any_
+path in the mfz, not just the top-level?  Would it be safe to
+normalize the path first using some perl whizzerd, and then check the
+canonicalized form?[89:
+
+Sun Feb 17 03:23:41 2019 Looks like maybe:
+
+    root@beaglebone:/# mfzmake make t2-cdm-debug-10 norg2.mfz /root/../MFZPUBKEY.DAT last-clams-before-deletion-is-possible.txt
+    ZONGABS(/MFZPUBKEY.DAT)
+    ZONGABS(/last-clams-before-deletion-is-possible.txt)
+    Wrote 'norg2.mfz'
+    root@beaglebone:/# 
+
+And mfzmake is already 'abs_path'ing the files.. we 'just' need to
+check for special-at-top-level files after rather than before doing
+that.. [90:
+
+Sun Feb 17 06:59:49 2019 OK we've been hacking in MFM to get the
+original mfz filename into the inner zip, and that's starting to
+work.  It really kind of feels like we should bump the .mfz format
+version but I really don't want to do that considering we don't have
+any code ready to handle backward compatibility there at all.
+
+So even though it's lame, I'm much more inclined to just say the
+existence of MFZFILE.DAT is not guaranteed in general, although we'll
+require it for any 'triggering' mfz.[91:
+
+Sun Feb 17 07:38:28 2019 Committing that stuff.
+
+:91]
+
+:90]
+
+:89]
+
+:88]
+
+:87]
+
+:86]
+
+:85]
+
+:84]
+
+:83]
+
+:82]
+[92:
+
+Sun Feb 17 12:56:33 2019 So pop pop how do we get to some visible
+behavior quickly here?  Let's do deletion.  Let's start the
+command-line cdm tool.  Called...  'cdmctl' I guess.
+
+I also think we should now commit to using repo versions of the mfm
+tools instead of the installed ones.  We can still fuss about the GFB
+stuff, but we should commit to the tree for mfm, ulam, and SPLAT, and
+figure out how to get updates for them moved without having to rebuild
+them on each tile.  What happens if you try to diff a non-compressed
+tar file?  [93:
+
+Sun Feb 17 13:41:39 2019 Screw it let's just package everything for
+now.  It's the only way to be robust, and updates at the
+mfm/ulam/splat level are supposed to be asymptotically rare anyway.
+
+But first let's get naming and syntax for the deleteds file, and then
+something for the triggers file.
+
+CDM-DELETEDS.mfz containing
+
+  cdm/config/deleteds.map
+
+in turn containing rows of the form..  announcement packets?  Could we
+do that?  Put down a length byte first for packet framing, then put
+down an announce packet?  Or maybe have a difference code for
+reporting a deleted file -- cdm "D" type or something -- and use
+that.  What info do we really need?  Just filename+checksum?
+Or filename/length/checksum/innertimestamp, like cdm F type?  Why not
+the handle too, then?
+
+We either trust the checksum til the cows come home or we don't.  If
+we do, then handle and inner timestamp are irrelevant since they're
+covered by the checksum.  If we don't...?
+
+I guess the point is that a 'deleteds map' should be smaller than
+actually retaining all the deleted files.  After all, another way to
+solve the deletions problem is just move the file to a 'deleted/'
+directory like a Trash folder.  But we never reclaim the space that
+way.  The deleteds map, the tombstone set, is to provide a more
+compact representation of that-which-no-longer-exists than actually
+keeping the stuff hidden somewhere.
+
+Now, if we're constantly issuing new versions of some mfz, we don't
+want to keep the checksums of all its older versions in the deleteds
+map.  We want to (and already do) rely on the inner timestamp to
+determine precedence.  So really, a deleteds entry should include the
+timestamp, and it should be telling us that all versions of this
+filename that are at least this old should be considered deleted.
+
+And if a newer version of the same name is confirmed, I guess we
+should remove that record from deleteds.
+
+[94:
+
+Sun Feb 17 14:40:46 2019 So, what's the easiest way to get some
+version of this going?
+
+Implement 'cdmctl delete FILE'.  Have it look in /cdm/common to find
+FILE or die.  Get the filename/length/checksum/innerTimestamp from it.
+(And handle?)  Load /cdm/config/deleted.map.  See if the filename is
+already in there.  If not, add the current information to the map.  If
+so, check if the inner timestamp of the deleted is newer than ours.
+If so, then the file we are being asked to delete is 'already
+deleted', so report that and do nothing.  Otherwise, update the
+deleted record to our information, and rewrite the deleteds file.
+Then (re)generate cdm-deleteds.mfz and place that in common/.  (User
+must have t2-cdm-debug-10 private key to do this.)
+
+"Done."[95:
+
+Sun Feb 17 14:59:23 2019 Now, actually, don't we really need cdm.pl to
+do most of that itself?  Because when a new version of the file is
+asserted in common/, the older version should be removed from
+deleteds, and we don't want cdm.pl and cdmctl to be racing to write
+deleted.map.  How do we signal intention-to-delete?[96:
+
+Sun Feb 17 16:22:11 2019 Maybe cdm.pl can't create a cdm-deleteds.mfz
+on its own?  So if a new version of FILE comes along when it's
+currently listed in deleteds.map, it stays in deleteds.map even though
+it is no longer deleted since there's a newer version.
+
+So really we want only cdm.pl to be writing deleteds.map, and to be
+doing it only as part of unpacking a cdm-deleteds.mfz.  And cdmctl is
+the only thing that should be writing cdm-deleteds.mfz, and if there's
+a race between to cdmctl's writing two different cdm-deleteds.mfz on
+two different tiles, both versions will circulate until the newer one
+dominates the older one, and if they have exactly the same timestamp,
+then.. the system will be broken?  Perhaps we should break the tie
+with the lexicographically greater checksum at that point.
+
+And it any case the system can still be broken, or at least DOSed, by
+releasing a cdm-deleteds.mfz file with the maximum possible timestamp.
+If we hold to our intention to only compare timestamps within a given
+.mfz name 'lineage', we can't use our local clock to claim that some
+given timestamp is in the future and reject it.  [97:
+
+Sun Feb 17 16:38:11 2019 Anyway so do we have a plan here?  'cdmctl
+delete FILE' is going to get the info from common/FILE, load
+deleted.map, update it, then generate a new cdm-deleted.mfz -- without
+actually updating the existing deleted.map.  The new cdm-deleted.mfz
+gets dumped in common, replacing what's there, and that's it.
+
+Then cdm.pl sees the modtime change on cdm-deleted.mfz, loads and
+verifies it, discovers it's triggerable and triggers it, and the
+triggering deletes FILE.  And..
+
+You know, why the hell do we even have /cdm/config/deleted.map as a
+separate file at all?  Why not just 'leave it' in
+/cdm/common/cdm-deleted.mfz?  The cdm-deleted triggering can just load
+the file into cdm.pl memory.  It seems like having the external 'bare'
+file would be just an unnecessary special case to have to handle.
+We'll get robustness by people announcing their cdm-deleted.mfz files
+to us.[98:
+
+Sun Feb 17 17:03:22 2019 Again. 'cdmctl delete FILE' gets info from
+common/FILE, 'loads' common/cdm-deleted.mfz, updates it if necessary,
+and generates a new common/cdm-deleted.mfz.  That's it.  Let's do it.
+[99:
+
+Sun Feb 17 17:11:53 2019 And hmm, what if we implemented 'deleted.map'
+by encoding deleted filenames, plus their checksums and their
+timestamps, as the names of 0-length files directly in the zip?  Is
+there a limit on zip file filename length?  Then we could just do an
+'mfzrun cdm-deleted.mfz LIST' command and get all the information we
+need..   Too tricky for my shirt?[100:
+
+Sun Feb 17 17:24:51 2019 Seems like might be a 255 or 250 byte limit
+for filenames.  And 4096 (from unix) for full paths..  We could put
+the checksum and timestamp as path elements..gah.
+[101:
+
+Mon Feb 18 00:04:30 2019 Problem isn't the trickiness so much as we'd
+need to hook into mfzmake/mfzrun processing below its existing command
+line level, and we don't really want to do _that_, for just a little
+trickiness.
+
+So back to the single deleted.map file inside cdm-deleted.mfz.
+
+:101]
+:100]
+
+:99]
+:98]
+
+:97]
+:96]
+
+:95]
+         
+:94]
+
+:93]
+
+:92]
+[102:
+
+Mon Feb 18 04:26:04 2019 OK, well it's a total crock, but we have
+cdmctl generating new and updated /cdm/common/cdm-deleteds.mfz files.
+At the moment cdm.pl is not 'triggering' on them -- so in fact no actual
+deletions are happening, still, doh -- but the updated
+cdm-deleteds.mfz files are getting propagated around the grid
+successfully. 
+
+:102]
