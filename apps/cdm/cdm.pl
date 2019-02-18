@@ -33,6 +33,10 @@ my $DEBUG_FLAG_ALL = 0xffffffff;
 
 my $DEBUG_FLAGS = $DEBUG_FLAG_STANDARD;
 
+#my %triggerMFZs = ( 'cdm-triggers.mfz' => &updateTriggers );
+# Hardcode deletions only, for now
+my %triggerMFZs = ( 'cdm-deleteds.mfz' => \&updateDeleteds );
+
 sub DPF {
     my ($flags,$msg) = @_;
     return unless $DEBUG_FLAGS & $flags;
@@ -260,6 +264,18 @@ sub killPending {
     $finfo->{purgatory} = 1;
 }
 
+sub updateDeleteds {
+    my ($finfo) = @_;
+    print "UPDATE DELETEDS YA WOBBO ($finfo)\n";
+}
+
+sub checkTriggers {
+    my $finfo = shift;
+    my $filename = $finfo->{filename};
+    my $trigref = $triggerMFZs{$filename};
+    &$trigref($finfo) if defined($trigref);
+}
+
 sub checkAndReleasePendingFile {
     my $finfo = shift;
 
@@ -292,6 +308,8 @@ sub checkAndReleasePendingFile {
     delete $pref->{$filename}; # Remove metadata from pending
     $cref->{$filename} = $finfo; # Add it to common
     DPSTD("RELEASED $filename");
+
+    checkTriggers($finfo);
 }
 
 sub lexDecode {
@@ -487,6 +505,8 @@ sub checkCommonFile {
     if (checkMFZDataFor($finfo)) {
         # OK, it checked out.  Give it a seqno
         $finfo->{seqno} = assignSeqnoForFilename($finfo->{filename});
+        # and run triggers on it, if and
+        checkTriggers($finfo);
         return 1; # That's plenty for now..
     }
 
