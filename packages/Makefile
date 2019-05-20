@@ -8,7 +8,8 @@ PACKAGES+=software-properties-common python-software-properties
 PACKAGES+=fbset
 
 # Prereqs for Graphics::FrameBuffer if we end up using it (which we are currently trying to)
-PACKAGES+=libimager-perl libmath-bezier-perl libmath-gradient-perl libtest-most-perl
+PACKAGES+=libinline-perl libimager-perl libmath-bezier-perl libmath-gradient-perl libtest-most-perl
+
 # also some fonts:
 PACKAGES+=ttf-freefont
 #jessie doesn't have: libfile-map-perl libperlio-layers-perl ??
