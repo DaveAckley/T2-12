@@ -1,0 +1,299 @@
+{10}  -*- text -*- 
+[0:
+
+Sat Feb  2 16:11:44 2019 So we are trying to get tiles talking about
+software to each other, but we're running into aggravating
+inconsistencies between the boot sequence on different tiles.
+
+It's now become aggravating enough and taken enough time that we have
+to make an explicit subgoal of figuring WTF is going on here and
+trying to eliminate this issue once and for all.
+
+[1:
+
+Sat Feb  2 16:14:11 2019 So, the central issue appears to be about
+what happens, during the linux boot sequence, when the PRUs are first
+booted, on some tiles the itc_pkt module gets properly probed and
+initted -- and packet stuff works -- while on other tiles something
+goes wrong, and packets do not work.
+
+As background, it appears I've wrestled with this problem before,
+because the 'T2 FINAL BOOT CONFIG' script (source code in
+files/opt/t2-startup.sh, installed to /opt/scripts/t2/t2-startup.sh),
+has/had a late section that rebooted the PRUs:
+
+    logger T2 FINAL BOOT CONFIG: PRUs
+    echo "Rebooting PRUs"
+    echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/unbind 2>/dev/null
+    echo "4a338000.pru1"  > /sys/bus/platform/drivers/pru-rproc/unbind 2> /dev/null
+    echo "4a338000.pru1" > /sys/bus/platform/drivers/pru-rproc/bind
+    echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/bind
+
+except ON SOME TILES that was causing problems with itc_pkt OOPSing
+due to being initted or something multiple times.  So in the latest
+flasher image I made yesterday, I changed it to this:
+
+    logger T2 FINAL BOOT CONFIG: PRUs
+    echo EXCEPT NOT BECAUSE THEY ARE ALREADY OK? 
+    #echo "Rebooting PRUs"
+    #echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/unbind 2>/dev/null
+    #echo "4a338000.pru1"  > /sys/bus/platform/drivers/pru-rproc/unbind 2> /dev/null
+    #echo "4a338000.pru1" > /sys/bus/platform/drivers/pru-rproc/bind
+    #echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/bind
+
+but that now appears to be killing SOME OTHER TILES that seemed to
+need it.
+
+[2:
+
+Sat Feb  2 16:44:41 2019 As a final point to this current dumpster
+train wreck, it appears that SOME TILES tolerate rebooting the PRUs
+via the above mechanism, while OTHER TILES refused to do it, saying
+pru-rproc is in use or something like that.
+
+:2]
+
+:1]
+:0]
+[3:
+
+Sat Feb  2 16:47:29 2019 Here's an example where it works:
+
+    Feb  2 00:59:55 beaglebone logger: T2 FINAL BOOT CONFIG: PRUs
+    Feb  2 00:59:55 beaglebone t2-startup.sh[2133]: Rebooting PRUs
+    Feb  2 00:59:55 beaglebone kernel: [   46.532794] pru-rproc 4a334000.pru0: pru_rproc_remove: removing rproc 4a334000.pru0
+    Feb  2 00:59:55 beaglebone kernel: [   46.540664] pru-rproc 4a334000.pru0: stopping the manually booted PRU core
+    Feb  2 00:59:55 beaglebone kernel: [   46.568643] ti-pruss 4a300000.pruss: unconfigured system_events = 0xffffffffffffffff host_intr = 0x00000001
+    Feb  2 00:59:55 beaglebone kernel: [   46.578597]  remoteproc1: stopped remote processor 4a334000.pru0
+    Feb  2 00:59:55 beaglebone kernel: [   46.604097]  remoteproc1: releasing 4a334000.pru0
+    Feb  2 00:59:55 beaglebone kernel: [   46.616574] pru-rproc 4a338000.pru1: pru_rproc_remove: removing rproc 4a338000.pru1
+    Feb  2 00:59:55 beaglebone kernel: [   46.624463] pru-rproc 4a338000.pru1: stopping the manually booted PRU core
+    Feb  2 00:59:55 beaglebone kernel: [   46.653375] ti-pruss 4a300000.pruss: unconfigured system_events = 0xffffffffffffffff host_intr = 0x00000001
+    Feb  2 00:59:55 beaglebone kernel: [   46.663352]  remoteproc2: stopped remote processor 4a338000.pru1
+    Feb  2 00:59:55 beaglebone kernel: [   46.688233]  remoteproc2: releasing 4a338000.pru1
+    Feb  2 00:59:55 beaglebone kernel: [   46.699296]  remoteproc1: 4a338000.pru1 is available
+    Feb  2 00:59:55 beaglebone kernel: [   46.704456]  remoteproc1: Note: remoteproc is still under development and considered experimental.
+    Feb  2 00:59:55 beaglebone kernel: [   46.713543]  remoteproc1: THE BINARY FORMAT IS NOT YET FINALIZED, and backward compatibility isn't yet guaranteed.
+    Feb  2 00:59:55 beaglebone kernel: [   46.758945]  remoteproc1: powering up 4a338000.pru1
+    Feb  2 00:59:55 beaglebone kernel: [   46.769982]  remoteproc1: Booting fw image am335x-pru1-fw, size 53980
+    Feb  2 00:59:55 beaglebone kernel: [   46.785953] ti-pruss 4a300000.pruss: configured system_events = 0x00000000000c0000 intr_channels = 0x0000000a host_intr =\
+     0x0000000a
+    Feb  2 00:59:56 beaglebone kernel: [   46.814315]  remoteproc1: remote processor 4a338000.pru1 is now up
+    Feb  2 00:59:56 beaglebone kernel: [   46.826195] virtio_rpmsg_bus virtio0: rpmsg host is online
+    Feb  2 00:59:56 beaglebone kernel: [   46.831862] virtio_rpmsg_bus virtio0: creating channel itc-pkt addr 0x1f
+    Feb  2 00:59:56 beaglebone kernel: [   46.839175] ZORG itc_pkt_probe dev=dac98408
+    Feb  2 00:59:56 beaglebone kernel: [   46.843451] itc_pkt rpmsg0: chnl: 0x400 -> 0x1f
+    Feb  2 00:59:56 beaglebone kernel: [   46.848027] INITTING /dev/itc!packets
+    Feb  2 00:59:56 beaglebone kernel: [   46.854178] itc_pkt rpmsg0: pru itc packet device ready at /dev/itc!packets
+    Feb  2 00:59:56 beaglebone kernel: [   46.861253] GROZ made minor 2=bf03f474 SLORG
+    Feb  2 00:59:56 beaglebone kernel: [   46.865570] INITTING /dev/itc!pru1
+    Feb  2 00:59:56 beaglebone kernel: [   46.869374] itc_pkt rpmsg0: pru itc packet device ready at /dev/itc!pru1
+    Feb  2 00:59:56 beaglebone kernel: [   46.876196] BLURGE back with devstate=db3c4f10
+    Feb  2 00:59:56 beaglebone kernel: [   46.880679] BLURGE buf=db3ffb6c
+    Feb  2 00:59:56 beaglebone kernel: [   46.883870] RECTOBLURGE sent buf='@9c920000!'
+    Feb  2 00:59:56 beaglebone kernel: [   46.888314] !pru1: WT UP
+    Feb  2 00:59:56 beaglebone kernel: [   46.890884] !pru1: NW UP
+    Feb  2 00:59:56 beaglebone kernel: [   46.893429] !pru1: NE UP
+    Feb  2 00:59:56 beaglebone kernel: [   46.911861]  remoteproc1: registered virtio0 (type 7)
+    Feb  2 00:59:56 beaglebone kernel: [   46.917266] pru-rproc 4a338000.pru1: PRU rproc node /ocp/pruss@4a300000/pru1@4a338000 probed successfully
+    Feb  2 00:59:56 beaglebone kernel: [   46.939098]  remoteproc2: 4a334000.pru0 is available
+    Feb  2 00:59:56 beaglebone kernel: [   46.944263]  remoteproc2: Note: remoteproc is still under development and considered experimental.
+    Feb  2 00:59:56 beaglebone kernel: [   46.953329]  remoteproc2: THE BINARY FORMAT IS NOT YET FINALIZED, and backward compatibility isn't yet guaranteed.
+    Feb  2 00:59:56 beaglebone kernel: [   46.997237]  remoteproc2: powering up 4a334000.pru0
+    Feb  2 00:59:56 beaglebone kernel: [   47.006849]  remoteproc2: Booting fw image am335x-pru0-fw, size 53964
+    Feb  2 00:59:56 beaglebone kernel: [   47.021849] ti-pruss 4a300000.pruss: configured system_events = 0x0000000000030000 intr_channels = 0x00000005 host_intr =\
+     0x00000005
+    Feb  2 00:59:56 beaglebone kernel: [   47.050328]  remoteproc2: remote processor 4a334000.pru0 is now up
+    Feb  2 00:59:56 beaglebone kernel: [   47.064935] virtio_rpmsg_bus virtio1: rpmsg host is online
+    Feb  2 00:59:56 beaglebone kernel: [   47.070660] virtio_rpmsg_bus virtio1: creating channel itc-pkt addr 0x1e
+    Feb  2 00:59:56 beaglebone kernel: [   47.078075] ZORG itc_pkt_probe dev=dabbae08
+    Feb  2 00:59:56 beaglebone kernel: [   47.082342] itc_pkt rpmsg1: chnl: 0x400 -> 0x1e
+    Feb  2 00:59:56 beaglebone kernel: [   47.086918] INITTING /dev/itc!pru0
+    Feb  2 00:59:56 beaglebone kernel: [   47.094126] itc_pkt rpmsg1: pru itc packet device ready at /dev/itc!pru0
+    Feb  2 00:59:56 beaglebone kernel: [   47.100939] BLURGE back with devstate=dc73df10
+    Feb  2 00:59:56 beaglebone kernel: [   47.105421] BLURGE buf=db3d1b6c
+    Feb  2 00:59:56 beaglebone kernel: [   47.108633] RECTOBLURGE sent buf='@9c920000!'
+    Feb  2 00:59:56 beaglebone kernel: [   47.113082] !pru0: ET UP
+    Feb  2 00:59:56 beaglebone kernel: [   47.115654] !pru0: SE UP
+    Feb  2 00:59:56 beaglebone kernel: [   47.118218] !pru0: SW UP
+    Feb  2 00:59:56 beaglebone kernel: [   47.120764] !pru0: SW PS
+    Feb  2 00:59:56 beaglebone kernel: [   47.133983]  remoteproc2: registered virtio1 (type 7)
+    Feb  2 00:59:56 beaglebone kernel: [   47.139296] pru-rproc 4a334000.pru0: PRU rproc node /ocp/pruss@4a300000/pru0@4a334000 probed successfully
+    Feb  2 00:59:56 beaglebone logger: T2 FINAL BOOT CONFIG: CPUFREQ
+
+which is, admittedly, from a LONG-AGO FLASHER IMAGE.
+
+[4:
+
+Sat Feb  2 16:59:19 2019 Well, just now I took one of the 'recently
+flashed' tiles, that doesn't try to do the PRU reboot because
+
+    echo EXCEPT NOT BECAUSE THEY ARE ALREADY OK? 
+
+and I did the echo..unbind..bind commands by hand from the command
+line.  And in that case just now it worked, and now we have packets
+moving between that tile and its neighbor to the NW:
+
+    root@beaglebone:/home/t2/T2-12# ./apps/t2/pktstat/pktstat 
+                         NW  Active: 1
+                         NW  Active: 1
+                         NW  Active: 1
+      C-c C-c
+    root@beaglebone:/home/t2/T2-12# 
+
+and its neighbor to the NW, deep in the thick of the action, actually
+has sync with two different other tiles at once:
+
+    root@beaglebone:/etc/modules-load.d# /home/t2/T2-12/apps/t2/pktstat/pktstat 
+       NE    SE              Active: 2
+       NE    SE              Active: 2
+       NE    SE              Active: 2
+       NE    SE              Active: 2
+      C-c C-c
+    root@beaglebone:/etc/modules-load.d# 
+
+so woo-hoo for that.
+
+Now, when I did those commands, I saw lots of stuff including this in syslog:
+
+    Feb  2 16:52:38 beaglebone kernel: [58210.971006] ITC dc617f24 iterator order is 310524 for next 3893 uses
+    Feb  2 16:55:04 beaglebone kernel: [58356.365992] pru-rproc 4a334000.pru0: pru_rproc_remove: removing rproc 4a334000.pru0
+    Feb  2 16:55:04 beaglebone kernel: [58356.373822] pru-rproc 4a334000.pru0: stopping the manually booted PRU core
+
+and I'm wondering about that word...........................................................^^^^^^^^ 'manually'.
+    Feb  2 16:55:04 beaglebone kernel: [58356.416517] ti-pruss 4a300000.pruss: unconfigured system_events = 0xffffffffffffffff ho\
+    st_intr = 0x00000001
+    Feb  2 16:55:04 beaglebone kernel: [58356.426491]  remoteproc1: stopped remote processor 4a334000.pru0
+    Feb  2 16:55:04 beaglebone kernel: [58356.455546]  remoteproc1: releasing 4a334000.pru0
+
+because that appears to be a difference between this SE tile I just
+got working, and its NW tile that (I think) worked out of the box on
+booting.  Looking back in SE syslog, I see:
+
+    Feb  2 00:42:12 beaglebone kernel: [    8.612173] irq: no irq domain found for /ocp/pruss@4a300000/intc@4a320000 !
+    Feb  2 00:42:12 beaglebone kernel: [    8.743933]  remoteproc1: 4a334000.pru0 is available
+    Feb  2 00:42:12 beaglebone kernel: [    8.749095]  remoteproc1: Note: remoteproc is still under development and considered ex$
+    Feb  2 00:42:12 beaglebone kernel: [    8.758130]  remoteproc1: THE BINARY FORMAT IS NOT YET FINALIZED, and backward compatib$
+    Feb  2 00:42:12 beaglebone kernel: [    9.068419] pru-rproc 4a334000.pru0: booting the PRU core manually
+NOTE                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    Feb  2 00:42:12 beaglebone kernel: [    9.143878]  remoteproc1: powering up 4a334000.pru0
+    Feb  2 00:42:12 beaglebone kernel: [    9.195917]  remoteproc1: Booting fw image am335x-pru0-fw, size 36296
+    Feb  2 00:42:12 beaglebone kernel: [    9.202625]  remoteproc1: remote processor 4a334000.pru0 is now up
+    Feb  2 00:42:12 beaglebone kernel: [    9.208909] pru-rproc 4a334000.pru0: PRU rproc node /ocp/pruss@4a300000/pru0@4a334000 p$
+    Feb  2 00:42:12 beaglebone kernel: [    9.407689]  remoteproc2: 4a338000.pru1 is available
+    Feb  2 00:42:12 beaglebone kernel: [    9.412836]  remoteproc2: Note: remoteproc is still under development and considered ex$
+    Feb  2 00:42:12 beaglebone kernel: [    9.421885]  remoteproc2: THE BINARY FORMAT IS NOT YET FINALIZED, and backward compatib$
+    Feb  2 00:42:12 beaglebone kernel: [    9.644679] pru-rproc 4a338000.pru1: booting the PRU core manually
+NOTE                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    Feb  2 00:42:12 beaglebone kernel: [    9.684562]  remoteproc2: powering up 4a338000.pru1
+    Feb  2 00:42:12 beaglebone kernel: [    9.692512]  remoteproc2: Booting fw image am335x-pru1-fw, size 35392
+    Feb  2 00:42:12 beaglebone kernel: [    9.699205]  remoteproc2: remote processor 4a338000.pru1 is now up
+    Feb  2 00:42:12 beaglebone kernel: [    9.705491] pru-rproc 4a338000.pru1: PRU rproc node /ocp/pruss@4a300000/pru1@4a338000 p$
+    Feb  2 00:42:12 beaglebone kernel: [    9.930848] EXT4-fs (mmcblk1p1): mounted filesystem with ordered data mode. Opts: (null$
+    Feb  2 00:42:12 beaglebone kernel: [   11.334964] ITC: Initializing LKM
+    Feb  2 00:42:12 beaglebone kernel: [   11.338422] ITC bf02b5d4 iterator order is 041253 for next 14 uses
+
+while on the NW guy I see:
+
+    Feb  2 01:12:19 beaglebone kernel: [    8.189104] irq: no irq domain found for /ocp/pruss@4a300000/intc@4a320000 !
+    Feb  2 01:12:19 beaglebone kernel: [    8.308150]  remoteproc1: 4a334000.pru0 is available
+    Feb  2 01:12:19 beaglebone kernel: [    8.312936]  remoteproc1: Note: remoteproc is still under development and considered ex$
+    Feb  2 01:12:19 beaglebone kernel: [    8.321275]  remoteproc1: THE BINARY FORMAT IS NOT YET FINALIZED, and backward compatib$
+    Feb  2 01:12:19 beaglebone kernel: [    8.601592]  remoteproc1: registered virtio0 (type 7)
+    Feb  2 01:12:19 beaglebone kernel: [    8.608500] pru-rproc 4a334000.pru0: PRU rproc node /ocp/pruss@4a300000/pru0@4a334000 probed successfully
+    Feb  2 01:12:19 beaglebone kernel: [    8.705631]  remoteproc2: 4a338000.pru1 is available
+    Feb  2 01:12:19 beaglebone kernel: [    8.710371]  remoteproc2: Note: remoteproc is still under development and considered experimental.
+    Feb  2 01:12:19 beaglebone kernel: [    8.718708]  remoteproc2: THE BINARY FORMAT IS NOT YET FINALIZED, and backward compatibility isn't yet guaran$
+    Feb  2 01:12:19 beaglebone kernel: [    8.935459]  remoteproc2: registered virtio1 (type 7)
+    Feb  2 01:12:19 beaglebone kernel: [    8.940595] pru-rproc 4a338000.pru1: PRU rproc node /ocp/pruss@4a300000/pru1@4a338000 probed successfully
+    Feb  2 01:12:19 beaglebone kernel: [    9.400990] EXT4-fs (mmcblk1p1): mounted filesystem with ordered data mode. Opts: (null)
+    Feb  2 01:12:19 beaglebone kernel: [   10.793022] ITC: Initializing LKM
+    Feb  2 01:12:19 beaglebone kernel: [   10.796124] ITC bf02b5d4 iterator order is 153402 for next 11 uses
+
+where the word 'manually' never appears.
+
+The NW tag info:
+
+    root@beaglebone:/etc/modules-load.d# cat /T2-12-IMAGE-ID.txt 
+    T2-12-20171217171817-bone-debian-8.7-iot-armhf-2017-03-19-4gb.img
+    T2-12: 182b32d - Make sudoer mod more specific (2017-12-17 17:03:53 -0700)
+    root@beaglebone:/etc/modules-load.d# 
+
+The SE tag info:
+
+    root@beaglebone:/home/t2/T2-12# cat /T2-12-IMAGE-ID.txt 
+    T2-12-20190131133409-bone-debian-8.7-iot-armhf-2017-03-19-4gb.img
+    T2-12: 1e91c46 - Notes (2019-01-31 03:26:43 -0700)
+    root@beaglebone:/home/t2/T2-12# 
+
+so it's my 'new' yesterday flasher that seems fucked up. 
+[5:
+
+Sat Feb  2 21:19:59 2019 Now, I don't care -- unless for some reason
+I'm going to be forced to -- whether these things are 'manually'
+loaded or not.  But as mentioned in :2: above, I thought I'd tried to
+reboot the PRUs, but it hadn't worked.
+
+So perhaps I should try changing the SW guy back to attempting to
+reboot the PRUs during boot, and then reboot and see what happens.[6:
+
+Sat Feb  2 21:23:22 2019 OK, so /opt/scripts/t2/t2-startup.sh now has: 
+
+    logger T2 FINAL BOOT CONFIG: PRUs
+    #echo EXCEPT NOT BECAUSE THEY ARE ALREADY OK?                                                                                 
+    echo "Rebooting PRUs"
+    echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/unbind 2>/dev/null
+    echo "4a338000.pru1"  > /sys/bus/platform/drivers/pru-rproc/unbind 2> /dev/null
+    echo "4a338000.pru1" > /sys/bus/platform/drivers/pru-rproc/bind
+    echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/bind
+    echo "SO DIDZTHEY REBOOTE?"
+
+and I'm about to reboot it..  Place your bets.
+
+My bet is it's going to fail with something -- like pru-rproc -- being
+'in use', even though it worked when I did it by hand long after
+booting.. [7:
+
+Sat Feb  2 21:27:14 2019 Well, it appeared to work!  Let's try it
+again as a determinism test.[8:
+
+Sat Feb  2 21:33:15 2019 Well, two for two.
+
+:8]
+
+:7]
+
+:6]
+
+:5]
+:4]
+
+:3]
+[9:
+
+Sat Feb  2 23:10:03 2019 OK, well, haley foggen lewyuh.  We switched
+back to explicit rproc reboot late in t2-startup.sh, and reflashed the
+three older tiles with that.  And now we have fivecountemfive tiles
+reaching packet sync with each other.
+
+And -- ladies and gentlemen, children of all ages -- presenting our
+very own Queen Bee, the social center of our tile universe, now
+appearing on the RED CABLE at 192.168.1.109, talking to four neighbors
+at once!  Behold:
+
+    root@beaglebone:/home/t2/T2-12# ./apps/t2/pktstat/pktstat 
+       NE ET SE          NW  Active: 4
+       NE ET SE          NW  Active: 4
+       NE ET SE          NW  Active: 4
+ ..    NE ET SE          NW  Active: 4
+
+And we are ssh'd into three tiles and talking debug serial to a
+fourth, so there you are.
+
+Sooooooooooooooooooo.
+
+Pop pop pop.
+
+Now back to: The Search For INTERTILE SOFTWARE
+
+:9]
