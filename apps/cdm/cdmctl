@@ -1,0 +1,202 @@
+#!/usr/bin/perl -w  # -*- perl -*-
+use Fcntl;
+use File::Path qw(make_path remove_tree);
+use File::Copy qw(move);
+use File::Temp qw(tempdir);
+use Errno qw(EAGAIN);
+use Time::HiRes;
+use List::Util qw/shuffle/;
+use Digest::SHA qw(sha512_hex);
+use Data::Dumper;
+
+use warnings FATAL => 'all';
+$SIG{__DIE__} = sub {
+    die @_ if $^S;
+    require Carp; 
+    Carp::confess ;
+};
+
+my $COMMON_DIR = "/cdm/common";
+my $CDM_INTERNAL_HANDLE = "t2-cdm-debug-10";
+my $DELETEDS_MFZ_NAME = "cdm-deleteds.mfz";
+my $DELETEDS_MAP_NAME = "cdm-deleteds.map";
+my $MFZRUN_PROGRAM = "/home/t2/GITHUB/MFM/bin/mfzrun";
+my $MFZMAKE_PROGRAM = "/home/t2/GITHUB/MFM/bin/mfzmake";
+
+sub doHelp {
+    print "Help, yah\n";
+    exit 3;
+}
+
+my %deletedsMap;
+my $DEBUG_DIRS = 0;
+
+sub hexEscape {
+    my $str = shift;
+    $str =~ s/([^-_.a-zA-Z0-9])/sprintf("%%%02x",ord($1))/ge;
+    return $str;
+}
+
+sub deHexEscape {
+    my $str = shift;
+    $str =~ s/%([a-fA-f0-9]{2})/chr(hex($1))/ge;
+    return $str;
+}
+
+sub hexEncode {
+    my $binstr = shift;
+    return unpack("H*",$binstr);
+}
+
+sub deHexEncode {
+    my $hexStr = shift;
+    return pack("H*",$hexStr);
+}
+
+sub makeTmpDir {
+    my $template = "cdmctl-XXXXX";
+    my $cleanup = 1;
+
+    $cleanup = 0 
+        if $DEBUG_DIRS;
+
+    my $destdir =
+        tempdir( $template,
+                 TMPDIR => 1,
+                 CLEANUP => $cleanup
+        );
+    return $destdir;
+}
+
+sub loadDeletedMap {
+    my $dmref = {};
+
+    my $path = "$COMMON_DIR/$DELETEDS_MFZ_NAME";
+    -r $path or return $dmref; # no deleteds file => no records found
+
+    my $destdir = makeTmpDir();
+    my $cmd = "$MFZRUN_PROGRAM $path unpack $destdir";
+    my $metadata = `$cmd`;
+
+    # Now we have to hunt for the path used to pack the payload
+    my @paths = glob "$destdir/tmp/cdmctl-*/cdm-deleteds.map";
+
+    my $deletedsFilePath = shift @paths;
+    open(HDL, "<", $deletedsFilePath)
+        or die "Can't read $deletedsFilePath: $!";
+    while (<HDL>) {
+        chomp;
+        my @fields = split(/\s+/,$_);
+        scalar(@fields) == 4 or die "Bad fmt '$_'";
+        my $filename = deHexEscape($fields[0]);
+        my $length = $fields[1];
+        my $checksum = $fields[2];
+        my $timestamp = $fields[3];
+        $dmref->{$filename} = [$length, $checksum,$timestamp];
+    }
+    close(HDL) or die "Closing $deletedsFilePath: $!";
+    return $dmref;
+}
+
+my $digester = Digest::SHA->new(256);
+
+sub checksumWholeFileHex {
+    my $path = shift;
+    $digester->reset();
+    $digester->addfile($path);
+    my $cs = substr($digester->digest(),0,16);
+    my $hexcs = unpack("H*",$cs);
+    return $hexcs;
+}
+
+sub getMetadataOfMFZ {
+    my $mfz = shift;
+    my $path = "$COMMON_DIR/$mfz";
+    my $cmd = "$MFZRUN_PROGRAM $path VERIFY";
+    my $metadata = `$cmd`;
+    my $mref = {};
+    while ($metadata =~ /([a-zA-Z_]+) \[([^]]+)\]/sg) {
+        $mref->{$1} = $2;
+    }
+    $mref->{WHOLE_FILE_CHECKSUM} = checksumWholeFileHex($path);
+    $mref->{FILE_SIZE} = -s $path;
+    return $mref;
+}
+
+sub checkOrAddToMap {
+    my ($mfz,$dmref) = @_;
+    my $path = "$COMMON_DIR/$mfz";
+    if (!-e $path) {
+        print "No such file '$path'\n";
+        return -1;
+    }
+    my $mfzref = getMetadataOfMFZ($mfz);
+    print "GOTS".Dumper($mfzref)."\n";
+    if (defined $dmref->{$mfz}) {
+        print "UNIMPLEMENTED CHECK EXISTING DMREF SKIPPING $mfz\n";
+        return 0;
+    } else {
+        my $length = $mfzref->{FILE_SIZE};
+        my $checksum = $mfzref->{WHOLE_FILE_CHECKSUM};
+        my $timestamp = $mfzref->{INNER_TIMESTAMP};
+        defined $length and $checksum and defined $timestamp or die;
+        $dmref->{$mfz} = [$length, $checksum, $timestamp];
+        return 1;
+    }
+}
+
+sub saveDeletedMap {
+    my $dmref = shift;
+    my $packDir = makeTmpDir();
+    my $deletedsFile = "$packDir/$DELETEDS_MAP_NAME";
+    open(HDL,">",$deletedsFile) or die "Can't write '$deletedsFile': $!";
+    for my $mfzname (sort keys %{$dmref}) {
+        my $aref = $dmref->{$mfzname};
+        my $fname = hexEscape($mfzname);
+        my $length = $aref->[0];
+        my $checksum = $aref->[1];
+        my $timestamp = $aref->[2];
+        print HDL "$fname $length $checksum $timestamp\n";
+    }
+    close HDL or die "Can't close '$deletedsFile': $!";
+
+    my $path = "$packDir/$DELETEDS_MFZ_NAME";
+    my $cmd = "$MFZMAKE_PROGRAM make $CDM_INTERNAL_HANDLE $path $deletedsFile";
+    my $result = `$cmd`;
+
+    -e $path or die "wha?";
+    my $commonPath = "$COMMON_DIR/$DELETEDS_MFZ_NAME";
+    move($path,$commonPath) or die "Couldn't move $path -> $commonPath: $!";
+    print "Updated $commonPath\n";
+}
+
+sub doDelete {
+    my @mfzs = @_;
+    if (scalar(@mfzs) == 0 || scalar(grep { $_ !~ /[.]mfz$/ } @mfzs) > 0) {
+        die "Usage: $0 delete FILE1.mfz [FILE2.mfz...]\n";
+    }
+    my $dmref = loadDeletedMap();
+    my $changes = 0;
+    foreach my $mfz (@mfzs) {
+        my $ret = checkOrAddToMap($mfz,$dmref);
+        if ($ret < 0) {
+            print "Processing aborted\n";
+            exit 1;
+        }
+        $changes += $ret;
+    }
+    saveDeletedMap($dmref) if $changes > 0;
+}
+
+sub processArgs {
+    push @ARGV, "help" unless scalar(@ARGV);
+    my $verb = shift @ARGV;
+    return doHelp(@ARGV) if lc($verb) eq "help";
+    return doDelete(@ARGV) if lc($verb) eq "delete";
+    die "Unrecognized command '$verb', try '$0 help' for help";
+}
+
+sub main {
+    processArgs();
+}
+main();

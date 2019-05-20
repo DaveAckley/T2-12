@@ -23,6 +23,39 @@
 
 static ITCPacketDriverState S;
 
+static int mapPruAndPrudirToDirNum(int pru, int prudir) {
+  switch ((pru<<3)|prudir) {
+#define XX(dir)                                                         \
+  case (ITC_DIR_TO_PRU(dir)<<3) | ITC_DIR_TO_PRUDIR(dir): return ITC_DIR_TO_DIR_NUM(dir);
+FOR_XX_IN_ITC_ALL_DIR
+#undef XX
+  default: return -1;
+  }
+}
+
+static void initITCTrafficStats(ITCTrafficStats *s, int dir)
+{
+  s->dirNum = dir;
+  s->bytesSent = s->bytesReceived = 0;
+  s->packetsSent = s->packetsReceived = 0;
+  s->packetSyncAnnouncements = 0;
+  s->syncFailureAnnouncements = 0;
+  s->timeoutAnnouncements = 0;
+}
+
+static ITCTrafficStats * getITCTrafficStatsFromDir(u32 dirnum)
+{
+  BUG_ON(dirnum >= ITC_DIR_COUNT);
+  return &S.itcStats[dirnum];
+}
+
+static ITCTrafficStats * getITCTrafficStats(u8 pru, u8 prudir)
+{
+  int dir = mapPruAndPrudirToDirNum(pru,prudir);
+  if (dir < 0) return 0;
+  return getITCTrafficStatsFromDir(dir);
+}
+
 static void initITCPacketDriverState(ITCPacketDriverState *s)
 {
   INIT_KFIFO(s->itcPacketKfifo);
@@ -34,6 +67,7 @@ static void initITCPacketDriverState(ITCPacketDriverState *s)
   {
     unsigned i;
     for (i = 0; i < MINOR_DEVICES; ++i) s->dev_packet_state[i] = 0;
+    for (i = 0; i < ITC_DIR_COUNT; ++i) initITCTrafficStats(&s->itcStats[i], i);
   }
 #if MORE_DEBUGGING
    s->debugFlags = 0xf; // default some debugging on
@@ -127,6 +161,30 @@ static ssize_t itc_pkt_class_read_status(struct class *c,
 {
   sprintf(buf,"%08x\n",S.itcEnabledStatus);
   return strlen(buf);
+}
+
+
+static ssize_t itc_pkt_class_read_statistics(struct class *c,
+                                             struct class_attribute *attr,
+                                             char *buf)
+{
+  /* We have a PAGE_SIZE in buf, but won't get near that.  Max size
+     presently is something like ( 42 + 8 * ( 2 + 7 * 11 ) ) < 700 */
+  int len = 0;
+  int itc;
+  len += sprintf(&buf[len], "dir bsent brcvd psent prcvd psan sfan toan\n");
+  for (itc = 0; itc < ITC_DIR_COUNT; ++itc) {
+    ITCTrafficStats * t = &S.itcStats[itc];
+    len += sprintf(&buf[len], "%d %d %d %d %d %d %d %d\n",
+                   itc,
+                   t->bytesSent, t->bytesReceived,
+                   t->packetsSent, t->packetsReceived,
+                   t->packetSyncAnnouncements,
+                   t->syncFailureAnnouncements,
+                   t->timeoutAnnouncements
+                   );
+  }
+  return len;
 }
 
 
@@ -278,6 +336,7 @@ static struct class_attribute itc_pkt_class_attrs[] = {
   __ATTR(poke, 0200, NULL, itc_pkt_class_store_poke),
   __ATTR(debug, 0644, itc_pkt_class_read_debug, itc_pkt_class_store_debug),
   __ATTR(status, 0444, itc_pkt_class_read_status, NULL),
+  __ATTR(statistics, 0444, itc_pkt_class_read_statistics, NULL),
   __ATTR_NULL,
 };
 #undef XX
@@ -334,16 +393,6 @@ static int itc_pkt_release(struct inode *inode, struct file *filp)
   return 0;
 }
 
-static int mapPruAndPrudirToDirNum(int pru, int prudir) {
-  switch ((pru<<3)|prudir) {
-#define XX(dir)                                                         \
-  case (ITC_DIR_TO_PRU(dir)<<3) | ITC_DIR_TO_PRUDIR(dir): return ITC_DIR_TO_DIR_NUM(dir);
-FOR_XX_IN_ITC_ALL_DIR
-#undef XX
-  default: return -1;
-  }
-}
-
 static void setITCEnabledStatus(int pru, int prudir, int enabled) {
   int dirnum4 = mapPruAndPrudirToDirNum(pru,prudir)<<2;
   S.itcEnabledStatus &= ~(0xf<<dirnum4);
@@ -365,17 +414,28 @@ static int isITCEnabledStatusByITCDir(int itcDir) {
 static int routeStandardPacket(const unsigned char * buf, size_t len)
 {
   int itcDir;
+  int newminor;
   if (len == 0) return -EINVAL;
   if ((buf[0] & 0x80) == 0) return -ENXIO; /* only standard packets can be routed */
   itcDir = buf[0] & 0x7;
   if (!isITCEnabledStatusByITCDir(itcDir)) return -EHOSTUNREACH;
+
   switch (itcDir) {
     
-  default: return -ENODEV;
-#define XX(dir) case ITC_DIR_TO_DIR_NUM(dir): return ITC_DIR_TO_PRU(dir);
+  default: newminor = -ENODEV; break;
+#define XX(dir) case ITC_DIR_TO_DIR_NUM(dir): newminor = ITC_DIR_TO_PRU(dir); break;
 FOR_XX_IN_ITC_ALL_DIR    
 #undef XX
   }
+
+  if (newminor >= 0) {
+    ITCTrafficStats * t = getITCTrafficStatsFromDir(itcDir);
+    BUG_ON(!t);
+    ++t->packetsSent;
+    t->bytesSent += len;
+  }
+
+  return newminor;
 }
 
   
@@ -545,6 +605,7 @@ static const char * getDirName(u8 dir) {
 static void handleLocalStandard3(int minor, u8* bytes, int len)
 {
   u8 code, pru, prudir, val4;
+  ITCTrafficStats * t;
   if (len < 6 || bytes[5] != ':') {
     printk(KERN_ERR "Malformed locstd3 (len=%d)\n",len);
     return;
@@ -554,6 +615,9 @@ static void handleLocalStandard3(int minor, u8* bytes, int len)
   pru = bytes[2]-'0';
   prudir = bytes[3]-'0';
   val4 = bytes[4]-'0';
+
+  t = getITCTrafficStats(pru,prudir);  /* t == 0 if prudir == 3 */
+
   switch (code) {
   default:
     printk(KERN_INFO "Unhandled locstd3 '%c' (pru=%d, prudir=%d, val4 =%x)\n",code,pru,prudir,val4);
@@ -561,14 +625,21 @@ static void handleLocalStandard3(int minor, u8* bytes, int len)
 
   case 'P': // Announcing packet sync on pru,prudir
     setITCEnabledStatus(pru,prudir,1);
+    BUG_ON(!t);
+    ++t->packetSyncAnnouncements;
     break;
     
   case 'F': // Announcing sync failure on pru,prudir
     printk(KERN_INFO "Packet framing error reported (pru=%d, prudir=%d, val4 =%x)\n",pru,prudir,val4);
-    /* FALL THROUGH */
+    setITCEnabledStatus(pru,prudir,0);
+    BUG_ON(!t);
+    ++t->syncFailureAnnouncements;
+    break;
 
   case 'T': // Announcing timeout on pru,prudir
     setITCEnabledStatus(pru,prudir,0);
+    BUG_ON(!t);
+    ++t->timeoutAnnouncements;
     break;
 
   case 'M': // val4 is three-bits of per-pru disabled status
@@ -606,11 +677,20 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
 
     if (type&PKT_HDR_BITMASK_STANDARD) {   // Standard packet
       if (!(type&PKT_HDR_BITMASK_LOCAL)) { // Standard routed packet
+        u32 dir = type&PKT_HDR_BITMASK_DIR;
+        ITCTrafficStats * t = getITCTrafficStatsFromDir(dir);
+        ++t->packetsReceived;
+        t->bytesReceived += len;
+
         if (type&PKT_HDR_BITMASK_OVERRUN) {
           printk(KERN_ERR "(%s) Packet overrun reported on size %d packet\n",getDirName(type&0x7),len);
         }
         if (type&PKT_HDR_BITMASK_ERROR) {
           printk(KERN_ERR "(%s) Packet error reported on size %d packet\n",getDirName(type&0x7),len);
+          DBGPRINT_HEX_DUMP(DBG_PKT_ERROR,
+                            KERN_INFO, minor ? "<pru1: " : "<pru0: ",
+                            DUMP_PREFIX_NONE, 16, 1,
+                            bytes, len, true);
         }
         if (len > ITC_MAX_PACKET_SIZE) {
           printk(KERN_ERR "(%s) Truncating overlength (%d) packet\n",getDirName(type&0x7),len);
