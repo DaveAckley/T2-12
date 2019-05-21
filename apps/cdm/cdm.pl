@@ -1063,14 +1063,19 @@ my $statPID;
 my $statProgPath = "/home/t2/GITHUB/GFB/T2-GFB/stat13.pl";
 sub checkForStat {
     my $ps = `ps wwwaxu`;
-    my @lines = grep { m!^root\s+(\d+)\s+[^\n]+$statProgPath$! } split(/\n/,$ps);
+    my @lines = grep { m!^root\s+(\d+)\s+[^\n]+$statProgPath$! } split(/\n+/,$ps);
     my $count = scalar(@lines);
-    return if $count == 0;
+    if ($count == 0) {
+        $statPID = undef;
+        print STDERR "NO STATPID FOUND\n";
+        return;
+    }
     if ($count > 1) {
         print STDERR "WARNING: MULTIPLE MATCHES:\n".join(" \n",@lines)."\n";
     }
     my @fields = split(/\s+/,$lines[0]);
     $statPID = $fields[1];
+    print STDERR "FOUND STATPID ($statPID)\n";
 }
 
 sub controlStatProg {

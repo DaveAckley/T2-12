@@ -19,8 +19,8 @@ $(GITHUB_BASE_DIR)/File-Map-0.66:	File-Map-0.66-201902110239.tgz
 	tar xvzf $^ -C $(GITHUB_BASE_DIR)
 	cd $@;perl Build.PL;./Build install
 
-GITHUB/GFB:	GFB-201905202136.tgz
-	tar xvzf $^ -C GITHUB
+$(GITHUB_BASE_DIR)/GFB:	GFB-201905202136.tgz
+	tar xvzf $^ -C $(GITHUB_BASE_DIR)
 	cd $@/Graphics-Framebuffer-6.18;perl Makefile.PL;make install
 
 $(GITHUB_BASE_DIR)/MFM:	MFM20190211SIG.tgz
