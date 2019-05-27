@@ -7,6 +7,9 @@ PACKAGES+=software-properties-common python-software-properties
 # Generally useful framebuffer manager?
 PACKAGES+=fbset
 
+# For last-ditch file transfers
+PACKAGES+=lrzsz
+
 # Prereqs for Graphics::FrameBuffer if we end up using it (which we are currently trying to)
 PACKAGES+=libinline-perl libimager-perl libmath-bezier-perl libmath-gradient-perl libtest-most-perl
 
