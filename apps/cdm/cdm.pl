@@ -103,6 +103,8 @@ my @subDirs = ($commonSubdir, $pendingSubdir,$logSubdir,$pubkeySubdir);
 my $commonPath = "$baseDir/$commonSubdir";
 my $pendingPath = "$baseDir/pending";
 
+my $mfzrunProgPath = "/home/t2/GITHUB/MFM/bin/mfzrun";
+
 sub flushPendingDir {
     my $count = remove_tree($pendingPath);
     if ($count > 1) {
@@ -247,7 +249,7 @@ sub checkMFZDataFor {
         );
     my $dt = $strp->parse_datetime( $timestamp );
     my $epoch = $dt->strftime("%s");
-    DPSTD(" $handle/$timestamp => $epoch");
+    DPSTD(" $path: $handle/$timestamp => $epoch");
 
     $finfo->{signingHandle} = $handle;
     $finfo->{innerTimestamp} = $epoch;
@@ -272,9 +274,125 @@ sub updateDeleteds {
     print "UPDATE DELETEDS YA WOBBO '".join(", ",keys %{$finfo})."'\n";
 }
 
+my %distribTargetDirs = (
+    'cdm-distrib-MFM.mfz' => "/home/t2/GITHUB"
+    );
+
 sub installDistrib {
     my ($finfo) = @_;
     my $fname = $finfo->{filename};
+    if ($fname !~ /^cdm-distrib-([^.]+)[.]mfz$/) {
+        print "INSTALL DISTRIB '$fname': Malformed filename, ignoring\n";
+        return;
+    }
+    my $baseName = $1;
+    my $dirName = $distribTargetDirs{$fname};
+    if (!defined $dirName) {
+        print "INSTALL DISTRIB '$fname': No distrib target, ignoring\n";
+        return;
+    }
+    print "INSTALL DISTRIB found candidate $baseName -> $dirName\n";
+    my $tagFileName = "$dirName/$fname-cdm-install-tag.dat";
+    my $innerTimestamp = $finfo->{innerTimestamp};
+    if (-r $tagFileName) {
+        open my $fh,'<',$tagFileName or die "Can't read $tagFileName: $!";
+        my $line = <$fh>;
+        close $fh or die "close $tagFileName: $!";
+        chomp $line;
+        if ($line !~ /^([0-9]+)$/) {
+            print "INSTALL DISTRIB Ignoring malformed $tagFileName ($line)\n";            
+        } else {
+            my $currentTimestamp = $1;
+            if ($innerTimestamp == $currentTimestamp) {
+                print "INSTALL DISTRIB $baseName: We are up to date; nothing to do\n";
+                return;
+            }
+            if ($innerTimestamp < $currentTimestamp) {
+                print "INSTALL DISTRIB $baseName: Candidate appears outdated ($innerTimestamp vs $currentTimestamp)\n";
+                print "INSTALL DISTRIB $baseName: NOT INSTALLING. Delete $tagFileName to allow this install\n";
+                return;
+            }
+        }
+        print "INSTALL DISTRIB $tagFileName -> INSTALLING UPDATE\n";
+        return;
+    } 
+    ### DO INSTALL
+    print "INSTALL DISTRIB $baseName: Starting install\n";
+    my $tmpDirName = "$dirName/$baseName-cdm-install-tmp";
+    print "INSTALL DISTRIB $baseName: (1) Clearing $tmpDirName\n";
+    `rm -rf $tmpDirName`;
+    `mkdir -p $tmpDirName`;
+    my $mfzPath = "$commonPath/$fname";
+    print "INSTALL DISTRIB $baseName: (2) Unpacking $mfzPath\n";
+    {
+        my $cmd = "$mfzrunProgPath $mfzPath unpack $tmpDirName";
+        my $output = `$cmd`;
+        print "INSTALL DISTRIB $baseName: (2.1) GOT ($output)\n";
+    }
+    print "INSTALL DISTRIB $baseName: (3) Finding tgz\n";
+    my $tgzpath;
+    {
+        my $cmd = "find $tmpDirName -name '*.tgz'";
+        my $output = `$cmd`;
+        chomp $output;
+        print "INSTALL DISTRIB $baseName: (3.1) GOT ($output)\n";
+        my @lines = split("\n",$output);
+        my $count = scalar(@lines);
+        if ($count != 1) {
+            print "INSTALL DISTRIB $baseName: ABORT: FOUND $count LINES\n";
+            return;
+        }
+        $tgzpath = $lines[0];
+    }
+    my $targetSubDir = "$tmpDirName/tgz";
+    print "INSTALL DISTRIB $baseName: (4) Clearing '$targetSubDir'\n";
+    `rm -rf $targetSubDir`;
+    `mkdir -p $targetSubDir`;
+
+    print "INSTALL DISTRIB $baseName: (5) Unpacking '$tgzpath' -> $targetSubDir\n";
+    my $initialBaseNameDir;
+    {
+        my $cmd = "tar xf $tgzpath -C $targetSubDir";
+        my $output = `$cmd`;
+        $initialBaseNameDir = "$targetSubDir/$baseName";
+        if (!(-r $initialBaseNameDir && -d $initialBaseNameDir)) {
+            print "INSTALL DISTRIB $baseName: (5.1) ABORT: '$initialBaseNameDir' not readable dir\n";            
+            return;
+        }
+    }
+
+    my $prevDirName = "$dirName/$baseName-cdm-install-prev";
+    print "INSTALL DISTRIB $baseName: (6) Clearing $prevDirName\n";
+    `rm -rf $prevDirName`;
+    `mkdir -p $prevDirName`;
+
+    my $finalDirName = "$dirName/$baseName";
+    print "INSTALL DISTRIB $baseName: (7) Moving $finalDirName to $prevDirName\n";
+    {
+        my $cmd = "mv $finalDirName $prevDirName";
+        my $output = `$cmd`;
+        print "INSTALL DISTRIB $baseName: (7.1) ($cmd) GOT ($output)\n";
+    }
+
+    print "INSTALL DISTRIB $baseName: (8) Moving $initialBaseNameDir to $finalDirName\n";
+    {
+        my $cmd = "mv $initialBaseNameDir $prevDirName";
+        my $output = `$cmd`;
+        print "INSTALL DISTRIB $baseName: (8.1) ($cmd) GOT ($output)\n";
+    }
+    print "INSTALL DISTRIB $baseName: (9) Tagging install $tagFileName -> $innerTimestamp\n";
+    {
+        my $fh;
+        if (!(open $fh,'>',$tagFileName)) {
+            print "INSTALL DISTRIB $baseName: WARNING: Can't write $tagFileName: $!\n";
+            return;
+        }
+        print $fh "$innerTimestamp\n";
+        close $fh or die "close $tagFileName: $!";
+        return;
+    } 
+
+
     print "INSTALL DISTRIB '$fname'\n";
 }
 
