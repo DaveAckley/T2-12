@@ -325,7 +325,7 @@ sub installDistrib {
     my $mfzPath = "$commonPath/$fname";
     print "INSTALL DISTRIB $baseName: (2) Unpacking $mfzPath\n";
     {
-        my $cmd = "$mfzrunProgPath $mfzPath unpack $tmpDirName";
+        my $cmd = "$mfzrunProgPath -kd /cdm $mfzPath unpack $tmpDirName";
         my $output = `$cmd`;
         print "INSTALL DISTRIB $baseName: (2.1) GOT ($output)\n";
     }
@@ -376,7 +376,7 @@ sub installDistrib {
 
     print "INSTALL DISTRIB $baseName: (8) Moving $initialBaseNameDir to $finalDirName\n";
     {
-        my $cmd = "mv $initialBaseNameDir $prevDirName";
+        my $cmd = "mv $initialBaseNameDir $finalDirName";
         my $output = `$cmd`;
         print "INSTALL DISTRIB $baseName: (8.1) ($cmd) GOT ($output)\n";
     }
