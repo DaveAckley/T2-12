@@ -1,0 +1,58 @@
+{4}  -*- text -*- 
+[0:
+
+Sun May 26 21:08:44 2019 OK, so we need to get some kind of
+new-content-trigger going, so that we can update cdm based on
+cdm-shared content.
+
+Now, one fundamental problem with thinking about 'taking actions' or
+'doing things' based on new content arrival is that 'newness' is not
+idempotent.  How do we know if we've 'applied' some content or not --
+which might, after all, have pretty arbitrary effects?
+
+Could we have a 'last-successfully-applied' directory or file or
+something?  For some content with a name on the trigger list, once the
+trigger is successfully applied, we record that content in
+last-successfully-applied and then only apply further matching content
+that's different (and newer?) that the last applied.
+
+:0]
+[1:
+
+Sun May 26 21:58:19 2019 So let's make some damn infrastructure here. 
+
+:1]
+[2:
+
+Mon May 27 01:06:20 2019 OK so as a reminder, cdm.pl already has a
+'checkTriggers' sub, based on a hardcoded %triggerMFZs map from MFZ
+name to sub ref.  The only existing entry is
+
+'cdm-deleteds.mfz' => \&updateDeleteds
+
+but updateDeleteds currently just logs a message.
+
+So should we pick up there at least to get going?  Oh and we has
+started a cdmctl which I think was supposed to manage things like
+cdm-deleteds.mfz?  Checking.
+
+:2]
+[3:
+
+Mon May 27 17:37:40 2019 OK, so we're inching towards having creaky
+but functional tgz distribution via cdm, so far for MFM and T2-12.
+
+Current issues:
+ - We just make files, we don't invoke 'make install' or any other
+   specific targets.  Just making files is enough to update cdm.pl and
+   things like mfzrun, which we are mostly running out of the tree
+   anyway.  But it won't do for the .ko's and the prus and so on.
+
+ - We still have to update a few files on every tile before the
+   distribution works.  Not sure how we want to go about getting them
+   out.  Needed files are at least:
+   = t2 keymaster distribution pubkey
+   = A new cdm.pl
+   = A new mfzrun
+ 
+:3]
