@@ -35,7 +35,10 @@ my $DEBUG_FLAGS = $DEBUG_FLAG_STANDARD;
 
 #my %triggerMFZs = ( 'cdm-triggers.mfz' => &updateTriggers );
 # Hardcode deletions only, for now
-my %triggerMFZs = ( 'cdm-deleteds.mfz' => \&updateDeleteds );
+my %triggerMFZs = (
+    'cdm-deleteds.mfz' => \&updateDeleteds,
+    'cdm-distrib-MFM.mfz' => \&installDistrib
+    );
 
 sub DPF {
     my ($flags,$msg) = @_;
@@ -266,7 +269,13 @@ sub killPending {
 
 sub updateDeleteds {
     my ($finfo) = @_;
-    print "UPDATE DELETEDS YA WOBBO ($finfo)\n";
+    print "UPDATE DELETEDS YA WOBBO '".join(", ",keys %{$finfo})."'\n";
+}
+
+sub installDistrib {
+    my ($finfo) = @_;
+    my $fname = $finfo->{filename};
+    print "INSTALL DISTRIB '$fname'\n";
 }
 
 sub checkTriggers {
