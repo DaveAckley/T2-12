@@ -23,13 +23,8 @@ my $DELETEDS_MAP_NAME = "cdm-deleteds.map";
 my $MFZRUN_PROGRAM = "/home/t2/GITHUB/MFM/bin/mfzrun";
 my $MFZMAKE_PROGRAM = "/home/t2/GITHUB/MFM/bin/mfzmake";
 
-sub doHelp {
-    print "Help, yah\n";
-    exit 3;
-}
-
 my %deletedsMap;
-my $DEBUG_DIRS = 0;
+my $DEBUG_DIRS = 1;
 
 sub hexEscape {
     my $str = shift;
@@ -81,7 +76,11 @@ sub loadDeletedMap {
     # Now we have to hunt for the path used to pack the payload
     my @paths = glob "$destdir/tmp/cdmctl-*/cdm-deleteds.map";
 
+
     my $deletedsFilePath = shift @paths;
+
+    die "'$destdir' problem" unless defined $deletedsFilePath;
+
     open(HDL, "<", $deletedsFilePath)
         or die "Can't read $deletedsFilePath: $!";
     while (<HDL>) {
@@ -170,6 +169,22 @@ sub saveDeletedMap {
     print "Updated $commonPath\n";
 }
 
+sub doListDeleted {
+    my @args = @_;
+    if (scalar(@args) > 0) {
+        die "Usage: $0 listDeleted\n";
+    }
+    my $dmref = loadDeletedMap();
+    my $len = 0;
+    my @keys = sort keys %{$dmref};
+    foreach my $mfzKey (@keys) {
+        $len = length($mfzKey) if $len < length($mfzKey);
+    }
+    foreach my $mfzKey (@keys) {
+        printf("%*s  x\n",$len,$mfzKey);
+    }
+}
+
 sub doDelete {
     my @mfzs = @_;
     if (scalar(@mfzs) == 0 || scalar(grep { $_ !~ /[.]mfz$/ } @mfzs) > 0) {
@@ -188,12 +203,25 @@ sub doDelete {
     saveDeletedMap($dmref) if $changes > 0;
 }
 
+my %cmds = (
+    "help" => \&doHelp,
+    "delete" => \&doDelete,
+    "listdeleted" => \&doListDeleted,
+    );
+
+sub doHelp {
+    my @keys = sort keys %cmds;
+    print "Commands are: ".join(" ",@keys)."\n";
+    exit 3;
+}
+
 sub processArgs {
     push @ARGV, "help" unless scalar(@ARGV);
     my $verb = shift @ARGV;
-    return doHelp(@ARGV) if lc($verb) eq "help";
-    return doDelete(@ARGV) if lc($verb) eq "delete";
-    die "Unrecognized command '$verb', try '$0 help' for help";
+    my $code = $cmds{lc($verb)};
+    return &$code(@ARGV) if defined $code;
+    print "Unrecognized command '$verb'\n";
+    doHelp();
 }
 
 sub main {
