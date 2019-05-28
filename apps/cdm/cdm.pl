@@ -37,8 +37,14 @@ my $DEBUG_FLAGS = $DEBUG_FLAG_STANDARD;
 # Hardcode deletions only, for now
 my %triggerMFZs = (
     'cdm-deleteds.mfz' => \&updateDeleteds,
-    'cdm-distrib-MFM.mfz' => \&installDistrib
+    'cdm-distrib-MFM.mfz' => \&installDistrib,
+    'cdm-distrib-T2-12.mfz' => \&installDistrib,
     );
+my %distribTargetDirs = (
+    'cdm-distrib-MFM.mfz' => "/home/t2/GITHUB",
+    'cdm-distrib-T2-12.mfz' => "/home/t2",
+    );
+
 
 sub DPF {
     my ($flags,$msg) = @_;
@@ -273,10 +279,6 @@ sub updateDeleteds {
     my ($finfo) = @_;
     print "UPDATE DELETEDS YA WOBBO '".join(", ",keys %{$finfo})."'\n";
 }
-
-my %distribTargetDirs = (
-    'cdm-distrib-MFM.mfz' => "/home/t2/GITHUB"
-    );
 
 sub installDistrib {
     my ($finfo) = @_;
