@@ -39,10 +39,12 @@ my %triggerMFZs = (
     'cdm-deleteds.mfz' => \&updateDeleteds,
     'cdm-distrib-MFM.mfz' => \&installDistrib,
     'cdm-distrib-T2-12.mfz' => \&installDistrib,
+    'cdm-distrib-T2-GFB' => \&installDistrib,
     );
 my %distribTargetDirs = (
     'cdm-distrib-MFM.mfz' => "/home/t2/GITHUB",
     'cdm-distrib-T2-12.mfz' => "/home/t2",
+    'cdm-distrib-T2-GFB.mfz' => "/home/t2/GITHUB/GFB",
     );
 
 
@@ -316,7 +318,6 @@ sub installDistrib {
             }
         }
         print "INSTALL DISTRIB $tagFileName -> INSTALLING UPDATE\n";
-        return;
     } 
     ### DO INSTALL
     print "INSTALL DISTRIB $baseName: Starting install\n";
@@ -1031,7 +1032,7 @@ sub processDataReply {
     writeDataToPendingFile($finfo, $startingIndex, $data);
     if ($finfo->{currentLength} < $finfo->{length}) {  # We still want more
         issueContentRequest($finfo); # so go ahead ask for more
-        my $rateLimiterUsec = 100_000; # But no more than 10Hz
+        my $rateLimiterUsec = 50_000; # But no more than 20Hz
         Time::HiRes::usleep($rateLimiterUsec);
     }
 }
