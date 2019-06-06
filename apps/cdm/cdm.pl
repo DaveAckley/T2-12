@@ -410,11 +410,21 @@ sub installDistrib {
     print "INSTALL '$fname'\n";
 }
 
-sub checkTriggers {
+sub checkTriggersAndAnnounce {
     my $finfo = shift;
     my $filename = $finfo->{filename};
     my $trigref = $triggerMFZs{$filename};
     &$trigref($finfo) if defined($trigref);
+
+    my $count = 0;
+    foreach my $k (shuffle(keys %hoodModel)) {
+        my $v = $hoodModel{$k};
+        if ($v->{isAlive}) {
+            announceFileTo($v,$finfo);
+            ++$count;
+        }
+    }
+    DPSTD("ANNOUNCED $filename to $count");
 }
 
 sub checkAndReleasePendingFile {
@@ -450,17 +460,7 @@ sub checkAndReleasePendingFile {
     $cref->{$filename} = $finfo; # Add it to common
     DPSTD("RELEASED $filename");
 
-    checkTriggers($finfo);
-
-    my $count = 0;
-    foreach my $k (shuffle(keys %hoodModel)) {
-        my $v = $hoodModel{$k};
-        if ($v->{isAlive}) {
-            announceFileTo($v,$finfo);
-            ++$count;
-        }
-    }
-    DPSTD("ANNOUNCED $filename to $count");
+    checkTriggersAndAnnounce($finfo);
 }
 
 sub lexDecode {
@@ -658,8 +658,8 @@ sub checkCommonFile {
     if (checkMFZDataFor($finfo)) {
         # OK, it checked out.  Give it a seqno
         $finfo->{seqno} = assignSeqnoForFilename($finfo->{filename});
-        # and run triggers on it, if and
-        checkTriggers($finfo);
+        # and run triggers on it, if any
+        checkTriggersAndAnnounce($finfo);
         return 1; # That's plenty for now..
     }
 
@@ -1225,7 +1225,7 @@ sub checkForStat {
         return;
     }
     if ($count > 1) {
-        print STDERR "WARNING: MULTIPLE MATCHES:\n".join(" \n",@lines)."\n";
+        print STDERR "WARNING: MULTIPLE STAT MATCHES:\n".join(" \n",@lines)."\n";
     }
     my @fields = split(/\s+/,$lines[0]);
     $statPID = $fields[1];
