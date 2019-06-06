@@ -39,7 +39,7 @@ my %triggerMFZs = (
     'cdm-deleteds.mfz' => \&updateDeleteds,
     'cdm-distrib-MFM.mfz' => \&installDistrib,
     'cdm-distrib-T2-12.mfz' => \&installDistrib,
-    'cdm-distrib-T2-GFB' => \&installDistrib,
+    'cdm-distrib-T2-GFB.mfz' => \&installDistribGFB,
     );
 my %distribTargetDirs = (
     'cdm-distrib-MFM.mfz' => "/home/t2/GITHUB",
@@ -282,20 +282,31 @@ sub updateDeleteds {
     print "UPDATE DELETEDS YA WOBBO '".join(", ",keys %{$finfo})."'\n";
 }
 
+my $debugPanelShouldBeDisplayed = 0;
+sub installDistribGFB {
+    my ($finfo) = @_;
+    installDistrib($finfo);
+    if ($debugPanelShouldBeDisplayed) {
+        toggleDebugPanel();
+        sleep 1;
+        toggleDebugPanel();
+    }
+}
+
 sub installDistrib {
     my ($finfo) = @_;
     my $fname = $finfo->{filename};
     if ($fname !~ /^cdm-distrib-([^.]+)[.]mfz$/) {
-        print "INSTALL DISTRIB '$fname': Malformed filename, ignoring\n";
+        print "INSTALL '$fname': Malformed filename, ignoring\n";
         return;
     }
     my $baseName = $1;
     my $dirName = $distribTargetDirs{$fname};
     if (!defined $dirName) {
-        print "INSTALL DISTRIB '$fname': No distrib target, ignoring\n";
+        print "INSTALL '$fname': No distrib target, ignoring\n";
         return;
     }
-    print "INSTALL DISTRIB found candidate $baseName -> $dirName\n";
+    print "INSTALL found candidate $baseName -> $dirName\n";
     my $tagFileName = "$dirName/$fname-cdm-install-tag.dat";
     my $innerTimestamp = $finfo->{innerTimestamp};
     if (-r $tagFileName) {
@@ -304,90 +315,90 @@ sub installDistrib {
         close $fh or die "close $tagFileName: $!";
         chomp $line;
         if ($line !~ /^([0-9]+)$/) {
-            print "INSTALL DISTRIB Ignoring malformed $tagFileName ($line)\n";            
+            print "INSTALL Ignoring malformed $tagFileName ($line)\n";            
         } else {
             my $currentTimestamp = $1;
             if ($innerTimestamp == $currentTimestamp) {
-                print "INSTALL DISTRIB $baseName: We are up to date; nothing to do\n";
+                print "INSTALL $baseName: We are up to date; nothing to do\n";
                 return;
             }
             if ($innerTimestamp < $currentTimestamp) {
-                print "INSTALL DISTRIB $baseName: Candidate appears outdated ($innerTimestamp vs $currentTimestamp)\n";
-                print "INSTALL DISTRIB $baseName: NOT INSTALLING. Delete $tagFileName to allow this install\n";
+                print "INSTALL $baseName: Candidate appears outdated ($innerTimestamp vs $currentTimestamp)\n";
+                print "INSTALL $baseName: NOT INSTALLING. Delete $tagFileName to allow this install\n";
                 return;
             }
         }
-        print "INSTALL DISTRIB $tagFileName -> INSTALLING UPDATE\n";
+        print "INSTALL $tagFileName -> INSTALLING UPDATE\n";
     } 
     ### DO INSTALL
-    print "INSTALL DISTRIB $baseName: Starting install\n";
+    print "INSTALL $baseName: Starting install\n";
     my $tmpDirName = "$dirName/$baseName-cdm-install-tmp";
-    print "INSTALL DISTRIB $baseName: (1) Clearing $tmpDirName\n";
+    print "INSTALL $baseName: (1) Clearing $tmpDirName\n";
     `rm -rf $tmpDirName`;
     `mkdir -p $tmpDirName`;
     my $mfzPath = "$commonPath/$fname";
-    print "INSTALL DISTRIB $baseName: (2) Unpacking $mfzPath\n";
+    print "INSTALL $baseName: (2) Unpacking $mfzPath\n";
     {
         my $cmd = "$mfzrunProgPath -kd /cdm $mfzPath unpack $tmpDirName";
         my $output = `$cmd`;
-        print "INSTALL DISTRIB $baseName: (2.1) GOT ($output)\n";
+        print "INSTALL $baseName: (2.1) GOT ($output)\n";
     }
-    print "INSTALL DISTRIB $baseName: (3) Finding tgz\n";
+    print "INSTALL $baseName: (3) Finding tgz\n";
     my $tgzpath;
     {
         my $cmd = "find $tmpDirName -name '*.tgz'";
         my $output = `$cmd`;
         chomp $output;
-        print "INSTALL DISTRIB $baseName: (3.1) GOT ($output)\n";
+        print "INSTALL $baseName: (3.1) GOT ($output)\n";
         my @lines = split("\n",$output);
         my $count = scalar(@lines);
         if ($count != 1) {
-            print "INSTALL DISTRIB $baseName: ABORT: FOUND $count LINES\n";
+            print "INSTALL $baseName: ABORT: FOUND $count LINES\n";
             return;
         }
         $tgzpath = $lines[0];
     }
     my $targetSubDir = "$tmpDirName/tgz";
-    print "INSTALL DISTRIB $baseName: (4) Clearing '$targetSubDir'\n";
+    print "INSTALL $baseName: (4) Clearing '$targetSubDir'\n";
     `rm -rf $targetSubDir`;
     `mkdir -p $targetSubDir`;
 
-    print "INSTALL DISTRIB $baseName: (5) Unpacking '$tgzpath' -> $targetSubDir\n";
+    print "INSTALL $baseName: (5) Unpacking '$tgzpath' -> $targetSubDir\n";
     my $initialBaseNameDir;
     {
         my $cmd = "tar xf $tgzpath -C $targetSubDir";
         my $output = `$cmd`;
         $initialBaseNameDir = "$targetSubDir/$baseName";
         if (!(-r $initialBaseNameDir && -d $initialBaseNameDir)) {
-            print "INSTALL DISTRIB $baseName: (5.1) ABORT: '$initialBaseNameDir' not readable dir\n";            
+            print "INSTALL $baseName: (5.1) ABORT: '$initialBaseNameDir' not readable dir\n";            
             return;
         }
     }
 
     my $prevDirName = "$dirName/$baseName-cdm-install-prev";
-    print "INSTALL DISTRIB $baseName: (6) Clearing $prevDirName\n";
+    print "INSTALL $baseName: (6) Clearing $prevDirName\n";
     `rm -rf $prevDirName`;
     `mkdir -p $prevDirName`;
 
     my $finalDirName = "$dirName/$baseName";
-    print "INSTALL DISTRIB $baseName: (7) Moving $finalDirName to $prevDirName\n";
+    print "INSTALL $baseName: (7) Moving $finalDirName to $prevDirName\n";
     {
         my $cmd = "mv $finalDirName $prevDirName";
         my $output = `$cmd`;
-        print "INSTALL DISTRIB $baseName: (7.1) ($cmd) GOT ($output)\n";
+        print "INSTALL $baseName: (7.1) ($cmd) GOT ($output)\n";
     }
 
-    print "INSTALL DISTRIB $baseName: (8) Moving $initialBaseNameDir to $finalDirName\n";
+    print "INSTALL $baseName: (8) Moving $initialBaseNameDir to $finalDirName\n";
     {
         my $cmd = "mv $initialBaseNameDir $finalDirName";
         my $output = `$cmd`;
-        print "INSTALL DISTRIB $baseName: (8.1) ($cmd) GOT ($output)\n";
+        print "INSTALL $baseName: (8.1) ($cmd) GOT ($output)\n";
     }
-    print "INSTALL DISTRIB $baseName: (9) Tagging install $tagFileName -> $innerTimestamp\n";
+    print "INSTALL $baseName: (9) Tagging install $tagFileName -> $innerTimestamp\n";
     {
         my $fh;
         if (!(open $fh,'>',$tagFileName)) {
-            print "INSTALL DISTRIB $baseName: WARNING: Can't write $tagFileName: $!\n";
+            print "INSTALL $baseName: WARNING: Can't write $tagFileName: $!\n";
             return;
         }
         print $fh "$innerTimestamp\n";
@@ -396,7 +407,7 @@ sub installDistrib {
     } 
 
 
-    print "INSTALL DISTRIB '$fname'\n";
+    print "INSTALL '$fname'\n";
 }
 
 sub checkTriggers {
@@ -440,6 +451,16 @@ sub checkAndReleasePendingFile {
     DPSTD("RELEASED $filename");
 
     checkTriggers($finfo);
+
+    my $count = 0;
+    foreach my $k (shuffle(keys %hoodModel)) {
+        my $v = $hoodModel{$k};
+        if ($v->{isAlive}) {
+            announceFileTo($v,$finfo);
+            ++$count;
+        }
+    }
+    DPSTD("ANNOUNCED $filename to $count");
 }
 
 sub lexDecode {
@@ -566,9 +587,11 @@ sub issueContentRequest {
 
 sub preinitCommon {
     DPSTD("Preloading common");
+    toggleDebugPanel();
     my $count = 0;
     while (checkCommonFile(0)) { ++$count; }
     DPVRB("Preload complete after $count steps");
+    toggleDebugPanel();
 }
 
 my $lastCommonModtime = 0;
@@ -1032,7 +1055,7 @@ sub processDataReply {
     writeDataToPendingFile($finfo, $startingIndex, $data);
     if ($finfo->{currentLength} < $finfo->{length}) {  # We still want more
         issueContentRequest($finfo); # so go ahead ask for more
-        my $rateLimiterUsec = 50_000; # But no more than 20Hz
+        my $rateLimiterUsec = 62_500; # But no more than 16Hz
         Time::HiRes::usleep($rateLimiterUsec);
     }
 }
@@ -1159,6 +1182,7 @@ sub processPacket {
     DPSTD("UNHANDLED PKT($pkt)");
 }
 
+# current time in TWO-SECOND increments
 sub now {
     return time()>>1;
 }
@@ -1225,7 +1249,6 @@ sub controlStatProg {
     sleep 1;
 }
 
-my $debugPanelShouldBeDisplayed = 0;
 sub toggleDebugPanel {
     $debugPanelShouldBeDisplayed = $debugPanelShouldBeDisplayed ? 0 : 1;
     controlStatProg($debugPanelShouldBeDisplayed);
@@ -1239,27 +1262,31 @@ sub eventLoop {
     my $maxu = 500000;
     my $usleep = $minu;
     while ($continueEventLoop) {
+        my $sleep = 1;
         if (checkUserButton()) {
             toggleDebugPanel();
         }
         if (my $packet = readPacket()) {
             processPacket($packet);
             $usleep = $minu;
-            next;
+            $sleep = 0;
         }
         if ($lastBack != now()) {
             doBackgroundWork();
             $lastBack = now();
-            next;
+            $sleep = 0;
         }
-        Time::HiRes::usleep($usleep);
-        if ($usleep < $maxu) {
-            $usleep += $incru; 
+        if ($sleep) {
+            Time::HiRes::usleep($usleep);
+            if ($usleep < $maxu) {
+                $usleep += $incru; 
+            }
         }
     }
 }
 
 sub main {
+    STDOUT->autoflush(1);
     flushPendingDir();
     checkInitDirs();
     preinitCommon();
