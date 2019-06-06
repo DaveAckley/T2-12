@@ -35,8 +35,7 @@ endif
 TAR_EXCLUDES+=--exclude=tools --exclude=*~ --exclude=.git --exclude=doc/internal --exclude=spikes --exclude-backups
 TAR_EXCLUDES+=--exclude=extra
 cdmDistribution:	FORCE
-	echo make
-	MPWD=`pwd`;BASE=`basename $$MPWD`;echo $$MPWD for $$BASE;pushd ..;tar cvzf $$BASE-built.tgz $(TAR_EXCLUDES) $$BASE;/home/t2/GITHUB/MFM/bin/mfzmake make - cdm-distrib-$$BASE.mfz $$BASE-built.tgz;popd
+	MPWD=`pwd`;BASE=`basename $$MPWD`;echo $$MPWD for $$BASE;pushd ..;tar cvzf $$BASE-built.tgz $(TAR_EXCLUDES) $$BASE;cp -f $$BASE-built.tgz /home/debian/CDM-TGZS/;/home/t2/GITHUB/MFM/bin/mfzmake make - cdm-distrib-$$BASE.mfz $$BASE-built.tgz;popd
 
 $(SUBDIRS):	FORCE
 	$(MAKE) -C $@ $(MAKECMDGOALS)
