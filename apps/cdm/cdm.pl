@@ -37,14 +37,16 @@ my $DEBUG_FLAGS = $DEBUG_FLAG_STANDARD;
 # Hardcode deletions only, for now
 my %triggerMFZs = (
     'cdm-deleteds.mfz' => \&updateDeleteds,
-    'cdm-distrib-MFM.mfz' => \&installDistrib,
-    'cdm-distrib-T2-12.mfz' => \&installDistrib,
-    'cdm-distrib-T2-GFB.mfz' => \&installDistribGFB,
+    'cdmd-MFM.mfz' => \&installCDMD,
+    'cdmd-T2-12.mfz' => \&installCDMD,
+    'cdmd-T2-GFB.mfz' => \&installCDMDGFB,
+    'cdmd-t2.mfz' => \&installOverlay,
     );
-my %distribTargetDirs = (
-    'cdm-distrib-MFM.mfz' => "/home/t2/GITHUB",
-    'cdm-distrib-T2-12.mfz' => "/home/t2",
-    'cdm-distrib-T2-GFB.mfz' => "/home/t2/GITHUB/GFB",
+my %cdmdTargetDirs = (
+    'cdmd-MFM.mfz' => "/home/t2/GITHUB",
+    'cdmd-T2-12.mfz' => "/home/t2",
+    'cdmd-T2-GFB.mfz' => "/home/t2/GITHUB/GFB",
+    'cdmd-t2.mfz' => "/home",
     );
 
 
@@ -283,9 +285,9 @@ sub updateDeleteds {
 }
 
 my $debugPanelShouldBeDisplayed = 0;
-sub installDistribGFB {
+sub installCDMDGFB {
     my ($finfo) = @_;
-    installDistrib($finfo);
+    installCDMD($finfo);
     if ($debugPanelShouldBeDisplayed) {
         toggleDebugPanel();
         sleep 1;
@@ -293,17 +295,17 @@ sub installDistribGFB {
     }
 }
 
-sub installDistrib {
+sub installSetup {
     my ($finfo) = @_;
     my $fname = $finfo->{filename};
-    if ($fname !~ /^cdm-distrib-([^.]+)[.]mfz$/) {
+    if ($fname !~ /^cdmd-([^.]+)[.]mfz$/) {
         print "INSTALL '$fname': Malformed filename, ignoring\n";
         return;
     }
     my $baseName = $1;
-    my $dirName = $distribTargetDirs{$fname};
+    my $dirName = $cdmdTargetDirs{$fname};
     if (!defined $dirName) {
-        print "INSTALL '$fname': No distrib target, ignoring\n";
+        print "INSTALL '$fname': No CDMD target, ignoring\n";
         return;
     }
     print "INSTALL found candidate $baseName -> $dirName\n";
@@ -313,6 +315,7 @@ sub installDistrib {
         open my $fh,'<',$tagFileName or die "Can't read $tagFileName: $!";
         my $line = <$fh>;
         close $fh or die "close $tagFileName: $!";
+        $line ||= "";
         chomp $line;
         if ($line !~ /^([0-9]+)$/) {
             print "INSTALL Ignoring malformed $tagFileName ($line)\n";            
@@ -330,7 +333,13 @@ sub installDistrib {
         }
         print "INSTALL $tagFileName -> INSTALLING UPDATE\n";
     } 
-    ### DO INSTALL
+    return ($fname, $baseName, $dirName, $tagFileName, $innerTimestamp);
+}
+
+sub installUnpack {
+    my ($fname, $baseName, $dirName, $tagFileName, $innerTimestamp) = @_;
+
+    ### DO UNPACK
     print "INSTALL $baseName: Starting install\n";
     my $tmpDirName = "$dirName/$baseName-cdm-install-tmp";
     print "INSTALL $baseName: (1) Clearing $tmpDirName\n";
@@ -341,6 +350,7 @@ sub installDistrib {
     {
         my $cmd = "$mfzrunProgPath -kd /cdm $mfzPath unpack $tmpDirName";
         my $output = `$cmd`;
+        chomp $output;
         print "INSTALL $baseName: (2.1) GOT ($output)\n";
     }
     print "INSTALL $baseName: (3) Finding tgz\n";
@@ -366,7 +376,7 @@ sub installDistrib {
     print "INSTALL $baseName: (5) Unpacking '$tgzpath' -> $targetSubDir\n";
     my $initialBaseNameDir;
     {
-        my $cmd = "tar xf $tgzpath -C $targetSubDir";
+        my $cmd = "tar xf $tgzpath -m --warning=no-timestamp -C $targetSubDir";
         my $output = `$cmd`;
         $initialBaseNameDir = "$targetSubDir/$baseName";
         if (!(-r $initialBaseNameDir && -d $initialBaseNameDir)) {
@@ -375,6 +385,20 @@ sub installDistrib {
         }
     }
 
+    return ($tmpDirName, $mfzPath, $tgzpath, $targetSubDir, $initialBaseNameDir);
+}
+
+sub installCDMD {
+    my ($finfo) = @_;
+    my @args = installSetup($finfo);
+    return if scalar(@args) == 0;  # Something went wrong.
+    my ($fname, $baseName, $dirName, $tagFileName, $innerTimestamp) = @args;
+
+    my @moreargs = installUnpack($fname, $baseName, $dirName, $tagFileName, $innerTimestamp );
+    return if scalar(@moreargs) == 0;
+    my ($tmpDirName, $mfzPath, $tgzpath, $targetSubDir, $initialBaseNameDir) = @moreargs;
+    
+    ### DO FULL DIR MOVE REPLACEMENT
     my $prevDirName = "$dirName/$baseName-cdm-install-prev";
     print "INSTALL $baseName: (6) Clearing $prevDirName\n";
     `rm -rf $prevDirName`;
@@ -406,8 +430,54 @@ sub installDistrib {
         return;
     } 
 
-
     print "INSTALL '$fname'\n";
+}
+
+sub installOverlay {
+    my ($finfo) = @_;
+    my @args = installSetup($finfo);
+    return if scalar(@args) == 0;  # Something went wrong.
+    my ($fname, $baseName, $dirName, $tagFileName, $innerTimestamp) = @args;
+
+    my @moreargs = installUnpack($fname, $baseName, $dirName, $tagFileName, $innerTimestamp );
+    return if scalar(@moreargs) == 0;
+    my ($tmpDirName, $mfzPath, $tgzpath, $targetSubDir, $initialBaseNameDir) = @moreargs;
+    
+    ### DO IN-PLACE OVERLAY OF NEW INTO OLD
+    my $prevDirName = "$dirName/$baseName-cdm-install-prev";
+    print "INSTALL $baseName: (6) Clearing $prevDirName\n";
+    `rm -rf $prevDirName`;
+    `mkdir -p $prevDirName`;
+
+    my $finalDirName = "$dirName/$baseName";
+    print "INSTALL $baseName: (7a) NOT BACKING UP $finalDirName to $prevDirName!\n";
+    if (0) {
+        my $cmd = "cp -a $finalDirName $prevDirName";
+        my $output = `echo $cmd`;
+        chomp $output;
+        print "INSTALL $baseName: (7.1) ($cmd) GOT ($output)\n";
+    }
+
+    print "INSTALL $baseName: (8a) COPYING $initialBaseNameDir INTO EXISTING $finalDirName\n";
+    {
+        my $cmd = "cp -af $initialBaseNameDir/. $finalDirName";
+        my $output = `$cmd`;
+        chomp $output;
+        print "INSTALL $baseName: (8.1) ($cmd) GOT ($output)\n";
+    }
+    print "INSTALL $baseName: (9a) Tagging install $tagFileName -> $innerTimestamp\n";
+    {
+        my $fh;
+        if (!(open $fh,'>',$tagFileName)) {
+            print "INSTALL $baseName: WARNING: Can't write $tagFileName: $!\n";
+            return;
+        }
+        print $fh "$innerTimestamp\n";
+        close $fh or die "close $tagFileName: $!";
+        return;
+    } 
+
+    print "INSTALL '$fname' (OVERLAID)\n";
 }
 
 sub checkTriggersAndAnnounce {
@@ -587,11 +657,14 @@ sub issueContentRequest {
 
 sub preinitCommon {
     DPSTD("Preloading common");
-    toggleDebugPanel();
     my $count = 0;
-    while (checkCommonFile(0)) { ++$count; }
+    while (checkCommonFile(0)) {
+        if (checkUserButton()) {
+            toggleDebugPanel();
+        }
+        ++$count; 
+    }
     DPVRB("Preload complete after $count steps");
-    toggleDebugPanel();
 }
 
 my $lastCommonModtime = 0;
@@ -1214,9 +1287,14 @@ sub checkUserButton {
 }
 
 my $statPID;
-my $statProgPath = "/home/t2/GITHUB/GFB/T2-GFB/stat13.pl";
+#my $statProgPath = "/home/t2/GITHUB/GFB/T2-GFB/stat13.pl";
+#my $statProgPath = "/home/t2/T2-12/apps/cdm/runStat.sh";
+my $statProgPath = "/home/t2/GITHUB/MFM/bin/t2viz";
+my $statProgName = "t2viz";
+my $statProgHelper = "/home/t2/T2-12/apps/mfm/RUN_SDL";
+
 sub checkForStat {
-    my $ps = `ps wwwaxu`;
+    my $ps = `ps wwwu -C $statProgName`;
     my @lines = grep { m!^root\s+(\d+)\s+[^\n]+$statProgPath$! } split(/\n+/,$ps);
     my $count = scalar(@lines);
     if ($count == 0) {
@@ -1244,7 +1322,7 @@ sub controlStatProg {
         }
         $statPID = undef;
     } else {
-        system("nohup $statProgPath &") unless defined $statPID;
+        system("nohup $statProgHelper $statProgPath &") unless defined $statPID;
     }
     sleep 1;
 }
