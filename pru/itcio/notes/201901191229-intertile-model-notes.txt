@@ -1,4 +1,4 @@
-{103}  -*- text -*-
+{146}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -509,7 +509,7 @@ file info.  Otherwise we're going to have to have that info
 elsewhere, right, and somehow link it to this?
 
 Well, finish the mfz metadata gathering first, then come back to
-this. 
+this.
 
 :33]
 and that's all..[32:
@@ -679,7 +679,7 @@ Mon Feb  4 22:43:13 2019 And we're going to have to be veeeery careful
 about making and distributing updates that affect the cdm protocol
 itself.  We ultimately want to distribute cdm using cdm, which means
 adjacent protocol versions must always be forward and backward
-compatible. 
+compatible.
 
 While at the moment we don't even have a cdm protocol version.
 
@@ -688,7 +688,7 @@ crap at the end of a packet, and future versions must only add shit at
 the end, or else deal with the backward compatibility.
 
 But anyway, we're just accepting that as technical debt at the moment.
-CONTENT MUST MOVE!  NOW NOW NOW. 
+CONTENT MUST MOVE!  NOW NOW NOW.
 
  :46]
 [48:
@@ -743,7 +743,7 @@ synced to the screengrab audio.
 
 (Plus trying to get the damn CDM stuff working first.  Ahem.)
 
-Now let's foggen get CDM actually MOVING some effen FILES. 
+Now let's foggen get CDM actually MOVING some effen FILES.
 
 Where we we?  Last design snarl I remember was realizing we really did
 want to distinguish common/ and pending/ and to build incoming files
@@ -801,9 +801,9 @@ Wed Feb  6 07:21:15 2019 OK, so have we defined packets for file
 transfer yet? ..yes, back in :42:, but I guess we need to redo it to
 include the sku..
 
-[58: 
+[58:
 
-Wed Feb  6 07:40:21 2019 
+Wed Feb  6 07:40:21 2019
 
 Request a chunk with a CDM C type packet, for 'chunk' or 'content'
 Format of C type is:
@@ -853,7 +853,7 @@ C type: Content request
 
 D type: Data reply
 
-Format 1 (C denied): 0x80 | dir, 0x03, 'D', len+sku, 0, 
+Format 1 (C denied): 0x80 | dir, 0x03, 'D', len+sku, 0,
 
 Format 2 (Has data): 0x80 | dir, 0x03, 'D', len+sku, len+startingIndex, len+data, 2+hack16
 
@@ -909,7 +909,7 @@ expected to be low.
 And we're only going to serve content from common/, so we only need to
 look for finfos there.[67:
 
-Wed Feb  6 17:44:37 2019 Buuut we receive content into pending/, so we 
+Wed Feb  6 17:44:37 2019 Buuut we receive content into pending/, so we
 also have to look for finfos by sku in there.  We can't just have the
 one global seqno map and use it for inbound D types.  seqno's are only
 unique on per-neighbor, we have to store and look them up on that
@@ -973,7 +973,7 @@ complaining about an unrecognized handle and asking us what we want to
 do.
 
 (1) What does 'mfzrun verify' do with an unrecognized handle?
-(2) How can we detect an unrecognized handle without having to 
+(2) How can we detect an unrecognized handle without having to
     supply input to a subprocess?[73:
 
 Wed Feb  6 23:13:34 2019 We can check the exit status of 'mfzmake
@@ -1150,7 +1150,7 @@ for them as part of triggering.
 
 So overall we'd say, for a rule to trigger, all this must hold:
 
-(1) File name must match MFZ NAME 
+(1) File name must match MFZ NAME
 (2) Handle/pubkey must be in AUTHORIZED SET
 (3) Manifest must contain FILE PATHS
 
@@ -1190,7 +1190,7 @@ think.  If the file name is right and the pubkey is right and some
 single, top-level 'MFZ-NAME.txt' file exists and matches, then that's
 it, we're good to go.  We position all the other contained files
 anywhere in the fricken file system, and restart some services or
-whatever. 
+whatever.
 
 We could generate MFZ-NAME.txt automatically in mfzmake, couldn't we?
 It needs to be down in the inner zip, like MFZPUBKEY.DAT but unlike
@@ -1204,7 +1204,7 @@ Sun Feb 17 03:08:01 2019 Ah, good boy:
 
     Error: 'MFZPUBKEY.DAT' is handled automatically, cannot pack it explicitly
     Type '/usr/bin/mfzmake help' for help
-    root@beaglebone:/# 
+    root@beaglebone:/#
 
 [88:
 
@@ -1224,10 +1224,10 @@ and then:
       -rw-rw-rw-       689  17-Feb-2019  03:11:04  MFZ.ZIP
     - ----------  --------  -----------  --------  ----------
                            861                         2 files
-                       
+
 and
     MFZ.ZIP
-    
+
     M Filemode      Length  Date         Time      File
     - ----------  --------  -----------  --------  ------------------------------------------
       -rw-r--r--       280  17-Feb-2019  03:11:04  MFZPUBKEY.DAT
@@ -1247,7 +1247,7 @@ Sun Feb 17 03:23:41 2019 Looks like maybe:
     ZONGABS(/MFZPUBKEY.DAT)
     ZONGABS(/last-clams-before-deletion-is-possible.txt)
     Wrote 'norg2.mfz'
-    root@beaglebone:/# 
+    root@beaglebone:/#
 
 And mfzmake is already 'abs_path'ing the files.. we 'just' need to
 check for special-at-top-level files after rather than before doing
@@ -1434,7 +1434,7 @@ So back to the single deleted.map file inside cdm-deleted.mfz.
 :96]
 
 :95]
-         
+
 :94]
 
 :93]
@@ -1447,6 +1447,544 @@ cdmctl generating new and updated /cdm/common/cdm-deleteds.mfz files.
 At the moment cdm.pl is not 'triggering' on them -- so in fact no actual
 deletions are happening, still, doh -- but the updated
 cdm-deleteds.mfz files are getting propagated around the grid
-successfully. 
+successfully.
 
 :102]
+[103:
+
+Wed Jun 12 05:16:12 2019 OK so only four months later we are back here
+again.  So we'd already mentioned /dev/itc/mfm as early as :7: above,
+and that's what we're thinking we want to implement now.
+[104:
+
+Wed Jun 12 06:12:04 2019 Back from walk.  And note we'd pretty much
+totally forgotten that '/home/t2/T2-12/apps/cdm/cdmctl' actually
+exists. [105:
+
+Wed Jun 12 07:07:06 2019 Which we've now punched up a little bit, and
+refreshed for our current keymaster key and structure.  And note re
+the 'DOS' discussion in :96: above, without the keymaster private key
+one can't release a functional cmd-deleted.mfz anyway, so that's just
+another thing hanging off the same private key, rather than a separate
+distributed programming issue..
+
+:105]
+
+:104]
+:103]
+[106:
+
+Wed Jun 12 07:11:04 2019 So, anyway, anyway.  Back to LKM land.[107:
+
+Wed Jun 12 07:21:45 2019 In /home/t2/T2-12/pru/itcio/module/itc_pkt.h,
+we see:
+
+    #define MAX_PRU_DEVICES 2       /* PRU0, PRU1*/
+    #define MINOR_DEVICES (MAX_PRU_DEVICES+1)  /* +1 for the ITC packet interface */
+
+and couldn't we add another one in there for an MFM packet interface?
+[111: Wed Jun 12 09:02:07 2019
+
+DONE (or, messed with that anyway.)
+
+:111]
+[108:
+
+Wed Jun 12 07:31:25 2019
+
+[114: Wed Jun 12 09:13:17 2019
+DONE :114] - We'd add another kfifo, mfmPacketKfifo.[112: Wed Jun 12 09:03:14
+  2019 and?
+
+[115: Wed Jun 12 09:13:39 2019
+DONE :115] - We'd add another wait_queue mfmPacketWaitQ?[113: Yes I think so.
+   And also
+
+[116: Wed Jun 12 09:13:54 2019
+DONE :116] - We'd add another mutex, mfmLock.
+
+:113]
+
+:112]
+
+ - We'd make another const struct file_operations, mfm_pkt_fops. [109:
+     Wed Jun 12 07:59:30 2019 Would we?  Maybe not.
+
+[117: Wed Jun 12 09:16:54 2019
+DONE :117] - We'd extend make_itc_minor, for example around itc_pkt.c:876, with
+   stuff like
+
+      if (minor_obtained == 3)
+        snprintf(devname,BUFSZ,"itc!mfm");
+
+
+:109]
+
+[118: Wed Jun 12 09:20:11 2019
+DONE :118] - We'd add a new case to itc_pkt_read for our new mfm case 3, that
+   would look much like case 2 but on a different kfifo.
+
+[119: Wed Jun 12 09:22:12 2019
+DONE :119] - We'd change itc_pkt_write around itc_pkt.c:475 to include minor
+   3 as well as minor 2, so mfm packets would go through standard
+   packet routing.
+
+[120: Wed Jun 12 09:22:48 2019
+DONE :120] - We'd change itc_pkt_cb around itc_pkt.c:703 to check the 'mfm' bit
+   in the type byte, and divert to using S.mfmPacketKfifo and
+   S.mfmPacketWaitQ if it's set.
+
+[121: Wed Jun 12 09:23:09 2019 Made it a loop
+DONE :121] - We'd check what's going on in itc_pkt_probe with all that minor==2
+   stuff to see if it needs to be generalized or duplicated for minor
+   3.
+[110:
+
+Wed Jun 12 08:57:36 2019 Well, is this more or less try-able?
+
+:110]
+:108]
+
+:107]
+
+:106]
+[122:
+
+Wed Jun 12 09:23:22 2019 OK well I did all the implicit TODO I'd made
+up. [123:
+
+Wed Jun 12 09:24:47 2019 And it compiles.  But nap time before I try
+running this s'cah.
+
+:123]
+
+:122]
+[124:
+
+Wed Jun 12 13:10:00 2019 OK trying it..[125:
+
+Wed Jun 12 13:10:45 2019 Well would you look at that:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# ls -l /dev/itc/
+    total 0
+    crw------- 1 root root 247, 0 Jun 10 12:21 locks
+    crw------- 1 root root 246, 3 Jun 12 13:10 mfm
+    crw------- 1 root root 246, 2 Jun 12 13:10 packets
+    crw------- 1 root root 246, 0 Jun 12 13:10 pru0
+    crw------- 1 root root 246, 1 Jun 12 13:10 pru1
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module#
+
+and /dev/itc/packets is minor 3 and everything.  [126:
+
+Wed Jun 12 13:12:24 2019 Looks like /dev/itc/packets might still be
+working:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /dev/itc/packets
+    ÖAÖFcdmd-T2-12.mfz987765ı°M“yNsü•î0bœ
+    156017469010áFBONGERS.mfz7509*·‰»S=hÔ´πeYcäö
+    15494995928áFcdmd-t2.mfz314460f¥Jß÷nü/e#A¶w›
+    156023444815ÖF	CDM11.mfz12066ØWèÎ_ {/∂Ûsñ¸o#›
+    154986702213ÖFPONGERS.mfz7509*·‰»S=hÔ´πeYcäö
+    154949959211ÇFcdmd-T2-12.mfz987765ı°M“yNsü•î0bœ
+    15601746908áFcdm-distrib-T2-GFB.mfz7780Ft¡¯7v˚iaaƒª˝
+    15597802765ÇFcdm-distrib-T2-GFB.mfz7780Ft¡¯7v˚iaaƒª˝
+    155978027613ÖFcdmd-devbins.mfz682276e⁄ÉÏzxAÊ>˘C3Û>Ã⁄
+    15601239402ÇFcdm-distrib-T2-GFB.mfz7780Ft¡¯7v˚iaaƒª˝
+    155978027613áFcdm-distrib-MFM.mf16903483à’vzÉæ`è%íØ⁄ª
+    15600916064ÖFcdmd-MFM.mf10417990À›à9=ÃànôXh|Xè
+    156021665012ÅFcdm-distrib-MFM.mf16903483à’vzÉæ`è%íØ⁄ª
+    156009160610áFcdmd-T2-12.mfz987765ı°M“yNsü•î0bœ
+    15601746902ÖFcdmd-T2-12.mfz987765ı°M“yNsü•î0bœ
+    156017469010ÇFcdmd-T2-12.mfz987765ı°M“yNsü•î0bœ
+    15601746908ÖFcdm-distrib-MFM.mf16903483à’vzÉæ`è%íØ⁄ª
+    15600916065ÉAáFcdmd-MFM.mf10417990À›à9=ÃànôXh|Xè
+    156021665010ÖFPONGERS.mfz7509*·‰»S=hÔ´πeYcäö
+    154949959211ÇFBONGERS.mfz7509*·‰»S=hÔ´πeYcäö
+    15494995925ÖAÇF	CDM11.mfz12066ØWèÎ_ {/∂Ûsñ¸o#›
+    154986702211áFcdm-distrib-T2-GFB.mfz7780Ft¡¯7v˚iaaƒª˝
+    CDM11COPY.mfz12066ØWèÎ_ {/∂Ûsñ¸o#›
+    15498670223  C-c C-c
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module#
+
+Which sure look like advertisements inbound from the neighbors.  Now
+why it that there's a newline just before the tag in all those
+packets?
+
+
+:126]
+
+:125]
+
+:124]
+[127:
+
+Wed Jun 12 17:31:47 2019 OK well we're starting up apparently cleanly
+again, after I wasted an hour or so by not rebooting and therefore
+having an major:minor in use that shouldn't have existed.  Doh and doh.
+
+So now I guess we need a legal-looking mfm packet to trying echoing
+into /dev/itc/mfm..  And I guess the current status of packet format
+development is something like:
+
+      BYTE 0                                   BYTE 1                                   BYTE 2
+      STND LOCL MFMT
+     +----------------------------------------++---------------------------------------++----------------+
+     |  1 |  0 | 1  |OVRN||EROR|DIR2|DIR1|DIR0||    MFM PKT FORMAT...                  ||
+     +----------------------------------------++---------------------------------------++----------------+
+
+Do we get to screw around imagining all-sancing MFM packet formats here now?[128:
+
+Wed Jun 12 21:23:31 2019 Well, now after evening break, maybe we get
+to think about it a little.  But really, we already have a cache
+protocol, right?  How well does or doesn't it just drop in, here?[129:
+
+Wed Jun 12 21:28:48 2019 Well, in src/core/include/CacheProcessor.tcc,
+we see
+
+        u8 byte = (u8) plen;  // plen<128 since OString128..
+        m_channelEnd.Write(&byte, 1);  // Packet length, then data
+        m_channelEnd.Write((const u8 *) pb.GetBuffer(), plen);
+
+with no direction info since m_channelEnd is point-to-point so it
+already knows.  But since we have OoB packet framing, we wouldn't need
+the plen -- and we might prefer having a checksum instead.[130:
+
+Wed Jun 12 22:07:46 2019 Also looks like we'd want to replace the
+ChannelEnd abstraction since it expects to accumulate the bytes of a
+packet but on the T2 packets will be handled atomically.[131:
+
+Wed Jun 12 22:16:31 2019 So the MFM packet payloads are way small --
+like a type byte plus one atom, or a type byte plus two shorts.  If
+we're adding a routing byte plus a packet terminator to each of those
+that could be pretty signficant overhead.[132:
+
+Wed Jun 12 22:24:23 2019 So, the CacheProcessor already buffers up a
+whole bunch of 'packets', in the form of CachePacketInfo structs,
+inside its m_toSend array.  But when it gets to AdvanceShipping, it
+breaks that back down to individual PacketIO::SendAtom chunks.
+
+On the receiving side, the small individual packets are handled as
+they are seen from ChannelEnd::ReceivePacket(); there's no inbound
+buffering.  In principle, with smaller packets, the whole update
+process would be pipelined between the two tiles -- the receiver could
+be applying changes before the send has finished sending them
+all.[133:
+
+Wed Jun 12 23:21:06 2019 But in any event it seems we should leave the
+cache protocol semantics alone until we have things working that way.
+So we'll have little packets with a lot of overhead.
+
+But we could still have other types of mfm packets beyond cache
+packets -- like here's my simulation id, request to clear the world,
+restart mfm, reboot t2, whatever.  Potentially in both p2p and flood
+versions.
+
+Now, if these cache packets really are so tiny, we could carve off
+byte 7 at least and put the length right in byte 1:
+
+      BYTE 0                                   BYTE 1                       BYTE 2            BYTE 3
+      STND LOCL MFMT                            SPEC
+     +----------------------------------------++---------------------------++----------------++--
+     |  1 |  0 | 1  |OVRN||EROR|DIR2|DIR1|DIR0||  0 | MFM CACHE PKT LENGTH || CACHE PKT TYPE ||
+     +----------------------------------------++---------------------------++----------------++--
+     +----------------------------------------++---------------------------++----------------++--
+     |  1 |  0 | 1  |OVRN||EROR|DIR2|DIR1|DIR0||  1 | MFM SPECIAL TYPE     || MFM SPEC TYPE ARGS..
+     +----------------------------------------++---------------------------++----------------++--
+
+with the understanding that if the t2 packet length was bigger than
+the mfm cache pkt len, that means there's another mfm cache pkt in the
+same t2 pkt?  Blows the ignore-excess-packet-for-forward-compatibility
+theory mentioned around here somewhere -- but if we say a 0 byte in
+the length position means end we could have it back sort of.  Or if we
+just say ignore and skip unknown packet types like MOV file chunks etc.
+
+[134:
+
+Thu Jun 13 00:20:49 2019 How actually are we going to identify the
+simulation we are running?  Do we need an mfmt2 argument so mfzrun can
+pass info in?[135:
+
+Thu Jun 13 00:22:46 2019 We also need to remember we want to
+prioritize mfm packets outbound.  Where does that happen?  We want the
+mfm kfifo to be flat empty before we consider /dev/itc/packets
+traffic.[136:
+
+Thu Jun 13 00:28:50 2019 Umm we don't have any outbound kfifos, we
+just blast packets directly to rpmsg_send and tough noogies if there's
+no rpmsg bufs available.  So /dev/itc/packets and /dev/itc/mfm are
+first-come-first-serve serialized by rpmsg -- and umm where is the
+lock controlling access to that?  itc_pkt_write(..) doesn't appear to
+ever lock anything, but at least the following are shared data:
+
+  static unsigned char driver_buf[RPMSG_BUF_SIZE];
+    - where we buffer the message in kernel space
+
+  devstate = S.dev_packet_state[newMinor];
+    - the state for pru0 or pru1, including
+
+  devstate->rpmsg_dev
+    - the thing we actually send the messages on.
+
+[137:
+
+Thu Jun 13 00:56:00 2019 Maybe we should make an outbound kernel
+thread that pumps out the rpmsg bufs.  We'll make two outbound kfifos
+-- a priority lane for mfm, and a background process for itc -- and
+have them share one waitqueue.  minor 2 writes to the itc fifo and
+wakes the shared queue, minor 3 writes to the mfm fifo and does the
+same.  The kernel thread makes rpmsg bufs as fast as it can.  Now
+when rpmsg bufs are exhausted and the thread has to sleep, who wakes
+it up again?  It's got to be the rpmsg interrupt that we didn't really
+believe in so much, ugh.  Well we could have it be a short sleep.
+
+It's a lot more complexity, and another layer of buffering.  Vs just
+putting a lock around much of itc_pkt_write.
+
+(Are we even safe on the read side?  I bet not either.  But sleep now.)
+[138:
+
+Thu Jun 13 07:29:10 2019 Well, looks like the read side has the
+potential to be already okay, because of the existing kfifos.  People
+trying to read /dev/itc/pru0 fight to acquire pru0's specialLock
+mutex, and ditto for /dev/itc/pru1.  Once they have it, they block on
+pru0's or pru1's private specialWaitQ until the the appropriate kfifo
+(global S.special0Kfifo or S.special1Kfifo) is non-empty.
+
+The same happens for /dev/itc/packets -- fight for S.standardLock,
+wait on S.itcPacketWaitQ, until S.itcPacketKfifo is non-empty.  Ditto
+/dev/itc/mfm, fight for S.mfmLock, wait on S.mfmPacketWaitQ, until
+S.mfmPacketWaitQ is non-empty.
+
+So read side might be okay.  And the only reason we've gotten away
+with the existing write side is that we actually had only one
+user-space writer.  Which is precisely what we are changing now.
+
+What other alternatives are there?  Put a single lock around all write
+activity, so only one process can get to rpmsg_send at a time.[139:
+
+Thu Jun 13 09:09:40 2019 So I'm pretty conflicted about what to do
+here.  A 'priority lane' for mfm seems like the right thing to do, but
+just putting a lock around all writing seems like the easier thing to
+try.
+
+Fuck it, it's only Thursday.  Let's try to code up the priority lane.
+
+[140:
+
+Thu Jun 13 10:21:05 2019 Well here's another thing.  If we're tearing
+up itc_pkt much at all, there's a variety of crap that seems like it
+needs rewriting/cleaning.  Such as the comment in itc_pkt.h:
+
+    /* per maj,min device -- so in our case, per PRU */
+    typedef struct itc_dev_state {
+     ..
+    } ITCDeviceState;
+
+
+which just isn't true given that we have two PRUs but four minors --
+and in fact we do make four of them, via
+
+    typedef struct itc_pkt_driver_state {
+  ..
+      ITCDeviceState    * (dev_packet_state[MINOR_DEVICES]); /* ptrs to all our device states */
+    } ITCPacketDriverState;
+
+and
+
+    static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
+    {
+      int ret;
+      ITCDeviceState *devstate;
+      int minor_obtained;
+  ..
+      minor_obtained = rpmsg_dev->dst - 30;
+
+      devstate = make_itc_minor(&rpmsg_dev->dev, minor_obtained, &ret);
+  ..
+      S.dev_packet_state[minor_obtained] = devstate;
+
+
+and
+
+    for (i = 2; i <= 3; ++i) {
+ ..
+      S.dev_packet_state[i] = make_itc_minor(&rpmsg_dev->dev, i, &ret);
+
+
+It really seems like that should be rewritten to be per PRU and the
+minor stuff should be handled separately sort of as an overlay.. but
+that's a complete redesign of the code, which implies a complete
+restabilization of a big pile of new code.
+
+:140]
+
+:139]
+
+:138]
+:137]
+
+:136]
+
+:135]
+
+:134]
+
+
+:133]
+
+:132]
+
+:131]
+
+:130]
+
+:129]
+
+:128]
+
+
+:127]
+[141:
+
+Thu Jun 13 15:39:48 2019 Let's think about the design then.  I need to
+dig in.
+
+Annotated structs:
+
+typedef struct itc_dev_state {
+  struct rpmsg_channel *rpmsg_dev;
+
+   - channel provided to us in itc_pkt_probe when the PRUs are being
+     booted and their handling module is being initted.
+
+   - itc_pkt_probe gets called with a different rpmsg_dev for each PRU
+     (I believe), but since we init /dev/itc/packets and /dev/itc/mfm
+     during the first probe, their 'parent' is set to whichever
+     rpmsg_dev we saw first.
+
+     = I suspect that means that the ITCDeviceState dynamically
+       allocated by devm_kzalloc for packets and mfm will both be
+       released when that first-probed PRU is being 'detached', which
+       is I hope harmless.
+
+
+  struct device *dev;
+
+   - Pointer to our 'parent' device in rpmsg_dev.  Used in dev_err and
+     dev_info calls, at least.
+
+  struct mutex specialLock; /*if held, a special packet roundtrip is in progress*/
+
+   - lock hold by the low-level roundtrip packet comm between lkm and
+     pru, used in these cases:
+
+     = itc_pkt_read takes it before reading from S.special0Kfifo or 1.
+
+     = send_msg_to_pru takes it around a call to rpmsg_send plus a
+       wait for a return packet on S.special0Kfifo or 1.
+       send_msg_to_pru is used for 'atomic' access to PRU resources in
+       itc_pin_write_handler and itc_pin_read_handler, and to send the
+       initial 'throat clearing' packet after the PRUs boot.  And, I
+       think, that's it.
+
+  wait_queue_head_t specialWaitQ;
+
+   - A wait queue associated the above specialLock, and indirectly
+     through that to the S.special[01]Kfifo
+
+   - I really don't understand why I have the specialKfifo's as
+     globals rather than just as data members in this struct.
+  
+  bool dev_lock;
+
+   - A flag enforcing a single simultaneous open on the inode, used
+     only in itc_pkt_open and itc_pkt_release, and seems fine for it's
+     purpose -- especially as creating /dev/itc/mfm means we don't
+     need multiple simultaneous opens on any single inode anyway.
+
+  struct cdev cdev;
+
+   - Linux' struct for a char device, with the file operations
+
+  dev_t devt;
+
+   - The major,minor for this device.
+
+} ITCDeviceState;[142:
+
+Thu Jun 13 17:07:16 2019 Well, that took forever.  And it still leaves
+open the question of whether we want to use ITCDeviceState's for our
+virtual devices.  What might it look like if we didn't?
+
+#define PRU_MINORS 2   /* low-level access to PRU0, PRU1*/
+#define PKT_MINORS 2   /* processed access to itc, mfm */
+#define MINOR_DEVICES (PRU_MINORS + PKT_MINORS) 
+
+in global driver state S --
+
+..
+  ITCPRUDeviceState * (dev_pru_state[PRU_MINORS]);  /* ptrs to state for /dev/itc/pru[01] */
+  ITCPktDeviceState * (dev_pkt_state[PKT_MINORS]);  /* ptrs to state for /dev/itc/{packets,mfm,?}*/
+..
+
+/* per rpmsg-probed PRU device - /dev/itc/pru[01] */
+typedef struct {
+  struct rpmsg_channel *rpmsg_dev;
+  struct device *dev;
+
+  struct mutex specialLock;        /* if held, a special packet roundtrip is in progress*/
+  wait_queue_head_t specialWaitQ;  /* where to wait if special packet roundtrip in progress*/
+  SpecialPacketFIFO specialKfifo;  /* buffer for inbound special packets */
+
+  bool dev_lock;
+  struct cdev cdev;
+  dev_t devt;
+} ITCPRUDeviceState;
+
+/* per 'virtual' packet device - /dev/itc/{packets,mfm} */
+typedef struct {
+  struct device *dev;
+
+  ITCPacketFIFO     pktKfifo;      /* buffer for all inbound packets on this device */
+  wait_queue_head_t pktWaitQ;      /* for people blocking on this device */
+  struct mutex      pktReadLock;   /* lock for reading packets on this device */
+
+  bool dev_lock;
+  struct cdev cdev;
+  dev_t devt;
+} ITCPktDeviceState;
+
+and for outbound virtual packets, the write fops would use
+S.dev_pru_state[minorNeeded] to get to the rpmsg_channel we need.
+While for inbound virtual packets, the cb fops would use
+S.dev_pkt_state[pktType] to get to the kfifo to stash in.
+
+[143:
+
+Thu Jun 13 17:42:46 2019 Well this is a giant redo but it feels kind
+of right.  But, time for cocktails.
+
+:143]
+
+:142]
+
+
+:141]
+[144:
+
+Fri Jun 14 01:45:48 2019 OK, things are all torn up.  Stopping for
+tonight on this issue: Now we have separate kfifos for mfm vs itc
+packets, but don't we also need to multiply that by PRU0 and PRU1
+destinations?  The packet callback is per-pru; it needs to get just
+what it needs.
+
+So that means another reorg of the structs, at least.
+
+:144]
+[145:
+
+Fri Jun 14 15:42:57 2019 Well, it's time to pack up for the weekend.
+Checkpointing all this stuff -- in its unbuildable glory, so there'll
+be at least one obvious prompt to get us going again. 
+
+:145]

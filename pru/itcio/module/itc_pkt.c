@@ -56,23 +56,23 @@ static ITCTrafficStats * getITCTrafficStats(u8 pru, u8 prudir)
   return getITCTrafficStatsFromDir(dir);
 }
 
-static void initITCPacketDriverState(ITCPacketDriverState *s)
+static void initITCModuleState(ITCModuleState *s)
 {
-  INIT_KFIFO(s->itcPacketKfifo);
-  INIT_KFIFO(s->special0Kfifo);
-  INIT_KFIFO(s->special1Kfifo);
-  init_waitqueue_head(&s->itcPacketWaitQ); 
-  mutex_init(&s->standardLock);
-  s->open_pru_minors = 0;
   {
     unsigned i;
-    for (i = 0; i < MINOR_DEVICES; ++i) s->dev_packet_state[i] = 0;
+    for (i = 0; i < PRU_MINORS; ++i) s->mPRUDeviceState[i] = 0;
+    for (i = 0; i < PKT_MINORS; ++i) s->mPktDeviceState[i] = 0;
     for (i = 0; i < ITC_DIR_COUNT; ++i) initITCTrafficStats(&s->itcStats[i], i);
   }
+
 #if MORE_DEBUGGING
-   s->debugFlags = 0xf; // default some debugging on
+  s->debugFlags = 0xf; /* some default debugging */
+#else
+  s->debugFlags = 0;  /* or no default debugging */
 #endif
-   s->itcEnabledStatus = 0;  // Assume all dirs disabled
+
+  s->open_pru_minors = 0;
+  s->itcEnabledStatus = 0;  // Assume all dirs disabled
 }
 
 __printf(5,6) int send_msg_to_pru(unsigned prunum,
@@ -84,13 +84,17 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
   int ret = 0;
   unsigned len;
   va_list args;
-  ITCDeviceState *devstate;
+  ITCPRUDeviceState * prudevstate;
+  ITCPacketBuffer * specialpb;
 
   BUG_ON(prunum > 1);
 
-  devstate = S.dev_packet_state[prunum];
-  BUG_ON(!devstate);
-  BUG_ON(!devstate->rpmsg_dev);
+  prudevstate = S.mPRUDeviceState[prunum];
+  BUG_ON(!prudevstate);
+
+  specialpb = &prudevstate->mSpecialPB;
+
+  BUG_ON(!prudevstate->mRpmsgChannel);
 
   va_start(args, fmt);
   len = vsnprintf(buf, bufsiz, fmt, args);
@@ -107,7 +111,7 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
     len = RPMSG_MAX_PACKET_SIZE - 1;
   }
 
-  if (mutex_lock_interruptible(&devstate->specialLock))
+  if (mutex_lock_interruptible(&specialpb->mLock))
     return -ERESTARTSYS;
 
   DBGPRINT_HEX_DUMP(DBG_PKT_SENT,
@@ -115,17 +119,14 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
                     DUMP_PREFIX_NONE, 16, 1,
                     buf, len, true);
 
-  ret = rpmsg_send(devstate->rpmsg_dev, buf, len);
+  ret = rpmsg_send(prudevstate->mRpmsgChannel, buf, len);
 
   /* Wait, if we're supposed to, for a packet in our kfifo */
   if (wait) {
-    SpecialPacketFIFO *kfifop;
-
-    if (prunum == 0) kfifop = &S.special0Kfifo;
-    else kfifop = &S.special1Kfifo;
+    ITCPacketFIFO * kfifop = &specialpb->mQueue;
 
     while (kfifo_is_empty(kfifop)) {
-      if (wait_event_interruptible(devstate->specialWaitQ, !kfifo_is_empty(kfifop))) {
+      if (wait_event_interruptible(specialpb->mWaitQ, !kfifo_is_empty(kfifop))) {
         ret = -ERESTARTSYS;
         break;
       }
@@ -136,7 +137,7 @@ __printf(5,6) int send_msg_to_pru(unsigned prunum,
         printk(KERN_WARNING "kfifo was empty\n");
   }
 
-  mutex_unlock(&devstate->specialLock);
+  mutex_unlock(&specialpb->mLock);
   return ret;
 }
 
@@ -226,13 +227,6 @@ static ssize_t itc_pin_write_handler(unsigned pru, unsigned prudir, unsigned bit
   if (val > 1)
     return -EINVAL;
 
-  /*
-  printk(KERN_INFO "HI CLASS STORE %p ATTR %p (pru=%u,prudir=%u,bit=%u)(val=%u)\n",
-         c, attr,
-         pru, prudir, bit,
-         val);
-  */
-
   /* We wait for a return just to get it out of the buffer*/
   ret = send_msg_to_pru(pru, 1, msg, RPMSG_MAX_PACKET_SIZE, "B%c%c-", bit, val);
   if (ret < 0) return ret;
@@ -256,12 +250,6 @@ static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
 {
   char msg[RPMSG_MAX_PACKET_SIZE];
   int ret;
-
-  /*
-  printk(KERN_INFO "HI FROM CLASS %p ATTR %p (pru=%u,prudir=%u,bit=%u)\n",
-         c, attr,
-         pru, prudir, bit);
-  */
 
   ret = send_msg_to_pru(pru, 1, msg, RPMSG_MAX_PACKET_SIZE, "Rxxxx-");
   if (ret < 0) return ret;
@@ -351,23 +339,23 @@ static struct class_attribute itc_pkt_class_attrs[] = {
 static int itc_pkt_open(struct inode *inode, struct file *filp)
 {
   int ret = -EBUSY;
-  ITCDeviceState * devstate;
-  devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
+  /* All our device state structs begin with an ITCCharDevState! */
+  ITCCharDevState * cdevstate = (ITCCharDevState *) inode->i_cdev;
 
 #if MORE_DEBUGGING
   printk(KERN_INFO "itc_pkt_open %d:%d\n",
-         MAJOR(devstate->devt),
-         MINOR(devstate->devt));
+         MAJOR(cdevstate->mDevt),
+         MINOR(cdevstate->cDevt));
 #endif
 
-  if (!devstate->dev_lock) {
-    devstate->dev_lock = true;
-    filp->private_data = devstate;
+  if (!cdevstate->mDeviceOpenedFlag) {
+    cdevstate->mDeviceOpenedFlag = true;
+    filp->private_data = cdevstate;
     ret = 0;
   }
 
   if (ret)
-    dev_err(devstate->dev, "Device already open\n");
+    dev_err(cdevstate->mLinuxCdev, "Device already open\n");
 
   return ret;
 }
@@ -379,16 +367,16 @@ static int itc_pkt_open(struct inode *inode, struct file *filp)
  */
 static int itc_pkt_release(struct inode *inode, struct file *filp)
 {
-  ITCDeviceState *devstate;
+  /* All our device state structs begin with an ITCCharDevState! */
+  ITCCharDevState * cdevstate = (ITCCharDevState *) inode->i_cdev;
 
-  devstate = container_of(inode->i_cdev, ITCDeviceState, cdev);
 #if MORE_DEBUGGING
   printk(KERN_INFO "itc_pkt_release %d:%d\n", 
-         MAJOR(devstate->devt),
-         MINOR(devstate->devt));
+         MAJOR(cdevstate->mDevt),
+         MINOR(cdevstate->mDevt));
 #endif
 
-  devstate->dev_lock = false;
+  cdevstate->mDeviceOpenedFlag = false;
 
   return 0;
 }
@@ -399,19 +387,12 @@ static void setITCEnabledStatus(int pru, int prudir, int enabled) {
   if (enabled) S.itcEnabledStatus |= (0x1<<dirnum4);
 }
 
-#if 0
-static int isITCEnabledStatus(int pru, int prudir) {
-  int dirnum4 = mapPruAndPrudirToDirNum(pru,prudir)<<2;
-  return (S.itcEnabledStatus>>dirnum4)&0x1;
-}
-#endif
-
 static int isITCEnabledStatusByITCDir(int itcDir) {
   int dirnum4 = itcDir<<2;
   return (S.itcEnabledStatus>>dirnum4)&0x1;
 }
 
-static int routeStandardPacket(const unsigned char * buf, size_t len)
+static int routeOutboundStandardPacket(const unsigned char * buf, size_t len)
 {
   int itcDir;
   int newminor;
@@ -443,8 +424,9 @@ FOR_XX_IN_ITC_ALL_DIR
  *  from user space.  Note that although rpmsg allows messages over
  *  500 bytes long, so that's the limit for talking to a local PRU,
  *  intertile packets are limited to at most 255 bytes.  Here, that
- *  limit is enforced only for minor 2 (/dev/itc/packets) because
- *  packets sent there are necessarily routable intertile.
+ *  limit is enforced only for minor 2 (/dev/itc/packets) and minor 3
+ *  (/dev/itc/mfm) because packets sent there are necessarily routable
+ *  intertile.
  *
  *  @param filp A pointer to a file object
  *  @param buf The buffer to that contains the data to write to the device
@@ -456,24 +438,24 @@ static ssize_t itc_pkt_write(struct file *filp,
                              const char __user *buf,
                              size_t count, loff_t *offset)
 {
+  /* All our device state structs begin with an ITCCharDevState! */
+  ITCCharDevState * cdevstate = (ITCCharDevState *) filp->private_data;
+
   int ret;
   static unsigned char driver_buf[RPMSG_BUF_SIZE];
-  ITCDeviceState *devstate;
-
-  devstate = filp->private_data;
 
   if (count > RPMSG_MAX_PACKET_SIZE) {
-    dev_err(devstate->dev, "Data length (%d) exceeds rpmsg buffer size", count);
+    dev_err(cdevstate->mLinuxCdev, "Data length (%d) exceeds rpmsg buffer size", count);
     return -EINVAL;
   }
 
   if (copy_from_user(driver_buf, buf, count)) {
-    dev_err(devstate->dev, "Failed to copy data");
+    dev_err(cdevstate->mLinuxCdev, "Failed to copy data");
     return -EFAULT;
   }
 
-  if (MINOR(devstate->devt) == 2) {
-    int newMinor = routeStandardPacket(driver_buf, count);
+  if (MINOR(cdevstate->mDevt) == 2 || MINOR(cdevstate->mDevt) == 3) {
+    int newMinor = routeOutboundStandardPacket(driver_buf, count);
 
     //    printk(KERN_INFO "CONSIDERINGO ROUTINGO\n");
     if (newMinor < 0) 
@@ -484,30 +466,33 @@ static ssize_t itc_pkt_write(struct file *filp,
       return -EINVAL;
     }
 
+    BUG_ON(newMinor >= 2);
 
-    if (newMinor < 2) {
-      DBGPRINTK(DBG_PKT_ROUTE,
-                KERN_INFO "Routing '%x'+%d packet to PRU%d\n",driver_buf[0],count,newMinor);
-      devstate = S.dev_packet_state[newMinor];
-      BUG_ON(!devstate);
+    DBGPRINTK(DBG_PKT_ROUTE,
+              KERN_INFO "Routing '%x'+%d packet to PRU%d\n",driver_buf[0],count,newMinor);
+    cdevstate = (ITCCharDevState*) S.mPRUDeviceState[newMinor];
+    BUG_ON(!cdevstate);
+  }
+
+  {
+    ITCPRUDeviceState * prudevstate = (ITCPRUDeviceState*) cdevstate;
+
+    ret = rpmsg_send(prudevstate->mRpmsgChannel, (void *)driver_buf, count);
+    if (ret) {
+      dev_err(prudevstate->dev,
+              "Transmission on rpmsg bus failed %d\n",ret);
+      return -EFAULT;
     }
-  }
-
-  ret = rpmsg_send(devstate->rpmsg_dev, (void *)driver_buf, count);
-  if (ret) {
-    dev_err(devstate->dev,
-            "Transmission on rpmsg bus failed %d\n",ret);
-    return -EFAULT;
-  }
 
 #if MORE_DEBUGGING
-  dev_info(devstate->dev,
-           (driver_buf[0]&0x80)?
+    dev_info(devstate->dev,
+             (driver_buf[0]&0x80)?
              "Sending length %d type 0x%02x packet" :
              "Sending length %d type '%c' packet",
-           count,
-           driver_buf[0]);
+             count,
+             driver_buf[0]);
 #endif
+  }
 
   return count;
 }
@@ -570,7 +555,32 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
 
     break;
   }
-    
+
+  case 3: {
+    ITCPacketFIFO * devfifo = &S.mfmPacketKfifo;
+
+    if (mutex_lock_interruptible(&S.mfmLock))
+      return -ERESTARTSYS;
+
+    while (kfifo_is_empty(devfifo)) {
+      if (file->f_flags & O_NONBLOCK) {
+        ret = -EAGAIN;
+        break;
+      }
+      if (wait_event_interruptible(S.mfmPacketWaitQ, !kfifo_is_empty(devfifo))) {
+        ret = -ERESTARTSYS;
+        break;
+      }
+        
+    }
+    if (ret == 0) 
+      ret = kfifo_to_user(devfifo, buf, count, &copied);
+
+    mutex_unlock(&S.mfmLock);
+
+    break;
+  }
+
   default: BUG_ON(1);
   }
 
@@ -605,6 +615,7 @@ static const char * getDirName(u8 dir) {
 static void handleLocalStandard3(int minor, u8* bytes, int len)
 {
   u8 code, pru, prudir, val4;
+  const char * dirname;
   ITCTrafficStats * t;
   if (len < 6 || bytes[5] != ':') {
     printk(KERN_ERR "Malformed locstd3 (len=%d)\n",len);
@@ -616,11 +627,13 @@ static void handleLocalStandard3(int minor, u8* bytes, int len)
   prudir = bytes[3]-'0';
   val4 = bytes[4]-'0';
 
+  dirname = getDirName(mapPruAndPrudirToDirNum(pru,prudir));
+
   t = getITCTrafficStats(pru,prudir);  /* t == 0 if prudir == 3 */
 
   switch (code) {
   default:
-    printk(KERN_INFO "Unhandled locstd3 '%c' (pru=%d, prudir=%d, val4 =%x)\n",code,pru,prudir,val4);
+    printk(KERN_INFO "(%s) Unhandled locstd3 '%c' (pru=%d, prudir=%d, val4 =%x)\n",dirname,code,pru,prudir,val4);
     break;
 
   case 'P': // Announcing packet sync on pru,prudir
@@ -630,7 +643,7 @@ static void handleLocalStandard3(int minor, u8* bytes, int len)
     break;
     
   case 'F': // Announcing sync failure on pru,prudir
-    printk(KERN_INFO "Packet framing error reported (pru=%d, prudir=%d, val4 =%x)\n",pru,prudir,val4);
+    printk(KERN_INFO "(%s) Packet framing error reported (pru=%d, prudir=%d, val4 =%x)\n",dirname,pru,prudir,val4);
     setITCEnabledStatus(pru,prudir,0);
     BUG_ON(!t);
     ++t->syncFailureAnnouncements;
@@ -697,8 +710,14 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_dev,
           len = ITC_MAX_PACKET_SIZE;
         }
 
-        kfifo_in(&S.itcPacketKfifo, data, len);
-        wake_up_interruptible(&S.itcPacketWaitQ);
+        if (type&PKT_HDR_BITMASK_MFMT) {
+          kfifo_in(&S.mfmPacketKfifo, data, len);
+          wake_up_interruptible(&S.mfmPacketWaitQ);
+        } else {
+          kfifo_in(&S.itcPacketKfifo, data, len);
+          wake_up_interruptible(&S.itcPacketWaitQ);
+        }
+
       } else {                             // Standard local packet
         switch (type&PKT_HDR_BITMASK_LOCAL_TYPE) {
         default:
@@ -752,21 +771,30 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_dev)
     return -ENODEV;
   }
 
-  /* If first minor, first open packet device*/
+  /* If first minor, first open packet and mfm devices */
   if (S.open_pru_minors == 0) {
 
-    BUG_ON(minor_obtained == 2);
+    unsigned i;
 
-    S.dev_packet_state[2] = make_itc_minor(&rpmsg_dev->dev, 2, &ret);
+    BUG_ON(minor_obtained == 2 || minor_obtained == 3);
 
-    printk(KERN_INFO "GROZ made minor 2=%p SLORG\n",S.dev_packet_state);
+    for (i = 2; i <= 3; ++i) {
 
-    if (!S.dev_packet_state[2])
-      return ret;
+      printk(KERN_INFO "ZROG making minor %d (on minor_obtained %d)\n", i, minor_obtained);
 
-    S.dev_packet_state[2]->rpmsg_dev = 0;
-    ++S.open_pru_minors;
+      S.dev_packet_state[i] = make_itc_minor(&rpmsg_dev->dev, i, &ret);
+
+      printk(KERN_INFO "GROZ made minor %d=%p SLORG\n",i,S.dev_packet_state);
+
+      if (!S.dev_packet_state[i])
+        return ret;
+
+      S.dev_packet_state[i]->rpmsg_dev = 0;
+      ++S.open_pru_minors;
+    }
   }
+
+  printk(KERN_INFO "GORZ minor_obtained %d\n",minor_obtained);
 
   BUG_ON(S.dev_packet_state[minor_obtained]);
   
@@ -864,7 +892,7 @@ ITCDeviceState * make_itc_minor(struct device * dev,
                                 int * err_ret)
 {
   ITCDeviceState * devstate;
-  enum { BUFSZ = 16 };
+  enum { BUFSZ = 32 };
   char devname[BUFSZ];
   int ret;
 
@@ -872,8 +900,12 @@ ITCDeviceState * make_itc_minor(struct device * dev,
 
   if (minor_obtained == 2)
     snprintf(devname,BUFSZ,"itc!packets");
+  else if (minor_obtained == 3)
+    snprintf(devname,BUFSZ,"itc!mfm");
   else
     snprintf(devname,BUFSZ,"itc!pru%d",minor_obtained);
+
+  printk(KERN_INFO "ZERGIN: make_itc_minor(%p,%d,%p) for %s\n", dev, minor_obtained, err_ret, devname);
 
   devstate = devm_kzalloc(dev, sizeof(ITCDeviceState), GFP_KERNEL);
   if (!devstate) {
@@ -936,7 +968,7 @@ ITCDeviceState * make_itc_minor(struct device * dev,
 
   devstate->devt = MKDEV(MAJOR(S.major_devt), minor_obtained);
 
-  printk(KERN_INFO "INITTING /dev/%s\n", devname);
+  printk(KERN_INFO "INITTING /dev/%s with minor_obtained=%d (dev=%p)\n", devname, minor_obtained, dev);
 
   cdev_init(&devstate->cdev, &itc_pkt_fops);
   devstate->cdev.owner = THIS_MODULE;
@@ -947,10 +979,20 @@ ITCDeviceState * make_itc_minor(struct device * dev,
     goto fail_cdev_init;
   }
 
+  printk(KERN_INFO "RZOG Back from cdev_init+cdev_add\n");
+
+  printk(KERN_INFO "GRZO going to device_create(%p,%p,devt=(%d:%d),NULL,%s)\n",
+         &itc_pkt_class_instance,
+         dev,
+         MAJOR(devstate->devt), MINOR(devstate->devt),
+         devname);
+
   devstate->dev = device_create(&itc_pkt_class_instance,
                                 dev,
                                 devstate->devt, NULL,
                                 devname);
+
+  printk(KERN_INFO "GOZR Back from device_create dev=%p\n", devstate->dev);
 
   if (IS_ERR(devstate->dev)) {
     dev_err(dev, "Failed to create device file entries\n");
@@ -1018,11 +1060,15 @@ static int __init itc_pkt_init (void)
     goto fail_alloc_chrdev_region;
   }
 
+  printk(KERN_INFO "OKKO\n");
+
   ret = register_rpmsg_driver(&itc_pkt_driver);
   if (ret) {
     pr_err("Failed to register the driver on rpmsg bus");
     goto fail_register_rpmsg_driver;
   }
+
+  printk(KERN_INFO "KOKO\n");
 
   return 0;
 
@@ -1055,7 +1101,8 @@ MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Dave Ackley <ackley@ackleyshack.com>");
 MODULE_DESCRIPTION("T2 intertile packet communications subsystem");  ///< modinfo description
 
-MODULE_VERSION("0.4");            ///< 0.4 for general internal renaming and reorg
+MODULE_VERSION("0.5");            ///< 0.5 for /dev/itc/mfm
+/// 0.4 for general internal renaming and reorg
 /// 0.3 for renaming to itc_pkt
 /// 0.2 for initial import
 

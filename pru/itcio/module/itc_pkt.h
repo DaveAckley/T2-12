@@ -17,7 +17,7 @@
 typedef enum packet_header_bits {
   PKT_HDR_BITMASK_STANDARD  = 0x80,
   PKT_HDR_BITMASK_LOCAL     = 0x40,
-  PKT_HDR_BITMASK_RSRV1     = 0x20,
+  PKT_HDR_BITMASK_MFMT      = 0x20,
 
   // Standard Routed bits
   PKT_HDR_BITMASK_OVERRUN   = 0x10,
@@ -28,8 +28,16 @@ typedef enum packet_header_bits {
   PKT_HDR_BITMASK_LOCAL_TYPE= 0x1f
 } PacketHeaderBits;
 
-#define MAX_PRU_DEVICES 2       /* PRU0, PRU1*/
-#define MINOR_DEVICES (MAX_PRU_DEVICES+1)  /* +1 for the ITC packet interface */
+#define PRU_MINORS 2   /* low-level access to PRU0, PRU1*/
+#define PKT_MINORS 2   /* processed access to itc, mfm */
+
+#define MINOR_DEVICES (PRU_MINORS + PKT_MINORS) 
+#define PRU_MINOR_PRU0 0
+#define PRU_MINOR_PRU1 1
+
+#define PKT_MINOR_ITC 2
+#define PKT_MINOR_MFM 3
+
 #define RPMSG_BUF_SIZE 512
 
 /*Note RPMSG takes up to 500+ but the ITCs need the length to fit in a byte */
@@ -37,8 +45,6 @@ typedef enum packet_header_bits {
 #define ITC_MAX_PACKET_SIZE 255
 
 #define KFIFO_SIZE (1<<12)   /* ITC packets are max 255.  Guarantee space for 16 (256*16 == 4,096 == 2**12) */
-
-/*unused? #define PROC_FIFO "itc-pkt-fifo"*/
 
 /* PRU special packets are expected to be smaller and rarer.  Give them 1KB each */
 #define SPECIAL_KFIFO_SIZE (1<<10)
@@ -58,19 +64,40 @@ typedef enum debug_flags {
 #define DBGPRINTK(mask, printkargs...) do { DBGIF(mask) printk(printkargs); } while (0);
 #define DBGPRINT_HEX_DUMP(mask, printhexdumpargs...) do { DBGIF(mask) print_hex_dump(printhexdumpargs); } while (0);
 
-/* per maj,min device -- so in our case, per PRU */
-typedef struct itc_dev_state {
-  struct rpmsg_channel *rpmsg_dev;
-  struct device *dev;
-  struct mutex specialLock; /*if held, a special packet roundtrip is in progress*/
-  wait_queue_head_t specialWaitQ;
-  bool dev_lock;
-  struct cdev cdev;
-  dev_t devt;
-} ITCDeviceState;
+typedef struct {
+  ITCPacketFIFO     mQueue;        /* a packet queue for some purpose */
+  wait_queue_head_t mWaitQ;        /* for people waiting on this buffer */
+  struct mutex      mLock;         /* lock for modifying this struct */
+} ITCPacketBuffer;
+
+typedef struct {             /* General char device state */
+  bool mDeviceOpenedFlag;    /* true between .open and .close calls */
+  struct cdev mLinuxCdev;    /* Linux character device state */
+  dev_t mDevt;               /* Major:minor assigned to this device */
+} ITCCharDevState;
+
+/* per rpmsg-probed device -- in our case, per PRU */
+typedef struct {
+  ITCCharDevState mCDevState; /* char device state must be first! */
+
+  struct rpmsg_channel *mRpmsgChannel; /* IO channel to PRU */
+  struct device *mLinuxDev;            /* Ptr to linux device struct */
+
+  ITCPacketBuffer mSpecialPB;  /* for special packet replies from PRU */
+} ITCPRUDeviceState;
+
+/* per 'processed' packet device - /dev/itc/{packets,mfm} */
+typedef struct {
+  ITCCharDevState mCDevState; /* char device state must be first! */
+  struct device *mLinuxDev;     /* Ptr to linux device struct */
+
+  ITCPacketBuffer   mInboundPB;  /* pkts from PRU awaiting delivery to userspace */
+  ITCPacketBuffer   mOutboundPB; /* pkts from userspace awaiting rpmsg to PRU */
+
+} ITCPktDeviceState;
 
 /* per dirnum */
-typedef struct itc_traffic_stats {
+typedef struct {
   uint32_t dirNum;
   uint32_t bytesSent, bytesReceived;
   uint32_t packetsSent, packetsReceived;
@@ -80,19 +107,18 @@ typedef struct itc_traffic_stats {
 } ITCTrafficStats;
 
 /* 'global' state, so far as we can structify it */
-typedef struct itc_pkt_driver_state {
-  DebugFlags        debugFlags;
-  dev_t             major_devt;     /* our dynamically-allocated major device number */
-  ITCPacketFIFO     itcPacketKfifo; /* buffer for all inbound standard packets */
-  wait_queue_head_t itcPacketWaitQ; /* for people blocking on standard packets */
-  SpecialPacketFIFO special0Kfifo;  /* buffer for inbound special packets from PRU0 */
-  SpecialPacketFIFO special1Kfifo;  /* buffer for inbound special packets from PRU1 */
-  struct mutex      standardLock;   /* lock for reading standard packets */
-  int               open_pru_minors;/* how many of our minors have (ever?) been opened */
+typedef struct {
+  DebugFlags        mDebugFlags;
+  dev_t             mMajorDevT;     /* our dynamically-allocated major device number */
+
+  int               mOpenPruMinors;/* how many of our minors have (ever?) been opened */
+
   uint32_t          itcEnabledStatus; /* dirnum -> packet enabled status one hex digit per */
   ITCTrafficStats   itcStats[ITC_DIR_COUNT]; /* statistics per ITC (0 and 4 unused in T2) */
-  ITCDeviceState    * (dev_packet_state[MINOR_DEVICES]); /* ptrs to all our device states */
-} ITCPacketDriverState;
+
+  ITCPRUDeviceState * (mPRUDeviceState[PRU_MINORS]); /* ptrs to per-PRU device state */
+  ITCPktDeviceState * (mPktDeviceState[PKT_MINORS]); /* ptrs to per-packet device state */
+} ITCModuleState;
 
 extern __printf(5,6) int send_msg_to_pru(unsigned prunum,
                                          unsigned wait,
