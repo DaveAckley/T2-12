@@ -32,10 +32,14 @@ test:	FORCE
 	$(MAKE) -C tests
 endif
 
-TAR_EXCLUDES+=--exclude=tools --exclude=*~ --exclude=.git --exclude=doc/internal --exclude=spikes --exclude-backups
-TAR_EXCLUDES+=--exclude=extra
-cdmDistribution:	FORCE
-	MPWD=`pwd`;BASE=`basename $$MPWD`;echo $$MPWD for $$BASE;pushd ..;tar cvzf $$BASE-built.tgz $(TAR_EXCLUDES) $$BASE;cp -f $$BASE-built.tgz /home/debian/CDM-TGZS/;/home/t2/GITHUB/MFM/bin/mfzmake make - cdm-distrib-$$BASE.mfz $$BASE-built.tgz;popd
+TAR_SWITCHES+=--exclude=tools --exclude=*~ --exclude=.git --exclude=doc/internal --exclude=spikes --exclude-backups
+TAR_SWITCHES+=--exclude=extra
+
+TAR_SWITCHES+=--mtime="1969-01-01 00:00:00"
+TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 
+
+cdmd:	FORCE
+	MPWD=`pwd`;BASE=`basename $$MPWD`;echo $$MPWD for $$BASE;pushd ..;tar cvzf $$BASE-built.tgz $(TAR_SWITCHES) $$BASE;cp -f $$BASE-built.tgz /home/debian/CDM-TGZS/;/home/t2/GITHUB/MFM/bin/mfzmake make - cdmd-$$BASE.mfz $$BASE-built.tgz;popd
 
 $(SUBDIRS):	FORCE
 	$(MAKE) -C $@ $(MAKECMDGOALS)
