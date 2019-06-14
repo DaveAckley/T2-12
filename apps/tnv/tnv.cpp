@@ -52,26 +52,43 @@ int readChannel(unsigned chn) {
   return count;
 }
 
-static void print0(int count) { printf("Vgrid = %f V", gridVoltage(count)); }
-static void print1(int count) {
-  printf("ctrtmp = %d C  (%f F)",
-	 getCentigradeFromCount(count),
-	 getFloatFarenheitFromCount(count));
+static void print0(int count, bool machine) {
+  printf(machine ? "%f" : "Vgrid = %f V", gridVoltage(count));
 }
-static void print2(int count) {
-  printf("edgtmp = %d C  (%f F)",
-	 getCentigradeFromCount(count),
-	 getFloatFarenheitFromCount(count));
+static void print1(int count, bool machine) {
+  if (machine) printf("%f", getFloatFarenheitFromCount(count));
+  else
+    printf("ctrtmp = %d C  (%f F)",
+           getCentigradeFromCount(count),
+           getFloatFarenheitFromCount(count));
 }
-static void print3(int count) { }
-static void print4(int count) { }
-static void print5(int count) { printf("BUTTON %s",count < 2000 ? "DOWN" : "UP"); }
-static void print6(int count) {  }
+static void print2(int count, bool machine) {
+  if (machine) printf("%f", getFloatFarenheitFromCount(count));
+  else
+    printf("edgtmp = %d C  (%f F)",
+           getCentigradeFromCount(count),
+           getFloatFarenheitFromCount(count));
+}
+static void print3(int count, bool machine) {
+  if (machine) printf("%d", count);
+}
+static void print4(int count, bool machine) {
+  if (machine) printf("%d", count);
+}
+static void print5(int count, bool machine) {
+  bool lo = count < 2000;
+  if (machine) printf("%d", lo);
+  else
+    printf("BUTTON %s",lo ? "DOWN" : "UP");
+}
+static void print6(int count, bool machine) {
+  if (machine) printf("%d", count);
+}
 
 static struct channelHandler {
   unsigned channelnum;
   const char * adcname;
-  void (*printer)(int);
+  void (*printer)(int,bool);
   int takeReading() {
     int val = readChannel(channelnum);
     return val;
@@ -87,12 +104,17 @@ static struct channelHandler {
 };
 
 int main(int argc, char **argv) {
+  bool machine = argc > 1;
   for (int i = 0; i < 7; ++i) {
     struct channelHandler & ch = adcHandlers[i];
     int raw = ch.takeReading();
-    printf("%d %s = %4d raw ", i, ch.adcname, raw);
-    if (ch.printer) ch.printer(raw);
-    printf("\n");
+    if (!machine) {
+      printf("%d %s = %4d raw ", i, ch.adcname, raw);
+    }
+    if (ch.printer) {
+      ch.printer(raw,machine);
+    }
+    printf(machine && i < 6 ? " " : "\n");
   }
   return 0;
 }
