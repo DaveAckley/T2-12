@@ -1,0 +1,39 @@
+{4}  -*- text -*- 
+[0:
+
+Wed Jun 12 04:40:43 2019 OK so it strikes me perhaps the easiest way
+to provide separate packet access for mfm and cdm is to have the
+itc_pkt module just provide separate devices for them, and use
+our knowledge of the packet format to route incoming packets to the
+two devices.  Aren't we already providing multiple character devices
+from one module?  What's one more?[1:
+
+Wed Jun 12 04:52:55 2019 (Calling this /dev/itc/mfm support v0.3 of
+the module.)
+
+So let's refresh on how things work here.
+
+ - itc_init initializes the module and dynamically allocates a major
+   device number, var majorNumber.
+
+ - it creates class /sys/itccls, var itcClass.
+
+ - it creates device /dev/itc/locks, var itcDevice.  What is
+   /dev/itc/locks for, again, anyway?  [2: Wed Jun 12 05:00:30 2019
+   It's for accessing and the state of the lock bits?  :2][3:
+
+Wed Jun 12 05:03:45 2019 Jeez okay doh it's been forever here.  The
+directory we are in, here, '/home/t2/T2-12/lkms/itc', is the module
+JUST FOR THE LOCKS DOH NOT FOR THE PACKETS.
+
+Please see
+ /home/t2/T2-12/pru/itcio/notes/201901191229-intertile-model-notes.txt
+for some as-recent-as-we-have discussion of intertile packet stuff.
+
+(Reverting this module back to v0.2 doh.)
+
+:3]
+
+:1]
+
+:0]
