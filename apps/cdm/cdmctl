@@ -17,11 +17,13 @@ $SIG{__DIE__} = sub {
 };
 
 my $COMMON_DIR = "/cdm/common";
-my $CDM_INTERNAL_HANDLE = "t2-cdm-debug-10";
+my $CDM_INTERNAL_HANDLE = "t2-keymaster-release-10";
 my $DELETEDS_MFZ_NAME = "cdm-deleteds.mfz";
 my $DELETEDS_MAP_NAME = "cdm-deleteds.map";
 my $MFZRUN_PROGRAM = "/home/t2/GITHUB/MFM/bin/mfzrun";
 my $MFZMAKE_PROGRAM = "/home/t2/GITHUB/MFM/bin/mfzmake";
+
+my $VERBOSE = 1;
 
 my %deletedsMap;
 my $DEBUG_DIRS = 1;
@@ -66,21 +68,25 @@ sub makeTmpDir {
 sub loadDeletedMap {
     my $dmref = {};
 
+    print STDERR "Unpacking $DELETEDS_MFZ_NAME.." if $VERBOSE;
+
     my $path = "$COMMON_DIR/$DELETEDS_MFZ_NAME";
     -r $path or return $dmref; # no deleteds file => no records found
 
     my $destdir = makeTmpDir();
-    my $cmd = "$MFZRUN_PROGRAM $path unpack $destdir";
+    my $cmd = "$MFZRUN_PROGRAM -kd /cdm $path unpack $destdir";
     my $metadata = `$cmd`;
+
+    print STDERR "done\n" if $VERBOSE;
 
     # Now we have to hunt for the path used to pack the payload
     my @paths = glob "$destdir/tmp/cdmctl-*/cdm-deleteds.map";
-
 
     my $deletedsFilePath = shift @paths;
 
     die "'$destdir' problem" unless defined $deletedsFilePath;
 
+    print STDERR "Loading $deletedsFilePath.." if $VERBOSE;
     open(HDL, "<", $deletedsFilePath)
         or die "Can't read $deletedsFilePath: $!";
     while (<HDL>) {
@@ -94,6 +100,7 @@ sub loadDeletedMap {
         $dmref->{$filename} = [$length, $checksum,$timestamp];
     }
     close(HDL) or die "Closing $deletedsFilePath: $!";
+    print STDERR "done\n" if $VERBOSE;
     return $dmref;
 }
 
@@ -111,8 +118,10 @@ sub checksumWholeFileHex {
 sub getMetadataOfMFZ {
     my $mfz = shift;
     my $path = "$COMMON_DIR/$mfz";
-    my $cmd = "$MFZRUN_PROGRAM $path VERIFY";
+    my $cmd = "$MFZRUN_PROGRAM -kd /cdm $path VERIFY";
+    print STDERR "Extracting metadata of $mfz.." if $VERBOSE;
     my $metadata = `$cmd`;
+    print STDERR "done\n" if $VERBOSE;
     my $mref = {};
     while ($metadata =~ /([a-zA-Z_]+) \[([^]]+)\]/sg) {
         $mref->{$1} = $2;
@@ -160,7 +169,7 @@ sub saveDeletedMap {
     close HDL or die "Can't close '$deletedsFile': $!";
 
     my $path = "$packDir/$DELETEDS_MFZ_NAME";
-    my $cmd = "$MFZMAKE_PROGRAM make $CDM_INTERNAL_HANDLE $path $deletedsFile";
+    my $cmd = "$MFZMAKE_PROGRAM -kd /cdm make $CDM_INTERNAL_HANDLE $path $deletedsFile";
     my $result = `$cmd`;
 
     -e $path or die "wha?";
@@ -171,6 +180,7 @@ sub saveDeletedMap {
 
 sub doListDeleted {
     my @args = @_;
+
     if (scalar(@args) > 0) {
         die "Usage: $0 listDeleted\n";
     }
@@ -190,6 +200,7 @@ sub doDelete {
     if (scalar(@mfzs) == 0 || scalar(grep { $_ !~ /[.]mfz$/ } @mfzs) > 0) {
         die "Usage: $0 delete FILE1.mfz [FILE2.mfz...]\n";
     }
+
     my $dmref = loadDeletedMap();
     my $changes = 0;
     foreach my $mfz (@mfzs) {
