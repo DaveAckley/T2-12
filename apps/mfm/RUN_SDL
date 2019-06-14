@@ -10,5 +10,5 @@ sleep 5
 kill -TSTP %1
 kill -CONT %1
 sleep 1
-trap "kill -9 $PROG_PID" SIGINT SIGTERM
+trap "kill -INT $PROG_PID" SIGINT SIGTERM
 wait
