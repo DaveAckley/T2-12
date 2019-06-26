@@ -178,7 +178,7 @@ checkExistingAlignment:  ;; Here we already have packet sync and are looking at 
 	;; otherwise FALL INTO frameError
 
         .def frameError         ; Make public so setPacketRunnerEnable can see it
-frameError:  ;; Here to deal with stuffing failures and misaligned delimiters, whether or not synced
+frameError:  ;; Here to deal with overlength packets, and stuffing failures and misaligned delimiters, whether or not synced
 	sendITag """FMER""",CT.bInpByte               ; report in
 	qbbc resetAfterDelimiter, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Don't report a problem unless we're synced
 	sendFromThread F, R7       ; Report frame error, supplying CT+1 == bID, bFlags, and wResAddr
