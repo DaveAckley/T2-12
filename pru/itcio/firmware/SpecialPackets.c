@@ -159,6 +159,17 @@ void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
       break;
     }
 
+    case 'L': cmdflag = 1;      /* L: Report and reset arm->linux packets received */
+      // FALL THROUGH
+    case 'l': {                 /* l: Report arm->linux packets received */
+      writeFormat32IOS(ios,linuxPacketsReceived,format);
+      writeIOS(ios,'_');
+      if (cmdflag) {
+        linuxPacketsReceived = 0;
+      }
+      break;
+    }
+
     case 'I': cmdflag = 1;      /* I: Report and reset inbound stats for prudir */
       // FALL THROUGH
     case 'i': {                 /* i: Report inbound stats for prudir */

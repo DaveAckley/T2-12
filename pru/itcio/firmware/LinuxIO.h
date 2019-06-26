@@ -20,6 +20,8 @@
 
 extern void initLinuxIO();
 
+extern unsigned linuxPacketsReceived;
+
 extern int processPackets();
 
 extern int CSendVal(const char * str1, const char * str2, uint32_t val);

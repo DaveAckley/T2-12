@@ -49,23 +49,16 @@ int CSendFromThread(uint32_t prudir, uint32_t code, uint32_t val)
   buf[len++] = hexifyBottom(prudir); /* Then bottom four bits of prudir */
   buf[len++] = hexifyBottom(val);   /* And the bottom four bits of val */
   buf[len++] = ':';  /* Colon to mark end of 'machine-readable' zone */
-  if (prudir < 4) {
-    buf[len++] = prudirnames[prudir][0];
-    buf[len++] = prudirnames[prudir][1];
-  } else {
-    buf[len++] = hexifyBottom(prudir>>4);
-    buf[len++] = hexifyBottom(prudir);
-  }
 
-  buf[len++] = ' ';  /* A space */
+  /* Include the whole value if top 28 bits != 0 */
+  if (val & ~0xf) {
+    for (i = 0; i < 8; ++i) {
+      uint8_t h = val>>28;
+      buf[len++] = hexifyBottom(h);
+      val <<= 4;
+    }
+  }
   
-  /* Finally the value in hex */
-  for (i = 0; i < 8; ++i) {
-    uint8_t h = val>>28;
-    buf[len++] = hexifyBottom(h);
-    val <<= 4;
-  }
-
   /* Send it */
   pru_rpmsg_send(&transport, firstDst, firstSrc, buf, len);
 
@@ -256,6 +249,8 @@ void fillFail(const char * msg, uint8_t * packet, uint16_t len)
 
 volatile register uint32_t __R31;
 
+unsigned linuxPacketsReceived = 0;
+
 int processPackets() {
   uint16_t src, dst, len;
 
@@ -283,6 +278,9 @@ int processPackets() {
 
         if (len > 0) {
           unsigned ret;
+
+          ++linuxPacketsReceived;
+
           if ((payload[0] & PKT_ROUTED_STD_MASK) == PKT_ROUTED_STD_VALUE)
             ret = processOutboundITCPacket(payload,len);
           else
