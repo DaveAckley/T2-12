@@ -33,7 +33,11 @@ PACKAGES+=libdatetime-format-strptime-perl
 #PACKAGES+=fuse libfuse-dev
 
 # For Perl SDL if we end up using it
-PACKAGES+=libalien-sdl-perl libmodule-build-perl
+# 201906240416 Now believing we will not be using it
+#PACKAGES+=libalien-sdl-perl libmodule-build-perl
+
+# For building tslib
+PACKAGES+=cmake
 
 # For sdlsplash
 PACKAGES+=libsdl1.2-dev libsdl-image1.2-dev libsdl-ttf2.0-dev
