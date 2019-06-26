@@ -9,8 +9,13 @@
 #include <linux/cdev.h>
 #include <linux/module.h>
 #include <linux/kfifo.h>
+#include <linux/kthread.h>         /* For thread functions */
+#include <linux/delay.h>           /* For msleep functions */
+#include <linux/random.h>          /* for prandom_u32_max() */
 #include <linux/uaccess.h>
 #include <linux/poll.h>
+#include <linux/ctype.h>           /* for isprint */
+
 
 #include "pin_info_maps.h"
   
@@ -53,81 +58,79 @@ typedef enum packet_header_bits {
 typedef STRUCT_KFIFO_REC_1(KFIFO_SIZE) ITCPacketFIFO;
 typedef STRUCT_KFIFO_REC_1(SPECIAL_KFIFO_SIZE) SpecialPacketFIFO;
 
-typedef enum debug_flags {
+typedef enum {
   DBG_PKT_RCVD      = 0x00000001,
   DBG_PKT_SENT      = 0x00000002,
   DBG_PKT_ROUTE     = 0x00000004,
   DBG_PKT_ERROR     = 0x00000008,
 } DebugFlags;
 
-#define DBGIF(mask) if ((mask)&S.debugFlags)
+#define DBGIF(mask) if ((mask)&S.mDebugFlags)
 #define DBGPRINTK(mask, printkargs...) do { DBGIF(mask) printk(printkargs); } while (0);
 #define DBGPRINT_HEX_DUMP(mask, printhexdumpargs...) do { DBGIF(mask) print_hex_dump(printhexdumpargs); } while (0);
 
+#define DBG_NAME_MAX_LENGTH 32
+
 typedef struct {
-  ITCPacketFIFO     mQueue;        /* a packet queue for some purpose */
-  wait_queue_head_t mWaitQ;        /* for people waiting on this buffer */
-  struct mutex      mLock;         /* lock for modifying this struct */
+  ITCPacketFIFO     mFIFO;   /* a packet fifo for some purpose */
+  wait_queue_head_t mReaderQ;/* for readers waiting for fifo non-empty */
+  wait_queue_head_t mWriterQ;/* for writers waiting for fifo non-full */
+  struct mutex      mLock;   /* lock for modifying this struct */
+  char mName[DBG_NAME_MAX_LENGTH];   /* debug name of buffer */
 } ITCPacketBuffer;
 
 typedef struct {             /* General char device state */
-  bool mDeviceOpenedFlag;    /* true between .open and .close calls */
   struct cdev mLinuxCdev;    /* Linux character device state */
+  struct device *mLinuxDev;  /* Ptr to linux device struct */
   dev_t mDevt;               /* Major:minor assigned to this device */
-} ITCCharDevState;
+  bool mDeviceOpenedFlag;    /* true between .open and .close calls */
+  char mName[DBG_NAME_MAX_LENGTH];   /* debug name of device */
+} ITCCharDeviceState;
 
 /* per rpmsg-probed device -- in our case, per PRU */
 typedef struct {
-  ITCCharDevState mCDevState; /* char device state must be first! */
+  ITCCharDeviceState mCDevState; /* char device state must be first! */
 
   struct rpmsg_channel *mRpmsgChannel; /* IO channel to PRU */
-  struct device *mLinuxDev;            /* Ptr to linux device struct */
-
-  ITCPacketBuffer mSpecialPB;  /* for special packet replies from PRU */
+  unsigned char mTempPacketBuffer[RPMSG_MAX_PACKET_SIZE]; /* Buffer for pkt transfer grr */
+  ITCPacketBuffer mLocalIB;    /* for non-standard packet replies from PRU */
+  ITCPacketBuffer mPriorityOB; /* urgent pkts from userspace awaiting rpmsg to PRU */
+  ITCPacketBuffer mBulkOB;     /* background pkts from userspace awaiting rpmsg to PRU */
 } ITCPRUDeviceState;
 
 /* per 'processed' packet device - /dev/itc/{packets,mfm} */
 typedef struct {
-  ITCCharDevState mCDevState; /* char device state must be first! */
-  struct device *mLinuxDev;     /* Ptr to linux device struct */
-
-  ITCPacketBuffer   mInboundPB;  /* pkts from PRU awaiting delivery to userspace */
-  ITCPacketBuffer   mOutboundPB; /* pkts from userspace awaiting rpmsg to PRU */
-
+  ITCCharDeviceState mCDevState; /* char device state must be first! */
+  ITCPacketBuffer mUserIB;  /* pkts from PRU awaiting delivery to userspace */
 } ITCPktDeviceState;
 
 /* per dirnum */
 typedef struct {
-  uint32_t dirNum;
-  uint32_t bytesSent, bytesReceived;
-  uint32_t packetsSent, packetsReceived;
-  uint32_t packetSyncAnnouncements;
-  uint32_t syncFailureAnnouncements;
-  uint32_t timeoutAnnouncements;
+  uint32_t mDirNum;
+  uint32_t mBytesSent;
+  uint32_t mBytesReceived;
+  uint32_t mPacketsSent;
+  uint32_t mPacketsReceived;
+  uint32_t mPacketSyncAnnouncements;
+  uint32_t mSyncFailureAnnouncements;
+  uint32_t mTimeoutAnnouncements;
 } ITCTrafficStats;
 
 /* 'global' state, so far as we can structify it */
 typedef struct {
   DebugFlags        mDebugFlags;
-  dev_t             mMajorDevT;     /* our dynamically-allocated major device number */
+  dev_t             mMajorDevt;     /* our dynamically-allocated major device number */
 
-  int               mOpenPruMinors;/* how many of our minors have (ever?) been opened */
+  int               mOpenPRUMinors;/* how many of our minors have (ever?) been opened */
 
-  uint32_t          itcEnabledStatus; /* dirnum -> packet enabled status one hex digit per */
-  ITCTrafficStats   itcStats[ITC_DIR_COUNT]; /* statistics per ITC (0 and 4 unused in T2) */
+  uint32_t          mItcEnabledStatus; /* dirnum -> packet enabled status one hex digit per */
+  ITCTrafficStats   mItcStats[ITC_DIR_COUNT]; /* statistics per ITC (0 and 4 unused in T2) */
 
-  ITCPRUDeviceState * (mPRUDeviceState[PRU_MINORS]); /* ptrs to per-PRU device state */
-  ITCPktDeviceState * (mPktDeviceState[PKT_MINORS]); /* ptrs to per-packet device state */
+  ITCPRUDeviceState * (mPRUDeviceState[PRU_MINORS]); /* per-PRU-device state for minors 0,1 */
+  ITCPktDeviceState * (mPktDeviceState[PKT_MINORS]); /* per-packet-device state for minors 2,3 */
+
+  struct task_struct * mShipOBPktTask;     /* kthread to push packets to PRUs */
+  wait_queue_head_t mOBWaitQueue;          /* wait queue for mShipOBPktTask */
 } ITCModuleState;
-
-extern __printf(5,6) int send_msg_to_pru(unsigned prunum,
-                                         unsigned wait,
-                                         char * buf,
-                                         unsigned bugsiz,
-                                         const char * fmt, ...);
-
-extern ITCDeviceState * make_itc_minor(struct device * dev,
-                                       int minor_obtained,
-                                       int * err_ret);
 
 #endif /* ITC_PKT_H */
