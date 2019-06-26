@@ -1,4 +1,4 @@
-{146}  -*- text -*-
+{225}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -1894,7 +1894,7 @@ typedef struct itc_dev_state {
 
    - I really don't understand why I have the specialKfifo's as
      globals rather than just as data members in this struct.
-  
+
   bool dev_lock;
 
    - A flag enforcing a single simultaneous open on the inode, used
@@ -1918,7 +1918,7 @@ virtual devices.  What might it look like if we didn't?
 
 #define PRU_MINORS 2   /* low-level access to PRU0, PRU1*/
 #define PKT_MINORS 2   /* processed access to itc, mfm */
-#define MINOR_DEVICES (PRU_MINORS + PKT_MINORS) 
+#define MINOR_DEVICES (PRU_MINORS + PKT_MINORS)
 
 in global driver state S --
 
@@ -1985,6 +1985,1072 @@ So that means another reorg of the structs, at least.
 
 Fri Jun 14 15:42:57 2019 Well, it's time to pack up for the weekend.
 Checkpointing all this stuff -- in its unbuildable glory, so there'll
-be at least one obvious prompt to get us going again. 
+be at least one obvious prompt to get us going again.
 
 :145]
+[146:
+
+Sun Jun 16 00:34:19 2019 OK, so we're cleaning up in itc_pkt_cb and we
+have to redecide what to do about non-standard packets -- the ones
+with the first byte high order bit turned off.  Questions:
+
+ - Where do they come from?  What is their purpose?
+
+ - What might the rest of first byte look like?
+
+[147:
+
+Sun Jun 16 00:46:30 2019 So, one thing is this: The bottom three bits
+of the first byte of EVERY PACKET ORIGINATING OFF TILE are set to the
+compass rose dir of the ITC where the packet arrived.  That's
+hardcoded -- regardless of how 'non-standard' the packet might (want
+to) be in other ways.[149:
+
+Sun Jun 16 01:22:09 2019 So, at one point, in this T2 development, we
+imagined that, like with the IXM packet format, people might be able
+to type directly into an ITC and communicate successfully.
+
+But that only worked, way back when, BECAUSE THE IXMS COMMUNICATED
+OVER UARTS, AND because we did byte-stuffing instead of bit stuffing,
+AND because we used '\n' as the packet delimiter.
+
+And none of those things are true in the T2s.  We expose 1 UART port
+for debug serial, and that's not an ITC and none of our LKM code
+touches it.
+
+So anything talking to us over an IC is going to be some kind of 'T2
+ecosystem' device that's been designed to handle our in
+
+:149]
+
+:147]
+
+:146]
+[148:
+
+Sun Jun 16 01:05:37 2019 HMM drive-by issue noticed looking at the PRU
+asm code: It appears that overlength inbound packets are not detected.
+It appears the bInpByte idx simply wraps back to 0 and subsequent
+bytes overwrite the packet starting from the beginning.  And (if and)
+whenever a valid end-of-packet is seen, the current first bInpByte of
+data will be delivered as a valid packet, with no clue that k*256
+bytes were discarded at the front.
+
+Seems we should blow sync if bInpByte wraps in setupForNextInputByte,
+no????  Instead of the current:
+
+    setupForNextInputByte:  ;; Here to initialize for reading another byte
+            sendITag """SFNB""",CT.bInpByte ; report in
+            add CT.bInpByte,  CT.bInpByte, 1 ; Move on to next byte
+            ldi CT.bInpData, 0               ; Clear the byte data itself
+            ldi CT.bInpBCnt, 0               ; And clear the bit in byte
+
+don't we really want:
+
+    setupForNextInputByte:  ;; Here to initialize for reading another byte
+            sendITag """SFNB""",CT.bInpByte ; report in
+            add CT.bInpByte,  CT.bInpByte, 1 ; Move on to next byte
+            qbeq frameError, CT.bInpByte, 0  ; But blow sync if len > 255
+            ldi CT.bInpData, 0               ; Clear the byte data itself
+            ldi CT.bInpBCnt, 0               ; And clear the bit in byte
+
+I THINK WE DO, but I'M NOT MAKING THAT CHANGE NOW.  Waiting until the
+LKM code is stabilized before messing with the PRU code!
+
+:148]
+[150:
+
+Sun Jun 16 04:30:20 2019 OK knocking off for now.  Still converting to
+the new data structures; haven't even gotten them initted yet.  But
+just a note to self: kfifo_in and similar return the number of 'items'
+actually copied, and that's how one would check if an insertion
+succeeded.  We're not currently doing anything with the value of
+kfifo_in()'s as far as I can see.
+
+:150]
+[151:
+
+Sun Jun 16 12:46:06 2019 Oh fudge.  The 'new' itc_pkt.c built clean.
+So now we have to start trying it, and the real pain begins.  Let's
+get all these bits off the keymaster first, of course.
+
+:151][152:
+
+Sun Jun 16 12:50:45 2019 OK well everything in T2-12 up through :151:
+is now on the laptop too.  Time to 'make install', here, and watch
+everything get shot to shoot?
+
+Wait a sec.  We didn't write any code to actually implement the
+bulk-vs-priority stuff, did we?  Doesn't that need to exist somewhere
+before we could even DREAM of trying this stuff?  Hunh?[153:
+
+Sun Jun 16 12:58:25 2019 Oh yeah, hmm.  All this depended on ALSO
+setting up a whole nother kernel thread to be reading the outbound
+kfifos and shipping off their packets.  That's where the
+prioritization is to happen, yes?
+
+Yes?
+
+So what do we know about this mythical creature?  When all the OB
+buffers are empty, it sleeps on its own private wait queue, and all
+the userspace packet writers wake it up?
+
+And also if there's no rpmsg buffers?  It sleeps then too?  On time?
+I guess the packet cb could wake it up too, under the assumption the
+cb must have just freed a buffer?
+
+And when it awakes, it loops while the priority OB is non-empty and
+rpmsg buffers are available, sending the priority packets.  If the
+priority OB is empty around the loop, but rpmsg buffers are still
+available, it checks the bulk OB once, and sends one bulk packet if
+it's available, then goes back to the top of loop, checking the
+priority OB again.
+
+And is there only one of these mythical creatures?  Or two?  After all
+there are two PRUs and two ITCPRUDeviceStates and therefore two
+mPriorityOBs.  Would we really want to empty pru0's mPriorityOB before
+even checking pru1's even once?  Well do these mythical creatures
+preempt each other?  Even if they do, is that what we'd want?
+
+Maybe just one kthread for this, and have it flip back and forth
+between checking pru0 and pru1 buffers?  Use a static variable and
+leave it on whichever side we stopped at least time?[154:
+
+Sun Jun 16 13:46:27 2019 Well any way we slice it we're going to need
+a thread, so we better get that set up.[155:
+
+Sun Jun 16 14:21:49 2019 OK, so, we've been here before but here we
+are again: The rpmsg API appears to provide no way to ask if a TX
+buffer is immediately available, so there's no way to know whether a
+rpmsg_send will block.
+
+You say: Well but 'rpmsg_trysend' doesn't block!  Just use that!
+
+But no no.  To use rpmsg_trysend you have to have a packet ready to
+go, just in case it succeeds.  That means you have to take the packet
+off its kfifo BEFORE YOU KNOW IF IT WILL GET SENT.  And if
+rmpsg_trysend then returns -ENOMEM, what will you do with this
+slimy slippery in-flight packet sitting in your hands?  You can't push
+it back into your kfifo.[156:
+
+Sun Jun 16 14:31:14 2019 Ah, okay, well, there's kfifo_peek.  So we
+can copy the packet out, try to send it, then somehow flush it from
+the kfifo if the send succeeds.[157:
+
+Sun Jun 16 14:32:32 2019 And maybe we can use kfifo_skip to flush?
+The fogging kfifo doc is SO DAMN MINIMAL, while its source code IS ALL
+HOPELESSLY GNARLY MACROS.[158:
+
+Sun Jun 16 14:36:17 2019 I suspect we can use kfifo_skip after kfifo_peek.
+
+:158]
+
+:157]
+
+:156]
+
+:155]
+
+:154]
+
+:153]
+
+:152]
+[159:
+
+Sun Jun 16 14:57:50 2019 Well, made
+shipAPacketToPRU(ITCPrudDeviceStatus*), but not clear if it's any kind
+of sensible.  Still don't have a kthread set up yet.
+
+:159]
+[160:
+
+Sun Jun 16 17:19:30 2019 OK have cuts at the OB packet shipper set
+up.  Still need to kick it from the packet writers.[161:
+
+Mon Jun 17 05:10:50 2019 OMG well it built again.  With big changes
+including a writer wait queue to join the (previously implicitly)
+reader wait queue in every ITCPacketBuffer.
+
+And this is all still all totally UNTESTED!
+
+Have we got any excuse not to try it?
+
+Well, get the bits off the keymaster first, of course.
+
+:161]
+
+:160]
+[162:
+
+Mon Jun 17 05:14:08 2019 Well, here goes, first try at make install..
+
+:162]
+[163:
+
+Mon Jun 17 05:17:49 2019 Well we blew up quick, but the machine is
+still alive at the moment.  Problem is I installed, so if we reboot
+now we're going to get the new blowing-up itc_pkt module right off the
+bat, yes?  That sounds like a good way to corrupt the disk again.
+
+In any case, for the record, it looks like an init-order problem:
+
+    Jun 17 05:15:29 beaglebone kernel: [197010.416883]  remoteproc2: remote processor 4a338000.pru1 is now up
+    Jun 17 05:15:29 beaglebone kernel: [197010.438478] virtio_rpmsg_bus virtio1: rpmsg host is online
+    Jun 17 05:15:29 beaglebone kernel: [197010.444268] virtio_rpmsg_bus virtio1: creating channel itc-pkt addr 0x1f
+    Jun 17 05:15:29 beaglebone kernel: [197010.484709] ZORG itc_pkt_init
+    Jun 17 05:15:29 beaglebone kernel: [197010.506188] OOKE 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.511533] itcOBPktThreadRunner: Started
+    Jun 17 05:15:29 beaglebone kernel: [197010.515972] ------------[ cut here ]------------
+    Jun 17 05:15:29 beaglebone kernel: [197010.520713] kernel BUG at /home/t2/T2-12/pru/itcio/module/itc_pkt.c:151!
+    Jun 17 05:15:29 beaglebone kernel: [197010.527533] Internal error: Oops - BUG: 0 [#1] SMP ARM
+    Jun 17 05:15:29 beaglebone kernel: [197010.532783] Modules linked in: itc_pkt(O+) virtio_rpmsg_bus pru_rproc pruss pruss_intc 8021q garp mrp stp llc joydev fb_ili9486(C) ads7846 fbtft(C) ti_am335x_adc kfifo_buf industrialio ti_am335x_tsc ti_am335x_tscadc pwm_tiecap omap_sham omap_aes_driver omap_rng rng_core spi_omap2_mcspi evdev uio_pdrv_genirq uio usb_f_mass_storage usb_f_acm u_serial usb_f_ecm usb_f_rndis u_ether libcomposite cmemk(O) itc(O) spidev tieqep pwm_tiehrpwm [last unloaded: pruss]
+    Jun 17 05:15:29 beaglebone kernel: [197010.573743] CPU: 0 PID: 18581 Comm: ITC_Pkt_Shipper Tainted: G         C O    4.4.54-ti-r93 #1
+    Jun 17 05:15:29 beaglebone kernel: [197010.582480] Hardware name: Generic AM33XX (Flattened Device Tree)
+    Jun 17 05:15:29 beaglebone kernel: [197010.588691] task: dacd2700 ti: da870000 task.ti: da870000
+    Jun 17 05:15:29 beaglebone kernel: [197010.594253] PC is at itcOBPktThreadRunner+0x12c/0x144 [itc_pkt]
+    Jun 17 05:15:29 beaglebone kernel: [197010.600288] LR is at 0xfce9c800
+    Jun 17 05:15:29 beaglebone kernel: [197010.603533] pc : [<bf18e2f0>]    lr : [<fce9c800>]    psr: 600e0013
+    Jun 17 05:15:29 beaglebone kernel: [197010.603533] sp : da871f20  ip : fce9ca5c  fp : da871f5c
+    Jun 17 05:15:29 beaglebone kernel: [197010.615237] r10: 00000000  r9 : da870020  r8 : 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.620572] r7 : c0f97a88  r6 : 00000044  r5 : bf190b00  r4 : 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.627215] r3 : 00000002  r2 : 01f25107  r1 : 00000000  r0 : 711b2800
+    Jun 17 05:15:29 beaglebone kernel: [197010.633862] Flags: nZCv  IRQs on  FIQs on  Mode SVC_32  ISA ARM  Segment none
+    Jun 17 05:15:29 beaglebone kernel: [197010.641117] Control: 10c5387d  Table: 9a800019  DAC: 00000051
+    Jun 17 05:15:29 beaglebone kernel: [197010.646976] Process ITC_Pkt_Shipper (pid: 18581, stack limit = 0xda870218)
+    Jun 17 05:15:29 beaglebone kernel: [197010.653969] Stack: (0xda871f20 to 0xda872000)
+    Jun 17 05:15:29 beaglebone kernel: [197010.658442] 1f20: da870000 00000002 bf18e1c4 dc8ba636 00000000 00000000 dad963c0 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.666749] 1f40: bf18e1c4 00000000 00000000 00000000 da871fac da871f60 c0064f18 bf18e1d0
+    Jun 17 05:15:29 beaglebone kernel: [197010.675056] 1f60: 00000000 dc0da700 00000000 00000000 00000000 da871f74 da871f74 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.683363] 1f80: 00000000 da871f84 da871f84 dc8ba636 dad963c0 c0064e1c 00000000 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.691669] 1fa0: 00000000 da871fb0 c0010f20 c0064e28 00000000 00000000 00000000 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.699976] 1fc0: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.708283] 1fe0: 00000000 00000000 00000000 00000000 00000013 00000000 00000000 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.716667] [<bf18e2f0>] (itcOBPktThreadRunner [itc_pkt]) from [<c0064f18>] (kthread+0xfc/0x114)
+    Jun 17 05:15:29 beaglebone kernel: [197010.725603] [<c0064f18>] (kthread) from [<c0010f20>] (ret_from_fork+0x14/0x34)
+    Jun 17 05:15:29 beaglebone kernel: [197010.732954] Code: e89daff0 e370000c 03a04001 eaffffe7 (e7f001f2) 
+    Jun 17 05:15:29 beaglebone kernel: [197010.739170] ---[ end trace aa3c8da4e28da3e0 ]---
+    Jun 17 05:15:29 beaglebone kernel: [197010.763124] KOOK 00000000
+    Jun 17 05:15:29 beaglebone kernel: [197010.787399] OKKO
+
+with itc_pkt.c:
+
+148    /* return 0 if a priority packet shipped, 1 if a bulk packet shipped, or errno < 0 if problem */
+149    static int shipAPacketToPRU(ITCPRUDeviceState * prudevstate) {
+150      int ret;
+151      BUG_ON(!prudevstate);
+152      BUG_ON(!prudevstate->mRpmsgChannel);
+
+So apparently the outbound packet shipper is getting to:
+
+173    while ( (ret = shipAPacketToPRU(S.mPRUDeviceState[idx])) == 0 ) { /* empty */ }
+
+before S.mPRUDeviceState[idx] is set up.  Does that seem plausible?
+[164:
+
+Mon Jun 17 05:23:22 2019 Certainly does, since the thread is started
+at the end of initITCModuleState(), which is called before we even
+alloc_chrDev_region and on and on.
+
+So we need to move the thread boot to much later.  That doesn't answer
+the question of how we're going to reboot here, since we now have a
+lingering undestroyed device and we're getting errors about that..
+
+:164]
+:163]
+[165:
+
+Mon Jun 17 05:29:39 2019 Moving off a new copy of bits.
+
+:165]
+[166:
+
+Mon Jun 17 05:33:21 2019 Well I'm not sure how to avoid a reboot at
+this point, and it totally could be all-bets-off when it happens.
+
+:166]
+[167:
+
+Mon Jun 17 05:38:54 2019 OK, going for it.  Copied files I think.  At
+least I have the serial port plugged in, perhaps that will help -- if
+the boot gets far enough to even let me in that way..
+
+:167]
+[168:
+
+Mon Jun 17 05:43:57 2019 Yikes it came back up.  Didn't see any
+obvious blowups in the serial debug.  Let's take a closer look at
+syslog.. [169:
+
+Mon Jun 17 05:45:10 2019 No way.  No way.  The neighbors are seeing
+packet sync with the keymaster?  No Way.  We must not have actually
+successfully installed the new module.  We must still be running the
+old thing untouched.[170:
+
+Mon Jun 17 05:48:46 2019 Well.  Well.  I don't think there's any way
+that this line:
+
+    Jun 17 05:41:24 beaglebone kernel: [   42.703073] ZERGIN: makeITCCharDeviceState(dc3a1208,17228,0,dc44bb74) for itc!pru0
+
+could have come from the old itc_pkt module.  The whole idea of having
+a makeITCCharDeviceState function is part of the new thing,
+right?[171:
+
+Mon Jun 17 05:52:26 2019 Yeah, it totally is.  So it seems we're
+running the new version of itc_pkt.ko and at least bulk transport via
+/dev/itc/packets is still working well enough for the cdm neighbors to
+think we're alive and vice-versa.  Holy crab.
+
+:171]
+
+:170]
+
+:169]
+
+:168]
+[172:
+
+Mon Jun 17 05:57:07 2019 Here's something to debug:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/notes# echo -e "\xa1foo" >/dev/itc/mfm 
+    bash: echo: write error: No route to host
+    root@beaglebone:/home/t2/T2-12/pru/itcio/notes# echo -e "\xa2foo" >/dev/itc/mfm 
+
+So considering :133: above, I think \xa1 is a packet header meaning
+"standard, mfmt, in direction 1", which is I think NE.  And indeed
+keymaster's NE is currently unconnected.  And I think \xa2 should be
+going ET.
+
+And I thought that second echo was just hanging doing nothing, but
+actually from the t2viz display it appears to be blasting crap east at
+'unprecedented speeds'.  With claims like '1554190>308095' -- 1.5MB
+sent in 300K packets??  Has to be total BS -- not least of which
+because the tile-to-the-east is reporting nothing untoward inbound.
+
+Going to ^C the echo..[173:
+
+Mon Jun 17 06:03:05 2019 ^C appears to do nothing.
+
+Going to kill the shell it's in.[174:
+
+Mon Jun 17 06:03:58 2019 Well, that stopped it.  But here's some
+evidence:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/notes# cat /sys/class/itc_pkt/statistics 
+    dir bsent brcvd psent prcvd psan sfan toan
+    0 0 0 0 0 0 0 0
+    1 0 0 0 0 0 0 0
+    2 599216123 42 119842541 14 1 0 0
+    3 3030 42 69 14 1 0 0
+    4 0 0 0 0 0 0 0
+    5 2737 48 62 16 1 0 0
+    6 0 0 0 0 0 0 0
+    7 0 0 0 0 0 0 0
+    root@beaglebone:/home/t2/T2-12/pru/itcio/notes# 
+
+which also reminds us that we're going to want to redo the statistics
+processing throughout to separate bulk and priority traffic.
+
+:174]
+
+:173]
+
+:172]
+[175:
+
+Mon Jun 17 06:10:15 2019 Actually, it looks like the neighbors may not
+be hearing anything from the keymaster linux level.  They're getting
+to packet sync, so the doors are open, but I see no evidence that any
+actual packets are actually arriving.  So okay that's a little more
+plausible. 
+
+:175][176:
+
+Mon Jun 17 06:13:07 2019 Turning on debugging briefly gets us like
+this:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/notes# echo f > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug
+    Jun 17 06:12:45 beaglebone kernel: [ 1866.374887] set debug f
+    Jun 17 06:12:45 beaglebone kernel: [ 1866.680119] <pru0: 83 03 41                                         ..A
+    Jun 17 06:12:45 beaglebone kernel: [ 1866.696080] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 06:12:45 beaglebone kernel: [ 1866.703995] <pru0: 30                                               0
+    Jun 17 06:12:45 beaglebone kernel: [ 1866.710630] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 06:12:45 beaglebone kernel: [ 1866.718459] <pru1: 37                                               7
+    Jun 17 06:12:46 beaglebone kernel: [ 1867.042204] Routing '85'+55 packet to PRU0
+    Jun 17 06:12:46 beaglebone kernel: [ 1867.444910] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 06:12:46 beaglebone kernel: [ 1867.452849] <pru1: 37                                               7
+
+so we're getting to itc_pkt.c:585 
+
+:176]
+[177:
+
+Mon Jun 17 06:24:48 2019 OK I hadn't initted a 'ret' to zero which
+conceivably could have keep us from trying to ship a packet.  Getting
+bits off again then trying a reinstall.. with no users of itc_pkt
+according to lsmod..
+
+:177][178:
+
+Mon Jun 17 06:28:24 2019 OK, that got us to:
+
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.423328] Unable to handle kernel NULL pointer dereference at virtual address 00000000
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.431624] pgd = da87c000
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.434419] [00000000] *pgd=00000000
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.438069] Internal error: Oops: 5 [#2] SMP ARM
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.442712] Modules linked in: joydev fb_ili9486(C) fbtft(C) ads7846 ti_am335x_adc kfifo_buf industrialio ti_am335x_tsc ti_am335x_tscadc pwm_tiecap omap_aes_driver omap_sham omap_rng rng_core spi_omap2_mcspi evdev uio_pdrv_genirq uio 8021q garp mrp stp llc usb_f_mass_storage usb_f_acm u_serial usb_f_ecm usb_f_rndis u_ether libcomposite cmemk(O) itc_pkt(O-) virtio_rpmsg_bus itc(O) spidev tieqep pwm_tiehrpwm pru_rproc pruss_intc pruss
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.481555] CPU: 0 PID: 6546 Comm: modprobe Tainted: G      D  C O    4.4.54-ti-r93 #1
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.489507] Hardware name: Generic AM33XX (Flattened Device Tree)
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.495629] task: dc255b00 ti: dc3e6000 task.ti: dc3e6000
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.501067] PC is at exit_creds+0x2c/0x90
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.505112] LR is at __put_task_struct+0x60/0x148
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.509839] pc : [<c0067544>]    lr : [<c0040140>]    psr: 60010013
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.509839] sp : dc3e7ee0  ip : dc3e7ef8  fp : dc3e7ef4
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.521369] r10: 00000000  r9 : dc3e6000  r8 : c0011024
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.526616] r7 : 00000800  r6 : 0000000b  r5 : dacd750c  r4 : dacd7500
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.533173] r3 : 00000000  r2 : 00000000  r1 : dacd7500  r0 : 00000000
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.539732] Flags: nZCv  IRQs on  FIQs on  Mode SVC_32  ISA ARM  Segment none
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.546900] Control: 10c5387d  Table: 9a87c019  DAC: 00000051
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.552671] Process modprobe (pid: 6546, stack limit = 0xdc3e6218)
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.558880] Stack: (0xdc3e7ee0 to 0xdc3e8000)
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.563265] 7ee0: 00000000 dacd7500 dc3e7f0c dc3e7ef8 c0040140 c0067524 dacd7500 dacd750c
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.571486] 7f00: dc3e7f2c dc3e7f10 c00655ac c00400ec bf03db00 bf03d648 8104d20c 00000800
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.579706] 7f20: dc3e7f44 dc3e7f30 bf03c0a8 c00654e4 c0f97a88 bf03d900 dc3e7fa4 dc3e7f48
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.587927] 7f40: c00d91c4 bf03c090 5f637469 00746b70 dc3e7f6c dc3e7f60 c01c5388 c0062f50
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.596148] 7f60: dc3e7f8c dc3e7f70 c0062f50 c0015220 dc3e6010 c0011024 dc3e7fb0 dc3e6000
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.604368] 7f80: 003e7fac dc8ba636 8104d1d8 8104d1d8 00000001 00000081 00000000 dc3e7fa8
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.612588] 7fa0: c0010e60 c00d9020 8104d1d8 8104d1d8 8104d20c 00000800 fc0e4200 00000000
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.620808] 7fc0: 8104d1d8 8104d1d8 00000001 00000081 00000000 00000001 8104d1d8 beffd6f4
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.629028] 7fe0: b6eca521 beffc31c 7f60f857 b6eca526 80010030 8104d20c 00000000 00000000
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.637266] [<c0067544>] (exit_creds) from [<c0040140>] (__put_task_struct+0x60/0x148)
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.645238] [<c0040140>] (__put_task_struct) from [<c00655ac>] (kthread_stop+0xd4/0x1b4)
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.653413] [<c00655ac>] (kthread_stop) from [<bf03c0a8>] (itc_pkt_exit+0x24/0x44 [itc_pkt])
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.661932] [<bf03c0a8>] (itc_pkt_exit [itc_pkt]) from [<c00d91c4>] (SyS_delete_module+0x1b0/0x23c)
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.671038] [<c00d91c4>] (SyS_delete_module) from [<c0010e60>] (ret_fast_syscall+0x0/0x44)
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.679349] Code: e5900414 e5842414 f57ff05b f5d0f000 (e1902f9f) 
+    Jun 17 06:27:42 beaglebone kernel: [ 2763.685628] ---[ end trace a8afe9481c0ec8de ]---
+
+which kind of looks like it died removing the old module rather than
+adding the new one.  Especially considering:
+
+    grep cmemk /etc/modules-load.d/t2_12_modules.conf || echo cmemk >> /etc/modules-load.d/t2_12_modules.conf
+    cmemk
+    depmod
+    modprobe -r itc_pkt || exit 0
+    Segmentation fault
+    modprobe -r pru_rproc || exit 0
+    modprobe: FATAL: Module pru_rproc is in use.
+    modprobe pru_rproc || exit 0
+
+from the *compilation* window.
+
+So, a null pointer deref during kthread_stop
+
+:178]
+[179:
+
+Mon Jun 17 06:39:17 2019 Trying again with more defenses around kthread_stop.
+
+:179]
+[180:
+
+Mon Jun 17 06:42:36 2019 Now we see this on initial boot:
+
+    Jun 17 06:41:05 beaglebone kernel: [   12.875224] ITC WT i11 -> i00
+    Jun 17 06:41:05 beaglebone kernel: [   12.922379] ZORG itc_pkt_init
+    Jun 17 06:41:05 beaglebone kernel: [   12.925447] OOKE 00000000
+    Jun 17 06:41:05 beaglebone kernel: [   12.976010] KOOK 00000000
+    Jun 17 06:41:05 beaglebone kernel: [   13.023974] OKKO
+    Jun 17 06:41:05 beaglebone kernel: [   13.058114] KOKO
+    Jun 17 06:41:05 beaglebone kernel: [   13.077952] KKOO
+    Jun 17 06:41:05 beaglebone kernel: [   13.079850] itcOBPktThreadRunner: Started
+    Jun 17 06:41:05 beaglebone kernel: [   13.084133] ------------[ cut here ]------------
+    Jun 17 06:41:05 beaglebone kernel: [   13.088781] kernel BUG at /home/t2/T2-12/pru/itcio/module/itc_pkt.c:161!
+    Jun 17 06:41:05 beaglebone kernel: [   13.095509] Internal error: Oops - BUG: 0 [#1] SMP ARM
+    Jun 17 06:41:05 beaglebone kernel: [   13.100670] Modules linked in: itc_pkt(O) virtio_rpmsg_bus itc(O) spidev tieqep pwm_tiehrpwm pru_rproc pruss_intc pruss
+    Jun 17 06:41:05 beaglebone kernel: [   13.111581] CPU: 0 PID: 595 Comm: ITC_Pkt_Shipper Tainted: G           O    4.4.54-ti-r93 #1
+    Jun 17 06:41:05 beaglebone kernel: [   13.120052] Hardware name: Generic AM33XX (Flattened Device Tree)
+    Jun 17 06:41:05 beaglebone kernel: [   13.126173] task: dc749380 ti: dc534000 task.ti: dc534000
+    Jun 17 06:41:05 beaglebone kernel: [   13.131637] PC is at itcOBPktThreadRunner+0x12c/0x144 [itc_pkt]
+    Jun 17 06:41:05 beaglebone kernel: [   13.137581] LR is at 0xafbf8800
+    Jun 17 06:41:05 beaglebone kernel: [   13.140735] pc : [<bf03b2f0>]    lr : [<afbf8800>]    psr: 60000013
+    Jun 17 06:41:05 beaglebone kernel: [   13.140735] sp : dc535f20  ip : afbf8f55  fp : dc535f5c
+    Jun 17 06:41:05 beaglebone kernel: [   13.152260] r10: 00000000  r9 : dc534020  r8 : 00000001
+    Jun 17 06:41:05 beaglebone kernel: [   13.157505] r7 : c0f97a88  r6 : 00000045  r5 : bf03dc40  r4 : 00000000
+    Jun 17 06:41:05 beaglebone kernel: [   13.164057] r3 : 00000002  r2 : 8a5ed0ec  r1 : 00000001  r0 : c0777ce2
+    Jun 17 06:41:05 beaglebone kernel: [   13.170613] Flags: nZCv  IRQs on  FIQs on  Mode SVC_32  ISA ARM  Segment none
+    Jun 17 06:41:05 beaglebone kernel: [   13.177776] Control: 10c5387d  Table: 9ade8019  DAC: 00000051
+    Jun 17 06:41:05 beaglebone kernel: [   13.183545] Process ITC_Pkt_Shipper (pid: 595, stack limit = 0xdc534218)
+    Jun 17 06:41:05 beaglebone kernel: [   13.190274] Stack: (0xdc535f20 to 0xdc536000)
+    Jun 17 06:41:05 beaglebone kernel: [   13.194654] 5f20: dc534000 00000002 bf03b1c4 dc8ba636 00000000 00000000 dc53a940 00000000
+    Jun 17 06:41:05 beaglebone kernel: [   13.202869] 5f40: bf03b1c4 00000000 00000000 00000000 dc535fac dc535f60 c0064f18 bf03b1d0
+    Jun 17 06:41:05 beaglebone kernel: [   13.211083] 5f60: 00000000 dc0da700 00000000 00000000 00000000 dc535f74 dc535f74 00000000
+    Jun 17 06:41:05 beaglebone kernel: [   13.219297] 5f80: 00000000 dc535f84 dc535f84 dc8ba636 dc53a940 c0064e1c 00000000 00000000
+    Jun 17 06:41:05 beaglebone kernel: [   13.227513] 5fa0: 00000000 dc535fb0 c0010f20 c0064e28 00000000 00000000 00000000 00000000
+    Jun 17 06:41:05 beaglebone kernel: [   13.235727] 5fc0: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+    Jun 17 06:41:05 beaglebone kernel: [   13.243942] 5fe0: 00000000 00000000 00000000 00000000 00000013 00000000 00000000 00000000
+    Jun 17 06:41:05 beaglebone kernel: [   13.252203] [<bf03b2f0>] (itcOBPktThreadRunner [itc_pkt]) from [<c0064f18>] (kthread+0xfc/0x114)
+    Jun 17 06:41:05 beaglebone kernel: [   13.261043] [<c0064f18>] (kthread) from [<c0010f20>] (ret_from_fork+0x14/0x34)
+    Jun 17 06:41:05 beaglebone kernel: [   13.268302] Code: e89daff0 e370000c 03a04001 eaffffe7 (e7f001f2) 
+    Jun 17 06:41:05 beaglebone kernel: [   13.274426] ---[ end trace 77ee554a16f83a65 ]---
+
+[181:
+
+Mon Jun 17 06:43:53 2019 Suggesting the thread is still starting too
+early, and I guess obviously we need to delay starting the OB shipper
+until the PRU device probing happens, and all the ITCPRUDeviceState
+initting actually happens.[182:
+
+Mon Jun 17 06:48:58 2019 OK, moving it until the second PRU has been
+probed and set up.
+
+Bits off and going again.
+
+:182]
+
+:181]
+:180]
+[183:
+
+Mon Jun 17 07:04:07 2019 Well took a few boots to flush out some FS
+corruption muhmoh but now we're back up.  And the OB shipper seems to
+be starting plenty late now:
+
+    Jun 17 06:50:03 beaglebone kernel: [   42.438025] DEBUG1 00000031 PRU1 Releasing the hounds
+    Jun 17 06:50:03 beaglebone kernel: [   42.449927]  remoteproc1: registered virtio0 (type 7)
+    Jun 17 06:50:03 beaglebone kernel: [   42.455227] pru-rproc 4a338000.pru1: PRU rproc node /ocp/pruss@4a300000/pru1@4a338000 probed successfully
+    Jun 17 06:50:03 beaglebone kernel: [   42.465883] fb_ili9486 spi1.0: Display update: 759 kB/s, fps=0
+
+not there, on the first pru probe, but here:
+
+    Jun 17 06:50:03 beaglebone kernel: [   42.551570] RECTOBLURGE back with buf=''
+    Jun 17 06:50:03 beaglebone kernel: [   42.551802]  remoteproc2: registered virtio1 (type 7)
+    Jun 17 06:50:03 beaglebone kernel: [   42.551912] pru-rproc 4a334000.pru0: PRU rproc node /ocp/pruss@4a300000/pru0@4a334000 probed successfully
+    Jun 17 06:50:03 beaglebone kernel: [   42.561960] KKOO
+    Jun 17 06:50:03 beaglebone kernel: [   42.562052] DEBUG0 00000031 PRU0 Releasing the hounds
+    Jun 17 06:50:03 beaglebone kernel: [   42.562163] itcOBPktThreadRunner: Started
+
+on the last.
+
+But we still see no signs that the neighbors are getting any packets
+from the keymaster..  Trying the debug snapshot..
+
+    root@beaglebone:~# echo f > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug
+    Jun 17 07:07:41 beaglebone kernel: [  487.828548] set debug f
+    Jun 17 07:07:42 beaglebone kernel: [  488.182558] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:42 beaglebone kernel: [  488.190434] <pru1: 37                                               7
+    Jun 17 07:07:42 beaglebone kernel: [  488.416216] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:42 beaglebone kernel: [  488.424159] <pru0: 30                                               0
+    Jun 17 07:07:42 beaglebone kernel: [  488.922115] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:42 beaglebone kernel: [  488.930028] <pru1: 37                                               7
+    Jun 17 07:07:43 beaglebone kernel: [  489.376411] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:43 beaglebone kernel: [  489.384306] <pru0: 30                                               0
+    Jun 17 07:07:43 beaglebone kernel: [  489.661624] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:43 beaglebone kernel: [  489.669527] <pru1: 37                                               7
+    Jun 17 07:07:44 beaglebone kernel: [  490.336217] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:44 beaglebone kernel: [  490.344120] <pru0: 30                                               0
+    Jun 17 07:07:44 beaglebone kernel: [  490.401055] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:44 beaglebone kernel: [  490.408961] <pru1: 37                                               7
+    Jun 17 07:07:44 beaglebone kernel: [  490.485480] Routing bulk '83'+62 packet to PRU0
+    Jun 17 07:07:45 beaglebone kernel: [  491.140735] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:45 beaglebone kernel: [  491.148686] <pru1: 37                                               7
+    Jun 17 07:07:45 beaglebone kernel: [  491.296629] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:45 beaglebone kernel: [  491.304549] <pru0: 30                                               0
+    Jun 17 07:07:45 beaglebone kernel: [  491.879957] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:45 beaglebone kernel: [  491.887873] <pru1: 37                                               7
+    Jun 17 07:07:46 beaglebone kernel: [  492.006143] Routing bulk '83'+51 packet to PRU0
+    Jun 17 07:07:46 beaglebone kernel: [  492.256712] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:46 beaglebone kernel: [  492.264616] <pru0: 30                                               0
+    Jun 17 07:07:46 beaglebone kernel: [  492.619081] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:46 beaglebone kernel: [  492.626972] <pru1: 37                                               7
+    Jun 17 07:07:47 beaglebone kernel: [  493.216773] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:47 beaglebone kernel: [  493.224675] <pru0: 30                                               0
+    Jun 17 07:07:47 beaglebone kernel: [  493.358417] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:47 beaglebone kernel: [  493.366288] <pru1: 37                                               7
+    Jun 17 07:07:48 beaglebone kernel: [  494.034790] Routing bulk '85'+61 packet to PRU0
+    Jun 17 07:07:48 beaglebone kernel: [  494.097953] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:48 beaglebone kernel: [  494.105862] <pru1: 37                                               7
+    Jun 17 07:07:48 beaglebone kernel: [  494.176787] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:48 beaglebone kernel: [  494.184733] <pru0: 30                                               0
+    Jun 17 07:07:48 beaglebone kernel: [  494.837177] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:48 beaglebone kernel: [  494.845099] <pru1: 37                                               7
+    Jun 17 07:07:49 beaglebone kernel: [  495.136659] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:49 beaglebone kernel: [  495.144566] <pru0: 30                                               0
+    Jun 17 07:07:49 beaglebone kernel: [  495.576428] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:49 beaglebone kernel: [  495.584345] <pru1: 37                                               7
+    Jun 17 07:07:50 beaglebone kernel: [  496.096843] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:50 beaglebone kernel: [  496.104747] <pru0: 30                                               0
+    Jun 17 07:07:50 beaglebone kernel: [  496.315700] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:50 beaglebone kernel: [  496.323616] <pru1: 37                                               7
+    Jun 17 07:07:51 beaglebone kernel: [  497.055381] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:51 beaglebone kernel: [  497.063362] <pru1: 37                                               7
+    Jun 17 07:07:51 beaglebone kernel: [  497.070024] <pru0: c3 4d 30 33 30 3a 70 30 20 30 30 30 30 30 30 30  .M030:p0 0000000
+    Jun 17 07:07:51 beaglebone kernel: [  497.077870] <pru0: 30                                               0
+    Jun 17 07:07:51 beaglebone kernel: [  497.794731] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+    Jun 17 07:07:51 beaglebone kernel: [  497.802629] <pru1: 37                                               7
+    Jun 17 07:07:51 beaglebone kernel: [  497.867679] set debug 0
+    root@beaglebone:~# 
+
+[184:
+
+Mon Jun 17 07:08:50 2019 It's unfortunate that the keymaster is
+currently connected ET, SE, and SW, which turn out, I believe to all
+be serviced by PRU0.  So the fact that all the bulk routing is going
+that way is probably not a problem..
+
+:184]
+:183]
+[185:
+
+Mon Jun 17 07:16:38 2019 Adding DBGPRINTK's inside the OB shipper
+flow. [186:
+
+Mon Jun 17 07:17:13 2019 Going again.[187:
+
+Mon Jun 17 07:19:13 2019 Wow it appears we might have actually shut
+down clean:
+
+    Jun 17 07:18:46 beaglebone systemd[1]: Started Boot time cdm processing.
+    Jun 17 07:18:53 beaglebone kernel: [ 1159.965340] itcOBPktThreadRunner: Stopping by request
+    Jun 17 07:18:54 beaglebone kernel: [ 1159.994147] ti-pruss 4a300000.pruss: unconfigured system_events = 0x0000000000030000 host_intr = 0x00000005
+    Jun 17 07:18:54 beaglebone kernel: [ 1160.004097]  remoteproc2: stopped remote processor 4a334000.pru0
+    Jun 17 07:18:54 beaglebone systemd-udevd[566]: Network interface NamePolicy= disabled on kernel command line, ignoring.
+    Jun 17 07:18:54 beaglebone kernel: [ 1160.068110] virtio_rpmsg_bus virtio0: msg received with no recipient
+    Jun 17 07:18:54 beaglebone kernel: [ 1160.087416] ti-pruss 4a300000.pruss: unconfigured system_events = 0x00000000000c0000 host_intr = 0x0000000a
+    Jun 17 07:18:54 beaglebone kernel: [ 1160.097374]  remoteproc1: stopped remote processor 4a338000.pru1
+    Jun 17 07:18:54 beaglebone kernel: [ 1160.251922] pru-rproc 4a334000.pru0: pru_rproc_remove: removing rproc 4a334000.pru0
+    Jun 17 07:18:54 beaglebone kernel: [ 1160.288201]  remoteproc2: releasing 4a334000.pru0
+    Jun 17 07:18:54 beaglebone kernel: [ 1160.312051] pru-rproc 4a338000.pru1: pru_rproc_remove: removing rproc 4a338000.pru1
+    Jun 17 07:18:54 beaglebone kernel: [ 1160.348193]  remoteproc1: releasing 4a338000.pru1
+    Jun 17 07:18:54 beaglebone kernel: [ 1160.384129] ti-pruss 4a300000.pruss: remove PRU cores and other child platform devices
+
+by killing cdm.sh and cdm.pl in time that itc_pkt had no users when
+the make install got to the modprobe -r..[188:
+
+Mon Jun 17 07:21:14 2019 Trying the debug snapshot..
+
+:188]
+
+:187]
+
+:186]
+
+:185]
+[189:
+
+Mon Jun 17 07:21:52 2019 Hmm, no sign of routing..  Oh yeah I guess
+we'd have to start cdm back up..[190:
+
+Mon Jun 17 07:28:43 2019 Well, now we see stuff like:
+
+    Jun 17 07:27:05 beaglebone kernel: [ 1651.678114] <pru0: 30                                               0
+    Jun 17 07:27:06 beaglebone kernel: [ 1652.059504] Routing bulk '82'+62 packet to PRU0
+    Jun 17 07:27:06 beaglebone kernel: [ 1652.138133] Trying to send '82'+1 packet to via prudev da8f8010
+    Jun 17 07:27:06 beaglebone kernel: [ 1652.149840] >pru: 82                                               .
+
+Which looks like the rpmsg_trysend worked, but that the pktlen was
+messed up..[191:
+
+
+Mon Jun 17 07:34:49 2019 Ah you dog
+
+       /* show the size of the next record in the fifo */
+       printk(KERN_INFO "fifo peek len: %u\n", kfifo_peek_len(&test));
+   
+from https://elixir.bootlin.com/linux/v4.4.54/source/samples/kfifo/record-example.c
+
+It's kfifo_peek_len to get the next length.[192:
+
+Mon Jun 17 07:36:49 2019 Going again.
+
+:192]
+
+:191]
+
+:190]
+
+:189]
+[193:
+
+Mon Jun 17 08:21:55 2019 And it's not kfifo_peek() I wanted either.
+Of course I wanted kfifo_out_peek().  Thanks for the fantastic
+documentation there, Stef.
+
+Anyway.
+
+Now we get to this:
+
+    Jun 17 08:21:03 beaglebone kernel: [ 4889.887301] <pru0: 30                                               0
+    Jun 17 08:21:04 beaglebone kernel: [ 4890.191605] Routing bulk '82'+59 packet to PRU0
+    Jun 17 08:21:04 beaglebone kernel: [ 4890.196334] Copied 59 from user space, count 59, avail 255, len 60, ret 0
+    Jun 17 08:21:04 beaglebone kernel: [ 4890.203295] Trying to send '82'+59 packet to via prudev da860010
+    Jun 17 08:21:04 beaglebone kernel: [ 4890.215901] >pru: 82 46 4f 4f 50 4f 4f 44 4f 50 44 73 64 6b 73 64  .FOOPOODOPDsdksd
+    Jun 17 08:21:04 beaglebone kernel: [ 4890.223719] >pru: 6b 6c 73 64 6b 6c 64 73 6b 6c 64 73 6b 6c 64 73  klsdkldskldsklds
+    Jun 17 08:21:04 beaglebone kernel: [ 4890.231497] >pru: 6b 6c 64 73 6b 6c 64 73 6b 6c 73 64 6b 6c 73 64  kldskldsklsdklsd
+    Jun 17 08:21:04 beaglebone kernel: [ 4890.239224] >pru: 6b 6c 73 64 6b 6c 64 73 6c 6b 0a                 klsdkldslk.
+    Jun 17 08:21:04 beaglebone kernel: [ 4890.394649] <pru1: c3 4d 31 33 37 3a 70 31 20 30 30 30 30 30 30 30  .M137:p1 0000000
+
+so we finally have evidence a packet is getting shipped to a PRU.
+
+Let's start up cdm.pl again..[194:
+
+Mon Jun 17 08:27:23 2019 Well, I think cdm.pl is talking to its peers
+again.  I think it's time to get bits off one more time, and then get
+on about the day.
+
+:194]
+
+:193]
+[195:
+
+Mon Jun 17 13:46:09 2019 OK, back in the trenches.  Let's debug just a
+little more /dev/itc/mfm before nap time.
+
+:195]
+[196:
+
+Mon Jun 17 18:03:41 2019 So have a couple hours here only to see if we
+can get something we could show.  During nap time the bulk input
+buffers filled up with announcements and such from the neighbors, and
+I woke up plenty of:
+
+ ..
+    Jun 17 18:00:04 beaglebone kernel: [12366.922522] (ET) Inbound queue full, dropping bulk len=22 packet
+    Jun 17 18:00:14 beaglebone kernel: [12377.470180] (NE) Inbound queue full, dropping bulk len=22 packet
+    Jun 17 18:00:18 beaglebone kernel: [12381.184095] (ET) Inbound queue full, dropping bulk len=22 packet
+    Jun 17 18:00:33 beaglebone kernel: [12395.494024] (NE) Inbound queue full, dropping bulk len=22 packet
+    Jun 17 18:00:34 beaglebone kernel: [12396.917456] (ET) Inbound queue full, dropping bulk len=22 packet
+    Jun 17 18:00:44 beaglebone kernel: [12406.801044] (ET) Inbound queue full, dropping bulk len=3 packet
+    Jun 17 18:00:44 beaglebone kernel: [12406.807099] (ET) Inbound queue full, dropping bulk len=22 packet
+    Jun 17 18:00:49 beaglebone kernel: [12411.519870] (NE) Inbound queue full, dropping bulk len=22 packet
+    Jun 17 18:00:56 beaglebone kernel: [12419.186594] (ET) Inbound queue full, dropping bulk len=22 packet
+    Jun 17 18:00:57 beaglebone kernel: [12419.603542] (NE) Inbound queue full, dropping bulk len=3 packet
+  ..
+
+Which I can see are going to need to be put under a debug flag
+eventually but are nice to see now.
+
+But, still seem to be seeing kfifo_out_peek() returning 0 after
+kfifo_peek_len returned() non-zero, and trying to debug that.
+Changing from a BUG_ON(1) to a printk KERN_ERR when it happens, trying
+to get more information.
+
+Bits off again.
+
+:196]
+[197:
+
+Mon Jun 17 18:34:22 2019 OK, so, a couple things.  Even though we're
+getting all these messages, we are not actually stuck:
+
+    Jun 17 18:28:21 beaglebone kernel: [  887.837829] OB pktlen 3 but kfifo_out_peek returned 0 (kfifo dc473318, prudev dc470010)
+    Jun 17 18:28:22 beaglebone kernel: [  887.949815] OB pktlen 3 but kfifo_out_peek returned 0 (kfifo dc473318, prudev dc470010)
+    Jun 17 18:28:22 beaglebone kernel: [  888.166024] OB pktlen 16 but kfifo_out_peek returned 0 (kfifo dc473318, prudev dc470010)
+    Jun 17 18:28:22 beaglebone kernel: [  888.277882] OB pktlen 16 but kfifo_out_peek returned 0 (kfifo dc473318, prudev dc470010)
+
+and in fact we can see len 3 or 16 or whatever packets actually moving
+in t2viz around the time the pktlen changes in syslog.  And, the delay
+between messages often appears to be about a 100 ms, in line with the
+
+    int waitms = 100;                /* producers kick us so timeout should be rare backstop */
+    set_current_state(TASK_RUNNING);
+    if (shipCurrentOBPackets()) waitms = 1; /* Except short wait if txbufs ran out */
+    msleep_interruptible(waitms);      
+
+in itcOBPktThreadRunner.
+
+:197]
+[198:
+
+Mon Jun 17 19:00:38 2019 Now trying the hypothesis that you must see
+kfifo_len() non-zero before you can get a valid result from
+kfifo_peek_len().
+
+Bits off.
+
+:198]
+[199:
+
+Mon Jun 17 21:22:32 2019 Holy moly well we've gotten to this:
+
+    root@beaglebone:/home/t2# ./mfmiospike 
+    Primed pump
+    Got packet ' £HELOME'
+    root@beaglebone:/home/t2#
+
+where mfmiospike sent itself a packet via external loopback, through
+/dev/itc/mfm.  So that's a little first, and, here are 9:30ishpm, it
+keeps hope alive that I might be able to demonstrate inter-mfmt2
+interactions, however lamely, by tonight.
+
+So what I want right now now now is an inter MFMT2 packet format that
+has a time-to-live byte and a reflooding property.  We'll send it to
+everybody that we didn't get it from, counting down its time-to-live.
+
+Aaand when do we actually do the command that's flooding out to
+everybody?  Do we have a command index spinner and we do it once for
+each new command?  Guess so.
+
+
+:199]
+[200:
+
+Mon Jun 17 22:44:13 2019 OK, all that's starting to work, in
+'mfmiospike.c', which we've just moved to /home/t2/T2-12/apps/t2/ so
+we can save and build it without rebuilding all of MFM..  We're way
+running out of time here.
+
+Bits off.
+
+:200]
+[201:
+
+Wed Jun 19 02:31:22 2019 OK so we got past t2sup-ep236 -- but we only
+have a couple days really to work this week so we need to bear down
+again here.  Another plate of DO handles is cooking on the 3d printer.
+So: Re-view then to-do.  [202: Wed Jun 19 02:34:28 2019 
+
+ - OK, the :198: 'don't call kfifo_peek_len() unless kfifo_len() != 0'
+    hypothesis seems to be holding up so far.
+
+ - We implemented a 'struct FlashTraffic', in mfmiospike.cpp, five
+   bytes long including the itc packet header at the front and a one
+   byte checksum at the back.  It presumes that byte 1 of the packet
+   is the 'mCommand' byte, and drafts 'F' (0x46) as the 'Flash
+   Traffic' command.
+
+ - The 'F' command packet currently contains no command arguments --
+   the other four bytes are all concerned with validity and transport
+   -- so the implication must be that other command values will also
+   use struct FlashTraffic, and the use of 'F' for this first testing
+   one is kind of misleading.
+
+ - Also, we had a theory that maybe byte 1 values < 128 could imply
+   cache update, which 'F' would blow:
+
+      BYTE 0                                   BYTE 1                       BYTE 2            BYTE 3
+      STND LOCL MFMT                            SPEC
+     +----------------------------------------++---------------------------++----------------++--
+     |  1 |  0 | 1  |OVRN||EROR|DIR2|DIR1|DIR0||  0 | MFM CACHE PKT LENGTH || CACHE PKT TYPE ||
+     +----------------------------------------++---------------------------++----------------++--
+     +----------------------------------------++---------------------------++----------------++--
+     |  1 |  0 | 1  |OVRN||EROR|DIR2|DIR1|DIR0||  1 | MFM SPECIAL TYPE     || MFM SPEC TYPE ARGS..
+     +----------------------------------------++---------------------------++----------------++--
+
+[203:
+
+Wed Jun 19 03:00:33 2019 OK, enough.  Some
+
+TODO:
+
+ - Make a 'section' structure with 'claimable' numbers like we had in
+   201711120544-itcio-notes.txt, that takes us all the way to mfmt2
+   running legit across tiles while handling itc status changes and
+   intertile mfz compatibility checking.
+
+:203]
+
+:202]
+:201]
+[204:
+
+Wed Jun 19 03:09:29 2019 The last 'claimable' we had in
+201711120544-itcio-notes.txt was 6.2, so I guess we'll start here at
+round 7.
+
+(7) Demo mfmiospike executing multiple commands across a grid.[205: Wed Jun 19 04:26:06 2019 
+(7.0) Debug current semi-working mfmiospike.
+  :205]
+(7.1) Create some kind of pipe or file input so the user can inject
+      commands into mfmiospike.
+(7.2) Make a perl mfmiospikectl stub that injects such commands via
+      command line arguments
+(7.3) Maybe do (8) first?[209: Wed Jun 19 05:14:23 2019
+(7.4) Expand /sys/class/itc_pkt/statistics to separate priority and
+bulk stats
+(7.5) Rehack t2viz to handle the added stats  :209]
+
+(8) Integrate mfmiospike functionality into mfmt2 in a way that we do
+    not have to rebuild all of mfm every time mfmiospike changes.
+(8.1) Decide if using an anonymous memory map, and having mfmt2 fork
+      to mfmiospike, might be a good way to do that.
+(8.2) Make subgoals to do that, or find and alternative, starting at
+      8.3
+
+(9) Demo an inter-mfmt2 tile open/close protocol, including mfz id
+(9.1) Find out if we also need to share an element type number map.
+(9.2) See if we easily couldn't if so.  Make mfm id match be good
+      enough to send unaltered atoms in cache updates.
+
+(10) Demo 'Ponger' running intertile.  Ponger picks a random color and
+     moves in a fixed random direction until it encounters a non-live
+     site ahead, then it picks a new random color and direction.
+(10.1) Interact with cdm somehow to create an index of runnable mfzs.
+
+(11) Demo a half-decent mfmt2 bespoke display
+(11.1) Demo a new display for mfmt2 that reserves a visible pixel (or 2?
+       3?) all the way around the display for itc hint info.
+(11.2) Demo a new pop-up menu with big hittable 'R' options like
+       rezup (sim) refresh (caches), reset (grid), restart (mfmt2),
+       reboot (t2).
+(11.3) Either fix the foggen mouse pointer mapping mess, or just work
+       around it at mfmt2 level.  We don't need an actual (OS/SDL)
+       mouse pointer for early mfmt2 stuff anyway.
+
+:204]
+[206:
+
+Wed Jun 19 05:04:18 2019 Oh yeah, on issue we had just recently dealt
+with was the 'checksum header' problem: The 'dir' field of itc packet
+byte 0 changes in transit, so it can't be included in checksums.  (We
+must have run into this in cdm.pl already, right?[207: Wed Jun 19
+05:08:34 2019 No, cdm only checksums _content_ -- as a whole file or
+as a chunk in a packet -- and not the whole packet itself.  :207])
+[208:
+
+Wed Jun 19 05:09:53 2019 So we already did exclude mPktHdr from
+computeChecksum() in FlashTraffic.  So what happens now on the loopback?
+
+:208]
+:206]
+[210:
+
+Thu Jun 20 01:15:05 2019 So, with variable length records such as we
+are using, kfifo_avail returns the max number of bytes YOU CAN PUT IN
+THE NEXT RECORD.  That's why I'm seeing avail==255 both before and
+after I stick stuff in a kfifo.
+
+:210]
+[211:
+
+Thu Jun 20 02:24:01 2019 Well, no real progress, but I cleaned up
+stuff to make debug logging a little prettier, and to slow down the
+monitoring packets from the LinuxThreadRunner to like 1.5+sec each.
+
+But running out of time to hack here.  Have to start packing up for
+three days travel.
+
+Bits off.
+
+:211]
+[212:
+
+Thu Jun 20 03:08:30 2019 Really have to stop now.  Summary:
+
+ - We can receive standard routed packets from other tiles to
+   /dev/itc/packets
+
+ - We can send and receive local packets like 'P', and receive and
+   handle internall local packets like 'M'.
+
+ - When we send standard routed packets outbound it appears they are
+   being received by the PRUs because the new 'l' counter of packets
+   received from linux appears to increment.  Use like
+
+     echo "Pd0fhpxl??????????" > /dev/itc/pru1;head -1 /dev/itc/pru1
+
+   to see the l count in hex on pru1.  (Note it increments each time
+   by at least one for the 'P' packet itself.)
+
+ - But when we have a loopback cable connected that is working enough
+   to achieve packet sync, we get no evidence that any packets sent in
+   those directions are ever seen.
+[213:
+
+Thu Jun 20 03:15:54 2019 But when we connect the serial cable to a
+neighboring tile THAT IS RUNNING OLD CODE, and send a standard packet
+to them, we DO SEE THEM GETTING IT in the syslog!  Packets ARE getting
+off the keymaster with the new code.[214:
+
+Thu Jun 20 03:21:00 2019 And on the keymaster we can receive routed
+packets sent by (an old code) neighbor:
+
+NEIGHBOR:
+
+    root@beaglebone:~# echo -e "\x85OGOGOGOMMMM" > /dev/itc/packets
+
+KEYMASTER:
+
+    Jun 20 03:19:56 beaglebone kernel: [205578.753020] <pru1: 81 4f 47 4f 47 4f 47 4f 4d 4d 4d 4d 0a           .OGOGOGOMMMM.
+    Jun 20 03:19:56 beaglebone kernel: [205578.760725] Stashed 0x81/13 packet for pktdev itc!packets ipb mUserIB, waking dc5f108c
+    Jun 20 03:19:57 beaglebone kernel: [205579.848356] <pru1: c3 4d 31 33 31 3a                                .M131:
+
+    root@beaglebone:/home/t2# cat /dev/itc/packets 
+    AAAAAAOGOGOGOMMMM
+      C-c C-c
+    root@beaglebone:/home/t2# 
+
+[215:
+
+Thu Jun 20 03:23:01 2019 So... WHAT THE EVERLOVING FOG?  It's as if
+the loopback cable is only willing to send packet delimiters, and all
+real packets are silently discarded BY THE CABLE.
+
+We should try to send a packet via a cable TO THE NEIGHBOR..  BUT I
+HAVE TO HAVE TO HAVE TO STOP STOP STOP.
+
+Bits off.
+
+:215]
+
+:214]
+
+:213]
+
+:212]
+[216:
+
+Sun Jun 23 06:17:13 2019 OK I'm back.  Time to reboot brain and try
+the non-loopback-cable experiment.  So, are those previous
+observations all consistent with the idea that the new code is not
+able to receive new packets?  Although I don't see how that helps much
+even if it is.  'New' packet looks fine to old code, 'old' packet
+looks fine to new code..
+
+:216]
+[217:
+
+Sun Jun 23 07:46:14 2019 Well, now it's looking like some of the
+keymaster ITCs are intermittent or dead at the hardware level?  I
+*can* send and receive new-to-new packets on keymaster loopback
+between SE and WT.  But SE to NE doesn't sync and SE to NW doesn't
+sync.  [218:
+
+Sun Jun 23 07:49:26 2019 And WT to NE doesn't sync.[219:
+
+Sun Jun 23 07:50:28 2019 And keym-NE to nghb-NW doesn't sync[220:
+
+Sun Jun 23 07:51:39 2019 And nghb-NW to nghb-NE doesn't sync !?[221:
+
+Sun Jun 23 07:52:37 2019 But nghb-NW to nghb-ET DOES sync.
+
+And nghb-NW to nghb-SE DOES sync.  [222: Sun Jun 23 07:55:14 2019
+
+Aaaand keym-SE to nghb-NW DOES sync.[223:
+
+Sun Jun 23 07:59:46 2019 So, keym-NE and nghb-NE are both dead, for
+starters? [224:
+
+Sun Jun 23 08:06:48 2019 Buuut it's not that simple.  I just connected
+ngb2 to keym-NE and it came up:
+
+     Jun 23 08:06:16 beaglebone kernel: [ 5375.335525] ITCCHANGE:UP:NE
+
+
+
+:224]
+
+:223]
+
+:222]
+
+
+:221]
+
+:220]
+
+:219]
+
+:218]
+
+:217]
