@@ -98,8 +98,8 @@ LinuxThreadRunner:
 	and r0, RC, 0x3                ; r0 == 0 every 4 resumes
         qbne ltr2, r0, 0               ; Also do processing then
 ltr1:   jal r3.w2, processPackets      ; Surface to C level, check for linux action
-ltr2:   lsl r0, RC, 11                 ; Bottom 21 bits of RC to top of r0
-        qbne ltr3, r0, 0               ; do packetThread monitoring every 2M RCs
+ltr2:   lsl r0, RC, 10                 ; Bottom 22 bits of RC to top of r0
+        qbne ltr3, r0, 0               ; do packetThread monitoring every 4M RCs
         jal r3.w2, monitorPacketThreads
 ltr3:   resumeAgain                    ; Save, switch, resume at LinuxThreadRunner
 
