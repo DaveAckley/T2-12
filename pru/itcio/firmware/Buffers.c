@@ -53,7 +53,7 @@ void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
   if (packetLength < 37) {
     packetLength = 37;
   }
-  ipb->buffer[0] = PKT_ROUTED_STD_VALUE|PKT_STD_ERROR_VALUE|dircodeFromPrudir(prudir); /*Fill in our source direction*/  
+  ipb->buffer[0] = PKT_ROUTED_STD_VALUE | PKT_STD_ERROR_VALUE | dircodeFromPrudir(prudir); /*Fill in our source direction*/  
   ipb->buffer[1] = 'F';
   ipb->buffer[2] = 'R';
   ipb->buffer[3] = 'M';
@@ -73,7 +73,7 @@ void ipbReportFrameError(unsigned prudir, unsigned char packetLength,
 void ipbSendPacket(unsigned prudir, unsigned char length) {
   if (length) {
     struct InboundPacketBuffer * ipb = pruDirToIPB(prudir);
-    ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK)|dircodeFromPrudir(prudir); /*Fill in our source direction*/
+    ipb->buffer[0] = (ipb->buffer[0]&~PKT_STD_DIRECTION_MASK) | dircodeFromPrudir(prudir); /*Fill in our source direction*/
     if (CSendPacket(&ipb->buffer[0], length))
       ++ipb->packetsRejected;
     else
