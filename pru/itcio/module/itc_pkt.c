@@ -64,16 +64,23 @@ static char * strPktHdr(u8 hdr) {
   return p;
 }
 
+static void initITCTrafficCounts(ITCTrafficCounts *c)
+{
+  c->mBytesSent = 0;
+  c->mBytesReceived = 0;
+  c->mPacketsSent = 0;
+  c->mPacketsReceived = 0;
+}
+
 static void initITCTrafficStats(ITCTrafficStats *s, int dir)
 {
+  int i;
   s->mDirNum = dir;
-  s->mBytesSent = 0;
-  s->mBytesReceived = 0;
-  s->mPacketsSent = 0;
-  s->mPacketsReceived = 0;
   s->mPacketSyncAnnouncements = 0;
   s->mSyncFailureAnnouncements = 0;
   s->mTimeoutAnnouncements = 0;
+  for (i = 0; i < 2; ++i)
+    initITCTrafficCounts(&s->mCounts[i]);
 }
 
 static ITCTrafficStats * getITCTrafficStatsFromDir(u32 dirnum)
@@ -192,6 +199,15 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
 
   ret = rpmsg_trysend(chnl, prudev->mTempPacketBuffer, pktlen);
   if (ret < 0) return ret;      /* send failed; -ENOMEM means no tx buffers */
+
+  if (ipb->mRouted) { /* Do stats on routed buffers */
+    u8 itcDir = prudev->mTempPacketBuffer[0]&0x7;  /* Get direction from header */
+    ITCTrafficStats * t = getITCTrafficStatsFromDir(itcDir);
+    u32 index = ipb->mPriority ? 1 : 0;
+    BUG_ON(!t);
+    ++t->mCounts[index].mPacketsSent;
+    t->mCounts[index].mBytesSent += pktlen;
+  }
 
   DBGPRINT_HEX_DUMP(DBG_PKT_SENT,
                     KERN_INFO, ">pru: ",
@@ -333,21 +349,72 @@ static ssize_t itc_pkt_class_read_statistics(struct class *c,
                                              struct class_attribute *attr,
                                              char *buf)
 {
-  /* We have a PAGE_SIZE in buf, but won't get near that.  Max size
-     presently is something like ( 42 + 8 * ( 2 + 7 * 11 ) ) < 700 */
+  /* We have a PAGE_SIZE (== 4096) in buf, but won't get near that.  Max size
+     presently is something like ( 110 + 8 * ( 2 + 3 * 11 + 8 * 11) ) < 1100 */
   int len = 0;
-  int itc;
-  len += sprintf(&buf[len], "dir bsent brcvd psent prcvd psan sfan toan\n");
+  int itc, speed;
+  len += sprintf(&buf[len], "dir psan sfan toan blkbsent blkbrcvd blkpsent blkprcvd pribsent pribrcvd pripsent priprcvd\n");
   for (itc = 0; itc < ITC_DIR_COUNT; ++itc) {
     ITCTrafficStats * t = &S.mItcStats[itc];
-    len += sprintf(&buf[len], "%d %d %d %d %d %d %d %d\n",
+    len += sprintf(&buf[len], "%u %u %u %u",
                    itc,
-                   t->mBytesSent, t->mBytesReceived,
-                   t->mPacketsSent, t->mPacketsReceived,
                    t->mPacketSyncAnnouncements,
                    t->mSyncFailureAnnouncements,
                    t->mTimeoutAnnouncements
                    );
+    for (speed = 0; speed < 2; ++speed) {
+      ITCTrafficCounts *c = &t->mCounts[speed];
+      len += sprintf(&buf[len], " %u %u %u %u",
+                     c->mBytesSent, c->mBytesReceived,
+                     c->mPacketsSent, c->mPacketsReceived);
+    }
+    len += sprintf(&buf[len], "\n");
+  }
+  return len;
+}
+
+static int sprintPktBufInfo(char * buf, int len, ITCPacketBuffer * p)
+{
+  len += sprintf(&buf[len]," %u %u %u",
+                 kfifo_len(&p->mFIFO),
+                 !list_empty(&p->mReaderQ.task_list),
+                 !list_empty(&p->mWriterQ.task_list));
+  return len;
+}
+
+
+static ssize_t itc_pkt_class_read_pru_bufs(struct class *c,
+                                           struct class_attribute *attr,
+                                           char *buf)
+{
+  int len = 0;
+  int pru;
+  len += sprintf(&buf[len], "pru libl libr libw pobl pobr pobw bobl bobr bobw\n");
+  for (pru = 0; pru < PRU_MINORS; ++pru) {
+    ITCPRUDeviceState * t = S.mPRUDeviceState[pru];
+    if (!t) continue;
+    len += sprintf(&buf[len], "%u", pru);
+    len = sprintPktBufInfo(buf,len,&t->mLocalIB);
+    len = sprintPktBufInfo(buf,len,&t->mPriorityOB);
+    len = sprintPktBufInfo(buf,len,&t->mBulkOB);
+    len += sprintf(&buf[len], "\n");
+  }
+  return len;
+}
+
+static ssize_t itc_pkt_class_read_pkt_bufs(struct class *c,
+                                           struct class_attribute *attr,
+                                           char *buf)
+{
+  int len = 0;
+  int speed;
+  len += sprintf(&buf[len], "prio uibl uibr uibw\n");
+  for (speed = 0; speed < PKT_MINORS; ++speed) {
+    ITCPktDeviceState * t = S.mPktDeviceState[speed];
+    if (!t) continue;
+    len += sprintf(&buf[len], "%u", speed);
+    len = sprintPktBufInfo(buf,len,&t->mUserIB);
+    len += sprintf(&buf[len], "\n");
   }
   return len;
 }
@@ -489,6 +556,8 @@ static struct class_attribute itc_pkt_class_attrs[] = {
   __ATTR(debug, 0644, itc_pkt_class_read_debug, itc_pkt_class_store_debug),
   __ATTR(status, 0444, itc_pkt_class_read_status, NULL),
   __ATTR(statistics, 0444, itc_pkt_class_read_statistics, NULL),
+  __ATTR(pru_bufs, 0444, itc_pkt_class_read_pru_bufs, NULL),
+  __ATTR(pkt_bufs, 0444, itc_pkt_class_read_pkt_bufs, NULL),
   __ATTR_NULL,
 };
 #undef XX
@@ -594,13 +663,6 @@ static int routeOutboundStandardPacket(const unsigned char pktHdr, size_t pktLen
 #define XX(dir) case ITC_DIR_TO_DIR_NUM(dir): newminor = ITC_DIR_TO_PRU(dir); break;
 FOR_XX_IN_ITC_ALL_DIR
 #undef XX
-  }
-
-  if (newminor >= 0) {
-    ITCTrafficStats * t = getITCTrafficStatsFromDir(itcDir);
-    BUG_ON(!t);
-    ++t->mPacketsSent;
-    t->mBytesSent += pktLen;
   }
 
   return newminor;
@@ -868,10 +930,6 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_chnl,
       if (!(type&PKT_HDR_BITMASK_LOCAL)) { // Standard routed packet
 
         u32 dir = type&PKT_HDR_BITMASK_DIR;
-        ITCTrafficStats * t = getITCTrafficStatsFromDir(dir);
-
-        t->mPacketsReceived++;
-        t->mBytesReceived += len;
 
         if (type&PKT_HDR_BITMASK_OVERRUN) {
           printk(KERN_ERR "(%s) Packet overrun reported on size %d packet\n", getDirName(type&0x7), len);
@@ -895,11 +953,13 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_chnl,
           ITCPktDeviceState * pktdev;
           ITCPacketBuffer * ipb;
           bool urgent = type&PKT_HDR_BITMASK_MFMT;
+          u32 index = urgent ? 1 : 0;
+          ITCTrafficStats * t = getITCTrafficStatsFromDir(dir);
 
-          if (urgent)
-            pktdev = S.mPktDeviceState[1]; /* /dev/itc/mfm */
-          else
-            pktdev = S.mPktDeviceState[0]; /* /dev/itc/packets */
+          t->mCounts[index].mPacketsReceived++;
+          t->mCounts[index].mBytesReceived += len;
+
+          pktdev = S.mPktDeviceState[index]; /* 0==/dev/itc/packets, 1==/dev/itc/mfm */
 
           BUG_ON(!pktdev);
           ipb = &pktdev->mUserIB;
@@ -972,8 +1032,10 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_chnl,
   }
 }
 
-static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname) {
+static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname, bool routed, bool priority) {
   BUG_ON(!ipb);
+  ipb->mRouted = routed;
+  ipb->mPriority = priority;
   strncpy(ipb->mName, ipbname,DBG_NAME_MAX_LENGTH);
   mutex_init(&ipb->mLock);
   init_waitqueue_head(&ipb->mReaderQ);
@@ -987,7 +1049,7 @@ static ITCPktDeviceState * makeITCPktDeviceState(struct device * dev,
 {
   ITCCharDeviceState* cdev = makeITCCharDeviceState(dev, sizeof(ITCPktDeviceState), minor_to_create, err_ret);
   ITCPktDeviceState* pktdev = (ITCPktDeviceState*) cdev;
-  initITCPacketBuffer(&pktdev->mUserIB,"mUserIB");
+  initITCPacketBuffer(&pktdev->mUserIB,"mUserIB",false,false);
   return pktdev;
 }
 
@@ -998,9 +1060,9 @@ static ITCPRUDeviceState * makeITCPRUDeviceState(struct device * dev,
   ITCCharDeviceState* cdev = makeITCCharDeviceState(dev, sizeof(ITCPRUDeviceState), minor_to_create, err_ret);
   ITCPRUDeviceState* prudev = (ITCPRUDeviceState*) cdev;
   prudev->mRpmsgChannel = 0; /* caller inits later */
-  initITCPacketBuffer(&prudev->mLocalIB,"mLocalIB");
-  initITCPacketBuffer(&prudev->mPriorityOB,"mPriorityOB");
-  initITCPacketBuffer(&prudev->mBulkOB,"mBulkOB");
+  initITCPacketBuffer(&prudev->mLocalIB,"mLocalIB",false,false);
+  initITCPacketBuffer(&prudev->mPriorityOB,"mPriorityOB",true,true);
+  initITCPacketBuffer(&prudev->mBulkOB,"mBulkOB",true,false);
   return prudev;
 }
 

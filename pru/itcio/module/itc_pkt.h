@@ -77,6 +77,8 @@ typedef struct {
   wait_queue_head_t mWriterQ;/* for writers waiting for fifo non-full */
   struct mutex      mLock;   /* lock for modifying this struct */
   char mName[DBG_NAME_MAX_LENGTH];   /* debug name of buffer */
+  bool mRouted;              /* Packets in this buffer are routed */
+  bool mPriority;            /* This is a priority buffer */
 } ITCPacketBuffer;
 
 typedef struct {             /* General char device state */
@@ -104,13 +106,17 @@ typedef struct {
   ITCPacketBuffer mUserIB;  /* pkts from PRU awaiting delivery to userspace */
 } ITCPktDeviceState;
 
-/* per dirnum */
 typedef struct {
-  uint32_t mDirNum;
   uint32_t mBytesSent;
   uint32_t mBytesReceived;
   uint32_t mPacketsSent;
   uint32_t mPacketsReceived;
+} ITCTrafficCounts;
+
+/* per dirnum */
+typedef struct {
+  ITCTrafficCounts mCounts[2];  /* 0 == bulk, 1 == priority */
+  uint32_t mDirNum;
   uint32_t mPacketSyncAnnouncements;
   uint32_t mSyncFailureAnnouncements;
   uint32_t mTimeoutAnnouncements;
