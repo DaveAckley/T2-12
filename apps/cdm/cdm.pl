@@ -87,6 +87,7 @@ sub readPacket {
 sub writePacket {
     my ($pkt,$ignoreUnreach) = @_;
     $ignoreUnreach ||= 1; # Default to ignore unreachable hosts
+    my $usec = 1000;
     while (1) {
         my $len = syswrite(PKTS, $pkt);
         return 1 if defined $len;
@@ -96,7 +97,11 @@ sub writePacket {
         }
         die "Error: $!" unless $!{EAGAIN};
         DPVRB("WRITE BLOCKING");
-        Time::HiRes::usleep(100);
+        Time::HiRes::usleep($usec += 1000);
+        if ($usec > 500000) {
+            DPSTD(sprintf("WritePacket timed out on 0x%02x/%d",ord($pkt),length($pkt)));
+            return;
+        }
     }
 }
 
