@@ -35,7 +35,7 @@ endif
 TAR_SWITCHES+=--exclude=tools --exclude=*~ --exclude=.git --exclude=doc/internal --exclude=spikes --exclude-backups
 TAR_SWITCHES+=--exclude=extra
 
-TAR_SWITCHES+=--mtime="1969-01-01 00:00:00"
+TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
 TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 
 
 cdmd:	FORCE
