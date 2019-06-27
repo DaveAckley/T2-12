@@ -1,0 +1,70 @@
+{5}  -*- text -*- 
+[0:
+
+Wed Jun 26 14:46:30 2019 Hmm, so looks like I lost some stuff on a
+disk corruption, ick.  Wondering if I should move the keymaster while
+I still have a chance.  I was talking about revising the design of the
+T2-12 repo, or at least revisiting it.
+
+[1:
+
+Wed Jun 26 14:47:10 2019 But here's a bit of rescued text from the
+file I started a while ago, once I noticed the FS had gone read-only
+underneath me:
+
+[2:
+
+Among the issues:
+
+1. We are using 'make cdmd' to build tgz-inside-of-mfz files to
+   distribute updates to the grid.  cdm bulk transfer is way slow,
+      like 9600 baud slow, so it would be better if such updates are
+   not
+      too huge.
+
+2. In particular, cdmd-MFM.mfz is almost 10MB.
+
+3. We need to actually IMPLEMENT cdm-deleteds.mfz, for example we stop
+   trying to push the old-format 'cdm-distribu-*.mfz' files around!
+
+4. We tried to speed this up by having a minimized 'cdmd-devbins.mfz'
+   file, that just includes the 'important executable binaries'.[3:
+   Wed Jun 26 14:55:15 2019 But any time there's more than one
+   cdmd-X.mfz that includes a given file, that creates a race for that
+   file since we have no way to express inter-cdmd-X.mfz dependencies,
+   so whichever gets installed last wins.
+
+5. Also, we have lots of files that are not inside T2-12, but are
+   essential to tile functioning.  Most particularly including MFM and
+   ULAM on the one hand, and tslib-1.20 for the touchscreen on the
+   other hand.
+
+:3]
+
+:2]
+
+:1]
+
+:0]
+[4:
+
+Thu Jun 27 04:47:32 2019 OK, so we need to refresh and revisit our
+make-an-image process, and.. make a new image..  Goals of the image:
+
+ - Updated T2-12 and MFM.
+
+ - Kill MFMTMP, it should not be needed anymore
+
+ - Kill GFB ditto
+
+ - Auto install of the T2-12 extras.  Does that already happen?
+
+ - tslib-1.20 installed with a default configured pointercal
+
+ - Current pubkey for cdm
+
+ - Prepopulate /cdm/common?  Does that help?
+
+ - Automate all of the above.  
+
+:4]
