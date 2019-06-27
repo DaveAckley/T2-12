@@ -1,4 +1,4 @@
-{225}  -*- text -*-
+{227}  -*- text -*-
 [0:
 
 Sat Jan 19 12:29:28 2019 OK, so we've been struggling trying to pick a
@@ -3054,3 +3054,25 @@ ngb2 to keym-NE and it came up:
 :218]
 
 :217]
+[225:
+
+Wed Jun 26 16:20:55 2019 Hmm, just noticed an accounting problem in
+itc_pkt.c -- routeOutboundStandardPacket increments mPacketsSent and
+mBytesSent without knowing whether the write actually succeed.  We
+need to delay stats changing at least until the packet actually goes
+out in an rpmsg buffer and gets removed from its kfifo.
+
+Maybe we should take that as a sign it's time to fix up the stats
+stuff for bulk-vs-priority as well.  As least there's something
+concrete and relatively quick we could work on.[226:
+
+Thu Jun 27 03:57:17 2019 OK well the bad accounting is likely fixed if
+I didn't mess up other stuff doing it, and we've now split bulk and
+priority stats and pushed that change through all or most of the sites
+that care about it.
+
+BITS OFF.
+
+:226]
+
+:225]
