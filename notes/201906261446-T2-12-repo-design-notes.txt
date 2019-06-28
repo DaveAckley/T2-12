@@ -1,4 +1,4 @@
-{5}  -*- text -*- 
+{8}  -*- text -*- 
 [0:
 
 Wed Jun 26 14:46:30 2019 Hmm, so looks like I lost some stuff on a
@@ -68,3 +68,46 @@ make-an-image process, and.. make a new image..  Goals of the image:
  - Automate all of the above.  
 
 :4]
+[5:
+
+Fri Jun 28 01:17:15 2019 OK, so another design issue here is that a
+chunk of the disk-image-generating workflow is not in T2-12, it's just
+sitting in scripts and notes in hardware/T2-Tile-Project/DISK_IMAGES .
+So that's not great.
+
+But, inside DISK_IMAGES/images/InitT2Image.pl, there is a here-doc
+that becomes '/root/T2-12-root-seed.sh' in the created image.
+
+At the moment, that seed installs T2-12 from the github repo, but
+that's it.  Seems like that's an opportune place to do the
+/home/t2/GITHUB packages as well.  Hmm, in particular, because after
+the T2-12 install, we'll have T2-12/extra, which contains the .tgz's
+we want to use.[6:
+
+Fri Jun 28 01:26:32 2019 Now, T2-12/extra currently has
+MFM20190211SIG.tgz in it, which we clearly can't want to be
+installing.  Do we want to use a cdmd-created tgz instead -- I guess,
+specifically, our CDM-TGZS-BACKUP/CDM-TGZS/MFM-built.tgz ?
+
+And again, isn't a better way to do that, to prepopulate /cdm/common
+with the version of, say, cdmd-MFM.mfz that we like?   And let it get
+installed by cdm.pl during the running of the seed?  Could we really
+go that far?[7:
+
+Fri Jun 28 01:32:16 2019 So suppose we:
+
+ 1 - Make a 'release' (Series F?) of cdmd stuff.  Specifically T2-12,
+     MFM, and ULAM.  (Or not ulam?  Don't expect to compile on the
+     grid?)
+
+ 2 - Collect not just the X-built.tgzs but also the cdmd-X.mfzs
+     ..somewhere.  Actually let's just set up a staging CDM-COMMON dir
+     that we update from the keymaster then clean up however we like.
+
+ 3 - Could 
+
+:7]
+
+:6]
+
+:5]
