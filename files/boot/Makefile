@@ -12,7 +12,7 @@ clean:	FORCE
 
 realclean:	clean touch
 
-install:	$(OUTPUT)
+install:	touch $(OUTPUT)
 
 $(OUTPUT):	$(INPUT)
 	cp $< $@  || (echo Must be root ; exit 2)
