@@ -6,7 +6,7 @@
 #TRYING TO MAKE STANDARD AS E-SERIES T2s START APPEARING
 #/home/t2/GITHUB/MFM/bin/mfms {1H1} --run -n -a 0 --sw 480 --sh 320 --sf -ep /home/t2/MFMTMP/.gen/bin/libcue.so --start-file /home/t2/MFMTMP/10.mfs
 #MOVING ON TO mfmt2
-/home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/GITHUB/MFM/bin/mfmt2 {1H1} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/11.mfs -cp /home/t2/T2-12/apps/mfm/11.mfs -ep /home/t2/MFMTMP/.gen/bin/libcue.so --run -a 0 -n
+/home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/GITHUB/MFM/bin/mfmt2 {1H1} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/11.mfs -cp /home/t2/T2-12/apps/mfm/11.mfs -ep /home/t2/T2-12/apps/mfm/libcue.so --run -a 0 -n
 
 
 
