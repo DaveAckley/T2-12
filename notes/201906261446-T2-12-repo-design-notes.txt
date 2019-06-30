@@ -1,4 +1,4 @@
-{8}  -*- text -*- 
+{30}  -*- text -*- 
 [0:
 
 Wed Jun 26 14:46:30 2019 Hmm, so looks like I lost some stuff on a
@@ -51,9 +51,11 @@ Among the issues:
 Thu Jun 27 04:47:32 2019 OK, so we need to refresh and revisit our
 make-an-image process, and.. make a new image..  Goals of the image:
 
- - Updated T2-12 and MFM.
+[27: Sat Jun 29 11:47:02 2019
+DONE :27] - Updated T2-12 and MFM.
 
- - Kill MFMTMP, it should not be needed anymore
+[28: Sat Jun 29 11:51:05 2019 Removed from T2-12/extra
+DONE :28] - Kill MFMTMP, it should not be needed anymore
 
  - Kill GFB ditto
 
@@ -111,3 +113,220 @@ Fri Jun 28 01:32:16 2019 So suppose we:
 :6]
 
 :5]
+[8:
+
+Fri Jun 28 13:12:39 2019 So we lost a bunch of stuff here :(.  We
+rehacked to get cdm.pl to run standalone for init.. and rearranged
+around /root/T2-SEED-FILES.. fog.  We lost a lot here -- because
+installing cdmd-MFM.mfz apparently reliably causes disk corruption.
+At least on this disk.
+
+Grand.
+
+What's the status of cdm.pl, I wonder..  WE LOST ALL THOSE CHANGES AS
+WELL?!??!  OH FOG.
+
+I have to stop now and prepare for this 'biotacast' interview.  Oh
+fog, we lost a lot of stuff.  Because I violated my own
+
+BITS OFF.
+
+:8]
+[9:
+
+Sat Jun 29 04:51:31 2019 So we don't understand why installing
+cdmd-MFM.mfz corrupts the damn disk, but we suspect it has to do with
+the big tree renamings and deletings that go on, while some of the
+files within those trees are in use.  Although please, shouldn't we
+have to be assuming it's the disk?  Do we really think we can corrupt
+the disk using just some intense-but-legal sequence of file
+operations?
+
+I just don't know.  But now how do we go forward?  Do we reimplement
+what just caused disk corruption?  The way we had gone, in cdm.pl, was
+basically just to check for command line arguments, and if we found
+them, we copied them to /cdm/common, then called preinitCommon(), I
+think, to get them all installed. [10:
+
+Sat Jun 29 05:53:26 2019 Well, I see crap like this on the internet
+(from https://opensource.com/article/18/4/ext4-filesystem):
+
+    Under filesystems without delayed allocation, this is sufficient to
+    avoid the potential corruption and crash problems outlined above:
+    Since rename() is an atomic operation, it won't be interrupted by a
+    crash; and running programs will continue to reference the old, now
+    unlinked version of file for as long as they have an open filehandle
+    to it. BUT BECAUSE EXT4'S DELAYED ALLOCATION CAN CAUSE WRITES TO BE
+    DELAYED AND RE-ORDERED, the rename("newfile","file") may be carried
+    out before the contents of newfile are actually written to disk, which
+    opens the problem of parallel processes getting bad versions of file
+    all over again.
+
+    To mitigate this, the LINUX kernel (since version 2.6.30) ATTEMPTS TO
+    DETECT THESE COMMON CODE CASES and force the files in question to be
+    allocated immediately. THIS reduces, but DOES NOT PREVENT, the
+    potential for DATA LOSS—and it doesn't help at all with new files. If
+    you're a developer, please take note:  ONLY WAY TO GUARANTEE DATA
+    IS WRITTEN TO DISK IMMEDIATELY IS TO CALL FSYNC() APPROPRIATELY.
+
+EMPHASIS MINE.
+
+:10]
+
+:9]
+[11:
+
+Sat Jun 29 05:59:06 2019 So, the word 'attempts', there, is pretty
+utterly terrifying.  So I've just worked over cdm.pl to try adding
+'sync' calls after every fs operation in installCDMD.  Note there is
+other similiar code, like installOverlay, that will need attention if
+this works, but I'd like to give it a try here -- if this can resolve
+the 'Structure needs cleaning' disk corruption, that would be a big
+load off my mind.  So let's try installing a new cdmd-MFM.mfz, after
+we figure out how in Placitas to get
+
+BITS OFF.
+
+:11]
+[12:
+
+Sat Jun 29 06:47:41 2019 We appeared to survive an MFM reinstall!
+Behold:
+
+    Assigning seqno 3 for cdmd-MFM.mfz
+    INSTALL found candidate MFM -> /home/t2/GITHUB
+    INSTALL /home/t2/GITHUB/cdmd-MFM.mfz-cdm-install-tag.dat -> INSTALLING UPDATE
+    INSTALL MFM: Starting install
+    INSTALL MFM: (1) Clearing /home/t2/GITHUB/MFM-cdm-install-tmp
+    INSTALL MFM: (2) Unpacking /cdm/common/cdmd-MFM.mfz
+    INSTALL MFM: (2.1) GOT (SIGNED BY RECOGNIZED HANDLE: t2-keymaster-release-10 (85ee-b41-7cb3)
+    UNPACKED INTO: /home/t2/GITHUB/MFM-cdm-install-tmp)
+    INSTALL MFM: (3) Finding tgz
+    INSTALL MFM: (3.1) GOT (/home/t2/GITHUB/MFM-cdm-install-tmp/home/t2/GITHUB/MFM-built.tgz)
+    INSTALL MFM: (4) Clearing '/home/t2/GITHUB/MFM-cdm-install-tmp/tgz'
+    INSTALL MFM: (5) Unpacking '/home/t2/GITHUB/MFM-cdm-install-tmp/home/t2/GITHUB/MFM-built.tgz' -> /home/t2/GITHUB/MFM-cdm-install-tmp/tgz
+    INSTALL MFM: (6) Clearing /home/t2/GITHUB/MFM-cdm-install-prev
+    INSTALL MFM: (7) Moving /home/t2/GITHUB/MFM to /home/t2/GITHUB/MFM-cdm-install-prev
+    INSTALL MFM: (8) Moving /home/t2/GITHUB/MFM-cdm-install-tmp/tgz/MFM to /home/t2/GITHUB/MFM
+    INSTALL MFM: (9) Tagging install /home/t2/GITHUB/cdmd-MFM.mfz-cdm-install-tag.dat -> 1561790564
+    ANNOUNCED cdmd-MFM.mfz to 0
+     /cdm/common/cdm-distrib-T2-12.mfz: t2-keymaster-release-10/Mon Jun 10 10:06:28 2019 => 1560161188
+
+and the Disk Is Still Standing.
+
+Let's convert the other fs operations.[13:
+
+Sat Jun 29 07:06:17 2019 Did that.
+
+BITS OFF.
+
+:13]
+
+:12]
+[14:
+
+Sat Jun 29 07:08:07 2019 OK, we get this:
+
+    ANNOUNCED cdmd-T2-12.mfz to 0
+    sh: 0: getcwd() failed: No such file or directory
+    Use of uninitialized value $cwd in string eq at /usr/share/perl/5.20/File/Temp.pm line 773.
+    cannot fetch initial working directory: No such file or directory at /usr/share/perl/5.20/File/Temp.pm line 778.
+     /cdm/common/norg.mfz: t2-cdm-debug-10/Sat Feb 16 15:16:40 2019 => 1550330200
+    Assigning seqno 4 for norg.mfz
+    ANNOUNCED norg.mfz to 0
+    sh: 0: getcwd() failed: No such file or directory
+
+after updating cdmd-T2-12.mfz.  What we should do is just exit after
+that, and count on cdm.sh to restart us in our new inodes.[15:
+
+Sat Jun 29 07:11:26 2019 Did that.
+
+BITS OFF.
+
+:15]
+
+:14]
+[16:
+
+Sat Jun 29 07:20:49 2019 Opps need to not exit if the install did
+nothing!
+
+BITS OFF.
+
+:16]
+[17:
+
+Sat Jun 29 07:32:37 2019 OK, let's try to redo the 'command line
+install' part of cdm.pl and then try to get back to redoing the seed. 
+[18:
+
+Sat Jun 29 07:53:37 2019 OK, have a cut at that.
+
+BITS OFF.
+
+:18]
+:17]
+[19:
+
+Sat Jun 29 09:30:22 2019 Dammit I keep losing notes in here by
+releasing some previous cdmd-T2-12.mfz which gets installed and
+overwrites this file, and then I forget and just revert when emacs
+tells me there's a new version.
+
+So fog it. [20:
+
+Sat Jun 29 09:33:47 2019 Argh and I lost stuff in cdm.pl as well.
+
+SO WHAT IS THE PROPER FOGGEN WORKFLOW HERE ANYWAY?
+
+1. Finish some little thing.[23: 
+  1.5. For extra safety, ^X^Q to set read only on relevant buffers  :23]
+2. make cdmd on the appropriate dir
+3. ./scripts/T2PullCode on the host
+4. Kill cdm.sh and .pl if needed, and use the cdm command line to
+   force installation of the new cdmd-X.mfz from its made location.
+5. Wait for that to succeed.
+6. Restart cdm.sh
+7. Then you can start working again?[24:
+  7.5 Revert the relevant buffers (which will clear the previous ^X^Q) :24]
+[21:
+
+Sat Jun 29 09:38:12 2019 Maybe.  Let's try it now.
+
+BITS OFF.[22:
+
+Sat Jun 29 09:40:54 2019 I think that was okay.  Might make a couple
+tweaks.  
+
+:22]
+
+:21]
+:20]
+
+:19]
+[25:
+
+Sat Jun 29 09:58:26 2019 OK, one more time then lets look at making a
+new flasher disk.
+
+BITS OFF.
+
+:25]
+[26:
+
+Sat Jun 29 11:42:14 2019 OK, so it appears with some rehacking we can
+run InitT2Image.pl and end up with a (so far untested) T2-12...4gb.img
+file.  That does indeed now have a /root/T2-12-SEED-FILES/ subdir with
+cdm.pl and two cdmd-X.mfzs below it.
+
+Let's claim a to-do or two, to have some visible signs of progress.
+
+:26]
+[29:
+
+Sat Jun 29 13:54:52 2019 OK we're about to try to make a for-real new
+flasher.  Let's have a final commit after a final
+
+BITS OFF.
+
+:29]

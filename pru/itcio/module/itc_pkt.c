@@ -198,7 +198,19 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
             ipb->mName);
 
   ret = rpmsg_trysend(chnl, prudev->mTempPacketBuffer, pktlen);
-  if (ret < 0) return ret;      /* send failed; -ENOMEM means no tx buffers */
+  if (ret < 0) {
+    if (ret != -ENOMEM) {
+      DBGPRINTK(DBG_PKT_SENT,
+                KERN_INFO "Failure %d when trying to send %s/%d packet via prudev %s %s\n",
+                ret,
+                strPktHdr(prudev->mTempPacketBuffer[0]),
+                pktlen,
+                prudev->mCDevState.mName,
+                ipb->mName);
+
+    }
+    return ret;      /* send failed; -ENOMEM means no tx buffers */
+  }
 
   if (ipb->mRouted) { /* Do stats on routed buffers */
     u8 itcDir = prudev->mTempPacketBuffer[0]&0x7;  /* Get direction from header */

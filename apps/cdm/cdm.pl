@@ -1,7 +1,8 @@
 #!/usr/bin/perl -w  # -*- perl -*-
 use Fcntl;
 use File::Path qw(make_path remove_tree);
-use File::Copy qw(move);
+use File::Basename;
+use File::Copy qw(move copy);
 use Errno qw(EAGAIN);
 use Time::HiRes;
 use List::Util qw/shuffle/;
@@ -38,7 +39,7 @@ my $DEBUG_FLAGS = $DEBUG_FLAG_STANDARD;
 my %triggerMFZs = (
     'cdm-deleteds.mfz' => \&updateDeleteds,
     'cdmd-MFM.mfz' => \&installCDMD,
-    'cdmd-T2-12.mfz' => \&installCDMD,
+    'cdmd-T2-12.mfz' => \&installCDMDAndExitIfDone,
     'cdmd-T2-GFB.mfz' => \&installCDMDGFB,
     'cdmd-t2.mfz' => \&installOverlay,
     );
@@ -70,6 +71,15 @@ sub getDirName {
 
 sub openPackets {
     sysopen(PKTS, $pktdev, $mode) or die "Can't open $pktdev: $!";
+}
+
+sub flushPackets {
+    my ($pkts,$len)=(0,0);
+    while ( my $pkt = readPacket() ) {
+        ++$pkts;
+        $len += length($pkt);
+    }
+    DPSTD("Discarded $pkts packet(s) containing $len byte(s)");
 }
 
 sub readPacket {
@@ -156,16 +166,16 @@ sub checkInitDirs {
     }
 
     # Ensure our base key is in there
-    my $keyPath = "$baseDir/$pubkeySubdir/t2%2dcdm%2ddebug%2d10.pub";
+    my $keyPath = "$baseDir/$pubkeySubdir/t2%2dkeymaster%2drelease%2d10.pub";
     if (!(-e $keyPath)) {
         print "Initting $keyPath\n";
         open HDL,">",$keyPath or die "Can't write $keyPath: $!";
         print HDL <<'EOF';
-[MFM-Handle:t2-cdm-debug-10]
+[MFM-Handle:t2-keymaster-release-10]
 -----BEGIN RSA PUBLIC KEY-----
-MIGJAoGBAN3tnrIiSZIvfiRmZacHAQLAm5dNJZyegbZ9bwJVBNel0RmDM4UYsISG
-IGFyOtuDEgPtZ+EsJqlHc03nXDDfRD7SEoXmT9kITlHilY8kLuc2dIfc1WKHc00x
-uC1z+luJYDt84zXeEa2lOcnYUipYiiTH0v0O9hUy6wvz9lrERpDxAgMBAAE=
+MIGJAoGBAMUbUl/GDrkKYB3ORkeetZEkKisfgiwl6TgoqAB7dfK1gGN3bzDyz/+A
+LisTyW0b+64ePqv1liBxJEBOd2eX9+hTnngasOrb8RIQN6vTPg6+3WGAmgtez3kg
+5KSeBLlgMaEbKkeOXZU+pbAaUzL6EGr/O/ESdTE6Lh6azq2DR3P7AgMBAAE=
 -----END RSA PUBLIC KEY-----
 EOF
       close HDL or die "Close $keyPath: $!";
@@ -348,16 +358,15 @@ sub installUnpack {
     print "INSTALL $baseName: Starting install\n";
     my $tmpDirName = "$dirName/$baseName-cdm-install-tmp";
     print "INSTALL $baseName: (1) Clearing $tmpDirName\n";
-    `rm -rf $tmpDirName`;
-    `mkdir -p $tmpDirName`;
+
+    return unless runCmdWithSync("rm -rf $tmpDirName","INSTALL $baseName: ERROR");
+    return unless runCmdWithSync("mkdir -p $tmpDirName","INSTALL $baseName: ERROR");
+
     my $mfzPath = "$commonPath/$fname";
     print "INSTALL $baseName: (2) Unpacking $mfzPath\n";
-    {
-        my $cmd = "$mfzrunProgPath -kd /cdm $mfzPath unpack $tmpDirName";
-        my $output = `$cmd`;
-        chomp $output;
-        print "INSTALL $baseName: (2.1) GOT ($output)\n";
-    }
+
+    return unless runCmdWithSync("$mfzrunProgPath -kd /cdm $mfzPath unpack $tmpDirName","INSTALL $baseName: ERROR");
+
     print "INSTALL $baseName: (3) Finding tgz\n";
     my $tgzpath;
     {
@@ -375,28 +384,39 @@ sub installUnpack {
     }
     my $targetSubDir = "$tmpDirName/tgz";
     print "INSTALL $baseName: (4) Clearing '$targetSubDir'\n";
-    `rm -rf $targetSubDir`;
-    `mkdir -p $targetSubDir`;
+    return unless runCmdWithSync("rm -rf $targetSubDir","INSTALL $baseName: ERROR");
+    return unless runCmdWithSync("mkdir -p $targetSubDir","INSTALL $baseName: ERROR");
 
     print "INSTALL $baseName: (5) Unpacking '$tgzpath' -> $targetSubDir\n";
     my $initialBaseNameDir;
-    {
-        my $cmd = "tar xf $tgzpath -m --warning=no-timestamp -C $targetSubDir";
-        my $output = `$cmd`;
-        $initialBaseNameDir = "$targetSubDir/$baseName";
-        if (!(-r $initialBaseNameDir && -d $initialBaseNameDir)) {
-            print "INSTALL $baseName: (5.1) ABORT: '$initialBaseNameDir' not readable dir\n";            
-            return;
-        }
+    return unless runCmdWithSync("tar xf $tgzpath -m --warning=no-timestamp -C $targetSubDir","INSTALL $baseName: ERROR");
+
+    $initialBaseNameDir = "$targetSubDir/$baseName";
+    if (!(-r $initialBaseNameDir && -d $initialBaseNameDir)) {
+        print "INSTALL $baseName: (5.1) ABORT: '$initialBaseNameDir' not readable dir\n";            
+        return;
     }
 
     return ($tmpDirName, $mfzPath, $tgzpath, $targetSubDir, $initialBaseNameDir);
 }
 
-sub installCDMD {
+sub runCmdWithSync {
+    my ($btcmd,$errprefix) = @_;
+    `$btcmd && sync`; 
+    if ($?) { print "$errprefix: '$btcmd' returned code $?\n"; return 0; }
+    return 1;
+}
+
+sub installCDMDAndExitIfDone {
+    return unless defined installCDMD(@_);
+    print "EXITING TO RESTART\n";
+    exit 17;
+}
+
+sub installCDMD { # return undef unless install actually happened
     my ($finfo) = @_;
     my @args = installSetup($finfo);
-    return if scalar(@args) == 0;  # Something went wrong.
+    return if scalar(@args) == 0;  # Something went wrong, or nothing to do
     my ($fname, $baseName, $dirName, $tagFileName, $innerTimestamp) = @args;
 
     my @moreargs = installUnpack($fname, $baseName, $dirName, $tagFileName, $innerTimestamp );
@@ -406,23 +426,18 @@ sub installCDMD {
     ### DO FULL DIR MOVE REPLACEMENT
     my $prevDirName = "$dirName/$baseName-cdm-install-prev";
     print "INSTALL $baseName: (6) Clearing $prevDirName\n";
-    `rm -rf $prevDirName`;
-    `mkdir -p $prevDirName`;
+
+    return unless runCmdWithSync("rm -rf $prevDirName","INSTALL $baseName: ERROR");
+
+    return unless runCmdWithSync("mkdir -p $prevDirName","INSTALL $baseName: ERROR");
 
     my $finalDirName = "$dirName/$baseName";
     print "INSTALL $baseName: (7) Moving $finalDirName to $prevDirName\n";
-    {
-        my $cmd = "mv $finalDirName $prevDirName";
-        my $output = `$cmd`;
-        print "INSTALL $baseName: (7.1) ($cmd) GOT ($output)\n";
-    }
+    return unless runCmdWithSync("mv $finalDirName $prevDirName","INSTALL $baseName: ERROR");
 
     print "INSTALL $baseName: (8) Moving $initialBaseNameDir to $finalDirName\n";
-    {
-        my $cmd = "mv $initialBaseNameDir $finalDirName";
-        my $output = `$cmd`;
-        print "INSTALL $baseName: (8.1) ($cmd) GOT ($output)\n";
-    }
+    return unless runCmdWithSync("mv $initialBaseNameDir $finalDirName","INSTALL $baseName: ERROR");
+
     print "INSTALL $baseName: (9) Tagging install $tagFileName -> $innerTimestamp\n";
     {
         my $fh;
@@ -432,10 +447,10 @@ sub installCDMD {
         }
         print $fh "$innerTimestamp\n";
         close $fh or die "close $tagFileName: $!";
-        return;
     } 
 
-    print "INSTALL '$fname'\n";
+    print "INSTALLED '$fname'\n";
+    return 1;
 }
 
 sub installOverlay {
@@ -451,25 +466,15 @@ sub installOverlay {
     ### DO IN-PLACE OVERLAY OF NEW INTO OLD
     my $prevDirName = "$dirName/$baseName-cdm-install-prev";
     print "INSTALL $baseName: (6) Clearing $prevDirName\n";
-    `rm -rf $prevDirName`;
-    `mkdir -p $prevDirName`;
+    return unless runCmdWithSync("rm -rf $prevDirName","INSTALL $baseName: ERROR");
+    return unless runCmdWithSync("mkdir -p $prevDirName","INSTALL $baseName: ERROR");
 
     my $finalDirName = "$dirName/$baseName";
     print "INSTALL $baseName: (7a) NOT BACKING UP $finalDirName to $prevDirName!\n";
-    if (0) {
-        my $cmd = "cp -a $finalDirName $prevDirName";
-        my $output = `echo $cmd`;
-        chomp $output;
-        print "INSTALL $baseName: (7.1) ($cmd) GOT ($output)\n";
-    }
 
     print "INSTALL $baseName: (8a) COPYING $initialBaseNameDir INTO EXISTING $finalDirName\n";
-    {
-        my $cmd = "cp -af $initialBaseNameDir/. $finalDirName";
-        my $output = `$cmd`;
-        chomp $output;
-        print "INSTALL $baseName: (8.1) ($cmd) GOT ($output)\n";
-    }
+    return unless runCmdWithSync("cp -af $initialBaseNameDir/. $finalDirName","INSTALL $baseName: ERROR");
+
     print "INSTALL $baseName: (9a) Tagging install $tagFileName -> $innerTimestamp\n";
     {
         my $fh;
@@ -1166,12 +1171,13 @@ sub sendCommonChunkTo {
         - 3                       # for 2+hack16 'checksum'
         ;
 
-    DPSTD("Starting delivery of ".$finfo->{filename}." ($sku) to ".getDirName($dir)) 
+    my $innerTimestamp = $finfo->{innerTimestamp};
+    DPSTD("Starting delivery of ".$finfo->{filename}." ($innerTimestamp:$sku) to ".getDirName($dir)) 
         if $startingIndex==0;
     if ($maxWanted > $maxRemaining) {
         $maxWanted = $maxRemaining;
     } else {
-        DPSTD("Sending last of ".$finfo->{filename}." ($sku) to ".getDirName($dir));
+        DPSTD("Sending last of ".$finfo->{filename}." ($innerTimestamp:$sku) to ".getDirName($dir));
     }
     my $data = getDataFromCommonFile($finfo, $startingIndex, $maxWanted);
     my $hack16 = hack16($data);
@@ -1374,11 +1380,39 @@ sub main {
     checkInitDirs();
     preinitCommon();
     openPackets();
+    flushPackets();
     eventLoop();
     closePackets();
 }
 
-main();
-exit 9;
+if (scalar(@ARGV)) {
+    my $ok = 1;
+    foreach my $arg (@ARGV) {
+        my $base = basename($arg);
+        if ($base !~ /.*?[.]mfz$/) {
+            print "Not .mfz '$arg'\n";
+            $ok = 0;
+        } elsif (!-r $arg) {
+            $ok = 0;
+            print "Unreadable '$arg'\n";
+        } 
+    }
+    exit 1 unless $ok;
+    my $destdir = "/cdm/common";
+    foreach my $arg (@ARGV) {
+        if (!copy($arg,$destdir)) {
+            print "Copy $arg-> $destdir failed: $!";
+            $ok = 0;
+        } else {
+            print "$arg -> $destdir\n";
+        }
+    }
+    exit 2 unless $ok;
+    preinitCommon();
+    exit 0;
+} else {
+    main();
+    exit 9;
+}
 
 
