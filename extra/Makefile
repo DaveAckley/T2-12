@@ -13,6 +13,7 @@ MAKE_DIRS:	FORCE
 $(GITHUB_BASE_DIR)/tslib-master:	tslib-1.20-201906240441.tgz default-pointercal
 	tar xvzf $< -C $(GITHUB_BASE_DIR)
 	cd $@;mkdir ./build;cd ./build;cmake ..;make;make install
+	rm -f /etc/sudoers.d/sdl  # Grrrrrr did tslib make install add this?  It breaks sudo!
 	cp default-pointercal /etc/pointercal
 
 .PHONY:	FORCE
