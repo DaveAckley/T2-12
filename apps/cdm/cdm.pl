@@ -1408,6 +1408,7 @@ if (scalar(@ARGV)) {
         }
     }
     exit 2 unless $ok;
+    checkInitDirs();
     preinitCommon();
     exit 0;
 } else {
