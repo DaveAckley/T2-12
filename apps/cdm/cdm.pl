@@ -1274,7 +1274,7 @@ sub now {
 my $userButtonLastKnownState;
 my $userButtonDevice = "/sys/bus/iio/devices/iio:device0/in_voltage5_raw";
 sub readButtonState {
-    open BUT, "<", $userButtonDevice or die "open $userButtonDevice: $!";
+    open BUT, "<", $userButtonDevice or return 0; # Silently say no button press if no device
     my $val = <BUT>;
     close BUT or die "close $userButtonDevice: $!";
     chomp $val;
