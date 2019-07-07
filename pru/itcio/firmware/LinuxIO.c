@@ -156,6 +156,14 @@ static inline void resetCycleCounter() {
 }
 
 void initLinuxIO() {
+  /* Paranoia 2019: Clear PruDirs data */
+  {
+    uint16_t idx;
+    uint8_t * ptr = (uint8_t *) &pruDirData;
+    for (idx = 0; idx < sizeof(pruDirData); ++idx)
+      ptr[idx] = 0;
+  }
+
   volatile uint8_t *status, number;
 
   /* allow OCP master port access by the PRU so the PRU can read external memories */

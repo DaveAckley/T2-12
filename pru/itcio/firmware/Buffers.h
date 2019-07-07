@@ -15,6 +15,7 @@
  */
 
 #include "prux.h"
+#include <stdint.h>
 
 /* Packet type (first byte) information. */
 #define PKT_ROUTED_STD_MASK 0xc0
@@ -75,8 +76,15 @@ inline unsigned int dircodeFromPrudir(unsigned prudir) {
 
 extern int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned len) ;
 
+extern int CSendVal(const char * str1, const char * str2, uint32_t val) ;
+
 inline unsigned int orbFrontPacketLenInline(struct OutboundRingBuffer * orb) {
   if (orbUsedBytes(orb) == 0) return 0;
+  if (orb->buffer[orb->readPtr] == 0) {
+    CSendVal(PRUX_STR,"ZERO LEN FAIL",orb->readPtr);
+    /* advancing past the 'empty packet'?  No action here makes any sense */
+    orb->readPtr = (orb->readPtr + 1) & RING_BUFFER_MASK;
+  }
   return orb->buffer[orb->readPtr];
 }
 
