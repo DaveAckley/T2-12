@@ -1,0 +1,1289 @@
+{60}  -*- text -*- 
+[0:
+
+Thu Jul  4 16:22:47 2019 OK we're investing more time into debug
+access and 'viz' -- to make a little 'tracing language' so we can turn
+on and off seeing specific packet types as they move through the
+buffers and whatnot.  Here to make up the language.
+
+  program -> clause*
+  clause -> pattern | address | action | comment
+  comment -> '{' anythingbutclosecurly* '}'
+  pattern -> '<' mask '|' value '>'
+  mask -> bytespec*
+  value -> bytespec*
+  address -> minor* buffer*
+  minor -> '0' | '1' | '2' | '3'
+  buffer -> 'U' | 'L' | 'P' | 'B'  ;; user IB, local IB, priority OB, bulk OB
+  action -> '+' | '-' | '*' | '/'  ;; insert, remove, both, neither
+  bytespec -> hex hex | '\' any 
+  
+[1:
+
+Thu Jul  4 17:05:10 2019 Examples:
+
+<|>0123ULPB*{Reset all}
+<ff|83>01B+23U-{Trace 0x83 inserted into PRU01 bulk outbound or
+                removed from packets or mfm userIB}
+<ff|83>0123B+U-{Same as previous -- meaningless minor/buffer
+                combinations are silently ignored}
+<f0ffff|8003'A'>0123BULP*{Trace CDM 'alive' packets in and out of all buffers}
+[2:
+
+Thu Jul  4 17:30:22 2019 So, we have a current pattern, a current
+minor set, and a current buffer set.  When we see an action, we
+iterate over the valid minor/buffer combinations, and set their trace
+pattern according to the action.
+
+I think we need a module level buffer to stash the whole program, so
+it can be read back, rather than trying to synthesize a canonical form
+from the distributed TracePoints.[4:
+
+Thu Jul  4 21:56:41 2019 But if we do that we have no easy way to tell
+what our program parsed into.  I think we should have a read actually
+go through the tracepoints and cough everything up.  We could do very
+simple compression of identical patterns and minorsets and buffersets
+but otherwise cough it up?  Put a reset at the beginning and skip all
+zero patterns.
+
+:4]
+
+We'll have a TracePointParser struct to hold the 'current' pieces, and
+use a temp one while syntax checking the thing.
+
+Limits:
+a pattern basically (everything in) a TracePoint - length, mask, and value
+a minor set is a u8 bitmask
+a buffer set is a u8 bitmask
+[3:
+
+Thu Jul  4 17:47:05 2019 Seems plausible.  But evening break for now.
+
+BITS OFF.
+
+:3]
+:2]
+:1]
+:0]
+[5:
+
+Thu Jul  4 23:21:05 2019 Well the first attempt at a 'tracer language'
+just compiled.  It's going to be a giant mess to try out and debug, of
+course, with likely kernel panics a-comin'.  So at the very least,
+
+BITS OFF.
+
+:5][6:
+
+Thu Jul  4 23:29:46 2019 Well, first time out, have got this far at
+least:
+
+    root@beaglebone:~# ls /sys/class/itc_pkt/
+    debug	  ET_TXDAT  itc!packets  NE_RXDAT  NE_TXRDY  NW_TXDAT  poke	 SE_RXRDY  statistics  SW_RXRDY  trace	   WT_TXDAT
+    ET_RXDAT  ET_TXRDY  itc!pru0	 NE_RXRDY  NW_RXDAT  NW_TXRDY  pru_bufs  SE_TXDAT  status      SW_TXDAT  WT_RXDAT  WT_TXRDY
+    ET_RXRDY  itc!mfm   itc!pru1	 NE_TXDAT  NW_RXRDY  pkt_bufs  SE_RXDAT  SE_TXRDY  SW_RXDAT    SW_TXRDY  WT_RXRDY
+    root@beaglebone:~# cat /sys/class/itc_pkt/trace 
+    <|>0123ULPB*#reset
+    root@beaglebone:~# 
+
+:6]
+[7:
+
+Fri Jul  5 00:13:02 2019 OK hitting BUG_ONs and whatnot now.  Just
+went through sticking in tons of printk's.  Going again after
+
+BITS OFF
+
+:7]
+[8:
+
+Fri Jul  5 06:30:15 2019 Well so big surprise -- I somehow messed up
+things badly enough that I couldn't boot on keymaster.
+
+So here we are on a 'whole new keymaster' -- the series F flasher,
+reinstalled on the same hardware, with our last cdmd-T2-12.mfz and
+cdmd-MFM.mfz applied.
+
+Last problem was a variety of parsing errors that caused infinite
+loops in itc_pkt, at first silently but later with logging spewing..
+
+Let's see what the code looks like for a moment.[9:
+
+Fri Jul  5 06:36:37 2019 And given my memory of the last log spew I
+saw before everything collapsed, I soon saw the problem in the code:
+In tppParseTraceProgram, when it sees an action byte, it wasn't
+consuming it.[10:
+
+Fri Jul  5 06:44:49 2019
+
+BITS OFF.
+
+:10]
+
+:9]
+
+:8]
+[11:
+
+Fri Jul  5 08:33:19 2019 OK, next issue seems to be that I was
+ultimately returning 0 from the read rather than count, so I kept on
+getting called over and over.[12:
+
+Fri Jul  5 08:41:52 2019 OK getting ready to go again.  Added more
+printk in storepattern because it seems not to be getting called
+on/doing all buffers.
+
+BITS OFF.
+
+:12]
+
+:11]
+[13:
+
+Fri Jul  5 08:52:46 2019 Getting closer:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /sys/class/itc_pkt/trace 
+    <|>0123ULPB*#reset
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo '<ff|83>0123ULPB*#hongo' >  /sys/class/itc_pkt/trace 
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /sys/class/itc_pkt/trace 
+    <|>0123ULPB*#reset
+    <\ÿ|83>0L+-P+-B+-1L+-P+-B+-2U+-3+-root@beaglebone:/home/t2/T2-12/pru/itcio/module# 
+
+So except for <ff|83> turning into <\RUBOUT|83> it's not looking
+ridiculous.  Let's try a slightly tougher one.
+
+OK, that appears wrong:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo '<ff|83>01PB-<ff|82>23U#gobhongo' >  /sys/class/itc_pkt/trace 
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /sys/class/itc_pkt/trace 
+    <|>0123ULPB*#reset
+    <\ÿ|83>0L+-P+-B+-1L+-P+-B+-2U+-3+-root@beaglebone:/home/t2/T2-12/pru/itcio/module# 
+
+Oh wait, we didn't have an action after the second pattern.  Trying
+again.
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo '<ff|83>01PB-<ff|82>23U+#gobhongo' >  /sys/class/itc_pkt/trace 
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /sys/class/itc_pkt/trace 
+    <|>0123ULPB*#reset
+    <\ÿ|83>0L+-P+-B+-1L+-P+-B+-<\ÿ|82>2U+<\ÿ|83>-<\ÿ|82>3+<\ÿ|83>-root@beaglebone:/home/t2/T2-12/pru/itcio/module# 
+
+Which looks plausible enough in its way.  Apologies to Mr Tracelang;
+my bad.
+
+So let's get these two tweaks in -- use ff instead of \\377, put \n at
+end of program -- and then see where we are.
+
+BITS OFF.
+
+:13]
+[14:
+
+Fri Jul  5 09:16:39 2019 Well, starting to look half decent:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# echo '<ff|83>01PB-<ff|82>23U+#gobhongo' >  /sys/class/itc_pkt/trace 
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# cat /sys/class/itc_pkt/trace 
+    <|>0123ULPB*#reset
+    <ff|83>0P-B-1P-B-<ff|82>2U+3+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module#
+[15:
+
+Fri Jul  5 09:18:23 2019 Making a new debug flag and converting all my
+TPZP printks..[16:
+
+Fri Jul  5 09:27:25 2019 OK, made DBG_TRACE_PARSE = 0x10.  Trying it
+after
+
+BITS OFF.
+
+:16]
+
+:15]    
+:14]
+[17:
+
+Fri Jul  5 09:42:30 2019 Well that all seems okay.  I think it's time
+to try umm actually implementing tracing?[18:
+
+Fri Jul  5 10:59:33 2019 Well we have a first call on
+'tpReportIfMatch', called we we know we'll remove a packet to ship on
+rpmsg to a pru.  About to test it after
+
+BITS OFF.
+
+:18]
+
+:17]
+[19:
+
+Fri Jul  5 13:43:48 2019 Well for the foggen life of me I can't figure
+out why my trace point program parse debugging output is getting
+truncated.  Finally going to try rebootingah, after
+
+BITS OFF.
+
+:19]
+[20:
+
+Fri Jul  5 13:51:19 2019 Aaaaand it appears that /var/log/syslog is
+Just An UNRELIABLE PLACE to go looking for rapidly produced printks.
+It just gives up after a while.
+
+'dmesg -wH' seems to be the way to go.  It looks like all my printks
+are in there.
+
+Cleaning up.[21:
+
+Fri Jul  5 15:14:55 2019 OK, so I've now put in a bunch of tracepoint
+hooks, all compilable, all untested.  Definitely time for
+
+BITS OFF.[22:
+
+Fri Jul  5 15:41:01 2019 OK, so far hard to get the TPs to trigger.
+Added more DEBUG_TRACE_EXEC stuff, so
+
+BITS OFF.
+
+:22]
+
+:21]
+
+:20]
+[23:
+
+Fri Jul  5 16:28:52 2019 OK well that last problem was prodigiously
+stupid on the one hand, but on the other hand, in the end the tracing
+system, as well as the 'metatracing' of DEBUG_TRACE_EXEC, did run the
+problem down.
+
+I was setting up a pattern to match 'M' in the second byte, and then
+shipping an 'AM?' packet to pru0 to test it out:
+
+    root@beaglebone:/var/log# echo 60 >  /sys/class/itc_pkt/debug 
+    root@beaglebone:/var/log# echo '<f0ffff|8003\A>0123UPB*<00ff|00\M>0123L*#track As & Ms' >  /sys/class/itc_pkt/trace 
+    root@beaglebone:/var/log# cat  /sys/class/itc_pkt/trace 
+    <|>0123ULPB*#reset
+    <00ff|00\M>0L+-<f0ffff|8003\A>P+-B+-<00ff|00\M>1L+-<f0ffff|8003\A>P+-B+-2U+-3+-
+    root@beaglebone:/var/log# echo -n "AM?" > /dev/itc/pru0 
+
+but the <00ff|00\M> just never matched.  It kept dying on the the
+second byte, as if the second byte wasn't an 'M':
+
+    [ +16.774847] set debug 60
+    [ +19.697367] TPEX UWRITE (itc!pru0) 'AM?'/3
+    [  +0.006500] TPEX MP (itc!pru0) Match <00ff|00\M> 0x41'A'/17 alen=2:fail idx 1 mask ff value 4d byte 5b masked byte 5b
+
+where the fundamental problem is the 'byte 5b' part.  'M' is hex 4d
+(as can be seen in 'value 4d').  hex 5b is... '['?  WTH?  I figured it
+had to be a buffer overflow or something.  
+
+But no.  Oh no.  Once I finally started dumping packets all over the
+place, well then, as they say, 'my problem was obvious':
+
+    root@beaglebone:/var/log# echo -n "AM?" > /dev/itc/pru0 
+    root@beaglebone:/var/log# echo -n "AM?WHATTHEHECK?" > /dev/itc/pru0 
+    root@beaglebone:/var/log# 
+
+yielding
+
+    [  +6.506355] TPEX UWRITE (itc!pru0) 'AM?'/3
+    [  +0.004104] >mtpk: 41 4d 3f                                         AM?
+    [  +0.006890] TPEX MP (itc!pru0) Match <f0ffff|8003\A> 0x41'A'/3 alen=3:fail idx 0 mask f0 value 80 byte 41 masked byte 40
+
+First tp hit legitimately doesn't match.
+
+    [  +0.014541] TPEX RIMT (itc!pru0) Remove <f0ffff|8003\A> 0x41'A'/3
+    [  +0.006030] >mtpk: 41 4d 3f                                         AM?
+    [  +0.007010] TPEX MP (itc!pru0) Match <f0ffff|8003\A> 0x41'A'/3 alen=3:fail idx 0 mask f0 value 80 byte 41 masked byte 40
+
+Ditto the second tp;
+
+    [  +0.011125] TPEX RIMT (itc!pru0) Insert <00ff|00\M> 0x41'A'/3
+    [  +0.005644] >mtpk: 41 5b 50                                         A[P
+    [  +0.006857] TPEX MP (itc!pru0) Match <00ff|00\M> 0x41'A'/3 alen=2:fail idx 1 mask ff value 4d byte 5b masked byte 5b
+
+This one should, but, '[P'?  Whaaaa?  Ahhh..  Send a bigger packet..
+
+    [Jul 5 16:40] TPEX UWRITE (itc!pru0) 'AM?'/3
+    [  +0.004109] >mtpk: 41 4d 3f                                         AM?
+    [  +0.006907] TPEX MP (itc!pru0) Match <f0ffff|8003\A> 0x41'A'/3 alen=3:fail idx 0 mask f0 value 80 byte 41 masked byte 40
+
+First tp fails fast again, without even reading the whole packet.
+
+    [  +0.041638] TPEX RIMT (itc!pru0) Remove <f0ffff|8003\A> 0x41'A'/15
+    [  +0.006137] >mtpk: 41 4d 3f 57 48 41 54 54 48 45 48 45 43 4b 3f     AM?WHATTHEHECK?
+    [  +0.007924] TPEX MP (itc!pru0) Match <f0ffff|8003\A> 0x41'A'/15 alen=3:fail idx 0 mask f0 value 80 byte 41 masked byte 40
+
+Second tp fails as it should
+
+    [  +0.011189] TPEX RIMT (itc!pru0) Insert <00ff|00\M> 0x41'A'/15
+    [  +0.005740] >mtpk: 41 5b 50 4b 54 59 50 5d 48 45 48 45 43 4b 3f     A[PKTYP]HEHECK?
+
+Doh.  I'm sending this packet to pru0 for 'local' processing.  But 'A'
+is not a legal local packet type.  Of which fact pru0 kindly reminded
+us, by putting the error code '[PKTYP]' right after the packet type
+byte.
+
+Doh.
+
+    [  +0.007902] TPEX MP (itc!pru0) Match <00ff|00\M> 0x41'A'/15 alen=2:fail idx 1 mask ff value 4d byte 5b masked byte 5b
+
+If we send pru0 a packet it recognizes, such as a 'P' packet, then,
+ahah enfin:
+
+    root@beaglebone:/var/log# echo 0 >  /sys/class/itc_pkt/debug 
+    root@beaglebone:/var/log# echo -n "PM?WHATTHEHECK?" > /dev/itc/pru0 
+    root@beaglebone:/var/log# 
+
+yielding
+
+    [ +11.367965] set debug 0
+    [  +3.680000] PKTRC: (itc!pru0) Insert 0x50'P'/15 at LoclIB of pru0
+
+where that second line is the 'tracepoint hit' that this whole
+exercise was designed to elicit.
+
+
+:23]
+[24:
+
+Fri Jul  5 17:01:18 2019 OK so an effen kernel panic got me again,
+costing (at least) several extra notes here.  All was looking good
+until I tried 'cat /dev/itc/pru0', to read the packets that I had seen
+arrive -- and I got some kind of 'kernel stack corrupted' panic and
+ultimately found no other option except hard power cycle.
+
+So I don't trust this code much right now, even though it's kind of
+tracking 'A'live packets for me, now that I plugged in a loopback
+cable:
+
+    [  +0.003294] TPZP parse comment
+    [Jul 5 16:58] PKTRC: (itc!pru1) Insert 0x86/3 at BulkOB of pru1
+    [  +0.025894] PKTRC: (itc!pru1) Remove 0x86/3 at BulkOB of pru1
+    [  +0.005967] PKTRC: (itc!packets) Insert 0x82/3 at UserIB of pkt2
+    [  +0.011245] PKTRC: (itc!packets) Remove 0x00/3 at UserIB of pkt2
+    [ +15.847524] PKTRC: (itc!pru0) Insert 0x82/3 at BulkOB of pru0
+    [  +0.046879] PKTRC: (itc!pru0) Remove 0x82/3 at BulkOB of pru0
+    [  +0.005970] PKTRC: (itc!packets) Insert 0x86/3 at UserIB of pkt2
+    [  +0.168816] PKTRC: (itc!packets) Remove 0x00/3 at UserIB of pkt2
+    [Jul 5 16:59] set debug 50
+    [ +19.800180] PKTRC: (itc!pru1) Insert 0x86/3 at BulkOB of pru1
+    [  +0.005958] PKTRC:86 03 41                                         ..A
+    [  +0.035370] PKTRC: (itc!pru1) Remove 0x86/3 at BulkOB of pru1
+    [  +0.005922] PKTRC:86 03 41                                         ..A
+    [  +0.006707] PKTRC: (itc!packets) Insert 0x82/3 at UserIB of pkt2
+    [  +0.006082] PKTRC:82 03 41                                         ..A
+    [  +0.026330] PKTRC: (itc!packets) Remove 0x00/3 at UserIB of pkt2
+    [  +0.006231] PKTRC:00 00 00                                         ...
+
+And that result is scaring me.
+
+    [Jul 5 17:00] PKTRC: (itc!pru1) Insert 0x86/3 at BulkOB of pru1
+    [  +0.005963] PKTRC:86 03 41                                         ..A
+    [  +0.030677] PKTRC: (itc!pru1) Remove 0x86/3 at BulkOB of pru1
+    [  +0.005931] PKTRC:86 03 41                                         ..A
+    [  +0.006717] PKTRC: (itc!packets) Insert 0x82/3 at UserIB of pkt2
+    [  +0.006086] PKTRC:82 03 41                                         ..A
+    [  +0.020081] PKTRC: (itc!packets) Remove 0x00/3 at UserIB of pkt2
+    [  +0.006211] PKTRC:00 00 00                                         ...
+
+Etc.
+
+[25:
+
+Fri Jul  5 17:04:29 2019 So, doing one more
+
+BITS OFF
+
+for now and then breaking for the evening.
+
+:25]
+
+:24]
+[26:
+
+Sat Jul  6 03:22:43 2019 Corrupted the kernal stack again.  Previous
+one was, I think, writing to 'tmp' instead of 'tmpbuf'.  Smooth move
+guy.  This one, I think was doing char buf[MAX]; .. buf[len] = 0;
+instead of char buf[MAX+1];.  We shall see, after
+
+BITS OFF
+
+:26]
+[27:
+
+Sat Jul  6 03:43:49 2019 Made a handy little ./killITCusers.sh script
+just now, worth another
+
+BITS OFF
+
+:27]
+[28:
+
+Sat Jul  6 03:47:17 2019 Hmm our demo tracing program seems to have
+gotten lost in all the panics and recoveries.
+
+This is a version for the (temporarily?) extended CDM "A" packets that
+have a uniquifying fourth byte.
+
+echo '<f0ffff00|8003\A00>0123ULPB*#Trace extended CDM A pkts' >  /sys/class/itc_pkt/trace 
+
+This will work for either style "A"s, but won't print the extended
+uniquifier (if present) during tpmatch:
+
+echo '<f0ffff|8003\A>0123ULPB*#Trace CDM A pkts' >  /sys/class/itc_pkt/trace 
+
+:28]
+[29:
+
+Sat Jul  6 10:16:57 2019 OK, so now we have the keymaster with a
+ribbon cable loopback between NW and SE, and BOTH NW and SE are
+showing the PS+!ALV (packet sync but not alive) warning sign.
+
+And using the 'Trace extended CDM A pkts' program above, we can see
+that both sides are injecting uniquified A packets into BulkOB of both
+prus, and those A packets are then getting removed from the BulkOBs.
+
+On an ET-WT or NE-SW connection, we then see the A packet -- with a
+source-dir-modified header -- getting inserted into the UserIB of pkt2
+(/dev/itc/packets), then removed from there, and then finally reported
+by our modified cdm.pl.
+
+But on the NW-SW connection, nothing.  The packet just seems to
+disappear when we send it to the PRU.  So I guess we need to gin up
+some PRU packet engine commands to try to see what's going on in the
+outbound and perhaps inbound PRUs..[30:
+
+Sat Jul  6 10:36:17 2019 So what might be helpful in that regard?
+
+P             packet engine packet
+d1            set prudir 1 (pru0: SE, pru1: NW)
+fh            format results in hex
+i........?........
+              report inbound packets received and rejected
+o........?........?........
+              outbound packets added, removed, and rejected
+?             Arrival confirmation
+
+ ==
+
+Pd1fhi........?........o........?........?........?
+[31:
+
+Sat Jul  6 10:53:02 2019 Examples:
+
+    root@beaglebone:~# echo 'Pd1fhi........?........o........?........?........?' > /dev/itc/pru1;head -c 52 /dev/itc/pru1
+    Pd1fhi00000000x00000000o00000017/00000000x00000000.
+    root@beaglebone:~# echo 'Pd1fhi........?........o........?........?........?' > /dev/itc/pru0;head -c 52 /dev/itc/pru0
+    Pd1fhi00000000x00000000o00000018/00000000x00000000.
+    root@beaglebone:~# 
+
+which suggests a few things:
+
+ - Neither side admits to receiving (i00000000x) (or rejecting
+   x00000000o) any inbound packets. 
+
+ - Both sides have had several outbound packets added (o00000018/),
+   but both claim none have ever been removed (/00000000x) or rejected
+   (x00000000o).
+
+Let's loopback NE and SW as well and compare results.
+
+:31]
+:30]
+
+:29]
+[32:
+
+Sat Jul  6 10:59:01 2019
+
+    root@beaglebone:~# echo 'Pd2fhi........?........o........?........?........?' > /dev/itc/pru1;head -c 52 /dev/itc/pru1
+    Pd2fhi00000030x00000000o00000030/00000030x00000000.
+    root@beaglebone:~# echo 'Pd2fhi........?........o........?........?........?' > /dev/itc/pru0;head -c 52 /dev/itc/pru0
+    Pd2fhi00000030x00000000o00000030/00000030x00000000.
+    root@beaglebone:~#
+
+and moments later
+
+    root@beaglebone:~# echo 'Pd2fhi........?........o........?........?........?' > /dev/itc/pru1;head -c 52 /dev/itc/pru1
+    Pd2fhi00000034x00000000o00000036/00000036x00000000.
+    root@beaglebone:~# echo 'Pd2fhi........?........o........?........?........?' > /dev/itc/pru0;head -c 52 /dev/itc/pru0
+    Pd2fhi00000036x00000000o00000034/00000034x00000000.
+    root@beaglebone:~# 
+
+So, unlike the NW-SE connection, on the NE-SW connection we see the
+same number of outbound packets being added (o00000036/) as removed
+(/00000036x).  So that makes us think the 'remove' counting is
+plausible.  
+
+:32]
+[33:
+
+Sat Jul  6 11:22:25 2019 Going back to NW-SE, now we see
+
+    root@beaglebone:~# echo 'Pd1fhi........?........o........?........?........?' > /dev/itc/pru1;head -c 52 /dev/itc/pru1
+    Pd1fhi00000000x00000000o00000026/00000000x00000000.
+    root@beaglebone:~# echo 'Pd1fhi........?........o........?........?........?' > /dev/itc/pru0;head -c 52 /dev/itc/pru0
+    Pd1fhi00000000x00000000o0000002a/00000000x00000000.
+    root@beaglebone:~#
+
+So if packets are truly being added but never removed, the buffers
+down in the PRUs will have to run out at some point, yes?
+
+Let's review how a packet gets removed, for a litte bit, here.[34:
+
+Sat Jul  6 11:27:43 2019 How A Packet Gets Removed From the PRU Buffers:
+
+ 1. A call to orbDropFrontPacketInline is made:
+
+    inline int orbDropFrontPacketInline(struct OutboundRingBuffer * orb) {
+      unsigned int len = orbFrontPacketLenInline(orb);
+      if (len == 0) return 0;
+      orb->readPtr = (orb->readPtr + len + 1) & RING_BUFFER_MASK;
+      ++orb->packetsRemoved;
+      return 1;
+    }
+
+ 2. And orbDropFrontPacketInline is called by orbDropFrontPacket:
+
+    int orbDropFrontPacket(unsigned prudir) { return orbDropFrontPacketInline(pruDirToORB(prudir)); }
+
+ 3. And orbDropFrontPacket is called from the PacketRunner asm code:
+
+    sendPacketDelimiter:   ;; time to send packet delimiter and discard finished packet
+            sendOTag """SPD""",CT.bOutLen       ; report location
+            ldi CT.bOutData, 0x7e   ; set up packet delimiter
+            clr CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fByteStuffed ; this byte should NOT be bitstuffed
+            qbeq lookForNextPacket, CT.bOutLen, 0 ; jump ahead if current packet len is 0
+            mov r14, CT.sTH.bID     ; arg1 to orbDropFrontPacket
+            jal r3.w2, orbDropFrontPacket ; toss the packet we just finished sending
+
+            ;; FALL INTO lookForNextPacket
+
+    lookForNextPacket: ;; here to set up next outbound packet if have sync and packets
+
+
+And we note the call to orbDropFrontPacket is SKIPPED if we think the
+current packet len is 0.  Which it is, presumably, when we're just
+sending back to back delimiters with nothing to do.
+
+So really we want to continue here with lookForNextPacket, since if
+that's working we should arrive at a situation where we've finished
+sending a packet with CT.bOutLen != 0..
+
+    lookForNextPacket: ;; here to set up next outbound packet if have sync and packets
+            sendOTag """LFNP""",CT.sTH.bFlags      ; report in
+            ldi CT.bOutByte, 0           ; No matter what we're on byte 0 now
+            qbbc startNewOutputByte, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; don't try for packets till we have sync
+            mov r14, CT.sTH.bID          ; arg1 to orbFrontPacketLen
+            jal r3.w2, orbFrontPacketLen ; next packetlen or 0 -> r14
+            mov CT.bOutLen, r14          ; Save length of next packet or 0
+
+So for that purpose we go to orbFrontPacketLen.
+
+Have to pick this up there, later[35:
+
+Sat Jul  6 14:52:26 2019 OK, I left all that going while I took a nap,
+and we can see in the logs where it transitioned to that other
+behavior I was worrying about, when writePacket starts failing.
+
+As a reminder, we see like this, as things are working on the NE-SW
+loopback:
+
+    Jul  6 12:57:06 beaglebone kernel: [10063.935184] PKTRC: (itc!pru1) Insert 0x81/4 at BulkOB of pru1
+    Jul  6 12:57:06 beaglebone kernel: [10063.941155] PKTRC:81 03 41 6c                                      ..Al
+
+cdm queues outbound A/6c with destination NE (0x81, 1 == NE) on pru1
+
+    Jul  6 12:57:06 beaglebone kernel: [10063.969416] PKTRC: (itc!pru1) Remove 0x81/4 at BulkOB of pru1
+    Jul  6 12:57:06 beaglebone kernel: [10063.975321] PKTRC:81 03 41 6c                                      ..Al
+
+(pru1 physically pushes the outbound A/6c packet onto the NE-SW
+loopback.  pru0 receives them, sticks the source into the now inbound
+header byte (0x81 -> 0x85, 5 == SW), and sends them up to linux.)
+
+    Jul  6 12:57:06 beaglebone kernel: [10063.982142] PKTRC: (itc!packets) Insert 0x85/4 at UserIB of pkt2
+    Jul  6 12:57:06 beaglebone kernel: [10063.988276] PKTRC:85 03 41 6c                                      ..Al
+
+LKM sticks it in UserIB to wait for userspace to read it.
+
+    Jul  6 12:57:06 beaglebone kernel: [10064.022965] PKTRC: (itc!packets) Remove 0x85/4 at UserIB of pkt2
+    Jul  6 12:57:06 beaglebone kernel: [10064.029156] PKTRC:85 03 41 6c                                      ..Al
+
+(Because of a read by cdm,) LKM removes the source SW inbound A/6c.
+
+    Jul  6 12:57:06 beaglebone cdm.sh[2334]: Rcvd 'A' from 5 uniq 6c
+
+And cdm gets it.  While in the reverse direction:
+
+    Jul  6 12:57:18 beaglebone kernel: [10075.963911] PKTRC: (itc!pru0) Insert 0x85/4 at BulkOB of pru0
+    Jul  6 12:57:18 beaglebone kernel: [10075.969873] PKTRC:85 03 41 6d                                      ..Am
+
+cdm ships A/6d to SW.
+
+    Jul  6 12:57:18 beaglebone kernel: [10075.977225] PKTRC: (itc!pru0) Remove 0x85/4 at BulkOB of pru0
+    Jul  6 12:57:18 beaglebone kernel: [10075.983121] PKTRC:85 03 41 6d                                      ..Am
+    Jul  6 12:57:18 beaglebone kernel: [10075.989853] PKTRC: (itc!packets) Insert 0x81/4 at UserIB of pkt2
+(outbound packet moves on the wire, becomes inbound packet)
+    Jul  6 12:57:18 beaglebone kernel: [10075.995966] PKTRC:81 03 41 6d                                      ..Am
+    Jul  6 12:57:18 beaglebone kernel: [10076.047936] PKTRC: (itc!packets) Remove 0x81/4 at UserIB of pkt2
+    Jul  6 12:57:18 beaglebone kernel: [10076.054160] PKTRC:81 03 41 6d                                      ..Am
+    Jul  6 12:57:18 beaglebone cdm.sh[2334]: Rcvd 'A' from 1 uniq 6d
+
+And cdm receives A/6d from NE.
+
+By contrast, we never see UserIB getting mentioned on the NW-SE loopback:
+
+    Jul  6 12:57:42 beaglebone kernel: [10099.982352] PKTRC: (itc!pru0) Insert 0x83/4 at BulkOB of pru0
+    Jul  6 12:57:42 beaglebone kernel: [10099.988296] PKTRC:83 03 41 6f                                      ..Ao
+
+cdm queues A/6f for SE
+
+    Jul  6 12:57:42 beaglebone kernel: [10100.016723] PKTRC: (itc!pru0) Remove 0x83/4 at BulkOB of pru0
+    Jul  6 12:57:42 beaglebone kernel: [10100.022605] PKTRC:83 03 41 6f                                      ..Ao
+
+LKM sends it to pru0
+
+    Jul  6 12:58:08 beaglebone kernel: [10126.085869] PKTRC: (itc!pru1) Insert 0x87/4 at BulkOB of pru1
+    Jul  6 12:58:08 beaglebone kernel: [10126.091812] PKTRC:87 03 41 70                                      ..Ap
+
+cdm queues A/70 for NW
+
+    Jul  6 12:58:08 beaglebone kernel: [10126.128220] PKTRC: (itc!pru1) Remove 0x87/4 at BulkOB of pru1
+    Jul  6 12:58:08 beaglebone kernel: [10126.134097] PKTRC:87 03 41 70                                      ..Ap
+
+LKM sends it to pru1.
+
+And neither A/6f nor A/70 are ever heard from again.
+
+And it's all like that until near 2:30pm, when things get worse:
+
+    Jul  6 14:25:38 beaglebone kernel: [15375.845103] PKTRC: (itc!pru1) Insert 0x87/4 at BulkOB of pru1
+    Jul  6 14:25:38 beaglebone kernel: [15375.851021] PKTRC:87 03 41 ad                                      ..A.
+    Jul  6 14:25:38 beaglebone kernel: [15375.859876] PKTRC: (itc!pru1) Remove 0x87/4 at BulkOB of pru1
+    Jul  6 14:25:38 beaglebone kernel: [15375.865859] PKTRC:87 03 41 ad                                      ..A.
+
+cdm queues A/ad for NW on pru1 and LKM ships it.  Same as above.
+
+    Jul  6 14:26:40 beaglebone kernel: [15437.889275] PKTRC: (itc!pru0) Insert 0x83/4 at BulkOB of pru0
+    Jul  6 14:26:40 beaglebone kernel: [15437.895261] PKTRC:83 03 41 b0                                      ..A.
+    Jul  6 14:26:40 beaglebone kernel: [15437.923305] PKTRC: (itc!pru0) Remove 0x83/4 at BulkOB of pru0
+    Jul  6 14:26:40 beaglebone kernel: [15437.929171] PKTRC:83 03 41 b0                                      ..A.
+
+cdm queues A/b0 for SE on pru0 and LKM ships it.  Same as above.
+
+    Jul  6 14:26:48 beaglebone kernel: [15445.897837] PKTRC: (itc!pru1) Insert 0x81/4 at BulkOB of pru1
+    Jul  6 14:26:48 beaglebone kernel: [15445.903800] PKTRC:81 03 41 b1                                      ..A.
+
+cdm queues A/b1 for NE on pru1.  Previous this would be shipped almost
+immediately by LKM, but that doesn't happen.  It seems that something
+has changed on pru1.
+
+    Jul  6 14:27:20 beaglebone kernel: [15477.900456] PKTRC: (itc!pru0) Insert 0x85/4 at BulkOB of pru0
+    Jul  6 14:27:20 beaglebone kernel: [15477.906417] PKTRC:85 03 41 b3                                      ..A.
+
+cdm also queues A/b3 for SW on pru0.
+
+    Jul  6 14:27:20 beaglebone kernel: [15477.913327] PKTRC: (itc!pru0) Remove 0x85/4 at BulkOB of pru0
+    Jul  6 14:27:20 beaglebone kernel: [15477.919221] PKTRC:85 03 41 b3                                      ..A.
+
+And the outbound A/b3 is shipped to pru0 right away.
+
+    Jul  6 14:27:20 beaglebone kernel: [15477.925947] PKTRC: (itc!packets) Insert 0x81/4 at UserIB of pkt2
+    Jul  6 14:27:20 beaglebone kernel: [15477.932039] PKTRC:81 03 41 b3                                      ..A.
+    Jul  6 14:27:20 beaglebone kernel: [15477.980282] PKTRC: (itc!packets) Remove 0x81/4 at UserIB of pkt2
+    Jul  6 14:27:20 beaglebone kernel: [15477.986499] PKTRC:81 03 41 b3                                      ..A.
+    Jul  6 14:27:20 beaglebone cdm.sh[2334]: Rcvd 'A' from 1 uniq b3
+
+And the inbound A/b3 from NE is delivered as usual.
+
+    Jul  6 14:27:30 beaglebone kernel: [15487.748440] PKTRC: (itc!pru1) Insert 0x87/4 at BulkOB of pru1
+    Jul  6 14:27:30 beaglebone kernel: [15487.754407] PKTRC:87 03 41 b4                                      ..A.
+
+cdm queues A/b4 for NW.  But note the previous A/b0 has not been removed
+from BulkOB yet.
+
+    Jul  6 14:28:14 beaglebone kernel: [15531.918873] PKTRC: (itc!pru0) Insert 0x85/4 at BulkOB of pru0
+    Jul  6 14:28:14 beaglebone kernel: [15531.924854] PKTRC:85 03 41 b6                                      ..A.
+
+cdm also queues A/b6 for SW..
+
+    Jul  6 14:28:14 beaglebone kernel: [15531.931755] PKTRC: (itc!pru0) Remove 0x85/4 at BulkOB of pru0
+    Jul  6 14:28:14 beaglebone kernel: [15531.937642] PKTRC:85 03 41 b6                                      ..A.
+    Jul  6 14:28:14 beaglebone kernel: [15531.944374] PKTRC: (itc!packets) Insert 0x81/4 at UserIB of pkt2
+    Jul  6 14:28:14 beaglebone kernel: [15531.950467] PKTRC:81 03 41 b6                                      ..A.
+    Jul  6 14:28:14 beaglebone kernel: [15532.005598] PKTRC: (itc!packets) Remove 0x81/4 at UserIB of pkt2
+    Jul  6 14:28:14 beaglebone kernel: [15532.011848] PKTRC:81 03 41 b6                                      ..A.
+    Jul  6 14:28:14 beaglebone cdm.sh[2334]: Rcvd 'A' from 1 uniq b6
+
+and that arrives normally.
+
+The next sequence is a bit more interleaved:
+
+    Jul  6 14:28:32 beaglebone kernel: [15549.933805] PKTRC: (itc!pru1) Insert 0x81/4 at BulkOB of pru1
+    Jul  6 14:28:32 beaglebone kernel: [15549.939748] PKTRC:81 03 41 b7                                      ..A.
+
+cdm queues A/b7 for NE (on the supposedly 'healthy' NE-SW loopback)..
+
+    Jul  6 14:28:36 beaglebone kernel: [15553.919029] PKTRC: (itc!pru0) Insert 0x83/4 at BulkOB of pru0
+    Jul  6 14:28:36 beaglebone kernel: [15553.924983] PKTRC:83 03 41 b8                                      ..A.
+
+..and A/b8 for SE (via the sick NW-SW loopback).
+
+    Jul  6 14:28:36 beaglebone kernel: [15553.931901] PKTRC: (itc!pru0) Remove 0x83/4 at BulkOB of pru0
+    Jul  6 14:28:36 beaglebone kernel: [15553.937749] PKTRC:83 03 41 b8                                      ..A.
+
+LKM ships A/b8.
+
+Neither SE-bound A/b8 nor NE-bound A/b7 is ever seen again.  The
+latter failure (SW->NE) is new here.
+
+    Jul  6 14:29:28 beaglebone kernel: [15605.873510] PKTRC: (itc!pru1) Insert 0x87/4 at BulkOB of pru1
+    Jul  6 14:29:28 beaglebone kernel: [15605.879470] PKTRC:87 03 41 ba                                      ..A.
+
+Nearly a full minute later, cdm queues A/ba for NW.  Crickets.  Never
+gets removed from BulkOB for pru1.
+
+    Jul  6 14:29:39 beaglebone kernel: [15616.807173] ITC dae43f24 iterator order is 140325 for next 613 uses
+    Jul  6 14:29:48 beaglebone kernel: [15625.895428] PKTRC: (itc!pru0) Insert 0x85/4 at BulkOB of pru0
+    Jul  6 14:29:48 beaglebone kernel: [15625.901346] PKTRC:85 03 41 bb                                      ..A.
+
+And 20 seconds after that, cdm queues A/bb for SW.
+
+    Jul  6 14:29:48 beaglebone kernel: [15625.911027] PKTRC: (itc!pru0) Remove 0x85/4 at BulkOB of pru0
+    Jul  6 14:29:48 beaglebone kernel: [15625.916871] PKTRC:85 03 41 bb                                      ..A.
+    Jul  6 14:29:48 beaglebone kernel: [15625.923620] PKTRC: (itc!packets) Insert 0x81/4 at UserIB of pkt2
+    Jul  6 14:29:48 beaglebone kernel: [15625.929751] PKTRC:81 03 41 bb                                      ..A.
+    Jul  6 14:29:48 beaglebone kernel: [15625.982787] PKTRC: (itc!packets) Remove 0x81/4 at UserIB of pkt2
+    Jul  6 14:29:48 beaglebone kernel: [15625.989003] PKTRC:81 03 41 bb                                      ..A.
+    Jul  6 14:29:48 beaglebone cdm.sh[2334]: Rcvd 'A' from 1 uniq bb
+
+And hey that A/bb arrives fine.  So we see NE->SW worked after SW->NE failed.
+
+    Jul  6 14:30:28 beaglebone kernel: [15665.790532] PKTRC: (itc!pru1) Insert 0x81/4 at BulkOB of pru1
+    Jul  6 14:30:28 beaglebone kernel: [15665.796468] PKTRC:81 03 41 bc                                      ..A.
+
+cdm queues A/bc for NE.  Another BulkOB for pru1
+
+    Jul  6 14:30:54 beaglebone kernel: [15691.883135] PKTRC: (itc!pru0) Insert 0x85/4 at BulkOB of pru0
+    Jul  6 14:30:54 beaglebone kernel: [15691.889063] PKTRC:85 03 41 bf                                      ..A.
+
+and queues A/bf for SW
+
+    Jul  6 14:30:54 beaglebone kernel: [15691.895976] PKTRC: (itc!pru0) Remove 0x85/4 at BulkOB of pru0
+    Jul  6 14:30:54 beaglebone kernel: [15691.901873] PKTRC:85 03 41 bf                                      ..A.
+    Jul  6 14:30:54 beaglebone kernel: [15691.908599] PKTRC: (itc!packets) Insert 0x81/4 at UserIB of pkt2
+    Jul  6 14:30:54 beaglebone kernel: [15691.914680] PKTRC:81 03 41 bf                                      ..A.
+    Jul  6 14:30:54 beaglebone kernel: [15691.971232] PKTRC: (itc!packets) Remove 0x81/4 at UserIB of pkt2
+    Jul  6 14:30:54 beaglebone kernel: [15691.977485] PKTRC:81 03 41 bf                                      ..A.
+    Jul  6 14:30:54 beaglebone cdm.sh[2334]: Rcvd 'A' from 1 uniq bf
+
+A/bf arrives fine. NE->SW worked again.
+
+    Jul  6 14:32:45 beaglebone kernel: [15803.491028] ITC dae43f24 iterator order is 203145 for next 1040 uses
+    Jul  6 14:33:02 beaglebone cdm.sh[2334]: WritePacket timed out on 0x81/54
+    Jul  6 14:33:02 beaglebone cdm.sh[2334]: pru libl libr libw pobl pobr pobw bobl bobr bobw
+    Jul  6 14:33:02 beaglebone cdm.sh[2334]: 0 0 0 0 0 0 0 0 0 0
+    Jul  6 14:33:02 beaglebone cdm.sh[2334]: 1 0 0 0 0 0 0 4090 0 0
+
+And now we're really in the soup.  cdm gets a timeout waiting for
+space to send a 54 length packet (which, in this context, can only be
+a cdm file announcement) to NE.
+
+That would be another BulkOB for pru1 request, but we don't see it
+because we are tracing cdm A packets, not Fs.  (Might not see it, due
+to the error, even if we had been -- not sure.)
+
+Instead we get a dump of /sys/class/itc_pkt/pru_bufs.  And the 4090 in
+the row beginning with 1 means that pru1's 'bobl' ('BulkOB length') is
+4090, which, out of 4096 bytes total, surely cannot accept another 54.
+
+    Jul  6 14:33:04 beaglebone kernel: [15821.959832] PKTRC: (itc!pru0) Insert 0x83/4 at BulkOB of pru0
+    Jul  6 14:33:04 beaglebone kernel: [15821.965776] PKTRC:83 03 41 c0                                      ..A.
+    Jul  6 14:33:04 beaglebone kernel: [15821.972706] PKTRC: (itc!pru0) Remove 0x83/4 at BulkOB of pru0
+    Jul  6 14:33:04 beaglebone kernel: [15821.978551] PKTRC:83 03 41 c0                                      ..A.
+
+A/c0 bound for SE goes in and out of BulkOB for pru0.
+
+    Jul  6 14:35:10 beaglebone cdm.sh[2334]: WritePacket timed out on 0x81/54
+    Jul  6 14:35:10 beaglebone cdm.sh[2334]: pru libl libr libw pobl pobr pobw bobl bobr bobw
+    Jul  6 14:35:10 beaglebone cdm.sh[2334]: 0 0 0 0 0 0 0 0 0 0
+    Jul  6 14:35:10 beaglebone cdm.sh[2334]: 1 0 0 0 0 0 0 4090 0 0
+
+But
+
+    Jul  6 14:37:18 beaglebone cdm.sh[2334]: WritePacket timed out on 0x81/56
+    Jul  6 14:37:18 beaglebone cdm.sh[2334]: pru libl libr libw pobl pobr pobw bobl bobr bobw
+    Jul  6 14:37:18 beaglebone cdm.sh[2334]: 0 0 0 0 0 0 0 0 0 0
+    Jul  6 14:37:18 beaglebone cdm.sh[2334]: 1 0 0 0 0 0 0 4090 0 0
+
+We
+
+    Jul  6 14:38:02 beaglebone kernel: [16119.948139] ITC dae43f24 iterator order is 435021 for next 676 uses
+    Jul  6 14:39:28 beaglebone cdm.sh[2334]: WritePacket timed out on 0x81/56
+    Jul  6 14:39:28 beaglebone cdm.sh[2334]: pru libl libr libw pobl pobr pobw bobl bobr bobw
+    Jul  6 14:39:28 beaglebone cdm.sh[2334]: 0 0 0 0 0 0 0 0 0 0
+    Jul  6 14:39:28 beaglebone cdm.sh[2334]: 1 0 0 0 0 0 0 4090 0 0
+
+Are
+
+    Jul  6 14:41:28 beaglebone kernel: [16325.751931] ITC dae43f24 iterator order is 142503 for next 3987 uses
+    Jul  6 14:41:36 beaglebone cdm.sh[2334]: WritePacket timed out on 0x81/54
+    Jul  6 14:41:36 beaglebone cdm.sh[2334]: pru libl libr libw pobl pobr pobw bobl bobr bobw
+    Jul  6 14:41:36 beaglebone cdm.sh[2334]: 0 0 0 0 0 0 0 0 0 0
+    Jul  6 14:41:36 beaglebone cdm.sh[2334]: 1 0 0 0 0 0 0 4090 0 0
+    Jul  6 14:43:05 beaglebone connmand[836]: ntp: time slew -0.023302 s
+
+Screwed.
+
+    Jul  6 16:14:16 beaglebone cdm.sh[2334]: 1 0 0 0 0 0 0 4095 0 0
+
+    root@beaglebone:~# cat /sys/class/itc_pkt/status 
+    10101010
+    root@beaglebone:~# 
+
+But over an hour later, both sides of both loopbacks are still
+reporting packet sync.  That's a bitmask of dirnums, counting from
+zero on the right:
+
+       76543210 dirnums
+       10101010 value
+
+and bits 1 (NE), 3 (SE), 5 (SW), and 7 (NW) are set.
+
+[36:
+
+
+Sat Jul  6 16:13:25 2019 So.  All this is, I think, consistent with the
+hypothesis that PRU1's prudir 1 (NW) thread is somehow getting into a
+state where it is still clocking and sending packet delimiters -- so
+PS is still set -- but somehow failing to see or refusing to pick up
+the next outbound packet.
+
+Like, perhaps a 0 length packet got in the orb somehow in the pru?
+And then maybe because of that, CT.bOutLen got set to zero, so
+sendPacketDelimiter will skip the call to orbDropFrontPacket -- so the
+0 len pkt would stay at the front of the orb, and the
+lookForNextPacket would call orbFrontPacketLen, get 0, and stick that
+in the CT.bOutLen, and the whole thing would repeat until everything
+was backed up everywhere.
+
+[37:
+
+Sat Jul  6 16:27:15 2019 So, how well defended are we against having a
+0 len packet in an orb?  That's what we'll investigate next, but
+first, just because of these laboriously lovely NOTES, even though no
+CODE has changed ...
+
+BITS OFF.
+
+:37]
+
+:36]
+
+:35]
+
+:34]
+
+:33]
+[38:
+
+Sat Jul  6 16:31:09 2019 So: CAN a 0 length byte somehow get into an
+outbound ring buffer (orb) on the PRUs?
+
+Well, the first float in this parade is orbAddPacket:
+
+    int orbAddPacket(struct OutboundRingBuffer * orb, unsigned char * data, unsigned len)
+    {
+      unsigned i;
+      if (!data || len == 0 || len >= MAX_PACKET_SIZE || len >= orbAvailableBytes(orb)) {/* Available must strictly exceed len */
+        ++orb->packetsRejected;
+        return 1;  
+      }
+      orbStoreByte(orb,len);       /* To have room to stick packet length first */
+      for (i = 0; i < len; ++i)    /* Something smarter here should exist someday */
+        orbStoreByte(orb,data[i]);
+      ++orb->packetsAdded;
+      return 0;
+    }
+
+which really does appear to explicitly reject len == 0 packets before
+doing anything else.
+
+So if a 0 len packet is ending up in the orb it seems like
+orbAddPacket didn't put it there.  Are there another other
+API-sanctioned routes for a packet to get into an orb?[39:
+
+Sat Jul  6 16:38:23 2019 Well orbAddPackets is the only place that
+increments 'packetsAdded', for what that's worth.  The only other
+place it's modified is in the 'P'acket engine processor:
+
+          if (cmdflag) {
+            orb->packetsAdded = 0;
+            orb->packetsRemoved = 0;
+            orb->packetsRejected = 0;
+          }
+
+when it sees an 'O' subcommand.
+ 
+Which raises the question: Who clears packetsAdded to begin with?
+We're expecting a moral memzero or whatever somewhere, but, let's just
+check. [40:
+
+Sat Jul  6 17:25:24 2019 Well it's not obvious.  I suspect that the
+loader clears my '.asmbuf' section, where all the PRU packet buffers
+are stored, and I suspect that the code cannot get restarted without
+first getting reloaded, but nonetheless I've just added:
+
+    void initLinuxIO() {
+      /* Paranoia 2019: Clear PruDirs data */
+      {
+        uint16_t idx;
+        uint8_t * ptr = (uint8_t *) &pruDirData;
+        for (idx = 0; idx < sizeof(pruDirData); ++idx)
+          ptr[idx] = 0;
+      }
+   ..
+
+to the top of initLinuxIO, which is called veeeery early:
+
+    void main(void)
+    {
+      initLinuxIO();
+
+      /* Never look back */
+      mainLoop();
+    }
+
+I bet myself $10 dollars this will make no difference at all, and I
+bet myself $1000 it will make no HELPFUL difference at all -- because
+it's possible I've now made the code longer and perhaps I've overrun
+something.
+
+I don't think so, though, because I checked, and that code compiles
+down to exactly four instructions, including a two instruction setup
+and a two instruction loop body, via the kooky-slick LOOP instruction.
+
+BITS OFF
+
+:40]
+
+:39]
+
+
+:38]
+[41:
+
+Sat Jul  6 17:39:34 2019 Well we didn't instantly die.  Let's get
+cdm.pl and t2viz going..
+
+:41]
+[42:
+
+Sat Jul  6 17:42:58 2019 And yes, it appears nothing, and nothing
+helpful, has changed.
+
+    root@beaglebone:~# echo 'Pd2fhi........?........o........?........?........?' > /dev/itc/pru1;head -c 52 /dev/itc/pru1
+    Pd2fhi00000008x00000000o00000009/00000009x00000000.
+    root@beaglebone:~# echo 'Pd2fhi........?........o........?........?........?' > /dev/itc/pru0;head -c 52 /dev/itc/pru0
+    Pd2fhi0000000dx00000000o00000009/00000009x00000000.
+    root@beaglebone:~# echo 'Pd1fhi........?........o........?........?........?' > /dev/itc/pru1;head -c 52 /dev/itc/pru1
+    Pd1fhi00000000x00000000o00000001/00000000x00000000.
+    root@beaglebone:~# echo 'Pd1fhi........?........o........?........?........?' > /dev/itc/pru0;head -c 52 /dev/itc/pru0
+    Pd1fhi00000000x00000000o00000001/00000000x00000000.
+    root@beaglebone:~# Rcvd 'A' from 1 uniq 55
+
+no inputs on prudir 1s, things flowing on prudir 2s.
+
+    Jul  6 17:42:46 beaglebone kernel: [27204.328941] set debug 40
+    Jul  6 17:43:02 beaglebone kernel: [27219.772557] PKTRC: (itc!pru1) Insert 0x81/4 at BulkOB of pru1
+    Jul  6 17:43:02 beaglebone kernel: [27219.778454] PKTRC:81 03 41 57                                      ..AW
+    Jul  6 17:43:02 beaglebone kernel: [27219.795627] PKTRC: (itc!pru1) Remove 0x81/4 at BulkOB of pru1
+    Jul  6 17:43:02 beaglebone kernel: [27219.801537] PKTRC:81 03 41 57                                      ..AW
+    Jul  6 17:43:02 beaglebone kernel: [27219.808343] PKTRC: (itc!packets) Insert 0x85/4 at UserIB of pkt2
+    Jul  6 17:43:02 beaglebone kernel: [27219.814432] PKTRC:85 03 41 57                                      ..AW
+    Jul  6 17:43:02 beaglebone kernel: [27219.835969] PKTRC: (itc!packets) Remove 0x85/4 at UserIB of pkt2
+    Jul  6 17:43:02 beaglebone kernel: [27219.842177] PKTRC:85 03 41 57                                      ..AW
+    Rcvd 'A' from 5 uniq 57
+
+A packet flows SW->NE.
+
+    Jul  6 17:43:06 beaglebone kernel: [27223.588519] PKTRC: (itc!pru1) Insert 0x87/4 at BulkOB of pru1
+    Jul  6 17:43:06 beaglebone kernel: [27223.594414] PKTRC:87 03 41 58                                      ..AX
+    Jul  6 17:43:06 beaglebone kernel: [27223.615327] PKTRC: (itc!pru1) Remove 0x87/4 at BulkOB of pru1
+    Jul  6 17:43:06 beaglebone kernel: [27223.621188] PKTRC:87 03 41 58                                      ..AX
+    Jul  6 17:43:26 beaglebone kernel: [27243.584492] PKTRC: (itc!pru0) Insert 0x83/4 at BulkOB of pru0
+    Jul  6 17:43:26 beaglebone kernel: [27243.590434] PKTRC:83 03 41 59                                      ..AY
+    Jul  6 17:43:26 beaglebone kernel: [27243.618292] PKTRC: (itc!pru0) Remove 0x83/4 at BulkOB of pru0
+    Jul  6 17:43:26 beaglebone kernel: [27243.624221] PKTRC:83 03 41 59                                      ..AY
+
+But packets heading toward NW and SE never arrive.
+
+No change.
+
+So I owe myself $1010.  I meant to offer odds on the $1000 bet; I
+should have insisted on them, sheesh.
+
+About time for evening break.  Is there a next thing to try?  Is there
+some way to gain evidence about this zero length packet hypothesis?
+Maybe change
+
+    unsigned int orbFrontPacketLen(unsigned prudir) { return orbFrontPacketLenInline(pruDirToORB(prudir)); }
+
+somehow?  I guess it should be lower, since 0 is legit if the buffer's
+empty.
+
+    inline unsigned int orbFrontPacketLenInline(struct OutboundRingBuffer * orb) {
+      if (orbUsedBytes(orb) == 0) return 0;
+      return orb->buffer[orb->readPtr];
+    }
+
+What we really want to assert is orb->buffer[orb->readPtr] != 0.  But
+I'm not sure how to assert something at that point..  CSendTag?[43:
+
+Sat Jul  6 23:08:58 2019 Well, not expecting much but trying this:
+
+    inline unsigned int orbFrontPacketLenInline(struct OutboundRingBuffer * orb) {
+      if (orbUsedBytes(orb) == 0) return 0;
+      if (orb->buffer[orb->readPtr] == 0) {
+        CSendVal("ZERO LEN FAIL","",orb->readPtr);
+        /* advancing past the 'empty packet'?  No action here makes any sense */
+        orb->readPtr = (orb->readPtr + 1) & RING_BUFFER_MASK;
+      }
+      return orb->buffer[orb->readPtr];
+    }
+
+and I'm marginally less terrified of advancing readPtr for no foggen
+reason than I am of the consequences of spamming rpmsg and lkm with
+CSendVal's at MHz speed..
+
+We'll see.
+
+BITS OFF.[44:
+
+Sat Jul  6 23:24:43 2019 Well we haven't instantly died, nor seen any
+signs of the ZERO LEN FAIL packet.  But we haven't started cdm yet
+either.. [45:
+
+Sat Jul  6 23:34:14 2019 Well, seems like no change:
+
+    Rcvd 'A' from 5 uniq 5a
+    Rcvd 'A' from 5 uniq 60
+    Rcvd 'A' from 1 uniq 61
+    Rcvd 'A' from 1 uniq 63
+    Rcvd 'A' from 5 uniq 67
+    Rcvd 'A' from 1 uniq 68
+    Rcvd 'A' from 5 uniq 6c
+
+Which is SW and NE, and danger signs NW and SE.  Now at the moment we
+have no proof that CSendVal would work and be detectable, but we think
+it would.  For one thing, it's used by Threads.asm to send the
+'Releasing the hounds' message that we see every time the PRUs boot..
+
+Can we access the orb used size from the packet engine?[46:
+
+Sat Jul  6 23:42:01 2019 Extending packet engine 'o' and 'O'
+subcommands to also report the 'r'eadptr, the 'w'riteptr, and the
+number of bytes 'u'sed.
+
+BITS OFF
+
+:46]
+
+:45]
+
+:44]
+
+:43]
+
+:42]
+[47:
+
+Sun Jul  7 00:03:22 2019 Well, we can see that pru0 dir 1 and pru1 dir
+1 aren't moving.  Their read pointers are both still at 0:
+
+    root@beaglebone:~# echo 'Pd1fhi........?........o........?........?........?....?....?....???' > /dev/itc/pru1;head -c 67 /dev/itc/pru1; echo
+    Pd1fhi00000000x00000000o00000005/00000000x00000000r0000w0019u0019..
+    root@beaglebone:~# echo 'Pd1fhi........?........o........?........?........?....?....?....???' > /dev/itc/pru0;head -c 67 /dev/itc/pru0; echo
+    Pd1fhi00000000x00000000o00000005/00000000x00000000r0000w0019u0019..
+    root@beaglebone:~#                     like here   ^^^^
+
+where the dir 2s on both prus is advancing in tandem like they're
+supposed to:
+
+    root@beaglebone:~# echo 'Pd2fhi........?........o........?........?........?....?....?....???' > /dev/itc/pru1;head -c 67 /dev/itc/pru1; echo
+    Pd2fhi00000096x00000000o000000a7/000000a7x00000000r02e7w02e7u0000..
+    root@beaglebone:~# echo 'Pd2fhi........?........o........?........?........?....?....?....???' > /dev/itc/pru0;head -c 67 /dev/itc/pru0; echo
+    Pd2fhi000000aax00000000o0000009a/0000009ax00000000r0020w0020u0000..
+    root@beaglebone:~# 
+
+I think we need to reverse angle and spend some time reconvincing
+ourselves that we're really getting packet sync between the dir
+1s.[48:
+
+Sun Jul  7 01:14:03 2019 So we are now tracing the linux thread
+monitoring packets via
+
+    root@beaglebone:/sys/class/itc_pkt# echo '<ffff|c3\M>01L*#monitoring packets' >trace 
+    root@beaglebone:/sys/class/itc_pkt# cat trace
+    <|>0123ULPB*#reset
+    <ffff|c3\M>0L+-1+-
+    root@beaglebone:/sys/class/itc_pkt# 
+
+and they look just like we expect:
+
+    [  +1.081812] PKTRC: (pru1/c3) Insert 0xc3/6 at LoclIB of pru1
+    [  +0.005836] PKTRC:c3 4d 31 33 31 3a                                .M131:
+    [  +0.880074] PKTRC: (pru0/c3) Insert 0xc3/6 at LoclIB of pru0
+    [  +0.005857] PKTRC:c3 4d 30 33 31 3a                                .M031:
+    [  +1.078995] PKTRC: (pru1/c3) Insert 0xc3/6 at LoclIB of pru1
+
+which says dir 0 (bit 1) of pru1 and pru0 is NOT operating, but dir 2
+and dir 3 both have seen clock edges recently.
+
+:48]
+
+:47]
+[49:
+
+Sun Jul  7 01:34:51 2019 Well, breaking for sleep.  No real hypotheses
+to push on here.  But made some tweaks in the trace language, to allow
+whitespace and stuff, so:
+
+BITS OFF.
+
+:49]
+[50:
+
+Sun Jul  7 07:22:39 2019 Is it absolutely certain that being
+'M'onitored as 'not dead' means the ITC has packet sync?[51:
+
+Sun Jul  7 07:28:13 2019 Well, this loop at mpt1:
+
+    monitorPacketThreads:      
+            enterFunc MPT_STACK_BYTES      ; Save r3.w2 + r4
+            ldi r4, 0x0300              ; R4.b1==3, R4.b0==0 Init loop counter, clear status
+    mpt1:   qbeq mpt3, r4.b1, 0         ; Done if counter 0
+            sub r4.b1, r4.b1, 1         ; Decrement counter
+            loadNextThread              ; Pull in next PacketRunner state
+            sub r0, RC, CT.rRiseRC      ; Compute RCs since its last rise time
+            lsr r0, r0, 13              ; Drop bottom 13 bits (8192 RCs)
+            qbeq mpt1, r0, 0            ; OK, jump ahead if last edge younger than that
+   ..
+
+considers ONLY the age of edges; it doesn't care whether the thread
+has packet sync or not.
+
+..And packet sync at the LKM level is controlled by calls to
+'setITCEnabledStatus', which happens in response to explicit 'P'
+packets (with arg 1), 'F' packets (arg 0), 'T' packets (arg 0), and
+'M' packets -- with arg as computed in that loop above.
+
+Suppose we just don't call setITCEnabledStatus from 'M'.  Does that
+make our inconsistent ITCs become 'merely closed'?[52:
+
+Sun Jul  7 07:37:46 2019 YES, IT DOES.
+
+    root@beaglebone:/sys/class/itc_pkt# cat status
+    00100010
+
+So now just NE (0000010) and SW (00100000) are at PS.
+
+    root@beaglebone:/sys/class/itc_pkt# Jul  7 07:38:12 beaglebone kernel: [27728.504239] PKTRC: (pru0/c3) Insert 0xc3/6 at LoclIB of pru0
+    Jul  7 07:38:12 beaglebone kernel: [27728.510037] PKTRC:c3 4d 30 33 31 3a                                .M031:
+    Jul  7 07:38:12 beaglebone kernel: [27728.843468] PKTRC: (pru1/c3) Insert 0xc3/6 at LoclIB of pru1
+    Jul  7 07:38:12 beaglebone kernel: [27728.849264] PKTRC:c3 4d 31 33 31 3a                                .M131:
+
+But 'M' is reporting 'disabled' only for pru dir 1 on pru0 (ET) and
+pru1 (WT).  So if NW, for example, was seeing garbage edges due to a
+cracked solder joint or a bridge, I kind of, sort of, have to think
+
+THAT WOULD EXPLAIN ALL OUR FOGGEN DATA DOH.
+
+[53:
+
+Sun Jul  7 07:42:28 2019 So I think the better fix here is to refuse
+to allow M to clear a monitoring bit unless there's PS as well.
+Right?  Instead of trying to compensate somehow at LKM level.
+
+:53]
+
+:52]
+
+:51]
+
+:50]
+[54:
+
+Sun Jul  7 07:53:33 2019 OK, about to try this:
+
+    mpt1:   qbeq mpt3, r4.b1, 0         ; Done if counter 0
+            sub r4.b1, r4.b1, 1         ; Decrement counter
+            loadNextThread              ; Pull in next PacketRunner state
+            qbbc mpt1a, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; If no PS, prudir ABSOLUTELY IS BAD
+
+Adding this ^^^^ one instruction
+
+            sub r0, RC, CT.rRiseRC      ; If have PS, compute RCs since its last rise time
+            lsr r0, r0, 13              ; Drop bottom 13 bits (8192 RCs)
+            qbeq mpt1, r0, 0            ; OK, jump ahead if last edge younger than that
+    mpt1a:  set R4.b0, R4.b0, CT.sTH.bID     ; Set bad bit corresponding to prudir
+            mov CT.rRiseRC, RC          ; Reset count if we failed
+            qbbc mpt2, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Jump ahead if sync was already blown
+            set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fForcedError ; Mark this frameError as our doing
+            ldi CT.sTH.wResAddr,$CODE(frameError)  ; Force thread to frameError (which will blow sync)
+            sendFromThread T, CT.rRiseRC           ; And report we timed-out the thread
+    mpt2:   saveThisThread                         ; Stash thread back
+            jmp mpt1                               ; And loop
+  ..
+
+It's not a perfect fix -- the thread may get resaved at mpt2 even
+though nothing has changed[56: (Actually CT.rRiseRC will have changed
+I would think.) :56], and it checks fPacketSync twice even
+though that might somehow be avoidable -- but whatever.  It seems
+plausible.  The idea is we won't even care about the last edge age
+unless and until we have PS.
+
+BITS OFF.
+
+:54]
+[55:
+
+Sun Jul  7 08:05:33 2019 Grr, even though we got PS announcements at
+start up:
+
+    Jul  7 08:04:20 beaglebone kernel: [29296.443018] DEBUG1 00000032 PRU1 Releasing the hounds
+    Jul  7 08:04:20 beaglebone kernel: [29296.448207] ITCCHANGE:UP:NE
+    Jul  7 08:04:20 beaglebone kernel: [29296.451068] ITCCHANGE:UP:SW
+
+M is now saying they're all disabled[57: NO IT ISN'T YOU KNEE-WALKING
+TURKEY.  3 != 7.  prudir0 and 1 ARE DISABLED DOH.  :57], even though status is saying
+NE-SW is open:
+
+    root@beaglebone:/sys/class/itc_pkt# Jul  7 08:06:02 beaglebone kernel: [29398.526509] PKTRC: (pru0/c3) Insert 0xc3/6 at LoclIB of pru0
+    Jul  7 08:06:02 beaglebone kernel: [29398.532260] PKTRC:c3 4d 30 33 33 3a                                .M033:
+    Jul  7 08:06:02 beaglebone kernel: [29398.781874] PKTRC: (pru1/c3) Insert 0xc3/6 at LoclIB of pru1
+    Jul  7 08:06:02 beaglebone kernel: [29398.787722] PKTRC:c3 4d 31 33 33 3a                                .M133:
+    cat status
+    00100010
+    root@beaglebone:/sys/class/itc_pkt# Jul  7 08:06:04 beaglebone kernel: [29400.494764] PKTRC: (pru0/c3) Insert 0xc3/6 at LoclIB of pru0
+
+one instruction and I must have blown it.
+
+
+:55][58:
+
+Sun Jul  7 08:55:41 2019 OK so I'm a supa-idiot and the M is working
+fine.[59:
+
+Sun Jul  7 08:57:08 2019 Aand now indeed NW and SE are just reporting
+closed, not completely inconsistent.  And I bet myself $100 dollars
+that PCB E15 (currently on the keymaster) has a problem with the NE
+ITC, so it's generating garbage edges that made 'M' think it was
+alive.  And that's all there is to it.
+
+BITS OFF -- and let's commit all this stuff, this time, rather than
+just having it sit in TGZS on the host..
+
+:59]
+
+:58]
