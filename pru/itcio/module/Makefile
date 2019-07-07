@@ -22,7 +22,7 @@ all:	FORCE
 clean:	FORCE
 	@make -C $(KDIR) M=$(CURDIR) clean
 
-install:	install_files insmod
+install:	install_files
 
 install_files:	all
 	make INSTALL_MOD_DIR=itc -C /lib/modules/4.4.54-ti-r93/build/ M=$(CURDIR) modules_install
@@ -33,7 +33,7 @@ install_files:	all
 	depmod
 
 
-insmod:	FORCE
+insmod:	install_files
 	modprobe -r $(MNAME) || exit 0
 	modprobe -r pru_rproc || exit 0
 	modprobe pru_rproc || exit 0
