@@ -14,16 +14,17 @@ EMACS_INPUTS:=50acklemacs.el
 EMACS_DIR:=/etc/emacs/site-start.d
 EMACS_OUTPUTS:=$(patsubst %,$(EMACS_DIR)/%,$(EMACS_INPUTS))
 
-SUDOER_INPUTS:=sdl
-SUDOER_DIR:=/etc/sudoers.d
-SUDOER_OUTPUTS:=$(SUDOER_DIR)/sdl
+## THIS IS JUST SOMEHOW BROKEN SO DON'T DO IT
+#SUDOER_INPUTS:=sdl
+#SUDOER_DIR:=/etc/sudoers.d
+#SUDOER_OUTPUTS:=$(SUDOER_DIR)/sdl
 
 all:
 	@echo $(CONF_INPUTS) - $(CONF_OUTPUTS)
 	@echo $(ETC_INPUTS) - $(ETC_OUTPUTS)
 	@echo $(PROFILE_INPUTS) - $(PROFILE_OUTPUTS) 
 	@echo $(EMACS_INPUTS) - $(EMACS_OUTPUTS) 
-	@echo $(SUDOER_INPUTS) - $(SUDOER_OUTPUTS)
+#	@echo $(SUDOER_INPUTS) - $(SUDOER_OUTPUTS)
 
 touch:
 	touch  $(CONF_INPUTS) $(ETC_INPUTS)
@@ -33,7 +34,7 @@ clean:
 
 realclean:	clean touch
 
-install:	$(CONF_OUTPUTS) $(ETC_OUTPUTS) $(PROFILE_OUTPUTS) $(EMACS_OUTPUTS) $(SUDOER_OUTPUTS)
+install:	$(CONF_OUTPUTS) $(ETC_OUTPUTS) $(PROFILE_OUTPUTS) $(EMACS_OUTPUTS) #$(SUDOER_OUTPUTS)
 
 $(CONF_OUTPUTS):	$(CONF_INPUTS)
 	cp $^ $(CONF_OUTPUT_DIR)  || (echo Must be root ; exit 2)
@@ -49,6 +50,6 @@ $(EMACS_OUTPUTS):	$(EMACS_INPUTS)
 	mkdir -p $(EMACS_DIR)
 	cp -a $^ $(EMACS_DIR)  || (echo Must be root ; exit 2)
 
-$(SUDOER_OUTPUTS):	$(SUDOER_INPUTS)
-	mkdir -p $(SUDOER_DIR)
-	cp $^ $(SUDOER_DIR)  || (echo Must be root ; exit 2)
+#$(SUDOER_OUTPUTS):	$(SUDOER_INPUTS)
+#	mkdir -p $(SUDOER_DIR)
+#	cp $^ $(SUDOER_DIR)  || (echo Must be root ; exit 2)
