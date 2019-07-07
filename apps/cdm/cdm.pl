@@ -39,17 +39,16 @@ my $DEBUG_FLAGS = $DEBUG_FLAG_STANDARD;
 my %triggerMFZs = (
     'cdm-deleteds.mfz' => \&updateDeleteds,
     'cdmd-MFM.mfz' => \&installCDMD,
-    'cdmd-T2-12.mfz' => \&installCDMDAndExitIfDone,
-    'cdmd-T2-GFB.mfz' => \&installCDMDGFB,
-    'cdmd-t2.mfz' => \&installOverlay,
+    'cdmd-T2-12.mfz' => \&installCDMDT2_12,
+#DEPRECATED    'cdmd-T2-GFB.mfz' => \&installCDMDGFB,
+#DEPRECATED    'cdmd-t2.mfz' => \&installOverlay,
     );
 my %cdmdTargetDirs = (
     'cdmd-MFM.mfz' => "/home/t2/GITHUB",
     'cdmd-T2-12.mfz' => "/home/t2",
-    'cdmd-T2-GFB.mfz' => "/home/t2/GITHUB/GFB",
-    'cdmd-t2.mfz' => "/home",
+#DEPRECATED    'cdmd-T2-GFB.mfz' => "/home/t2/GITHUB/GFB",
+#DEPRECATED    'cdmd-t2.mfz' => "/home",
     );
-
 
 sub DPF {
     my ($flags,$msg) = @_;
@@ -109,7 +108,10 @@ sub writePacket {
         DPVRB("WRITE BLOCKING");
         Time::HiRes::usleep($usec += 1000);
         if ($usec > 500000) {
-            DPSTD(sprintf("WritePacket timed out on 0x%02x/%d",ord($pkt),length($pkt)));
+            my $pru = "/sys/class/itc_pkt/pru_bufs";
+            my $bufs = do{local(@ARGV,$/)=$pru;<>};
+            chomp $bufs;
+            DPSTD(sprintf("WritePacket timed out on 0x%02x/%d\n%s",ord($pkt),length($pkt),$bufs));
             return;
         }
     }
@@ -407,8 +409,9 @@ sub runCmdWithSync {
     return 1;
 }
 
-sub installCDMDAndExitIfDone {
+sub installCDMDT2_12 {
     return unless defined installCDMD(@_);
+    return unless runCmdWithSync("cd /home/t2/T2-12 && make install","T2-12: make install: ERROR");
     print "EXITING TO RESTART\n";
     exit 17;
 }
@@ -706,7 +709,7 @@ sub checkCommonFile {
     }
     
     my $filename = shift @pathsToLoad;
-    return 1 unless defined $filename; # ??
+    return 0 unless defined $filename; # ??
     if (length($filename) > $MAX_MFZ_NAME_LENGTH) {  #### XXX WOAH
         DPSTD("MFZ filename too long '$filename'");
         return 1;
@@ -755,11 +758,15 @@ sub checkCommonFile {
         return 1;
     }
 
-    # This file is ready.  Maybe announce it to somebody?
-    my $aliveNgb = getRandomAliveNgb();
-    if ($announceOK && defined $aliveNgb && oneIn(3)) {
-        announceFileTo($aliveNgb,$finfo);
-        return 1;
+    # This file is ready.  Announce it to a few folks?
+    if ($announceOK) {
+        my $announcements = 0;
+        foreach my $ngb (getRandomAliveNgbList()) {
+            announceFileTo($ngb,$finfo);
+            ++$announcements;
+            last if oneIn(3);
+        }
+        return 1 if $announcements > 0;
     }
     return 0; # didn't do any 'real' work..
 }
@@ -943,30 +950,62 @@ sub getRandomAliveNgb {
     return $ngb; # undef if none alive
 }
 
+sub getRandomAliveNgbList {
+    my @ngbs;
+    foreach my $k (keys %hoodModel) {
+        my $v = $hoodModel{$k};
+        if ($v->{isAlive}) { push @ngbs, $v; }
+    }
+    return shuffle(@ngbs);
+}
+
 my $continueEventLoop = 1;
+my $alivetag = int(rand(100));
 sub doBackgroundWork {
 
     # ALIVENESS MGMT
     my $ngb = getRandomNgb();
-    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 30) {
+    if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 50) {
         $ngb->{isAlive} = 0;
         DPSTD(getDirName($ngb->{dir})." is dead");
     }
     
     if (rand(++$ngb->{clacksSinceAliveSent}) > 5) {
+#           print STDERR " ALV".$ngb->{dir}."\n";
+
         $ngb->{clacksSinceAliveSent} = 0;
-        sendCDMTo($ngb->{dir},'A');
+        $alivetag = ($alivetag + 1)&0xff;
+        sendCDMTo($ngb->{dir},'A',chr($alivetag));
+    }
+
+    # Record our liveness info for t2viz to viz
+    my $statusDir = "/run/cdm";
+    if (!-d $statusDir) {
+        mkdir $statusDir or DPSTD("Can't create $statusDir: $!");
+    }
+    my $statusFile = "$statusDir/status.dat";
+    if (!open(HANDLE,">",$statusFile)) { DPSTD("Can't open $statusFile: $!"); }
+    else {
+        my $now = now();
+        for (my $dir = 0; $dir < 8; ++$dir) {
+            my $ngb = getNgbInDir($dir);
+            print HANDLE ($ngb->{isAlive} ? "1 " : "0 ");
+        }
+        print HANDLE "$now\n";
+        close HANDLE or DPSTD("Can't close $statusFile: $!");
     }
 
     # COMMON MGMT
-    return if checkCommonFile(1);
+    checkCommonFile(1);
 
     # PENDING MGMT
-    return if checkPendingFile();
+    checkPendingFile();
 }
 
 sub announceFileTo {
     my ($aliveNgb,$finfo) = @_;
+#    print STDERR " ANCE".$aliveNgb->{dir}.": ".$finfo->{filename}."+".$finfo->{innerTimestamp}."\n";
+
     die unless defined $finfo->{seqno};
     my $fileAnnouncementCode = "F";
     my $pkt = chr(0x80+$aliveNgb->{dir}).chr($CDM_PKT_TYPE).$fileAnnouncementCode;
@@ -1014,8 +1053,9 @@ sub checkAnnouncedFile {
     if ($completeButCommonSeemsOlder ||
         (!defined($finfo) && !defined($pfinfo))) {
 
-        # But don't do this if we already have a pending going?
-        if (!defined($pfinfo)) {
+        # Set up fresh pending if no pf info or older ts
+        if (!defined($pfinfo) || $pfinfo->{innerTimestamp} < $timestamp) {
+            DPSTD("INITPENDING(fn=$filename,ts=$timestamp,dir=$dir)");
             $pfinfo = newFinfoBare($filename);
             $pfinfo->{subdir} = $pendingSubdir;
             $pfinfo->{length} = $contentLength;
@@ -1076,7 +1116,7 @@ sub processFileAnnouncement {
     if (scalar(@{$bref}) != $lenPos) {
         DPSTD("Expected $lenPos bytes got ".scalar(@{$bref}));
     }
-    DPPKT("AF(fn=$filename,cs=$checksum,ts=$timestamp,seq=$seqno)");
+    DPPKT("AF(fn=$filename,dir=$dir,ts=$timestamp,seq=$seqno)");
     checkAnnouncedFile($filename,$contentLength,$checksum,$timestamp,$seqno,$dir);
 }
 
@@ -1122,7 +1162,11 @@ sub processDataReply {
     }
     my $curlen = $finfo->{currentLength};
     if ($curlen != $startingIndex) {
-        DPSTD("WE WANT $curlen NOT $startingIndex FROM $sku");
+        if ($curlen > $startingIndex) {
+            issueContentRequest($finfo); # try to jump ahead and resync
+        } else {
+            DPSTD("WE WANT $curlen NOT $startingIndex FROM $sku");
+        }
         return;
     }
     my ($data,$hack16);
@@ -1133,13 +1177,15 @@ sub processDataReply {
         DPSTD("CHECKSUM FAILURE DROPPING PACKET");
         return;
     }
-    DPSTD("Starting reception of ".$finfo->{filename}." from ".getDirName($dir))
+    DPSTD("From ".getDirName($dir).": Starting receive of ".$finfo->{filename})
         if $startingIndex == 0;
     writeDataToPendingFile($finfo, $startingIndex, $data);
     if ($finfo->{currentLength} < $finfo->{length}) {  # We still want more
         issueContentRequest($finfo); # so go ahead ask for more
         my $rateLimiterUsec = 62_500; # But no more than 16Hz
         Time::HiRes::usleep($rateLimiterUsec);
+    } else {
+        DPSTD("From ".getDirName($dir).": Received last of ".$finfo->{filename});
     }
 }
 
@@ -1172,12 +1218,12 @@ sub sendCommonChunkTo {
         ;
 
     my $innerTimestamp = $finfo->{innerTimestamp};
-    DPSTD("Starting delivery of ".$finfo->{filename}." ($innerTimestamp:$sku) to ".getDirName($dir)) 
+    DPSTD("To ".getDirName($dir)." Starting to send ".$finfo->{filename}." ($innerTimestamp:$sku)") 
         if $startingIndex==0;
     if ($maxWanted > $maxRemaining) {
         $maxWanted = $maxRemaining;
     } else {
-        DPSTD("Sending last of ".$finfo->{filename}." ($innerTimestamp:$sku) to ".getDirName($dir));
+        DPSTD("To ".getDirName($dir).": Sending last of ".$finfo->{filename}." ($innerTimestamp:$sku)");
     }
     my $data = getDataFromCommonFile($finfo, $startingIndex, $maxWanted);
     my $hack16 = hack16($data);
@@ -1228,6 +1274,16 @@ sub hack16 {
     return chr(($h>>8)&0xff).chr($h&0xff);
 }
 
+sub declareNgbDirAlive {
+    my $srcDir = shift;
+    my $ngb = getNgbInDir($srcDir);
+    $ngb->{clacksSinceAliveRcvd} = 0;
+    if (!$ngb->{isAlive}) {
+        $ngb->{isAlive} = 1;
+        DPSTD(getDirName($srcDir)." is alive");
+    }
+}
+
 sub processPacket {
     my $pkt = shift;
     if (length($pkt) < 3) {
@@ -1236,18 +1292,16 @@ sub processPacket {
     }
     my @bytes = split(//,$pkt);
     my $byte0 = ord($bytes[0]);
+
     if ($byte0&0x08) {
         print "Packet error reported on '$pkt'\n";
     }
     my $srcDir = $byte0&0x07;
     if ($bytes[1] eq $CDM_PKT_TYPE_BYTE) {
+        declareNgbDirAlive($srcDir);
+
         if ($bytes[2] eq "A") {
-            my $ngb = getNgbInDir($srcDir);
-            $ngb->{clacksSinceAliveRcvd} = 0;
-            if (!$ngb->{isAlive}) {
-                $ngb->{isAlive} = 1;
-                DPSTD(getDirName($srcDir)." is alive");
-            }
+            printf("Rcvd 'A' from %d uniq %02x\n",$srcDir,ord($bytes[3]));
             return;
         }
         if ($bytes[2] eq "F") {
@@ -1412,6 +1466,7 @@ if (scalar(@ARGV)) {
     preinitCommon();
     exit 0;
 } else {
+    print "STARTING STANDARD\n";
     main();
     exit 9;
 }
