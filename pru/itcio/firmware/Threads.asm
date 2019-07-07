@@ -76,10 +76,11 @@ monitorPacketThreads:
 mpt1:   qbeq mpt3, r4.b1, 0         ; Done if counter 0
         sub r4.b1, r4.b1, 1         ; Decrement counter
         loadNextThread              ; Pull in next PacketRunner state
-        sub r0, RC, CT.rRiseRC      ; Compute RCs since its last rise time
+	qbbc mpt1a, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; If no PS, prudir ABSOLUTELY IS BAD
+        sub r0, RC, CT.rRiseRC      ; If have PS, compute RCs since its last rise time
 	lsr r0, r0, 13              ; Drop bottom 13 bits (8192 RCs)
         qbeq mpt1, r0, 0            ; OK, jump ahead if last edge younger than that
-	set R4.b0, R4.b0, CT.sTH.bID     ; Set bad bit corresponding to prudir
+mpt1a:  set R4.b0, R4.b0, CT.sTH.bID     ; Set bad bit corresponding to prudir
         mov CT.rRiseRC, RC          ; Reset count if we failed
 	qbbc mpt2, CT.sTH.bFlags, PacketRunnerFlags.fPacketSync ; Jump ahead if sync was already blown
 	set CT.sTH.bFlags, CT.sTH.bFlags, PacketRunnerFlags.fForcedError ; Mark this frameError as our doing
