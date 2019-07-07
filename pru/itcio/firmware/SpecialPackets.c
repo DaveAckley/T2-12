@@ -159,9 +159,9 @@ void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
       break;
     }
 
-    case 'L': cmdflag = 1;      /* L: Report and reset arm->linux packets received */
+    case 'L': cmdflag = 1;      /* L: Report and reset linux->pru packets received */
       // FALL THROUGH
-    case 'l': {                 /* l: Report arm->linux packets received */
+    case 'l': {                 /* l: Report linux->pru packets received */
       writeFormat32IOS(ios,linuxPacketsReceived,format);
       writeIOS(ios,'_');
       if (cmdflag) {
@@ -190,6 +190,12 @@ void processPacketEnginePacket(uint8_t * argspace, uint16_t arglen) {
       writeFormat32IOS(ios,orb->packetsRemoved,format);
       writeIOS(ios,'x');
       writeFormat32IOS(ios,orb->packetsRejected,format);
+      writeIOS(ios,'r');
+      writeFormat16IOS(ios,orb->readPtr,format);
+      writeIOS(ios,'w');
+      writeFormat16IOS(ios,orb->writePtr,format);
+      writeIOS(ios,'u');
+      writeFormat16IOS(ios,orbUsedBytes(orb),format);
       if (cmdflag) {
         orb->packetsAdded = 0;
         orb->packetsRemoved = 0;
