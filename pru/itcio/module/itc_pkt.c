@@ -16,6 +16,13 @@
 
 static bool shipCurrentOBPackets(void) ;
 
+static void tpReportIfMatch(TracePoint *tp, const char * tag, bool insert, char * pkt, int len, ITCPacketBuffer * ipb) ;
+static void tpReportPkt(const char * tag, bool insert, char * pkt, int len, ITCPacketBuffer * ipb) ;
+
+static void tppInitForOutput(TracePointParser *tpp, char *buf, u32 len) ;
+static bool tppGeneratePatternIfNeeded(TracePointParser *tpp, TracePoint *tp) ;
+static bool tppPutByte(TracePointParser * tpp, u8 ch) ;
+
 static __printf(5,6) int sendMsgToPRU(unsigned prunum,
                                       unsigned wait,
                                       char * buf,
@@ -57,11 +64,31 @@ static char * strPktHdr(u8 hdr) {
   char * p = &buf[0][nextbuf];
   if (++nextbuf >= STRPKTHDR_MAX_BUFS) nextbuf = 0;
   
-  if (isprint(hdr))
+  if (isprint(hdr) && !(hdr&0x80))
     sprintf(p,"0x%02x'%c'",hdr,hdr);
   else
     sprintf(p,"0x%02x",hdr);
   return p;
+}
+
+static char * strMinor(int minor) {
+  switch(minor) {
+  case 0: return "pru0";
+  case 1: return "pru1";
+  case 2: return "pkt2";
+  case 3: return "mfm3";
+  default: BUG_ON(1);
+  }
+}
+
+static char * strBuffer(int buffer) {
+  switch(buffer) {
+  case BUFFERSET_U: return "UserIB";
+  case BUFFERSET_L: return "LoclIB";
+  case BUFFERSET_P: return "PrioOB";
+  case BUFFERSET_B: return "BulkOB";
+  default: BUG_ON(1);
+  }
 }
 
 static void initITCTrafficCounts(ITCTrafficCounts *c)
@@ -106,9 +133,9 @@ static int itcOBPktThreadRunner(void *arg) {
   printk(KERN_INFO "itcOBPktThreadRunner: Started\n");
 
   while(!kthread_should_stop()) {    /* Returns true when kthread_stop() is called */
-    int waitms = 100;                /* producers kick us so timeout should be rare backstop */
+    int waitms = 50;                 /* producers kick us so timeout should be rare backstop */
     set_current_state(TASK_RUNNING);
-    if (shipCurrentOBPackets()) waitms = 1; /* Except short wait if txbufs ran out */
+    if (shipCurrentOBPackets()) waitms = 1; /* Except short wait if txbufs ran out or bulk pkts pending */
     msleep_interruptible(waitms);      
   }
   printk(KERN_INFO "itcOBPktThreadRunner: Stopping by request\n");
@@ -156,6 +183,14 @@ static void destroyITCModuleState(ITCModuleState *s) {
   destroyITCThreads(s);
 }
 
+static inline int bytesInITCPacketBuffer(ITCPacketBuffer * ipb) {
+  return kfifo_len(&ipb->mFIFO);
+}
+
+static inline int bulkOutboundBytesToPRUDev(ITCPRUDeviceState * prudev) {
+  return bytesInITCPacketBuffer(&prudev->mBulkOB);
+}
+
 /* return size of packet sent, 0 if nothing to send, < 0 if problem */
 static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb) {
   struct rpmsg_channel * chnl;
@@ -190,14 +225,17 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
   chnl = prudev->mRpmsgChannel;
   BUG_ON(!chnl);
 
+  ret = rpmsg_trysend(chnl, prudev->mTempPacketBuffer, pktlen);
+
   DBGPRINTK(DBG_PKT_ROUTE,
-            KERN_INFO "Trying to send %s/%d packet via prudev %s %s\n",
+            KERN_INFO "%d from trysend %s/%d pkt (kfln %d) via prudev %s %s\n",
+            ret,
             strPktHdr(prudev->mTempPacketBuffer[0]),
             pktlen,
+            kfifolen,
             prudev->mCDevState.mName,
             ipb->mName);
 
-  ret = rpmsg_trysend(chnl, prudev->mTempPacketBuffer, pktlen);
   if (ret < 0) {
     if (ret != -ENOMEM) {
       DBGPRINTK(DBG_PKT_SENT,
@@ -211,6 +249,8 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
     }
     return ret;      /* send failed; -ENOMEM means no tx buffers */
   }
+
+  tpReportIfMatch(&ipb->mTraceRemove, prudev->mCDevState.mName, false, prudev->mTempPacketBuffer, pktlen, ipb);
 
   if (ipb->mRouted) { /* Do stats on routed buffers */
     u8 itcDir = prudev->mTempPacketBuffer[0]&0x7;  /* Get direction from header */
@@ -252,17 +292,18 @@ static int shipAPacketToPRU(ITCPRUDeviceState * prudevstate) {
 
 /* Advance OB packet shipping as far as immediately possible */
 static bool shipCurrentOBPackets(void) {
-  bool noTxBuffer = false;
+  bool packetsWaiting = false;
   unsigned i;
   unsigned idx = prandom_u32_max(2);
 
   for (i = 0; i < 2; ++i, idx = 1-idx) {
     int ret;
     while ( (ret = shipAPacketToPRU(S.mPRUDeviceState[idx])) == 0 ) { /* empty */ }
-    if (ret == -ENOMEM) noTxBuffer = true;
+    if (ret == -ENOMEM || bulkOutboundBytesToPRUDev(S.mPRUDeviceState[idx]) > 0)
+        packetsWaiting = true;
   }
 
-  return noTxBuffer;
+  return packetsWaiting;
 }
 
 
@@ -431,6 +472,486 @@ static ssize_t itc_pkt_class_read_pkt_bufs(struct class *c,
   return len;
 }
 
+static const char * tpStrPattern(TracePoint *tp) {
+  static char buf[3+5*TRACE_MAX_LEN];
+  TracePointParser atpp;
+  TracePointParser * tpp = &atpp;
+  tppInitForOutput(tpp,buf,sizeof(buf)/sizeof(buf[0]));
+  tppGeneratePatternIfNeeded(tpp,tp);
+  tppPutByte(tpp,'\0');
+  return buf;
+}
+
+static bool tpMatchPacket(TracePoint *tp, const char * tag, char * pkt, int len) {
+  int i;
+  DBGPRINT_HEX_DUMP(DBG_TRACE_EXEC,
+                    KERN_INFO, ">mtpk: ",
+                    DUMP_PREFIX_NONE, 16, 1,
+                    pkt, len, true);
+  DBGPRINTK(DBG_TRACE_EXEC,KERN_INFO "TPEX MP (%s) Match %s %s/%d alen=%d:",
+            tag,
+            tpStrPattern(tp),
+            strPktHdr(*pkt),
+            len,
+            tp->mActiveLength);
+
+  if (tp->mActiveLength == 0 || tp->mActiveLength > len) {
+    DBGPRINTK(DBG_TRACE_EXEC,KERN_CONT "fail active %d vs len %d\n",tp->mActiveLength,len);
+    return false;
+  }
+  for (i = 0; i < tp->mActiveLength; ++i) {
+    u8 byte;
+    byte = pkt[i];
+    if ((byte & tp->mMask[i]) != tp->mValue[i]) {
+      DBGPRINTK(DBG_TRACE_EXEC,KERN_CONT "fail idx %d mask %02x value %02x byte %02x masked byte %02x\n",
+                i, tp->mMask[i], tp->mValue[i], byte, (byte & tp->mMask[i]));
+      return false;
+    }
+  }
+  DBGPRINTK(DBG_TRACE_EXEC,KERN_CONT "Hit\n");
+  return true;
+}
+
+static void tpReportIfMatch(TracePoint *tp, const char * tag, bool insert, char * pkt, int len, ITCPacketBuffer * ipb) {
+  DBGPRINTK(DBG_TRACE_EXEC,KERN_INFO "TPEX RIMT (%s) %s %s %s/%d",
+            tag,
+            insert ? "Insert" : "Remove",
+            tpStrPattern(tp),
+            strPktHdr(*pkt),
+            len);
+  if (tpMatchPacket(tp,tag,pkt,len)) tpReportPkt(tag,insert,pkt,len,ipb);
+ }
+
+static void tpReportPkt(const char * tag, bool insert, char * pkt, int len, ITCPacketBuffer * ipb) {
+  printk(KERN_INFO "PKTRC: (%s) %s %s/%d at %s of %s\n",
+         tag,
+         insert ? "Insert" : "Remove",
+         strPktHdr(*pkt),
+         len,
+         strBuffer(ipb->mBuffer),
+         strMinor(ipb->mMinor));
+  DBGPRINT_HEX_DUMP(DBG_TRACE_FULL,
+                    KERN_INFO, "PKTRC:",
+                    DUMP_PREFIX_NONE, 16, 1,
+                    pkt, len, true);
+}
+
+static int tppNextByte(TracePointParser *tpp) {
+  u8 ch;
+  if ((tpp->mCurrent - tpp->mProgram) >= tpp->mCount) {
+    return -1;
+  }
+  ch = *tpp->mCurrent++;
+  return (int) ch;
+}
+
+static bool tppPutByte(TracePointParser * tpp, u8 ch) {
+  if ((tpp->mCurrent - tpp->mProgram) >= tpp->mCount) {
+    return false;
+  }
+  *tpp->mCurrent++ = ch;
+  return true;
+}
+
+static bool tppPutString(TracePointParser * tpp, char * str) {
+  while (*str) {
+    if (!tppPutByte(tpp,*str++)) return false;
+  }
+  return true;
+}
+
+static bool tppPutByteSpec(TracePointParser * tpp, u8 byte) {
+  if (((byte&0x80) == 0) && isprint(byte)) { /* isprint sucks??  says yes to \xf0 etc?? */
+    tppPutByte(tpp,'\\'); tppPutByte(tpp,byte);
+  } else {
+    int i;
+    for (i = 4; i >= 0; i -= 4) {
+      u8 h = (byte>>i)&0xf;
+      if (h < 10) tppPutByte(tpp,h+'0');
+      else tppPutByte(tpp,h-10+'a');
+    }
+  }
+  return true;
+}
+
+static int tppFail(TracePointParser *tpp) {
+  return -(tpp->mCurrent - tpp->mProgram + 1);
+}
+
+static bool tppUnread(TracePointParser *tpp) {
+  BUG_ON(tpp->mCurrent < tpp->mProgram);
+  if (tpp->mCurrent == tpp->mProgram ||  /* can't unread before the beginning*/
+      (tpp->mCurrent - tpp->mProgram) >= tpp->mCount) /* and can't undo hitting eof */
+    return false;
+  --tpp->mCurrent;
+  return true;
+}
+
+static int tppPeekByte(TracePointParser *tpp) {
+  int ret = tppNextByte(tpp);
+  tppUnread(tpp);
+  return ret;
+}
+
+static bool tppMatch(TracePointParser *tpp, u8 byte) {
+  if (tppNextByte(tpp) == byte) return true;
+  tppUnread(tpp);
+  return false;
+}
+
+#if 0
+static void tppGet(TracePointParser *tpp, u8 byte) {
+  BUG_ON(!tppMatch(tpp,byte));
+}
+#endif
+
+static void tppResetTracePoint(TracePoint * tp) {
+  tp->mActiveLength = 0;
+}
+
+static bool tppAddMaskTracePoint(TracePoint * tp, u8 mask) {
+  DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP parse add mask %02x to len %d\n",
+            mask,tp->mActiveLength);
+  if (tp->mActiveLength > TRACE_MAX_LEN) return false;
+  tp->mMask[tp->mActiveLength++] = mask;
+  return true;
+}
+
+static bool tppAddValueTracePoint(TracePoint * tp, u8 value, int index) {
+  DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP parse add value %02x to index %d/%d\n",
+            value,index,tp->mActiveLength);
+  if (index >= tp->mActiveLength) return false;
+  tp->mValue[index] = value;
+  return true;
+}
+
+static ssize_t tppParseLineComment(TracePointParser * tpp) {
+  int ret;
+  DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP parse comment\n");
+  if (!tppMatch(tpp,'#')) return tppFail(tpp);
+  while ( (ret = tppNextByte(tpp)) >= 0 && ret != '\n') { /* empty*/ }
+  return 0;
+}
+
+static int tppParseByteSpec(TracePointParser *tpp) {
+  int ret;
+
+  if (tppMatch(tpp,'\\')) {
+    ret = tppNextByte(tpp);
+    if (ret < 0) return tppFail(tpp);
+  } else {
+    int i;
+    int hex;
+    ret = 0;
+    for (i = 0; i < 2; ++i) {
+      hex = tolower(tppNextByte(tpp));
+      if (hex < 0) return tppFail(tpp);
+      if (hex >= '0' && hex <= '9') ret = (ret<<4)|(hex-'0');
+      else if (hex >='a' && hex <= 'f') ret = (ret<<4)|(hex-'a'+10);
+      else return tppFail(tpp);
+    }
+  }
+
+  DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP parse byte spec got %02x/%c\n", ret, ret);
+  return ret;
+}
+
+static ssize_t tppParseTracePattern(TracePointParser * tpp) {
+  TracePoint * tp = &tpp->mPattern;
+  ssize_t ret;
+  int len = 0;
+  DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP parse pattern < \n");
+  if (!tppMatch(tpp,'<')) return tppFail(tpp);
+  tppResetTracePoint(tp);
+
+  while (!tppMatch(tpp,'|')) {
+    if ( (ret = tppParseByteSpec(tpp)) < 0) return ret;
+    if (!tppAddMaskTracePoint(tp, (u8) ret)) return tppFail(tpp);
+  }
+
+  DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP parse pattern |\n");
+
+  while (!tppMatch(tpp,'>')) {
+    if (len >= tp->mActiveLength) return tppFail(tpp);
+    if ( (ret = tppParseByteSpec(tpp)) < 0) return ret;
+    if (!tppAddValueTracePoint(tp, (u8) ret, len)) return tppFail(tpp);
+    ++len;
+  }
+
+  DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP parse pattern >\n");
+
+  if (len != tp->mActiveLength) return tppFail(tpp);
+  return 0;
+}
+
+static ssize_t tppParseMinorSet(TracePointParser * tpp) {
+  int ret;
+  tpp->mMinorSet = 0;
+  while (1) {
+    ret = tppNextByte(tpp);
+    if (ret >= '0' && ret <= '3') {
+      tpp->mMinorSet |= 1<<(ret-'0');
+      continue;
+    }
+    tppUnread(tpp);
+    DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP parse minor set got %x\n", tpp->mMinorSet);
+    return 0;
+  } 
+}
+
+static ssize_t tppParseBufferSet(TracePointParser * tpp) {
+  int ret;
+
+  tpp->mBufferSet = 0;
+  while (1) {
+    ret = tolower(tppNextByte(tpp));
+    if      (ret == 'u') tpp->mBufferSet |= 1<<BUFFERSET_U;
+    else if (ret == 'l') tpp->mBufferSet |= 1<<BUFFERSET_L;
+    else if (ret == 'p') tpp->mBufferSet |= 1<<BUFFERSET_P;
+    else if (ret == 'b') tpp->mBufferSet |= 1<<BUFFERSET_B;
+    else {
+      tppUnread(tpp);
+      DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP parse buffer set got %x\n", tpp->mBufferSet);
+      return 0;
+    }
+  }
+}
+
+static void tppStorePattern(TracePointParser * tpp, bool onInsert, bool onRemove) {
+  int m, b;
+  DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP store pattern enter %d %d, minor %x, buffers %x\n",
+            onInsert, onRemove, tpp->mMinorSet, tpp->mBufferSet);
+
+  for (m = 0; m < 4; ++m) { /* for all minors */
+    if (!(tpp->mMinorSet&(1<<m))) continue; /*but not this minor*/
+
+    for (b = 0; b < 4; ++b) {  /* for all buffers */
+      ITCPacketBuffer * ipb;
+      if (!(tpp->mBufferSet&(1<<b))) continue; /*but not this buffer*/
+
+      DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP store loop m%d b%d\n", m, b);
+
+      if (m < 2) { /* pru minors */
+        ITCPRUDeviceState * pru = S.mPRUDeviceState[m];
+        if (!pru) continue;
+        switch (b) {
+        case BUFFERSET_U: continue;
+        case BUFFERSET_L: ipb = &pru->mLocalIB; break;
+        case BUFFERSET_P: ipb = &pru->mPriorityOB; break;
+        case BUFFERSET_B: ipb = &pru->mBulkOB; break;
+        default: BUG_ON(1);
+        }
+      } else {  /* pkt minors */
+        ITCPktDeviceState * pkt = S.mPktDeviceState[m-2];
+        if (!pkt) continue;
+        switch (b) {
+        case BUFFERSET_U: ipb = &pkt->mUserIB; break;
+        case BUFFERSET_L: continue;
+        case BUFFERSET_P: continue;
+        case BUFFERSET_B: continue;
+        default: BUG_ON(1);
+        }
+      }
+      if (onInsert) ipb->mTraceInsert = tpp->mPattern;
+      if (onRemove) ipb->mTraceRemove = tpp->mPattern;
+    }
+  }
+}
+
+static ssize_t tppParseTraceProgram(TracePointParser * tpp, bool doit) {
+  int ch;
+  ssize_t ret;
+  bool insertAct, removeAct;
+  BUG_ON(!tpp);
+  while ( (ch = tppPeekByte(tpp)) >= 0) {
+    DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP clause got %d/%c\n",ch, (u8) ch);
+    switch (tolower(ch)) {
+    default:
+      return tppFail(tpp);
+    case ' ':
+    case '\t':
+    case '\n': continue; /* Ignore top-level ws */
+    case '#':
+      if ( (ret = tppParseLineComment(tpp)) < 0) return ret;
+      break;
+    case '<':
+      if ( (ret = tppParseTracePattern(tpp)) < 0) return ret;
+      break;
+    case '0': case '1': case '2': case '3':
+      if ( (ret = tppParseMinorSet(tpp)) < 0) return ret;
+      break;
+    case 'u': case 'l': case 'p': case 'b':
+      if ( (ret = tppParseBufferSet(tpp)) < 0) return ret;
+      break;
+    case '+': insertAct = true;   removeAct = false;   goto act;
+    case '-': insertAct = false;  removeAct = true;    goto act;
+    case '*': insertAct = true;   removeAct = true;    goto act;
+    case '/': insertAct = false;  removeAct = false;   goto act;
+
+    act:
+      tppNextByte(tpp); /* Consume action */
+      if (doit) tppStorePattern(tpp, insertAct, removeAct);
+      break;
+    }
+  }
+  return 0;
+}
+
+static void tppResetTpp(TracePointParser * tpp) {
+  tppResetTracePoint(&tpp->mPattern);
+  tpp->mCount = 0;
+  tpp->mProgram = 0;
+  tpp->mCurrent = 0;
+  tpp->mMinorSet = 0;
+  tpp->mBufferSet = 0;
+}
+
+#define TPP_RESET_TRACE_PROGRAM "<|>0123ULPB*#reset\n"
+
+static ssize_t parseTraceProgram(const char * buf, size_t count) {
+  int pass;
+  ssize_t ret;
+  for (pass = 0; pass < 2; ++pass) {
+    TracePointParser tpp;
+    DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP traceprogram pass %d\n",pass);
+    tppResetTpp(&tpp);
+    if (count > 1) {
+      tpp.mProgram = tpp.mCurrent = (char*) buf;
+      tpp.mCount = count;
+    } else if (count == 1 && buf[0] == '\n') {
+      DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP defaulting to reset traceprogram\n");
+      tpp.mProgram = tpp.mCurrent = TPP_RESET_TRACE_PROGRAM;
+      tpp.mCount = strlen(tpp.mProgram);
+    }
+    ret = tppParseTraceProgram(&tpp, pass>0);
+    if (ret < 0) return ret;
+  }
+  return count;
+}
+
+static bool tppTracePointIsEmpty(TracePoint * tp) {
+  return tp->mActiveLength == 0;
+}
+
+static bool tppTracePointEqual(TracePoint * tp1, TracePoint * tp2) {
+  int i;
+  if (tp1->mActiveLength != tp2->mActiveLength) return false;
+  for (i = 0; i < tp1->mActiveLength; ++i) {
+    if (tp1->mMask[i] != tp2->mMask[i] || tp1->mValue[i] != tp2->mValue[i])
+      return false;
+  }
+  return true;
+}
+
+static bool tppGeneratePatternIfNeeded(TracePointParser *tpp, TracePoint *tp) {
+  int i;
+  if (tppTracePointEqual(&tpp->mPattern,tp)) return false;
+  tppPutByte(tpp,'<');
+  for (i = 0; i < tp->mActiveLength; ++i) tppPutByteSpec(tpp,tp->mMask[i]);
+  tppPutByte(tpp,'|');
+  for (i = 0; i < tp->mActiveLength; ++i) tppPutByteSpec(tpp,tp->mValue[i]);
+  tppPutByte(tpp,'>');
+  tpp->mPattern = *tp;
+  return true;
+}
+
+static bool tppGenerateMinorIfNeeded(TracePointParser *tpp, int m) {
+  u8 minorSet = 1<<m;
+  if (tpp->mMinorSet == minorSet) return false;
+  tppPutByte(tpp,m+'0');
+  tpp->mMinorSet = minorSet;
+  return true;
+}
+
+static bool tppGenerateBufferIfNeeded(TracePointParser *tpp, int b) {
+  u8 bufferSet = 1<<b;
+  if (tpp->mBufferSet == bufferSet) return false;
+  switch (b) {
+  case BUFFERSET_U: tppPutByte(tpp,'U'); break;
+  case BUFFERSET_L: tppPutByte(tpp,'L'); break;
+  case BUFFERSET_P: tppPutByte(tpp,'P'); break;
+  case BUFFERSET_B: tppPutByte(tpp,'B'); break;
+  default: BUG_ON(1);
+  }
+  tpp->mBufferSet = bufferSet;
+  return true;
+}
+
+static void tppGenerateActionsIfNeeded(TracePointParser *tpp, int m, int b, ITCPacketBuffer * ipb) {
+  int i;
+  for (i = 0; i < 2; ++i) {
+    TracePoint * tp = i ? &ipb->mTraceRemove : &ipb->mTraceInsert;
+    if (tppTracePointIsEmpty(tp)) continue;
+    tppGeneratePatternIfNeeded(tpp,tp);
+    tppGenerateMinorIfNeeded(tpp,m);
+    tppGenerateBufferIfNeeded(tpp,b);
+    tppPutByte(tpp,i ? '-' : '+');
+  }
+}
+
+static void tppInitForOutput(TracePointParser *tpp, char *buf, u32 len) {
+  tpp->mCount = len;
+  tpp->mProgram = tpp->mCurrent = buf;
+  tpp->mMinorSet = 0;
+  tpp->mBufferSet = 0;
+  tppResetTracePoint(&tpp->mPattern);
+}
+
+static void tppGenerateTraceProgram(char *buf, u32 len) {
+  int m, b;
+  TracePointParser atpp;
+  TracePointParser * tpp = &atpp;
+
+  tppInitForOutput(tpp,buf,len);
+  tppPutString(tpp,TPP_RESET_TRACE_PROGRAM);
+
+  for (m = 0; m < 4; ++m) { /* for all minors */
+    for (b = 0; b < 4; ++b) {  /* for all buffers */
+      ITCPacketBuffer * ipb;
+
+      if (m < 2) { /* pru minors */
+        ITCPRUDeviceState * pru = S.mPRUDeviceState[m];
+
+        if (!pru) continue;
+        switch (b) {
+        case BUFFERSET_U: continue;
+        case BUFFERSET_L: ipb = &pru->mLocalIB; break;
+        case BUFFERSET_P: ipb = &pru->mPriorityOB; break;
+        case BUFFERSET_B: ipb = &pru->mBulkOB; break;
+        default: BUG_ON(1);
+        }
+      } else {  /* pkt minors */
+        ITCPktDeviceState * pkt = S.mPktDeviceState[m-2];
+        if (!pkt) continue;
+        switch (b) {
+        case BUFFERSET_U: ipb = &pkt->mUserIB; break;
+        case BUFFERSET_L: continue;
+        case BUFFERSET_P: continue;
+        case BUFFERSET_B: continue;
+        default: BUG_ON(1);
+        }
+      }
+      tppGenerateActionsIfNeeded(tpp,m,b,ipb);
+    }
+  }
+  tppPutByte(tpp,'\n');
+}
+
+static ssize_t itc_pkt_class_read_trace(struct class *c,
+                                        struct class_attribute *attr,
+                                        char *buf)
+{
+  tppGenerateTraceProgram(buf,PAGE_SIZE-1);
+  return strlen(buf);
+}
+
+static ssize_t itc_pkt_class_store_trace(struct class *c,
+                                         struct class_attribute *attr,
+                                         const char *buf,
+                                         size_t count)
+{
+  return parseTraceProgram(buf,count);
+}
 
 static ssize_t itc_pkt_class_read_debug(struct class *c,
                                         struct class_attribute *attr,
@@ -446,11 +967,19 @@ static ssize_t itc_pkt_class_store_debug(struct class *c,
                                          size_t count)
 {
   unsigned tmpdbg;
+  bool add = false, sub = false;
   if (count == 0) return -EINVAL;
 
+  if ( (*buf == '+' && (add = true)) ||
+       (*buf == '-' && (sub = true)) ) ++buf;
+
   if (sscanf(buf,"%x",&tmpdbg) == 1) {
-    printk(KERN_INFO "set debug %x\n",tmpdbg);
-    S.mDebugFlags = tmpdbg;
+    if (add) S.mDebugFlags |= tmpdbg;
+    else if (sub) S.mDebugFlags &= ~tmpdbg;
+    else S.mDebugFlags = tmpdbg;
+
+    printk(KERN_INFO "set debug %x\n",S.mDebugFlags);
+
     return count;
   }
   return -EINVAL;
@@ -566,6 +1095,7 @@ static struct class_attribute itc_pkt_class_attrs[] = {
   FOR_XX_IN_ITC_ALL_DIR
   __ATTR(poke, 0200, NULL, itc_pkt_class_store_poke),
   __ATTR(debug, 0644, itc_pkt_class_read_debug, itc_pkt_class_store_debug),
+  __ATTR(trace, 0644, itc_pkt_class_read_trace, itc_pkt_class_store_trace),
   __ATTR(status, 0444, itc_pkt_class_read_status, NULL),
   __ATTR(statistics, 0444, itc_pkt_class_read_statistics, NULL),
   __ATTR(pru_bufs, 0444, itc_pkt_class_read_pru_bufs, NULL),
@@ -769,6 +1299,27 @@ static ssize_t itc_pkt_write(struct file *file,
     }
 
     if (ret == 0) {
+      {
+        /* copy enough to evaluate tp */
+        char tmp[TRACE_MAX_LEN + 1]; /* room for null */
+        TracePoint * tp = &ipb->mTraceInsert;
+        int len = tp->mActiveLength;
+        int uncopied = copy_from_user(tmp,buf,len);
+        tmp[len] = 0;
+        DBGPRINTK(DBG_TRACE_EXEC,KERN_INFO "TPEX UWRITE (%s) '%s'/%d",
+                  cdevstate->mName,
+                  tmp,
+                  len);
+        if (uncopied == 0 && tpMatchPacket(tp,cdevstate->mName,tmp,len)) {
+          /* copy whole thing to report */
+          static char tmpbuf[ITC_MAX_PACKET_SIZE];
+          if (copy_from_user(tmpbuf, buf, count)) {
+            dev_err(cdevstate->mLinuxDev, "Failed to copy data");
+            return -EFAULT;
+          }
+          tpReportPkt(prudevstate->mCDevState.mName, true, tmpbuf, len, ipb);
+        }
+      }
       ret = kfifo_from_user(&ipb->mFIFO, buf, count, &copied);
       DBGPRINTK(DBG_PKT_ROUTE,
                 KERN_INFO "Copied %d user->%s:%s, count %d, avail %d, len %d, ret %d\n",
@@ -838,6 +1389,19 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
   DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_pkt_read(%d) post kfifo check ret= %d\n",minor,ret);
 
   if (ret == 0) {
+    char tmp[TRACE_MAX_LEN+1];
+    TracePoint * tp = &ipb->mTraceRemove;
+    int len = tp->mActiveLength;
+    /* just peek at enough to evaluate the trace point */
+    if (len == kfifo_out_peek(fifo, tmp, len)) {
+      tmp[len] = 0; /*paranoia*/
+      if (tpMatchPacket(tp,cdevstate->mName,tmp,len)) {
+        /* and only for for the whole thing when we hit */
+        static char tmpbuf[ITC_MAX_PACKET_SIZE];
+        len = kfifo_out_peek(fifo, tmpbuf, ITC_MAX_PACKET_SIZE);
+        tpReportPkt(cdevstate->mName, false, tmpbuf, len, ipb);
+      }
+    }
     ret = kfifo_to_user(fifo, buf, count, &copied);
     DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_pkt_read(%d) post kfifo_to_user ret=%d copied=%d\n",
               minor,ret,copied);
@@ -983,6 +1547,8 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_chnl,
                    urgent ? "priority" : "bulk",
                    len);
           else {
+            tpReportIfMatch(&ipb->mTraceInsert, pktdev->mCDevState.mName, true, data, len, ipb);
+
             kfifo_in(&ipb->mFIFO, data, len); 
 
             DBGPRINTK(DBG_PKT_RCVD,
@@ -998,6 +1564,16 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_chnl,
         }
 
       } else {                             // Standard local packet
+        ITCPacketBuffer * ipb;
+
+        BUG_ON(!prudevstate);
+        ipb = &prudevstate->mLocalIB;
+
+        // Trace (LKM-handled) standard local packets as if they're
+        // inserts to the LocalIB even though they never get
+        // inserted..
+        tpReportIfMatch(&ipb->mTraceInsert, minor == 0 ? "pru0/c3" : "pru1/c3", true, bytes, len, ipb);
+
         switch (type&PKT_HDR_BITMASK_LOCAL_TYPE) {
 
         default:
@@ -1029,7 +1605,11 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_chnl,
         printk(KERN_ERR "(%s) Inbound queue full, dropping PRU%d len=%d packet\n",
                getDirName(type&0x7), minor, len);
       else {
-        u32 copied = kfifo_in(&ipb->mFIFO, data, len);
+        u32 copied;
+
+        tpReportIfMatch(&ipb->mTraceInsert, prudev->mCDevState.mName, true, data, len, ipb);
+
+        copied = kfifo_in(&ipb->mFIFO, data, len);
         DBGPRINTK(DBG_PKT_RCVD,
                   KERN_INFO "Stashed %d for %s/%d packet for prudev %s ipb %s, waking %p\n",
                   copied,
@@ -1044,8 +1624,10 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_chnl,
   }
 }
 
-static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname, bool routed, bool priority) {
+static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname, bool routed, bool priority, int minor, int buffer) {
   BUG_ON(!ipb);
+  ipb->mMinor = minor;
+  ipb->mBuffer = buffer;
   ipb->mRouted = routed;
   ipb->mPriority = priority;
   strncpy(ipb->mName, ipbname,DBG_NAME_MAX_LENGTH);
@@ -1061,7 +1643,7 @@ static ITCPktDeviceState * makeITCPktDeviceState(struct device * dev,
 {
   ITCCharDeviceState* cdev = makeITCCharDeviceState(dev, sizeof(ITCPktDeviceState), minor_to_create, err_ret);
   ITCPktDeviceState* pktdev = (ITCPktDeviceState*) cdev;
-  initITCPacketBuffer(&pktdev->mUserIB,"mUserIB",false,false);
+  initITCPacketBuffer(&pktdev->mUserIB, "mUserIB", false, false, minor_to_create, BUFFERSET_U);
   return pktdev;
 }
 
@@ -1072,9 +1654,9 @@ static ITCPRUDeviceState * makeITCPRUDeviceState(struct device * dev,
   ITCCharDeviceState* cdev = makeITCCharDeviceState(dev, sizeof(ITCPRUDeviceState), minor_to_create, err_ret);
   ITCPRUDeviceState* prudev = (ITCPRUDeviceState*) cdev;
   prudev->mRpmsgChannel = 0; /* caller inits later */
-  initITCPacketBuffer(&prudev->mLocalIB,"mLocalIB",false,false);
-  initITCPacketBuffer(&prudev->mPriorityOB,"mPriorityOB",true,true);
-  initITCPacketBuffer(&prudev->mBulkOB,"mBulkOB",true,false);
+  initITCPacketBuffer(&prudev->mLocalIB,"mLocalIB",false,false, minor_to_create, BUFFERSET_L);
+  initITCPacketBuffer(&prudev->mPriorityOB,"mPriorityOB",true,true, minor_to_create, BUFFERSET_P);
+  initITCPacketBuffer(&prudev->mBulkOB,"mBulkOB",true,false, minor_to_create, BUFFERSET_B);
   return prudev;
 }
 

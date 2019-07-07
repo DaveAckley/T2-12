@@ -14,7 +14,7 @@
 #include <linux/random.h>          /* for prandom_u32_max() */
 #include <linux/uaccess.h>
 #include <linux/poll.h>
-#include <linux/ctype.h>           /* for isprint */
+#include <linux/ctype.h>           /* for isprint, tolower */
 
 
 #include "pin_info_maps.h"
@@ -63,13 +63,45 @@ typedef enum {
   DBG_PKT_SENT      = 0x00000002,
   DBG_PKT_ROUTE     = 0x00000004,
   DBG_PKT_ERROR     = 0x00000008,
+  DBG_TRACE_PARSE   = 0x00000010,
+  DBG_TRACE_EXEC    = 0x00000020,
+  DBG_TRACE_FULL    = 0x00000040,
 } DebugFlags;
 
-#define DBGIF(mask) if ((mask)&S.mDebugFlags)
+#define DBGP(mask) ((mask)&S.mDebugFlags)
+#define DBGIF(mask) if (DBGP(mask))
 #define DBGPRINTK(mask, printkargs...) do { DBGIF(mask) printk(printkargs); } while (0);
 #define DBGPRINT_HEX_DUMP(mask, printhexdumpargs...) do { DBGIF(mask) print_hex_dump(printhexdumpargs); } while (0);
 
 #define DBG_NAME_MAX_LENGTH 32
+#define TRACE_MAX_LEN 4
+typedef struct {
+  u8 mActiveLength;
+  u8 mMask[TRACE_MAX_LEN];
+  u8 mValue[TRACE_MAX_LEN];
+} TracePoint;
+
+enum {
+  BUFFERSET_U = 0,
+  BUFFERSET_L,
+  BUFFERSET_P,
+  BUFFERSET_B
+};
+
+typedef struct {
+  TracePoint mPattern;
+  size_t mCount;
+  u8 * mProgram;
+  u8 * mCurrent;
+  u8 mMinorSet;
+  u8 mBufferSet;
+} TracePointParser;
+
+#define TRACEPOINT_PROGRAM_MAX_LEN 1024
+typedef struct {
+  u32 mLength;
+  u8 mCode[TRACEPOINT_PROGRAM_MAX_LEN];
+} TracePointProgram;
 
 typedef struct {
   ITCPacketFIFO     mFIFO;   /* a packet fifo for some purpose */
@@ -77,8 +109,12 @@ typedef struct {
   wait_queue_head_t mWriterQ;/* for writers waiting for fifo non-full */
   struct mutex      mLock;   /* lock for modifying this struct */
   char mName[DBG_NAME_MAX_LENGTH];   /* debug name of buffer */
+  u8 mMinor;                         /* minor of this buffer */
+  u8 mBuffer;                        /* buffer code of this buffer */
   bool mRouted;              /* Packets in this buffer are routed */
   bool mPriority;            /* This is a priority buffer */
+  TracePoint mTraceInsert;   /* What fifo additions to trace */
+  TracePoint mTraceRemove;   /* What fifo removals to trace */
 } ITCPacketBuffer;
 
 typedef struct {             /* General char device state */
