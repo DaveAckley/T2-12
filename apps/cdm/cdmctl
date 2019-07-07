@@ -169,7 +169,7 @@ sub saveDeletedMap {
     close HDL or die "Can't close '$deletedsFile': $!";
 
     my $path = "$packDir/$DELETEDS_MFZ_NAME";
-    my $cmd = "$MFZMAKE_PROGRAM -kd /cdm make $CDM_INTERNAL_HANDLE $path $deletedsFile";
+    my $cmd = "$MFZMAKE_PROGRAM make $CDM_INTERNAL_HANDLE $path $deletedsFile";
     my $result = `$cmd`;
 
     -e $path or die "wha?";
@@ -195,6 +195,17 @@ sub doListDeleted {
     }
 }
 
+sub doInitMap {
+    my @args = @_;
+    my $confirm = "yesiamsure";
+    if (scalar(@args) != 1 || $ARGV[0] ne $confirm) {
+        die "Usage: $0 initmap $confirm\n";
+    }
+    my $dmref = {}; # Start with nothing.
+    saveDeletedMap($dmref);
+    print "Released empty deleteds map\n";
+}
+
 sub doDelete {
     my @mfzs = @_;
     if (scalar(@mfzs) == 0 || scalar(grep { $_ !~ /[.]mfz$/ } @mfzs) > 0) {
@@ -218,6 +229,7 @@ my %cmds = (
     "help" => \&doHelp,
     "delete" => \&doDelete,
     "listdeleted" => \&doListDeleted,
+    "initmap" => \&doInitMap,
     );
 
 sub doHelp {
