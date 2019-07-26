@@ -186,8 +186,10 @@ sub doListDeleted {
     }
     my $dmref = loadDeletedMap();
     my $len = 0;
+    my $count = 0;
     my @keys = sort keys %{$dmref};
     foreach my $mfzKey (@keys) {
+        ++$count;
         $len = length($mfzKey) if $len < length($mfzKey);
     }
     foreach my $mfzKey (@keys) {
