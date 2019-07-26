@@ -1,0 +1,2344 @@
+{146}  -*- text -*-
+[0:
+
+Sun Jul 14 15:11:12 2019 OK so we have 'lots' (~dozen) of tiles built
+up and we need progress towards mfmt2 actually doing events across
+them.  So I want a spike that demonstrates grabbing locks across
+tiles, and just counts up stuff so we can see some statistics about
+locks gotten vs not and hidden vs edge vs corner events counts and
+like that.
+
+Do it in c for better speed and better transferability to mfmt2 down
+the road.[1:
+
+Sun Jul 14 15:16:57 2019 Starting in ../spikes/lockstats/
+
+:1]
+
+:0]
+[2:
+
+Mon Jul 15 06:07:09 2019 OK, so the initial result in lockstats.c is
+that the output is pitifully slow!  Like a few per second!  Because,
+it turns out, it's being gated by itcThreadRunner in itcimpl.c, which
+was doing an 'msleep(300)' at the end.  I changed that to msleep(30)
+so it's slightly less ridiculous, but the point is we need to
+reorganize so that lock readers only block until the lock situation
+appears to be 'stable'.  Waiting for any timeout, as a matter of
+course, is unacceptable in this context!
+
+Now I suppose we could just give back the current status of the lock
+machine and let userspace decide if things are 'stable'?  What if we
+just did that, at least as a test?[3:
+
+Mon Jul 15 06:25:19 2019 OK it looks like it's actually the write
+that's blocking, not the read..  itcInterpretCommandByte blocks until
+'md.userRequestActive' is cleared -- and itcThreadRunner appears to be
+the only place it's cleared..  So we need to rethink that.
+
+:3]
+
+:2]
+[4:
+
+Mon Jul 15 18:00:34 2019 OK, well, just changed itc to support
+non-blocking writes, and things look much faster.  [5:
+
+Mon Jul 15 18:03:10 2019 Like this:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# # without nonblocking write:
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 18:02:26 beaglebone kernel: [  245.828310] ITC: itc!locks has been opened 3 time(s)
+    Got 6: 00 00 00 37 08 00
+    Got 6: 01 00 00 36 08 00
+    Got 6: 02 00 00 35 08 00
+    Got 6: 03 00 00 34 08 00
+    Got 6: 04 00 00 33 08 00
+    Got 6: 05 00 00 32 08 00
+    Got 6: 06 00 00 31 08 00
+    Got 6: 07 00 00 30 08 00
+    Got 6: 00 00 00 37 08 00
+    Got 6: 01 00 00 36 08 00
+
+    real	0m0.438s
+
+So, ten writes + reads at ~44ms each
+
+    user	0m0.000s
+    Jul 15 18:02:26 beaglebone kernel: [  246.241681] ITC: itc!locks successfully closed
+    sys	0m0.016s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# # with nonblock write
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 18:02:43 beaglebone kernel: [  263.623146] ITC: itc!locks has been opened 4 time(s)
+    Got 6: 00 00 00 37 08 00
+    Got 6: 00 01 00 36 08 00
+    Got 6: 00 02 00 35 08 00
+    Got 6: 02 01 00 34 08 00
+    Got 6: 00 04 00 33 08 00
+    Got 6: 05 00 00 32 08 00
+    Got 6: 04 02 00 31 08 00
+    Got 6: 06 01 00 30 08 00
+    Got 6: 00 00 00 37 08 00
+    Got 6: 00 01 00 36 08 00
+    Jul 15 18:02:44 beaglebone kernel: [  263.647525] ITC: itc!locks successfully closed
+
+    real	0m0.063s
+
+Vs ten writes + reads at ~6ms each.
+
+But the output is different.  Let's try to understand that.[6:
+
+Mon Jul 15 18:09:30 2019 So, the six bytes returned on read are:
+
+byte 0: locks taken
+byte 1: locks 'unsettled' -- state TAKE, RACE, or SYNC01
+byte 2: locks given
+byte 3: locks idle
+byte 4: locks failed
+byte 5: locks reset
+[7:
+
+Mon Jul 15 18:12:24 2019 So the (a) point is, in the blocking case,
+byte 1 is always 0 -- nothing unsettled.  So what if userspace is
+willing to spin a few times until byte 1 is 0?
+
+:7]
+:6]
+
+    user	0m0.008s
+    sys	0m0.012s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+:5]
+:4]
+[8:
+
+Mon Jul 15 18:34:02 2019 So, like this:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# # with userspace spinning
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 18:33:35 beaglebone kernel: [ 1972.716475] ITC: itc!locks has been opened 9 time(s)
+    After 0: 00 00 00 37 08 00
+    After 7: 01 00 00 36 08 00
+    After23: 02 00 00 35 08 00
+    After 0: 03 00 00 34 08 00
+    After 1: 04 00 00 33 08 00
+    After 7: 05 00 00 32 08 00
+    After 1: 06 00 00 31 08 00
+    After 1: 07 00 00 30 08 00
+    After 0: 00 00 00 37 08 00
+    After 0: 01 00 00 36 08 00
+    Jul 15 18:33:35 beaglebone kernel: [ 1972.748195] ITC: itc!locks successfully closed
+
+    real	0m0.062s
+    user	0m0.004s
+    sys	0m0.016s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+But look at that third case!  23 spins in userspace!  When I first
+tried this I maxed out at 10 spins -- but exceeded that on almost the
+first try. [9:
+
+Mon Jul 15 18:47:51 2019 Well tried it a bunch more and so far 29
+spins is the max I've seen.  But that's without anybody contesting the
+locks!
+
+:9]
+
+:8]
+[10:
+
+Mon Jul 15 19:09:10 2019 OK, now we're doing 10K trials and only
+reporting failues.  And we're succeeding 99% of the time.. but that's
+not 100%, and all the failures seem to be we aren't taking bit 0
+successfully.. which is, I believe, ET.
+
+[11:
+
+Mon Jul 15 19:14:46 2019 Like this:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 19:14:30 beaglebone kernel: [ 4238.576950] ITC: itc!locks has been opened 81 time(s)
+    Trial    89: Ask 01, got 00, 00 00 37 08 00
+    Trial   277: Ask 05, got 04, 00 00 33 08 00
+    Trial   287: Ask 07, got 06, 00 00 31 08 00
+    Trial   739: Ask 03, got 02, 00 00 35 08 00
+ ..95 lines deleted..
+    Trial  9853: Ask 05, got 04, 00 00 33 08 00
+    Trial  9951: Ask 07, got 06, 00 00 31 08 00
+    Jul 15 19:14:31 beaglebone kernel: [ 4239.834458] ITC: itc!locks successfully closed
+    Trials 10000
+    9899/99% success 101/1% fail
+    Spins: 46 max, 1.491900 avg
+
+    real	0m1.295s
+    user	0m0.044s
+    sys	0m0.416s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+And in every case byte 3 -- locks idle -- of the report is odd,
+meaning that bit 0, ET, is for some reason idle.  Maybe we should
+report the spin count on failures too.[12:
+
+Mon Jul 15 19:19:51 2019 wut.
+
+It appears spins is 0 on every single failure..
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 19:19:34 beaglebone kernel: [ 4518.702591] ITC: itc!locks has been opened 83 time(s)
+    Trial   217 spun   0: Ask 01, got 00, 00 00 37 08 00
+    Trial   367 spun   0: Ask 07, got 06, 00 00 31 08 00
+ ..clip..
+    Trial  9767 spun   0: Ask 07, got 06, 00 00 31 08 00
+    Trial  9789 spun   0: Ask 05, got 04, 00 00 33 08 00
+    Trial  9871 spun   0: Ask 07, got 06, 00 00 31 08 00
+    Trial  9931 spun   0: Ask 03, got 02, 00 00 35 08 00
+    Trial  9967 spun   0: Ask 07, got 06, 00 00 31 08 00
+    Jul 15 19:19:36 beaglebone kernel: [ 4520.182737] ITC: itc!locks successfully closed
+    Trials 10000
+    9887/99% success 113/1% fail
+    Spins: 38 max, 1.496400 avg
+
+    real	0m1.523s
+    user	0m0.036s
+    sys	0m0.428s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# q
+
+Yes, I checked the code again..
+
+Is it possible that we're seeing everything settled BEFORE ET has
+started to negotiate, and that's why it seems idle?  That seems
+bizarre.  Suppose we read again on failure?[13:
+
+Mon Jul 15 19:24:31 2019 Wow, that looks like it might be it!
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 19:24:03 beaglebone kernel: [ 4766.200909] ITC: itc!locks has been opened 84 time(s)
+    Trial   107.0 spun   0: Ask 03, got 02, 00 00 35 08 00
+    Trial   107.1 spun   0: Ask 03, got 03, 00 00 34 08 00
+
+On second read, ask==got
+
+    Trial   127.0 spun   0: Ask 07, got 06, 00 00 31 08 00
+    Trial   127.1 spun   0: Ask 07, got 07, 00 00 30 08 00
+
+Ditto, all the way through
+
+    Trial   421.0 spun   0: Ask 05, got 04, 00 00 33 08 00
+    Trial   421.1 spun   0: Ask 05, got 05, 00 00 32 08 00
+    Trial   455.0 spun   0: Ask 07, got 06, 00 00 31 08 00
+    Trial   455.1 spun   0: Ask 07, got 07, 00 00 30 08 00
+    Trial   461.0 spun   0: Ask 05, got 04, 00 00 33 08 00
+    Trial   461.1 spun   0: Ask 05, got 05, 00 00 32 08 00
+    Trial   561.0 spun   0: Ask 01, got 00, 00 00 37 08 00
+    Trial   561.1 spun   0: Ask 01, got 01, 00 00 36 08 00
+    Trial   625.0 spun   0: Ask 01, got 00, 00 00 37 08 00
+    Trial   625.1 spun   0: Ask 01, got 01, 00 00 36 08 00
+    Trial   721.0 spun   0: Ask 01, got 00, 00 00 37 08 00
+ ..etc..
+
+[14:
+
+Mon Jul 15 19:54:11 2019 So, how do we know how long we need to wait
+to begin spinning?[15:
+
+Mon Jul 15 19:57:24 2019 Hmm I changed it to print out only the second
+'.1' line on apparent lock failure, but then I got failures on the .1
+-- as if the delay for printing was significant.
+
+We'd kind of like it if the write could've really gotten things
+started.  Why doesn't it always?[16:
+
+Mon Jul 15 20:43:24 2019 Well, if I insist on 'no unsettled locks' 25
+times in a row before leaving readLock, I get no failures:
+
+  ..
+    Jul 15 20:42:12 beaglebone kernel: [ 9095.012635] ITC bf18561c iterator order is 015342 for next 14796 uses
+    Jul 15 20:42:13 beaglebone kernel: [ 9095.221911] ITC bf18561c iterator order is 435012 for next 8213 uses
+    Jul 15 20:42:13 beaglebone kernel: [ 9095.296111] ITC: itc!locks successfully closed
+    Trials 10000
+    10000/100% success 0/0% fail
+    Spins: 79 max, 27.270100 avg
+
+    real	0m3.337s
+    user	0m0.112s
+    sys	0m0.964s
+
+but that's back to slooow again.
+
+
+:16]
+
+:15]
+
+:14]
+
+:13]
+
+:12]
+
+:11]
+
+:10]
+
+[17:
+
+Mon Jul 15 21:03:09 2019 Maybe we should be waking the kthread after
+we kick the ITCs?  Otherwise how do they get going, when it's user
+initiative instead of an interrupt?
+
+OK but how to we kick it..[18:
+
+Mon Jul 15 21:14:09 2019 OK, reworked to more clearly expose where we
+had stashed the kthread task pointer.  It was static in itcinit.c;
+it's not now, and interpretCommandByte calls it.
+
+First results:
+
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 21:13:44 beaglebone kernel: [10842.606845] ITC: itc!locks has been opened 1 time(s)
+    Jul 15 21:13:47 beaglebone kernel: [10842.894407] ITC bf18d634 iterator order is 235104 for next 5667 uses
+  ..
+    Jul 15 21:13:49 beaglebone kernel: [10845.179903] ITC bf18d634 iterator order is 523401 for next 15000 uses
+    Jul 15 21:13:49 beaglebone kernel: [10845.197471] ITC: itc!locks successfully closed
+    Trials 10000
+    10000/100% success 0/0% fail
+    Spins: 55 max, 12.222100 avg
+
+    real	0m5.328s
+    user	0m0.040s
+    sys	0m0.648s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+So that's a 'fail count' I can get behind.  Let's respeed up lockstats
+and see how far we can get.[19:
+
+Mon Jul 15 21:17:04 2019 Well, with no 'ready looping' in readLocks,
+we get:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 21:16:45 beaglebone kernel: [11007.750191] ITC: itc!locks has been opened 2 time(s)
+    Trial   955.0 spun   0: Ask 03, got 02, 00 00 35 08 00
+    Trial   955.1 spun   0: Ask 03, got 03, 00 00 34 08 00
+    Trial  2013.0 spun   0: Ask 05, got 04, 00 00 33 08 00
+    Trial  2013.1 spun   0: Ask 05, got 05, 00 00 32 08 00
+    Trial  5023.0 spun   0: Ask 07, got 06, 00 00 31 08 00
+    Trial  5023.1 spun   0: Ask 07, got 07, 00 00 30 08 00
+    Jul 15 21:16:46 beaglebone kernel: [11008.661463] ITC bf18d634 iterator order is 504132 for next 1018 uses
+    Jul 15 21:16:46 beaglebone kernel: [11008.725116] ITC bf18d634 iterator order is 103254 for next 4410 uses
+    Jul 15 21:16:46 beaglebone kernel: [11008.997920] ITC bf18d634 iterator order is 305214 for next 3 uses
+    Jul 15 21:16:46 beaglebone kernel: [11008.998084] ITC bf18d634 iterator order is 504123 for next 3981 uses
+    Jul 15 21:16:47 beaglebone kernel: [11009.217791] ITC: itc!locks successfully closed
+    Trials 10000
+    9997/100% success 3/0% fail
+    Spins: 39 max, 0.207500 avg
+
+    real	0m1.508s
+    user	0m0.012s
+    sys	0m0.360s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+[20:
+
+Mon Jul 15 21:44:36 2019 Well, I recabled so that the keymaster is
+connected on all six faces, and changed lockstats to try grabbing all
+three-bit patterns starting either at bit 0 (for ET,SE,SW) or bit 3
+(for WT, NW, NE) -- and it did okay:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# Jul 15 21:40:16 beaglebone connmand[687]: ntp: time slew +1.377680 s
+    Jul 15 21:41:42 beaglebone kernel: [12390.797571] ITC da85bf24 iterator order is 104235 for next 2287 uses
+    Jul 15 21:43:43 beaglebone kernel: [12503.056873] ITCCHANGE:UP:WT
+
+When I hooked up west..
+
+    time ./lockstats speed1
+    Jul 15 21:43:54 beaglebone kernel: [12511.900386] ITC: itc!locks has been opened 7 time(s)
+    Jul 15 21:43:54 beaglebone kernel: [12511.954060] ITC bf19d644 iterator order is 230154 for next 7150 uses
+    Jul 15 21:43:55 beaglebone kernel: [12512.258493] ITC bf19d644 iterator order is 451203 for next 2065 uses
+    Jul 15 21:43:55 beaglebone kernel: [12512.351654] ITC bf19d644 iterator order is 310245 for next 8913 uses
+    Jul 15 21:43:55 beaglebone kernel: [12512.659323] ITC bf19d644 iterator order is 215340 for next 14381 uses
+    Jul 15 21:43:55 beaglebone kernel: [12513.047352] ITC bf19d644 iterator order is 023451 for next 18808 uses
+    Jul 15 21:43:56 beaglebone kernel: [12513.628688] ITC: itc!locks successfully closed
+    Trials 10000
+    10000/100% success 0/0% fail
+    Spins: 41 max, 3.229700 avg
+
+    real	0m1.766s
+    user	0m0.024s
+    sys	0m0.460s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+
+So that's encouraging as far as it goes.  That's with three ready
+loops in readLock -- still seem to need them.  (Again, these are all
+still uncontested lock grabs.)
+
+:20]
+
+:19]
+
+:18]
+
+:17]
+[21:
+
+Mon Jul 15 21:56:45 2019 And it's not horribly slow, even with three
+ready loops:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 21:55:46 beaglebone kernel: [13170.392070] ITC: itc!locks has been opened 2 time(s)
+    Jul 15 21:55:48 beaglebone kernel: [13171.830558] ITC: itc!locks successfully closed
+    Trials 10000
+    10000/100% success 0/0% fail
+    Spins: 47 max, 3.267300 avg
+
+    real	0m1.482s
+    user	0m0.016s
+    sys	0m0.444s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+That's 148 usec wall clock for a successful uncontested lock grab.
+That kind of seems too fast, actually, if it's really interrupting in
+and out of two linux boxes at least a couple times before it's done.
+Not sure I believe it.  We'll see.
+[22:
+
+Mon Jul 15 22:10:33 2019 But also, at these settings it doesn't always
+work:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 21:55:51 beaglebone kernel: [13174.627583] ITC: itc!locks has been opened 3 time(s)
+    Jul 15 21:55:52 beaglebone kernel: [13175.501895] ITC bf1a5644 iterator order is 154023 for next 69318 uses
+    Trial  7099.0 spun   3: Ask 18, got 10, 00 00 2f 00 00
+    Trial  7099.1 spun   3: Ask 18, got 18, 00 00 27 00 00
+    Trial  7259.0 spun   3: Ask 18, got 10, 00 00 2f 00 00
+    Trial  7259.1 spun   3: Ask 18, got 18, 00 00 27 00 00
+    Trial  7675.0 spun   3: Ask 18, got 10, 00 00 2f 00 00
+    Trial  7675.1 spun   3: Ask 18, got 18, 00 00 27 00 00
+    Jul 15 21:55:52 beaglebone kernel: [13176.149619] ITC: itc!locks successfully closed
+    Trials 10000
+    9997/100% success 3/0% fail
+    Spins: 44 max, 3.276100 avg
+
+    real	0m1.563s
+    user	0m0.024s
+    sys	0m0.444s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+But that's interesting primarily because the late transitions there
+are like 0->8 instead of like 0->1 -- it's bit 3 rather than bit 0
+lagging, which is WT rather than ET.
+
+:22]
+:21]
+[23:
+
+Mon Jul 15 22:15:16 2019 Here's a case where we got one of each:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# time ./lockstats speed1
+    Jul 15 22:14:59 beaglebone kernel: [14234.415037] ITC: itc!locks has been opened 4 time(s)
+    Trial  2055.0 spun   3: Ask 07, got 06, 00 00 39 00 00
+    Trial  2055.1 spun   3: Ask 07, got 07, 00 00 38 00 00
+    Trial  3947.0 spun   3: Ask 18, got 10, 00 00 2f 00 00
+    Trial  3947.1 spun   3: Ask 18, got 18, 00 00 27 00 00
+    Jul 15 22:15:01 beaglebone kernel: [14235.862142] ITC bf1a5644 iterator order is 125430 for next 51285 uses
+    Jul 15 22:15:01 beaglebone kernel: [14236.015984] ITC: itc!locks successfully closed
+    Trials 10000
+    9998/100% success 2/0% fail
+    Spins: 54 max, 3.283000 avg
+
+    real	0m1.639s
+    user	0m0.024s
+    sys	0m0.456s
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+I REALLY REALLY WONDER why it's always ET and WT that are late!  That
+seems manifestly non-isotropic!  The state machines don't know what
+ITC they're running on, do they?
+
+:23]
+[24:
+
+Mon Jul 15 22:39:59 2019 Suppose we crammed userRequestActive into the
+read bytes somehow?  Well but how does that help avoid waiting, if
+only itcThreadRunner turns it off?
+
+I wonder if we could keep a ring buffer of lock events, and make that
+available to userspace somehow.  But how do we distinguish the reads?
+If the len is six or less report lock status, otherwise report that
+much ring buffer?  Doh just put it on a /sys/class/itc/lockhistory
+attribute or something.[25:
+
+Tue Jul 16 02:36:51 2019 Buut, itcinit was copied from 'old school'
+stuff that didn't use all the fancy attribute groups and so on -- and
+now is not the time to redo and restabilize all of that.  Let's just
+take the ET/WT mystery as a mystery to end on, for this substory this
+week..
+
+:25]
+
+:24]
+[26:
+
+Wed Jul 17 11:46:40 2019 OK, so let's say now IS the time to try
+updating lkms/itc so we can add class attributes easily like in
+itc_pkt.
+
+In fact, how about we refactor generally, and get rid of the
+itcinit-vs-itcimpl structure, which has mostly just aggravated me
+since the beginning.  How about we have just itc.[ch]?
+
+  :26]
+[27:
+
+Thu Jul 18 03:22:15 2019 OK we've merged into itc.[ch] and got it to
+compile, hopefully, so far, without behavioral changes.  Going to try
+installing it, but first
+
+BITS OFF
+
+:27]
+[28:
+
+Thu Jul 18 03:38:17 2019 OK, we appear to have transitioned
+successfully to v0.4:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# modinfo itc
+    filename:       /lib/modules/4.4.54-ti-r93/itc/itc.ko
+    version:        0.4
+    description:    Access and control the T2 intertile connection system
+    author:         Dave Ackley
+    license:        GPL
+    srcversion:     09122697A894362BD369662
+    depends:
+    vermagic:       4.4.54-ti-r93 SMP mod_unload modversions ARMv7 p2v8
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# ./lockstats speed1
+    ---
+    Trials 10000 in 1.49 sec, 149 usec/trial
+    Succeeded: 10000/100%, failed: 0/0%
+    Spins: 30 max, 7.994400 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+:28][29:
+
+Thu Jul 18 03:38:52 2019 Next up:
+
+[30: Thu Jul 18 03:50:53 2019
+DONE:30] - Merge random global state into ModuleData
+
+[31: DONE  :31] - Change name of 'md' to 'S' to follow itc_pkt style
+[56: Fri Jul 19 02:50:06 2019
+DONE :56] - Assess issues in changing to itc_pkt style initialization[32: Thu Jul 18 04:02:46 2019
+
+   [33: Thu Jul 18 04:24:36 2019
+DONE :33] - Migrate static mutex into S
+
+[34: DONE  :34] - Migrate userWaitQ into S[35: Thu Jul 18 04:30:18 2019
+
+[57: DONE :57] - Check for and migrate other dangling state into S[36: Thu Jul 18 04:41:38 2019
+   Moved itc_mutex into S  :36][37: Thu Jul 18 04:46:54 2019
+   Moved itcThreadRunnerTask into S :37]
+
+:35]
+
+:32]
+
+:29]
+[38:
+
+Thu Jul 18 04:51:59 2019 Well about time to try it again so
+
+BITS OFF
+
+:38]
+[39:
+
+Thu Jul 18 05:00:37 2019 Well, it still seems to be working.  I guess
+it's time to try seriously tearing up the init sequence to get all the
+sys class attribute stuff in there..
+[40:
+
+Thu Jul 18 06:29:42 2019 Urgh, well I made a mostly copy-pasta
+conversion to using class_register instead of class_create.  Terrified
+this is where it all starts blowing up.  But it's time to try it so
+
+BITS OFF
+
+:40]
+:39]
+[41:
+
+Thu Jul 18 06:32:54 2019 Well it seems it didn't instantly blow up..
+
+Buuut we have no device either:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# ./lockstats speed1
+    Can't open /dev/itc/locks: No such file or directory
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+OK.[42:
+
+Thu Jul 18 06:37:24 2019 Just working forward.  Making a dummy 'status' class
+attribute to see if it shows up in /sys/class/itc/status..[43:
+
+Thu Jul 18 06:39:58 2019 OK, that worked.
+
+:43]
+
+BITS OFF
+
+:42]
+
+:41]
+[44:
+
+Thu Jul 18 06:50:58 2019 Breaking for morning walk.  We're currently
+about to try to convert the device creation (and registration) pathway
+to follow itc_pkt.c more closely.  ..when we get back to work.
+
+:44]
+[45:
+
+Thu Jul 18 08:43:51 2019 Well it's really all bashed to rubble now,
+but it's compiled again, so, damn the torpedoes and
+
+BITS OFF
+
+:45]
+[46:
+
+Thu Jul 18 08:47:25 2019 Well, had a not-quite-oops on the way out of
+the previous version:
+
+ ..
+    Jul 18 08:46:37 beaglebone kernel: [175609.318631] ITC exit NE
+    Jul 18 08:46:37 beaglebone kernel: [175609.328063] ------------[ cut here ]------------
+    Jul 18 08:46:37 beaglebone kernel: [175609.332590] WARNING: CPU: 0 PID: 8689 at fs/kernfs/dir.c:1276 kernfs_remove_by_name_ns+0x90/0x98()
+    Jul 18 08:46:37 beaglebone kernel: [175609.341054] kernfs: can not remove 'status', no directory
+ ..
+
+So not certain what that's about.  But we haven't died yet..  And status
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# cat /sys/class/itc/status
+    00000057
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+still seems to work such as it is..
+
+And now
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# ls /dev/itc
+    locks  mfm  packets  pru0  pru1
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+/dev/itc/locks appears to exist..  Can lockstats work?  Let's first
+say
+
+BITS OFF
+
+again.[47:
+
+Thu Jul 18 08:51:29 2019 And lockstats appears to be working again:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# ./lockstats speed1
+    Jul 18 08:51:19 beaglebone kernel: [175869.869682] ITC: itc!locks has been opened 3 time(s)
+    Jul 18 08:51:20 beaglebone kernel: [175871.557142] ITC: itc!locks successfully closed
+    ---
+    Trials 10000 in 1.67 sec, 166 usec/trial
+    Succeeded: 10000/100%, failed: 0/0%
+    Spins: 35 max, 7.974600 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+So perhaps we are actually at the point of going forward again --
+designing a kfifo-based lock event history[48:
+
+Thu Jul 18 16:36:21 2019 So, question: Do we want to try to have
+high-resolution timestamps on the lock events?  My original thought
+was one byte per lock event but timestamps would blow that.  For
+debugging it seems just the sequence of events is the main thing.. but
+for optimization timestamps would certainly be nice..  Or at least
+high-resolution deltas..
+
+:48]
+
+:47]
+
+:46]
+[49:
+
+Thu Jul 18 18:27:51 2019 Testing ktime_get_raw_fast_ns().
+
+BITS OFF
+
+:49]
+[50:
+
+Thu Jul 18 18:31:28 2019 OK, we have worsening failures to clean up to
+deal with: Apparently we're not tearing down /dev/itc/locks properly,
+so it's complaining when we try to set it up again:
+
+    Jul 18 18:29:53 beaglebone kernel: [207915.051519] LINITTING /dev/itc!locks with minor_obtained=0 (cdevs=bf1af154)
+    Jul 18 18:29:53 beaglebone kernel: [207915.132236] LRZOG Back from cdev_init+cdev_add
+    Jul 18 18:29:53 beaglebone kernel: [207915.136604] LGRZO going to device_create(bf1af348,devt=(239:0),NULL,itc!locks)
+    Jul 18 18:29:54 beaglebone kernel: [207915.180578] ------------[ cut here ]------------
+    Jul 18 18:29:54 beaglebone kernel: [207915.185136] WARNING: CPU: 0 PID: 15026 at fs/sysfs/dir.c:31 sysfs_warn_dup+0x78/0x88()
+    Jul 18 18:29:54 beaglebone kernel: [207915.192656] sysfs: cannot create duplicate filename '/devices/virtual/itc'
+ ..later..
+    Jul 18 18:29:54 beaglebone kernel: [207915.392907] ------------[ cut here ]------------
+    Jul 18 18:29:54 beaglebone kernel: [207915.397318] WARNING: CPU: 0 PID: 15026 at lib/kobject.c:240 kobject_add_internal+0x2e0/0x360()
+    Jul 18 18:29:54 beaglebone kernel: [207915.405418] kobject_add_internal failed for itc with -EEXIST, don't try to register things with the same name in the same directory.
+
+So, that.  But taking a break for the evening now so have to deal with
+that later.  (And we'll start dealing with that by rebooting...)[51:
+
+Fri Jul 19 01:22:47 2019 Yeah, note to self: You haven't updated
+itc_exit(void) at all yet.  Rebooting after:
+
+BITS OFF
+
+:51]
+
+
+:50]
+[52:
+
+Fri Jul 19 01:27:16 2019 OK we're back, but don't get comfortable
+because we've got a poison itc.ko loaded no matter what.
+
+OK let's bash on the _exit function.
+
+:52]
+[53:
+
+Fri Jul 19 01:52:31 2019 All right, a slightly cleaner take on exiting
+now compiles.
+
+BITS OFF
+
+:53]
+[54:
+
+Fri Jul 19 02:23:52 2019 Still not quite there:
+
+    Jul 19 02:23:30 beaglebone kernel: [ 1630.661730] ------------[ cut here ]------------
+    Jul 19 02:23:30 beaglebone kernel: [ 1630.666208] WARNING: CPU: 0 PID: 2813 at fs/kernfs/dir.c:1276 kernfs_remove_by_name_ns+0x90/0x98()
+    Jul 19 02:23:30 beaglebone kernel: [ 1630.674575] kernfs: can not remove 'status', no directory
+
+But the surrounding printks still look old.  Let's reboot again after
+
+BITS OFF
+
+:54]
+[55:
+
+Fri Jul 19 02:49:19 2019 OK so we've done a bunch of 'modprobe -r itc;
+modprobe itc' cycles and things appear clean.
+
+LET'S START MOVING FORWARD![58:
+
+Fri Jul 19 03:09:44 2019 So, let's explore doing timestamps + lock
+events.  I'd like to keep the events pretty short, though, like 32
+bits a pop.  If we had 24 bits of timestamp, what granularity and
+duration would we pick?  usec granularity for 16 sec duration?
+Although if we're getting alleged nanoseconds we probably don't want
+literal microseconds, but nanos/1024 so we can shift for it.
+
+I think the idea would be is you write some special command byte (or
+attribute probably) to reset and init the trace, and the kfifo gets
+reset and timestamps start counting from then.
+
+I suppose you could even set the timestamp shift from userspace and
+pick the granularity/duration you like.  Let's get that going,
+assuming a 4 byte event.
+
+:58]
+
+:55]
+[59:
+
+Fri Jul 19 04:11:07 2019 OK let's think a little about our interrupt
+posture regarding lock events.  The (I think too) simple story is that
+interrupts write the kfifo and userspace makes calls to read the
+kfifo.  We could have the interrupt check, and if there's only enough
+space for one more event, it writes a 'gap' event instead of whatever
+it was going to write, so it will be the trace was broken due to kfifo
+exhaustion at that point.
+
+The story is too simple, at least, because presumably we want lock
+events generated by the timer thread to go into the kfifo as well, so
+now we have multiple writers.  If we disabled interrupts around the
+thread event writing, we'd be okay?  If it really really was just
+interrupts and the thread.  But what about userspace sending a kfifo
+reset command?  That would imply two non-interrupt writers.
+
+I suppose we could dish that off to the kthread to handle..[60:
+
+Fri Jul 19 04:59:16 2019 Well, unfortunately I need to think about
+starting to pack up for the weekend here, which means I need to stop
+changing things here and go consolidate and moves files and such.
+
+Sooo.. where do we pick up?
+
+TODO
+
+[92: DONE  :92] - Go with spinlock_irq_XX probably, safe and slow, to get started.
+
+[93: DONE  :93] - Make a makeAnEvent thing that inits a LockEvent
+
+[94: DONE  :94] - Make something put something on the kfifo
+
+[95: DONE  :95] - Could we make a second device, like /dev/itc/lockevents, instead of
+   using sysfs?  Supposedly sys class attributes are supposed to be
+   printable ASCII and the lockevent struct will not be.
+
+[96: DONE  :96] - Start a userspace app to decode the lockevent stream
+
+
+:60]
+
+:59]
+[61:
+
+Fri Jul 19 05:21:17 2019
+
+BITS OFF
+
+:61]
+[62:
+
+Fri Jul 19 15:47:20 2019 OK set up again.
+
+:62]
+[63:
+
+Sat Jul 20 05:21:24 2019 So can we say all this:
+
+ - Only interrupts and itcThreadRunner are allowed to write to the
+   lockevent kfifo.  So it suffices for itcThreadRunner to disable
+   interrupts when it does so.
+
+ - Only userspace read and write callbacks are allowed to read from
+   the lockevent kfifo, and we allow only a single process to open
+   /dev/itc/lockevents at a time.  So no locking is needed for read
+   and write callbacks to read (or skip) the kfifo?  Not sure that
+   follows; couldn't processes share an open file and then interrupt
+   each other's accesses somehow?  So let's put a spin-lock in for
+   reading the kfifo, with the understanding that only userspace read
+   and write will use it, we DON'T need to disable interrupts.[64:
+
+Sat Jul 20 11:15:24 2019 Opps, spinlock is almost certainly wrong for
+this application, because copying to userspace can block on a page
+fault and then we'd be dead.  [65:
+
+Sat Jul 20 12:09:00 2019 Urgh I've rearranged the init/exit sequence
+to be a little 'more concurrent correct', by trying to enable the GPIO
+interrupts late and disable them early.  With the thought being that
+everything else should be set up before interrupts are enabled.
+
+But this reorg does slightly change the order that gpios are initted
+and freed -- in particular, free_irq now happens before
+gpio_free_array, and who knows if that's really safe?  We're in the
+middle of adding the lockevent tracing stuff, but can we get to
+plausible intermediate runnability and check?[67:
+
+Sat Jul 20 12:31:26 2019 Well that didn't seem to hurt anything,
+across several module load and unloads, so back to going forward I
+guess.
+
+:67]
+[66:
+
+Sat Jul 20 12:19:31 2019 Well, got it to build, with horrible exposed
+studs and unconnected plumbing all over the place.  But going to give
+it a try after
+
+BITS OFF
+
+:66]
+
+:65]
+
+:64]
+
+:63]
+[68:
+
+Sat Jul 20 18:02:32 2019 Urgh, well, now have 'implemented' a cut at
+everything including resetting the lockevent kfifo by writing a 0 to
+/dev/itc/lockevents, adding state change events to it during
+updateState/setState, and reading events back to userspace.  None of
+it tested, no way it's all right.
+
+:68]
+[69:
+
+Sat Jul 20 18:23:44 2019 Well who knows.  Let's give a wing after
+
+BITS OFF
+
+:69]
+[70:
+
+Sat Jul 20 18:28:35 2019 Well, things didn't instantly die.  E.g.:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# head -c 4 /dev/itc/lockevents
+    Jul 20 18:26:52 beaglebone kernel: [99914.159487] ITC: itc!lockevents successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\000"
+     root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\000" > /dev/itc/lockevents
+    Jul 20 18:27:23 beaglebone kernel: [99945.747935] ITC: itc!lockevents successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# head -c 4 /dev/itc/lockevents
+    Jul 20 18:27:31 beaglebone kernel: [99953.885369] ITC: itc!lockevents successfully closed
+        root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# head -c 4 /dev/itc/lockevents
+    Jul 20 18:27:34 beaglebone kernel: [99956.720042] ITC: itc!lockevents successfully closed
+        root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+and even
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\000" > /dev/itc/lockevents
+    Jul 20 18:27:47 beaglebone kernel: [99969.256530] ITC: itc!lockevents successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# ./lockstats speed1
+    Jul 20 18:27:55 beaglebone kernel: [99977.355300] ITC: itc!locks has been opened 1 time(s)
+    Jul 20 18:27:56 beaglebone kernel: [99978.846425] ITC bf18d3b8 iterator order is 235401 for next 141530 uses
+    Jul 20 18:27:57 beaglebone kernel: [99979.202638] ITC: itc!locks successfully closed
+    ---
+    Trials 10000 in 1.83 sec, 182 usec/trial
+    Succeeded: 10000/100%, failed: 0/0%
+    Spins: 41 max, 7.971000 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# head -c 4 /dev/itc/lockevents
+    Jul 20 18:28:03 beaglebone kernel: [99985.434597] ITC: itc!lockevents successfully closed
+        root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+So far I never see anything but zeros coming off the kfifo, but at
+least the whole place didn't burn down.
+
+:70][71:
+
+Sun Jul 21 01:05:05 2019 OK, time to break out the printks.
+
+:71]
+[72:
+
+Sun Jul 21 01:58:44 2019 OK, fixed a few things and found a extradumbo
+move in the interrupt code where I was asking if kfifo_len had enough
+room when kfifo_avail is the place to go for that.  So with this next
+install I think there's a good chance the interrupts will start
+populating the kfifo.  So we better wake the fog up and smell the
+
+BITS OFF
+
+:72]
+[73:
+
+Sun Jul 21 02:04:41 2019 OK, we're starting to get some action:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\000" > /dev/itc/locks
+
+..Releasing all the locks..
+
+    Jul 21 02:04:11 beaglebone kernel: [127353.249545] ITC: itc!locks has been opened 2 time(s)
+    Jul 21 02:04:11 beaglebone kernel: [127353.294823] ITR CLR USREQ kfifo_len=(0)
+
+..But no events in the queue -- I think because all the locks were aready released..
+
+    Jul 21 02:04:11 beaglebone kernel: [127353.298875] ITR CLR USREQ kfifo_avail=(4096)
+    Jul 21 02:04:11 beaglebone kernel: [127353.303321] ITR CLR USREQ mStartTime=(0)
+    Jul 21 02:04:11 beaglebone kernel: [127353.307382] ITR CLR USREQ mShiftDistance=(9)
+    Jul 21 02:04:11 beaglebone kernel: [127353.315829] ITC: itc!locks successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\003" > /dev/itc/locks
+
+..Now try to grab two locks..
+
+    Jul 21 02:04:17 beaglebone kernel: [127359.328827] ITC: itc!locks has been opened 3 time(s)
+    Jul 21 02:04:17 beaglebone kernel: [127359.366733] ITR CLR USREQ kfifo_len=(4)
+    Jul 21 02:04:17 beaglebone kernel: [127359.370804] ITR CLR USREQ kfifo_avail=(4092)
+
+..And wham, four events in the queue..
+
+    Jul 21 02:04:17 beaglebone kernel: [127359.375251] ITR CLR USREQ mStartTime=(0)
+    Jul 21 02:04:17 beaglebone kernel: [127359.379311] ITR CLR USREQ mShiftDistance=(9)
+    Jul 21 02:04:17 beaglebone kernel: [127359.386383] ITC: itc!locks successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# head -c 400 /dev/itc/lockevents
+    Jul 21 02:04:27 beaglebone kernel: [127368.939526] ITC: itc!lockevents successfully closed
+    c’é c’é¤c’éÐc’éroot@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+..And reading lockevents, there is.. something...
+
+[74:
+
+Sun Jul 21 02:09:02 2019 So what the heck might
+
+c’é c’é¤c’éÐc’é
+
+be saying?  First off, it is sixteen bytes, which matches 4 events * 4
+bytes/event.  But we break it on fours, we get:
+
+c’é
+ c’é
+¤c’é
+Ðc’é
+
+which doesn't look like much of a rhythm.. Oh I guess it does -- 'c'
+always in second byte.  So given we're reading from lower to higher
+addresses, and assuming we're in little-endian land, our lockevent
+
+    typedef struct itclockevent {
+      u32 time : 24;
+      u8 event;  /* src:3 + type:5 */
+    } ITCLockEvent;
+
+is going to ship event first, then the low, middle, and high bytes of
+time, in that order.
+
+Let's make a little spike to read this stuff.  Actually, let's reduce
+the shift distance first.  Can we get the times reported to be
+different? [75:
+
+Sun Jul 21 02:30:27 2019 Made an attribute:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# cat /sys/class/itc/shift
+    9
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo 8 >/sys/class/itc/shift
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# Jul 21 02:30:12 beaglebone kernel: [128914.005729] store shift 8
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# cat /sys/class/itc/shift
+    8
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+:75]
+
+:74]
+
+:73]
+[76:
+
+Sun Jul 21 02:31:45 2019 OK we got:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# cat /sys/class/itc/shift
+    6
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\003" > /dev/itc/locks
+    Jul 21 02:31:22 beaglebone kernel: [128983.443563] ITC: itc!locks has been opened 2 time(s)
+    Jul 21 02:31:22 beaglebone kernel: [128983.483069] ITR CLR USREQ kfifo_len=(4)
+    Jul 21 02:31:22 beaglebone kernel: [128983.487125] ITR CLR USREQ kfifo_avail=(4092)
+    Jul 21 02:31:22 beaglebone kernel: [128983.491576] ITR CLR USREQ mStartTime=(128866007594374)
+    Jul 21 02:31:22 beaglebone kernel: [128983.496856] ITR CLR USREQ mShiftDistance=(6)
+    Jul 21 02:31:22 beaglebone kernel: [128983.503241] ITC: itc!locks successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# head -c 400 /dev/itc/lockevents
+    Jul 21 02:31:27 beaglebone kernel: [128988.793550] ITC: itc!lockevents successfully closed
+    ŽûSépüSé¿TéïTéroot@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# q
+
+ŽûSé
+...püSé
+..¿Té
+..ïTé
+
+So it looks like with a shift of 6 we got significantly different
+timestamps, all the way up to the 9th LSB incrementing to change 'S'
+into 'T'.  Well that's plausible enough for where we stand.  Six bits
+is /64 so we're claiming sub 0.1usec timing?  Let's try 7 bits.[77:
+
+Sun Jul 21 02:39:32 2019 Did:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\000" > /dev/itc/lockevents;echo -e -n "\003" > /dev/itc/locks;echo -e -n "\000" > /dev/itc/locks
+    Jul 21 02:39:00 beaglebone kernel: [129441.989430] ITC: itc!lockevents successfully closed
+    Jul 21 02:39:00 beaglebone kernel: [129442.004531] ITC: itc!locks has been opened 3 time(s)
+    Jul 21 02:39:00 beaglebone kernel: [129442.059006] ITR CLR USREQ kfifo_len=(0)
+    Jul 21 02:39:00 beaglebone kernel: [129442.063039] ITR CLR USREQ kfifo_avail=(4096)
+    Jul 21 02:39:00 beaglebone kernel: [129442.067502] ITR CLR USREQ mStartTime=(129441928280457)
+    Jul 21 02:39:00 beaglebone kernel: [129442.072786] ITR CLR USREQ mShiftDistance=(7)
+    Jul 21 02:39:00 beaglebone kernel: [129442.081075] ITC: itc!locks successfully closed
+    Jul 21 02:39:00 beaglebone kernel: [129442.100374] ITC: itc!locks has been opened 4 time(s)
+    Jul 21 02:39:00 beaglebone kernel: [129442.148359] ITR CLR USREQ kfifo_len=(2)
+    Jul 21 02:39:00 beaglebone kernel: [129442.152441] ITR CLR USREQ kfifo_avail=(4094)
+    Jul 21 02:39:00 beaglebone kernel: [129442.156892] ITR CLR USREQ mStartTime=(129441928280457)
+    Jul 21 02:39:00 beaglebone kernel: [129442.162182] ITR CLR USREQ mShiftDistance=(7)
+    Jul 21 02:39:00 beaglebone kernel: [129442.168876] ITC: itc!locks successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# head -c 400 /dev/itc/lockevents
+    Jul 21 02:39:11 beaglebone kernel: [129453.001145] ITC: itc!lockevents successfully closed
+    `>éÏ>éroot@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+...`>é
+Ï>é
+
+Only got two events.  Cleared the locks before they were done negotiaing?[78:
+
+Sun Jul 21 02:41:51 2019 Maybe:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\000" > /dev/itc/lockevents;sleep 0.1;echo -e -n "\003" > /dev/itc/locks;sleep 0.1;echo -e -n "\000" > /dev/itc/locks
+    Jul 21 02:41:34 beaglebone kernel: [129595.426482] ITC: itc!lockevents successfully closed
+    Jul 21 02:41:34 beaglebone kernel: [129595.579673] ITC: itc!locks has been opened 5 time(s)
+    Jul 21 02:41:34 beaglebone kernel: [129595.608303] ITR CLR USREQ kfifo_len=(4)
+    Jul 21 02:41:34 beaglebone kernel: [129595.612358] ITR CLR USREQ kfifo_avail=(4092)
+    Jul 21 02:41:34 beaglebone kernel: [129595.616804] ITR CLR USREQ mStartTime=(129595365332957)
+    Jul 21 02:41:34 beaglebone kernel: [129595.622097] ITR CLR USREQ mShiftDistance=(7)
+    Jul 21 02:41:34 beaglebone kernel: [129595.630139] ITC: itc!locks successfully closed
+    Jul 21 02:41:34 beaglebone kernel: [129595.776812] ITC: itc!locks has been opened 6 time(s)
+    Jul 21 02:41:34 beaglebone kernel: [129595.824334] ITR CLR USREQ kfifo_len=(6)
+    Jul 21 02:41:34 beaglebone kernel: [129595.828379] ITR CLR USREQ kfifo_avail=(4090)
+    Jul 21 02:41:34 beaglebone kernel: [129595.832869] ITR CLR USREQ mStartTime=(129595365332957)
+    Jul 21 02:41:34 beaglebone kernel: [129595.838152] ITR CLR USREQ mShiftDistance=(7)
+    Jul 21 02:41:34 beaglebone kernel: [129595.846479] ITC: itc!locks successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# head -c 400 /dev/itc/lockevents
+    Jul 21 02:41:39 beaglebone kernel: [129600.458228] ITC: itc!lockevents successfully closed
+    ZéÆéqéÜéÓ+éÓ+éroot@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+...Zé
+Æé
+...qé
+Üé
+.Ó+é
+.Ó+é
+
+:78]
+
+
+:77]
+
+:76]
+[79:
+
+Sun Jul 21 02:44:15 2019 OK well I'm convinced there's something
+there.  We need to start on a userspace decoder ring.  I'm concerned
+that the MSByte is always \351?  We're always subtracting our base
+time stamp, why isn't the highest order byte much much closer to
+zero?[80:
+
+Sun Jul 21 02:49:09 2019 Doh because we had another kfifo_avail bug in
+addLockEvent -- and were putting in the gap event instead of the real
+one..  buuuut that means our interpretations of all the above four
+byte sequences was wrong..  Going again.
+
+:80]
+
+:79]
+[81:
+
+Sun Jul 21 02:53:15 2019 OK, now it looks like this:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\000" > /dev/itc/lockevents;sleep 0.1;echo -e -n "\003" > /dev/itc/locks;sleep 0.1;echo -e -n "\000" > /dev/itc/locks
+    Jul 21 02:52:49 beaglebone kernel: [130271.299457] ITC: itc!lockevents successfully closed
+    Jul 21 02:52:50 beaglebone kernel: [130271.448352] ITC: itc!locks has been opened 1 time(s)
+    Jul 21 02:52:50 beaglebone kernel: [130271.500774] ITR CLR USREQ kfifo_len=(4)
+    Jul 21 02:52:50 beaglebone kernel: [130271.504822] ITR CLR USREQ kfifo_avail=(4092)
+    Jul 21 02:52:50 beaglebone kernel: [130271.509268] ITR CLR USREQ mStartTime=(130271238311457)
+    Jul 21 02:52:50 beaglebone kernel: [130271.514563] ITR CLR USREQ mShiftDistance=(9)
+
+..Note didn't change shift distance this time..
+
+    Jul 21 02:52:50 beaglebone kernel: [130271.521438] ITC: itc!locks successfully closed
+    Jul 21 02:52:50 beaglebone kernel: [130271.659196] ITC: itc!locks has been opened 2 time(s)
+    Jul 21 02:52:50 beaglebone kernel: [130271.704788] ITR CLR USREQ kfifo_len=(6)
+    Jul 21 02:52:50 beaglebone kernel: [130271.708827] ITR CLR USREQ kfifo_avail=(4090)
+    Jul 21 02:52:50 beaglebone kernel: [130271.713285] ITR CLR USREQ mStartTime=(130271238311457)
+    Jul 21 02:52:50 beaglebone kernel: [130271.718565] ITR CLR USREQ mShiftDistance=(9)
+    Jul 21 02:52:50 beaglebone kernel: [130271.725336] ITC: itc!locks successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# head -c 400 /dev/itc/lockevents
+    Jul 21 02:52:54 beaglebone kernel: [130275.853723] ITC: itc!lockevents successfully closed
+    ñ%(ñ±ñ'Üñ2#Hroot@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+..ñ%
+...(ñ
+±ñ'
+Üñ
+.....2#
+.....H
+
+Well who knows.  Magic decoder ring stat.
+
+:81]
+[82:
+
+Sun Jul 21 04:04:57 2019 Well made a lot of stuff.  Most of it is
+userspace, but not all, so let's just
+
+BITS OFF
+
+:82]
+[83:
+
+Sun Jul 21 04:27:03 2019 OK, now we've gotten as far as this:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# ./lockstats speed10; ../tracelock/tracelock dumpevents
+ ..Do ten lock grab tests, then dump events..
+
+    Jul 21 04:26:48 beaglebone kernel: [135910.184515] ITC: itc!locks has been opened 18 time(s)
+    Jul 21 04:26:48 beaglebone kernel: [135910.213093] ITC: itc!locks successfully closed
+    ---
+    Trials 10 in 0.00 sec, 158 usec/trial
+    Succeeded: 10/100%, failed: 0/0%
+    Spins: 8 max, 8.000000 avg
+    Jul 21 04:26:48 beaglebone kernel: [135910.246112] ITR CLR USREQ kfifo_len=(24)
+    Jul 21 04:26:48 beaglebone kernel: [135910.250268] ITR CLR USREQ kfifo_avail=(4072)
+    Jul 21 04:26:48 beaglebone kernel: [135910.254770] ITR CLR USREQ mStartTime=(135646465131499)
+    Jul 21 04:26:48 beaglebone kernel: [135910.260083] ITR CLR USREQ mShiftDistance=(9)
+    Start time 135646465131499
+    0.000000sec   +0usec 05
+    0.000068sec  +67usec 07
+    0.000178sec +110usec 25
+    0.000190sec  +12usec 03
+    0.000239sec  +48usec 27
+    0.000901sec +662usec 05
+    0.000935sec  +34usec 07
+    0.000977sec  +41usec 23
+    0.000980sec   +3usec 45
+    0.000988sec   +8usec 03
+    0.001022sec  +33usec 47
+    0.001084sec  +62usec 05
+    0.001106sec  +22usec 07
+    0.001143sec  +36usec 25
+    0.001154sec  +10usec 03
+    0.001171sec  +17usec 27
+    0.001236sec  +64usec 05
+    0.001256sec  +19usec 07
+    0.001295sec  +39usec 23
+    0.001298sec   +2usec 43
+    0.001306sec   +8usec 03
+    0.001388sec  +81usec 65
+    0.001436sec  +48usec 67
+    0.001461sec  +25usec 63
+    Jul 21 04:26:48 beaglebone kernel: [135910.299360] ITC: itc!lockevents successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+[84:
+
+Sun Jul 21 04:30:41 2019 Guess we have to start decoding the events..
+
+:84]
+:83]
+[85:
+
+Sun Jul 21 05:21:08 2019 OK just rearranged the lock event struct to
+steal another bit from the time field, so instead of nice and round
+24+8 it's now going to be a jagged and aggravating 23+9.  Everything
+ought to 'just work' but hey let's
+
+BITS OFF
+
+:85]
+[86:
+
+Sun Jul 21 05:46:20 2019 OK, well now it looks like this:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\000" > /dev/itc/lockevents;sleep 0.1;echo -e -n "\006" > /dev/itc/locks;sleep 0.1;echo -e -n "\000" > /dev/itc/locks;../tracelock/tracelock dumpevents
+    Jul 21 05:45:01 beaglebone kernel: [140602.369049] ITC: itc!lockevents successfully closed
+    Jul 21 05:45:01 beaglebone kernel: [140602.521166] ITC: itc!locks has been opened 3 time(s)
+    Jul 21 05:45:01 beaglebone kernel: [140602.562137] ITR CLR USREQ kfifo_len=(5)
+    Jul 21 05:45:01 beaglebone kernel: [140602.566182] ITR CLR USREQ kfifo_avail=(4091)
+    Jul 21 05:45:01 beaglebone kernel: [140602.570646] ITR CLR USREQ mStartTime=(140602307942832)
+    Jul 21 05:45:01 beaglebone kernel: [140602.575928] ITR CLR USREQ mShiftDistance=(9)
+    Jul 21 05:45:01 beaglebone kernel: [140602.584087] ITC: itc!locks successfully closed
+    Jul 21 05:45:01 beaglebone kernel: [140602.733279] ITC: itc!locks has been opened 4 time(s)
+    Jul 21 05:45:01 beaglebone kernel: [140602.786269] ITR CLR USREQ kfifo_len=(8)
+    Jul 21 05:45:01 beaglebone kernel: [140602.790304] ITR CLR USREQ kfifo_avail=(4088)
+    Jul 21 05:45:01 beaglebone kernel: [140602.794759] ITR CLR USREQ mStartTime=(140602307942832)
+    Jul 21 05:45:01 beaglebone kernel: [140602.800064] ITR CLR USREQ mShiftDistance=(9)
+    Jul 21 05:45:01 beaglebone kernel: [140602.806931] ITC: itc!locks successfully closed
+    Start time 140602307942832
+    0.000000sec   +0usec 45:SW sTAKE
+    0.000010sec   +9usec 25:SE sTAKE
+    0.000078sec  +68usec 47:SW sTAKEN
+    0.000089sec  +10usec 27:SE sTAKEN
+    0.022829sec  +22msec 1ca:Special code=3, arg=0xa
+    0.210391sec +187msec 43:SW sIDLE
+    0.210400sec   +9usec 23:SE sIDLE
+    0.246967sec  +36msec 1ca:Special code=3, arg=0xa
+    Jul 21 05:45:01 beaglebone kernel: [140602.850769] ITC: itc!lockevents successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+Where the big delay before SW sIDLE is, I believe, the 'sleep 0.1' on
+the command line, so, not that bad.
+
+Breaking for a bit here.
+
+:86]
+[87:
+
+Sun Jul 21 17:40:01 2019 Well, reorged lock event format yet again, so
+
+BITS OFF
+
+:87]
+[88:
+
+Sun Jul 21 17:43:01 2019 Well, an immediate dumpevents is kind of interesting:
+
+  ..
+    Jul 21 17:41:36 beaglebone kernel: [183596.599047] ITC NE_IGRLK: OK irq#=41 for gpio=14
+    Jul 21 17:41:36 beaglebone kernel: [183596.603937] ITC init done
+    Jul 21 17:41:36 beaglebone kernel: [183596.703497] ITC NE i01 -> i00
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# ../tracelock/tracelock dumpevents
+    Start time 0
+    0.000000sec   +0usec 08:ET sFAILED
+    0.000011sec  +11usec 18:SE sFAILED
+    0.000017sec   +6usec 28:SW sFAILED
+    0.000022sec   +4usec 38:WT sFAILED
+    0.000026sec   +4usec 48:NW sFAILED
+    0.000031sec   +4usec 58:NE sFAILED
+    0.479440sec +479msec 40:NW sRESET
+    0.479451sec  +10usec 10:SE sRESET
+    0.479455sec   +4usec 00:ET sRESET
+    0.479460sec   +5usec 50:NE sRESET
+    0.479465sec   +4usec 30:WT sRESET
+    0.479469sec   +4usec 20:SW sRESET
+    0.586523sec +107msec 41:NW sSYNC01
+    0.586546sec  +23usec 31:WT sSYNC01
+    0.586550sec   +3usec 21:SW sSYNC01
+    0.586608sec  +57usec 23:SW sIDLE
+    0.698753sec +112msec 42:NW sWAIT
+    0.701919sec   +3msec 32:WT sWAIT
+    0.750228sec  +48msec 11:SE sSYNC01
+    0.750396sec +167usec 13:SE sIDLE
+    0.752163sec   +1msec 01:ET sSYNC01
+    0.752199sec  +35usec 03:ET sIDLE
+    0.761733sec   +9msec 51:NE sSYNC01
+    0.885689sec +123msec 53:NE sIDLE
+    0.990494sec +104msec 48:NW sFAILED
+    0.990518sec  +24usec 38:WT sFAILED
+    1.098467sec +107msec 40:NW sRESET
+    1.098491sec  +24usec 30:WT sRESET
+    1.206560sec +108msec 41:NW sSYNC01
+    1.206584sec  +24usec 31:WT sSYNC01
+    1.206636sec  +51usec 43:NW sIDLE
+    1.206645sec   +8usec 33:WT sIDLE
+    Jul 21 17:41:52 beaglebone kernel: [183613.363532] ITC: itc!lockevents successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+Let's try to get the pin edges in there.
+
+:88][89:
+
+Sun Jul 21 18:34:44 2019 OK, now it looks like this:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats# echo -e -n "\000" > /dev/itc/lockevents;sleep 0.1;echo -e -n "\006" > /dev/itc/locks;sleep 0.1;echo -e -n "\000" > /dev/itc/locks;../tracelock/tracelock dumpevents
+    Jul 21 18:33:59 beaglebone kernel: [186739.693094] ITC: itc!lockevents successfully closed
+    Jul 21 18:33:59 beaglebone kernel: [186739.844709] ITC: itc!locks has been opened 1 time(s)
+    Jul 21 18:33:59 beaglebone kernel: [186739.888192] ITR CLR USREQ kfifo_len=(11)
+    Jul 21 18:33:59 beaglebone kernel: [186739.892352] ITR CLR USREQ kfifo_avail=(4085)
+    Jul 21 18:33:59 beaglebone kernel: [186739.896806] ITR CLR USREQ mStartTime=(186739632163415)
+    Jul 21 18:33:59 beaglebone kernel: [186739.902086] ITR CLR USREQ mShiftDistance=(9)
+    Jul 21 18:33:59 beaglebone kernel: [186739.908922] ITC: itc!locks successfully closed
+    Jul 21 18:33:59 beaglebone kernel: [186740.050803] ITC: itc!locks has been opened 2 time(s)
+    Jul 21 18:33:59 beaglebone kernel: [186740.100176] ITR CLR USREQ kfifo_len=(21)
+    Jul 21 18:33:59 beaglebone kernel: [186740.104311] ITR CLR USREQ kfifo_avail=(4075)
+    Jul 21 18:33:59 beaglebone kernel: [186740.108779] ITR CLR USREQ mStartTime=(186739632163415)
+    Jul 21 18:33:59 beaglebone kernel: [186740.114067] ITR CLR USREQ mShiftDistance=(9)
+    Jul 21 18:33:59 beaglebone kernel: [186740.120814] ITC: itc!locks successfully closed
+    Start time 186739632163415
+    0.000000sec   +0usec 183:WENU: write entered from user
+    0.000005sec   +5usec 10c:User lockset=06
+    0.000009sec   +4usec 015:SE sTAKE
+    0.000010sec   +1usec 09a: +SE_ORQLK
+    0.000025sec  +14usec 025:SW sTAKE
+    0.000025sec   +0usec 0aa: +SW_ORQLK
+    0.000088sec  +62usec 0a6: +SW_IGRLK
+    0.000089sec   +1usec 027:SW sTAKEN
+    0.000098sec   +8usec 096: +SE_IGRLK
+    0.000098sec   +0usec 017:SE sTAKEN
+
+..and note we are, in effect, stable as of that point.  But we don't
+return to userspace until vastly later on a timeout:
+
+    0.027695sec  +27msec 181:URTO: user request timeout
+    0.048387sec  +20msec 185:WRTU: write returns to user
+    0.206255sec +157msec 183:WENU: write entered from user
+    0.206260sec   +4usec 100:User lockset=00
+    0.206264sec   +4usec 013:SE sIDLE
+    0.206265sec   +1usec 098: -SE_ORQLK
+    0.206280sec  +14usec 023:SW sIDLE
+    0.206280sec   +0usec 0a8: -SW_ORQLK
+    0.206333sec  +53usec 0a4: -SW_IGRLK
+    0.206343sec   +9usec 094: -SE_IGRLK
+    0.239678sec  +33msec 181:URTO: user request timeout
+    0.260279sec  +20msec 185:WRTU: write returns to user
+    Jul 21 18:33:59 beaglebone kernel: [186740.168168] ITC: itc!lockevents successfully closed
+    root@beaglebone:/home/t2/T2-12/lkms/itc/spikes/lockstats#
+
+[90:
+
+Sun Jul 21 18:36:49 2019 OK well this is a lot of progress and a lot
+of great visibility into a superfast process!  But it's time to pack
+up now, to move the flag soon, so
+
+BITS OFF
+
+:90]
+
+:89]
+[91:
+
+Sun Jul 21 22:33:28 2019 OK so flag back.  Pop pop pop.  Let's claim
+some intermediate todos, back there.  [97:
+
+Sun Jul 21 22:34:49 2019 So, the question we were facing was: Why,
+whenever there's a long-spin late-lock failure, is always ET or WT
+that hasn't settled yet?[98:
+
+Sun Jul 21 22:36:08 2019 Well let's see if we can catch a failures
+using speed10, to keep the total number of events manageable.[99:
+
+Sun Jul 21 23:50:42 2019 And there's the explanation:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc# ./spikes/lockstats/lockstats speed1
+    Trial  4245.0 spun   8: Ask 05, got 04, 00 00 3b 00 00
+    Trial  4245.1 spun   8: Ask 05, got 05, 00 00 3a 00 00
+
+Here, as always before, the late bit is low-order one -- which is
+ET/east -- taking the lockset from 4 to 5.
+
+    ---
+    Trials 10000 in 1.80 sec, 179 usec/trial
+    Succeeded: 9999/100%, failed: 1/0%
+    Spins: 43 max, 8.004300 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc# ./spikes/lockstats/lockstats rand1
+    ---
+    Trials 10000 in 1.73 sec, 172 usec/trial
+    Succeeded: 10000/100%, failed: 0/0%
+
+No failures that time.  But note we're doing 'rand1' not 'speed1'
+
+    Spins: 39 max, 7.985500 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc# ./spikes/lockstats/lockstats rand1
+    Trial  2206.0 spun   8: Ask 18, got 08, 00 00 37 00 00
+    Trial  2206.1 spun   8: Ask 18, got 18, 00 00 27 00 00
+
+And there's a failure where the late bit is 0x10 -- NW -- which was
+_never_ the late bit before.
+
+    ---
+    Trials 10000 in 1.84 sec, 184 usec/trial
+    Succeeded: 9999/100%, failed: 1/0%
+    Spins: 38 max, 7.971900 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc# ./spikes/lockstats/lockstats rand1
+    Trial  5579.0 spun   8: Ask 30, got 10, 00 00 2f 00 00
+    Trial  5579.1 spun   8: Ask 30, got 30, 00 00 0f 00 00
+
+And here 0x20 -- NE -- is the late bit.
+    ---
+    Trials 10000 in 1.82 sec, 181 usec/trial
+    Succeeded: 9999/100%, failed: 1/0%
+    Spins: 44 max, 8.004600 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc#
+[100:
+
+Mon Jul 22 03:32:27 2019 So that's the answer to last week's mystery:
+
+Q: If everything about the intertile connectors is balanced and
+randomized, how can it be that late settlements -- however rare they
+are -- seem to ALWAYS involve ET or WT settling last?
+
+A: It's not because of kernel processing, it's because of the
+'lockstat' test program didn't free all the locks after each 'grab'
+test, it just went on to the next test.  Furthermore, lockstat tested
+locksets in binary counting order, and either ET or WT always ended up
+being the low-order bit -- so they flipped between 'grabbed' and
+'ungrabbed' on EVERY TEST.  All the other locks changed state less
+often.  Once the tested locksets were randomized instead of
+sequential, any ITC could be the culprit in a late settlements.
+
+:100]
+:99]
+
+:98]
+
+:97]
+
+:91]
+[101:
+
+Mon Jul 22 05:58:45 2019 So can we move forward a little bit more
+here?  Things to think about:
+
+ - That sometimes big delay after the locks look settled before
+   returning to userspace, like this:
+
+    0.000296sec   +3usec 183:WENU: write entered from user
+    0.000298sec   +1usec 100:User lockset=00
+    0.000303sec   +4usec 023:SW sIDLE
+    0.000303sec   +0usec 0a8: -<SW_ORQLK
+    0.000306sec   +2usec 003:ET sIDLE
+    0.000306sec   +0usec 088: -<ET_ORQLK
+    0.000334sec  +27usec 084: ->ET_IGRLK
+    0.000348sec  +14usec 0a4: ->SW_IGRLK
+    0.000935sec +587usec 185:WRTU: write returns to user
+    0.000946sec  +10usec 184:RENU: read entered from user
+
+ - Doing some macro hackery so that once the kfifo is full, we don't
+   even make the event.
+
+
+:101]
+[102:
+
+Tue Jul 23 23:15:54 2019 So, for the record, I don't understand this:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc# echo -n -e '\0' > /dev/itc/lockevents ;./spikes/lockstats/lockstats sixgun1
+
+0 to lockevents means clear the lockevents buffer..
+
+    Trial   274.0 spun   8: Ask 2d, got 2c, 00 00 13 00 00
+    Trial   274.1 spun   8: Ask 2d, got 2d, 00 00 12 00 00
+    Trial  7200.0 spun   8: Ask 13, got 12, 00 00 2d 00 00
+    Trial  7200.1 spun   8: Ask 13, got 13, 00 00 2c 00 00
+    ---
+    Trials 10000 in 2.02 sec, 201 usec/trial
+    Succeeded: 9998/100%, failed: 2/0%
+    Spins: 64 max, 8.044900 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc# ./spikes/tracelock/tracelock dumpevents
+    Start time 176258834959999
+    0001 0.000000sec   +0usec 183:WENU: write entered from user
+    0002 0.000005sec   +4usec 172:User lockset=39 ET WT NW NE
+  ..clip..
+    1031 0.006985sec   +1usec 186:RRTU: read returns to user
+    1032 0.007044sec  +58usec 183:WENU: write entered from user
+    1033 0.007046sec   +1usec 15a:User lockset=2d ET SW WT NE
+ ..and that is the only 'lockset=2d' in the buffer.
+    1034 0.007048sec   +2usec 043:NW sIDLE
+    1035 0.007048sec   +0usec 0c8: -<NW_ORQLK
+    1036 0.007057sec   +8usec 035:WT sTAKE
+    1037 0.007057sec   +0usec 0ba: +<WT_ORQLK
+    1038 0.007077sec  +19usec 0c4: ->NW_IGRLK
+    1039 0.007099sec  +22usec 0b6: +>WT_IGRLK
+    1040 0.007100sec   +1usec 037:WT sTAKEN
+    1041 0.007116sec  +15usec 185:WRTU: write returns to user
+    1042 0.007120sec   +4usec 184:RENU: read entered from user
+    1043 0.007123sec   +2usec 186:RRTU: read returns to user
+    1044 0.007125sec   +2usec 184:RENU: read entered from user
+    1045 0.007127sec   +1usec 186:RRTU: read returns to user
+    1046 0.007128sec   +1usec 184:RENU: read entered from user
+    1047 0.007130sec   +1usec 186:RRTU: read returns to user
+    1048 0.007132sec   +2usec 184:RENU: read entered from user
+    1049 0.007133sec   +1usec 186:RRTU: read returns to user
+    1050 0.007135sec   +2usec 184:RENU: read entered from user
+    1051 0.007136sec   +1usec 186:RRTU: read returns to user
+    1052 0.007138sec   +2usec 184:RENU: read entered from user
+    1053 0.007140sec   +1usec 186:RRTU: read returns to user
+    1054 0.007141sec   +1usec 184:RENU: read entered from user
+    1055 0.007143sec   +1usec 186:RRTU: read returns to user
+    1056 0.007144sec   +1usec 184:RENU: read entered from user
+    1057 0.007146sec   +1usec 186:RRTU: read returns to user
+    1058 0.007148sec   +2usec 184:RENU: read entered from user
+    1059 0.007149sec   +1usec 186:RRTU: read returns to user
+    1060 0.007152sec   +3usec 183:WENU: write entered from user
+    1061 0.007153sec   +1usec 156:User lockset=2b ET SE WT NE
+    1062 0.007160sec   +7usec 015:SE sTAKE
+    1063 0.007161sec   +0usec 09a: +<SE_ORQLK
+    1064 0.007165sec   +4usec 023:SW sIDLE
+    1065 0.007166sec   +0usec 0a8: -<SW_ORQLK
+    1066 0.007188sec  +22usec 0a4: ->SW_IGRLK
+    1067 0.007195sec   +6usec 096: +>SE_IGRLK
+    1068 0.007195sec   +0usec 017:SE sTAKEN
+    1069 0.007210sec  +15usec 185:WRTU: write returns to user
+
+:102]
+[103:
+
+Wed Jul 24 02:34:06 2019 OK I drafted the one remaining bit in the
+'user' lockevent type to indicate we are capturing what we think is
+the 'current' lockset, and trying to generate that inside dev_write.
+Really not understanding these late settlements, still.  So:
+
+BITS OFF
+
+:103]
+[104:
+
+Wed Jul 24 03:11:57 2019 Using 'current locks' to trace the current
+'taken' set during read.
+
+BITS OFF
+
+:104][105:
+
+Wed Jul 24 03:27:33 2019 OK well I finally caught on head on:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc# echo -n -e '\0' > /dev/itc/lockevents ;./spikes/lockstats/lockstats sixgun1
+    Trial   560.0 spun   8: Ask 1d, got 1c, 00 00 23 00 00
+    Trial   560.1 spun   8: Ask 1d, got 1d, 00 00 22 00 00
+    Trial  5683.0 spun   8: Ask 2d, got 2c, 00 00 13 00 00
+    Trial  5683.1 spun   8: Ask 2d, got 2d, 00 00 12 00 00
+    ---
+    Trials 10000 in 2.06 sec, 206 usec/trial
+    Succeeded: 9998/100%, failed: 2/0%
+    Spins: 64 max, 8.122000 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc# ./spikes/tracelock/tracelock dumpevents
+    Start time 191548577225291
+ ..skip..
+    1303 0.011282sec   +0usec 186:RRTU: read returns to user
+    1304 0.011285sec   +2usec 183:WENU: write entered from user
+    1305 0.011287sec   +1usec 13a:User lockset=1d ET __ SW WT NW __
+
+Requesting 1d in trial 560 above.
+
+    1306 0.011287sec   +0usec 179:Curr lockset=3c __ __ SW WT NW NE
+    1307 0.011288sec   +1usec 053:NE sIDLE
+    1308 0.011289sec   +0usec 0d8: -<NE_ORQLK
+    1309 0.011299sec  +10usec 005:ET sTAKE
+    1310 0.011300sec   +1usec 08a: +<ET_ORQLK
+    1311 0.011309sec   +8usec 0d4: ->NE_IGRLK
+    1312 0.011334sec  +25usec 185:WRTU: write returns to user
+
+ET is not yet sTAKEN.  Why did the write return?
+
+    1313 0.011338sec   +3usec 184:RENU: read entered from user
+    1314 0.011340sec   +2usec 139:Curr lockset=1c __ __ SW WT NW __
+    1315 0.011340sec   +0usec 186:RRTU: read returns to user
+    1316 0.011342sec   +2usec 184:RENU: read entered from user
+    1317 0.011344sec   +1usec 139:Curr lockset=1c __ __ SW WT NW __
+    1318 0.011344sec   +0usec 186:RRTU: read returns to user
+
+Now tracelock is spinning, looking for 1d.  And note how fast the
+spins are -- perhaps 2-3usec each.  It'll take a lot of those to cover
+say 60usec or so.
+
+    1319 0.011346sec   +1usec 184:RENU: read entered from user
+    1320 0.011347sec   +1usec 139:Curr lockset=1c __ __ SW WT NW __
+    1321 0.011348sec   +0usec 186:RRTU: read returns to user
+    1322 0.011350sec   +2usec 184:RENU: read entered from user
+    1323 0.011351sec   +1usec 139:Curr lockset=1c __ __ SW WT NW __
+    1324 0.011352sec   +1usec 186:RRTU: read returns to user
+    1325 0.011354sec   +1usec 184:RENU: read entered from user
+    1326 0.011355sec   +1usec 139:Curr lockset=1c __ __ SW WT NW __
+    1327 0.011356sec   +0usec 186:RRTU: read returns to user
+    1328 0.011358sec   +2usec 184:RENU: read entered from user
+    1329 0.011359sec   +1usec 139:Curr lockset=1c __ __ SW WT NW __
+    1330 0.011360sec   +0usec 186:RRTU: read returns to user
+    1331 0.011361sec   +1usec 184:RENU: read entered from user
+    1332 0.011363sec   +1usec 139:Curr lockset=1c __ __ SW WT NW __
+    1333 0.011363sec   +0usec 186:RRTU: read returns to user
+    1334 0.011372sec   +8usec 086: +>ET_IGRLK
+
+And here comes our eastern neighbor, finally responding
+
+    1335 0.011373sec   +1usec 007:ET sTAKEN
+    1336 0.011380sec   +7usec 184:RENU: read entered from user
+    1337 0.011382sec   +2usec 13b:Curr lockset=1d ET __ SW WT NW __
+
+And there's the 1d we were waiting for.
+
+    1338 0.011383sec   +0usec 186:RRTU: read returns to user
+    1339 0.011385sec   +2usec 183:WENU: write entered from user
+    1340 0.011386sec   +1usec 166:User lockset=33 ET SE __ __ NW NE
+
+:105][106:
+
+Wed Jul 24 03:33:46 2019 So why did the write return, on event 1312 up
+there?
+[107:
+
+Wed Jul 24 03:35:32 2019 Well, fundamentally, it returned because it
+opened /dev/itc/locks with O_NONBLOCK.  So dev_write passed 'false' to
+'waitForIt' in the call to itcInterpretCommandByte.  So after
+itcInterpretCommandByte calls updateState on each of the six ITCs, and
+after it kicks the thread runner, itcInterpretCommandByte returns to
+dev_write, which returns to userspace.
+
+Maybe we should just have tracelock do like a 10usec sleep while
+spinning.. Or even 25usec.[108:
+
+Wed Jul 24 03:47:23 2019 But I note, two things, in the bigger
+picture: (1) The 'late settlement' indeed seems to be just as it
+appears -- a neighboring tile happening to be slow with its
+'+>ET_IGRLK' -- not some weird internal bug, but then (2) IT STILL
+APPEARS EAST IS THE MOST LIKELY LATE ITC AND WHY WHY WHY WHY IS THAT?
+
+:108]
+
+:107]
+:106]
+[109:
+
+Wed Jul 24 04:32:30 2019 Well, believe it or not, I rebooted the tile
+to the east and now I'm getting more 'isotropic' failures.  Or at
+least, at the moment NW appears to be the typically laggard:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc# echo -n -e '\0' > /dev/itc/lockevents ;./spikes/lockstats/lockstats sixgun1
+    Trial   475.0 spun   0: Ask 3e, got 2e, 00 00 11 00 00
+    Trial   475.1 spun   0: Ask 3e, got 3e, 00 00 01 00 00
+    Trial  8547.0 spun   0: Ask 30, got 10, 00 00 2f 00 00
+    Trial  8547.1 spun   0: Ask 30, got 30, 00 00 0f 00 00
+    ---
+    Trials 10000 in 1.68 sec, 168 usec/trial
+    Succeeded: 9998/100%, failed: 2/0%
+    Spins: 1 max, 0.018700 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc# ./spikes/tracelock/tracelock dumpevents
+    Start time 195025493183416
+
+
+
+:109]
+[110:
+
+Wed Jul 24 05:34:47 2019 Another one:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc# echo -n -e '\0' > /dev/itc/lockevents ;./spikes/lockstats/lockstats sixgun1
+    Trial   147.0 spun   0: Ask 0f, got 0e, 00 00 31 00 00
+    Trial   147.1 spun   0: Ask 0f, got 0f, 00 00 30 00 00
+    ---
+    Trials 10000 in 1.47 sec, 147 usec/trial
+    Succeeded: 9999/100%, failed: 1/0%
+    Spins: 1 max, 0.022400 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc# ./spikes/tracelock/tracelock dumpevents
+    Start time 198750074128624
+    0001 0.000000sec   +0usec 183:WENU: write entered from user
+  ..
+    2645 0.036169sec   +1usec 11e:User lockset=0f ET SE SW WT __ __
+    2646 0.036170sec   +0usec 10d:Curr lockset=06 __ SE SW __ __ __
+    2647 0.036171sec   +1usec 035:WT sTAKE
+    2648 0.036172sec   +1usec 0ba: WT_ORQLK => +
+    2649 0.036203sec  +31usec 0b6: + => WT_IGRLK
+    2650 0.036204sec   +1usec 037:WT sTAKEN
+    2651 0.036220sec  +15usec 185:WRTU: write returns to user
+    2652 0.036223sec   +3usec 184:RENU: read entered from user
+    2653 0.036225sec   +1usec 11d:Curr lockset=0e __ SE SW WT __ __
+    2654 0.036226sec   +1usec 186:RRTU: read returns to user
+    2655 0.036301sec  +75usec 084: - => ET_IGRLK
+    2656 0.036302sec   +1usec 005:ET sTAKE
+    2657 0.036303sec   +0usec 08a: ET_ORQLK => +
+    2658 0.036325sec  +22usec 086: + => ET_IGRLK
+    2659 0.036326sec   +0usec 007:ET sTAKEN
+    2660 0.040532sec   +4msec 184:RENU: read entered from user
+    2661 0.040542sec   +9usec 11f:Curr lockset=0f ET SE SW WT __ __
+    2662 0.040543sec   +1usec 186:RRTU: read returns to user
+    2663 0.040698sec +154usec 184:RENU: read entered from user
+    2664 0.040701sec   +3usec 11f:Curr lockset=0f ET SE SW WT __ __
+    2665 0.040701sec   +0usec 186:RRTU: read returns to user
+    2666 0.040709sec   +7usec 183:WENU: write entered from user
+  ..
+
+:110]
+[111:
+
+Wed Jul 24 05:35:48 2019 So the hellephant in the room is why can't
+itc.ko keep track of which itcs are unsettled and kick the S.userWaitQ
+when the last one settles -- so that userspace could plausibly go
+blocking and not screw around with all of this.
+
+S.userWaitQ currently waits on S.userRequestActive.  Is the problem
+that that's only cleared by thread runner on timeout?[112:
+
+Wed Jul 24 05:46:02 2019 Well yes that's a problem anyway.  It really
+seems like we should do some or all of the following:
+
+ - Maintain the current take lock status in a u8.  When an itc enters
+   TAKEN, it sets its own bit, when leaving TAKEN, it clears it.
+
+ - Maintain an unsettled lock status in a u8.  When an itc enters
+   GIVEN, TAKEN, or FAILED (is that all?), it clears its own bit.
+
+ - Set up an 'unsettled locks' bitmask when a write occurs
+
+..or is a better approach to incrementally update all the information
+that is currently recomputed by itcGetCurrentLockInfo?[113:
+
+Wed Jul 24 06:56:02 2019 So, can we squeeze the current lock info down
+to a u32, and precompute constants for the interrupt handlers to OR or
+AND-NOT into the mask when they make changes?  Update RULES.h with the
+information about what bits set and what bits clear as the result of a
+transition?
+
+We have room for five groups of six bits in a u32.  Currently we are
+using six bytes:
+
+ 0: TAKEN
+ 1: TAKE|RACE|SYNC01
+ 2: GIVE
+ 3: IDLE
+ 4: FAILED
+ 5  RESET
+
+How about like:
+
+ 0: SETTLED (TAKEN | GIVE | IDLE)
+ 1: UNSETTLED (TAKE | RACE)
+ 2: UNREADY (RESET | SYNC01 | FAILED)
+
+[114:
+
+Wed Jul 24 07:25:27 2019 Looking at the rule table, I do notice that
+sRACE currently transitions to sFAILED, which is unfortunate for that
+categorization, as well as being pretty lame..[115:
+
+Wed Jul 24 07:33:05 2019 In sRACE, could we flip a coin and go back to
+sIDLE?  I mean, whether or not that's smart, do we have the state
+machine artillery to do it?[116:
+
+Wed Jul 24 07:40:03 2019 Yeah.  I think we would change race from like
+
+    RSN(sRACE,o11,  /** A race has been detected */
+       R_END(sFAILED))       /* for now just punt */
+
+to something like
+
+    RSE(sRACE,o11,  /** A race has been detected */
+       R_END(sFAILED))       /* for now just punt */
+
+where the E in RSE means 'has an entry function'.  And then we write
+
+    ITCState entryFunction_sRACE(ITCInfo * itc,unsigned stateInput)
+
+following the pattern of say entryFunction_sWAIT -- which in fact
+screws around with 'magicWaitTimeouts' and stuff that could be used
+for race resolution as well.[117:
+
+Wed Jul 24 07:53:02 2019 Although what if sRACE just went directly to
+sIDLE, period?  That will turn off our ORQLK. and if the other side is
+still in sTAKE, they'll stay there[119: not sure that makes sense -- we *did* ORQLK so
+they should see that edge eventually, right?  :119], we'll timeout eventually, and then
+updateState will see the IRQLK and head for sGIVE.  If they hit sRACE
+as well, then we both go to sIDLE, and whoever times out first will
+hit their uTRY from the user and head to sTAKE again.
+
+So that will likely be slow waiting on timeouts, but we're hoping
+sRACE is not too common and some kind of random backing off seems
+inevitable when it happens.
+
+Note though that if we test this with a loopback cable, the timeouts
+at both ends will be very close in time...  The iteration order in
+updateStates will technically break the tie..  And I guess we don't
+block interrupts in there so the edge could hit before we even reach
+the next ITC in line.  Maybe.
+[118:
+
+Wed Jul 24 08:47:47 2019 So do we think going sRACE->sIDLE is worth
+trying?  Let's try it.  At least we have all this new tracelock
+visibility to help us get a clue.
+[120:
+
+Wed Jul 24 08:54:30 2019 Trying it
+
+BITS OFF
+
+:120]
+:118]
+
+:117]
+
+:116]
+
+:115]
+
+:114]
+
+:113]
+
+:112]
+
+:111]
+[121:
+
+Wed Jul 24 09:05:43 2019 OK, now we've got the keymaster on an ET-WT
+loopback.  lockstats speed1 or speed10 should be unaffected, because
+they only try to grab loopback-compatible locksets.  sixgun1 should be
+a whole new ball of tracelock wax..[122:
+
+Wed Jul 24 09:07:40 2019 Holy moly look at this ridiculous speed:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc# echo -n -e '\0' > /dev/itc/lockevents ;./spikes/lockstats/lockstats speed1
+    ---
+    Trials 10000 in 0.85 sec, 84 usec/trial
+    Succeeded: 10000/100%, failed: 0/0%
+    Spins: 2 max, 0.016900 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc#
+
+Good thing we weren't debugging just with loopbacks..  Let's look at
+the events briefly..[123:
+
+Wed Jul 24 09:09:34 2019 Worth noting:
+
+    0011 0.000115sec  +10usec 005:ET sTAKE
+    0012 0.000116sec   +1usec 08a: ET_ORQLK => +
+    0013 0.000143sec  +27usec 0b2: + => WT_IRQLK
+    0014 0.000144sec   +0usec 034:WT sGIVE
+    0015 0.000144sec   +0usec 0be: WT_OGRLK => +
+    0016 0.000155sec  +10usec 086: + => ET_IGRLK
+    0017 0.000155sec   +0usec 007:ET sTAKEN
+    0018 0.000245sec  +90usec 185:WRTU: write returns to user
+
+27usec from ET output event to WT input event.  10usec from WT output
+event to ET input event.
+
+Few more samples:
+
+    0028 0.000271sec   +1usec 088: ET_ORQLK => -
+    0029 0.000283sec  +12usec 0b0: - => WT_IRQLK
+12 ET
+    0031 0.000285sec   +1usec 0bc: WT_OGRLK => -
+    0032 0.000292sec   +7usec 084: - => ET_IGRLK
+ 7 WT
+    0043 0.000365sec   +0usec 08a: ET_ORQLK => +
+    0044 0.000374sec   +9usec 0b2: + => WT_IRQLK
+ 9 ET
+    0046 0.000376sec   +0usec 0be: WT_OGRLK => +
+    0047 0.000382sec   +6usec 086: + => ET_IGRLK
+ 6 WT
+    0061 0.001870sec   +1usec 088: ET_ORQLK => -
+    0062 0.001897sec  +27usec 0b0: - => WT_IRQLK
+27 ET
+    0064 0.001899sec   +0usec 0bc: WT_OGRLK => -
+    0065 0.001908sec   +9usec 084: - => ET_IGRLK
+ 9 WT
+    8139 0.046694sec   +0usec 088: ET_ORQLK => -
+    8140 0.046705sec  +10usec 0b0: - => WT_IRQLK
+12 ET
+    8142 0.046706sec   +0usec 0bc: WT_OGRLK => -
+    8143 0.046712sec   +6usec 084: - => ET_IGRLK
+ 6 WT
+    8157 0.046785sec   +0usec 08e: ET_OGRLK => +
+    8158 0.046797sec  +12usec 0b6: + => WT_IGRLK
+12 ET
+    8168 0.046890sec   +0usec 0b8: WT_ORQLK => -
+    8169 0.046901sec  +11usec 080: - => ET_IRQLK
+11 WT
+
+:123]
+
+:122]
+
+:121]
+[124:
+
+Wed Jul 24 09:16:12 2019 OK let's see some racing heah..
+
+    echo -n -e '\0' > /dev/itc/lockevents ;./spikes/lockstats/lockstats sixgun10
+    Trial     3.0 spun   0: Ask 1d, got 1c, 00 01 22 00 00
+    Trial     3.1 spun   0: Ask 1d, got 1c, 00 01 22 00 00
+
+Right: So, finally, we have misses that *don't* resolve on a retry.
+
+    Trial     5.0 spun   0: Ask 2b, got 2a, 00 01 14 00 00
+    Trial     5.1 spun   0: Ask 2b, got 2a, 00 01 14 00 00
+    Trial     9.0 spun   0: Ask 3b, got 3a, 00 01 04 00 00
+    Trial     9.1 spun   0: Ask 3b, got 3a, 00 01 04 00 00
+    ---
+    Trials 10 in 0.01 sec, 978 usec/trial
+    Succeeded: 7/70%, failed: 3/30%
+    Spins: 0 max, 0.000000 avg
+
+but hmm:
+
+    0044 0.000318sec   +3usec 183:WENU: write entered from user
+    0045 0.000319sec   +1usec 13a:User lockset=1d ET __ SW WT NW __
+    0046 0.000320sec   +0usec 139:Curr lockset=1c __ __ SW WT NW __
+    0047 0.000351sec  +31usec 185:WRTU: write returns to user
+
+so it didn't even try to grab anything -- because there weren't any
+idle locks that user wanted.
+
+Moh moh:
+
+    0057 0.007491sec   +7usec 183:WENU: write entered from user
+    0058 0.007493sec   +2usec 15c:User lockset=2e __ SE SW WT __ NE
+    0059 0.007495sec   +1usec 13b:Curr lockset=1d ET __ SW WT NW __
+
+Woah, hmm, bug much?  You're saying the current lockset has both ET
+and WT taken?  ..Because that's not actually the current lockset, it's
+just the previous lockset *request*. [125:
+
+Wed Jul 24 09:52:35 2019 I guess the fix for that is doing the 'online
+update' of the itcinfo discussed above.
+
+:125]
+
+    0060 0.007509sec  +14usec 015:SE sTAKE
+    0061 0.007510sec   +0usec 09a: SE_ORQLK => +
+    0062 0.007516sec   +6usec 055:NE sTAKE
+    0063 0.007516sec   +0usec 0da: NE_ORQLK => +
+    0064 0.007521sec   +5usec 043:NW sIDLE
+    0065 0.007522sec   +0usec 0c8: NW_ORQLK => -
+    0066 0.007580sec  +58usec 0d6: + => NE_IGRLK
+    0067 0.007581sec   +1usec 057:NE sTAKEN
+    0068 0.007590sec   +8usec 096: + => SE_IGRLK
+    0069 0.007591sec   +1usec 017:SE sTAKEN
+    0070 0.007693sec +101usec 0c4: - => NW_IGRLK
+    0071 0.007806sec +113usec 185:WRTU: write returns to user
+    0072 0.007815sec   +8usec 184:RENU: read entered from user
+    0073 0.007817sec   +2usec 15d:Curr lockset=2e __ SE SW WT __ NE
+    0074 0.007818sec   +1usec 186:RRTU: read returns to user
+
+
+:124]
+[126:
+
+Wed Jul 24 10:15:59 2019 Well, I don't see how to avoid pushing this
+out to the fleet if I want to see races..   Deal with the 'curr
+lockset' problem later.
+
+BITS OFF
+
+:126]
+[127:
+
+Wed Jul 24 12:54:04 2019 Well we got into a virtually endless
+give/idle vs take/idle loop -- I think -- so we're adding an sRACE
+entry function and making that path stochastic.  We'll see.
+
+BITS OFF
+
+:127]
+[128:
+
+Thu Jul 25 02:03:01 2019 Well, pushing this out to the grid.  Even
+with tracelock it's not easy to coordinate lock event views across
+multiple tiles!
+
+The bigger picture here is that we're running out of time to be
+working on this for the next week and a half because we have to switch
+to getting ready for the alife talk and then doing the conference.
+
+But I'd really like to take a crack at doing the 'online ITC info
+maintenance' thing, because that seems to be a natural route to
+getting to the kind of self-timed lockset events that we need for
+mfmt2.  So let's try one more push on that, here, while we're
+relatively fresh.
+
+BITS OFF[129:
+
+Thu Jul 25 02:22:01 2019 OK so T2-12 tag=1564020802 is now spreading
+five ways from keymaster.  (It's not six because keymaster is
+connected both NE and WT to the same tile.)  So where were we on
+online ITC info?[130:
+
+Thu Jul 25 02:24:55 2019 OK back in :113: we talked about going from
+
+ 0: TAKEN                   0: SETTLED (TAKEN | GIVE | IDLE)
+ 1: TAKE|RACE|SYNC01        1: UNSETTLED (TAKE | RACE)
+ 2: GIVE              to    2: UNREADY (RESET | SYNC01 | FAILED)
+ 3: IDLE
+ 4: FAILED
+ 5  RESET
+
+..and that is what propelled us to change sRACE so it doesn't go to
+sFAILED.  Now with 
+
+ 0: SETTLED (TAKEN | GIVE | IDLE)
+ 1: UNSETTLED (TAKE | RACE)
+ 2: UNREADY (RESET | SYNC01 | FAILED)
+
+we still have two categories to go, if we want, in 32 bits.
+
+Well fog it let's just try those three.  Hack Attack, Engage!
+[131:
+
+Thu Jul 25 02:37:06 2019 So:
+
+ - itc.[hc] gets a global like u32 S.lockSettlements.  Ah, let's make
+   it a struct for tiny typing.
+
+:131]
+
+:130]
+
+:129]
+
+:128]
+[132:
+
+Thu Jul 25 05:22:21 2019 Well I whacked something together, along with
+several failed macro-optimization attempts..  But now it's built so
+it's time to try it so
+
+BITS OFF
+
+:132]
+[133:
+
+Thu Jul 25 06:02:16 2019 OK so it's partly working but there's a
+pretty big thinko: When we're giving up locks we already have, we
+transition from sTAKE to sIDLE without waiting for the confirmation
+from the other side.  And, both sTAKE and sIDLE are settled states so
+'no unsettled locks remain' is detected immediately, which somehow
+appears to be shortcircuiting even the attempt to release other locks
+the user no longer wants.
+
+Going to go take a walk soon, but: Is it too horrible to think about
+putting in an unsettled sRELEASE state?
+
+:133]
+[134:
+
+Thu Jul 25 08:13:51 2019 OK well did a lot.  Put in sRELEASE before
+the walk and it seemed to immediately help.  Eventually changed
+lockstat.c to do blocking IO.  Stuff is mostly working, but we're
+getting occasional pretty weird failures like these:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc# echo -e -n "\0" > /dev/itc/lockevents ; ./spikes/lockstats/lockstats speed1
+    Trial   292.0 spun   0: Ask 04, got 06, 00 00 39 00 00
+    Trial   292.1 spun   0: Ask 04, got 06, 00 00 39 00 00
+  ..
+
+This is a long trace for context:
+
+    4631 0.101002sec   +7usec 184:WBKU: blocking write from user
+    4632 0.101004sec   +1usec 104:User lockset=02 __ SE __ __ __ __
+
+Taking SE
+
+    4633 0.101005sec   +1usec 103:Curr lockset=01 ET __ __ __ __ __
+    4634 0.101016sec  +10usec 008:ET sRELEASE
+    4635 0.101017sec   +1usec 088:         ET_ORQLK => -
+    4636 0.101024sec   +7usec 015:SE sTAKE
+    4637 0.101025sec   +0usec 09a:         SE_ORQLK => +
+    4638 0.101074sec  +49usec 096:         + => SE_IGRLK
+    4639 0.101075sec   +1usec 017:SE sTAKEN
+
+And it's taken.
+
+    4640 0.101093sec  +17usec 084:         - => ET_IGRLK
+    4641 0.101094sec   +0usec 003:ET sIDLE
+    4642 0.101094sec   +0usec 18b:NOUN: no unsettled locks remain
+    4643 0.101095sec   +0usec 182:URDO: user request done
+    4644 0.101132sec  +37usec 188:WRTU: write returns to user
+    4645 0.101138sec   +6usec 185:RBKU: blocking read from user
+    4646 0.101141sec   +2usec 105:Curr lockset=02 __ SE __ __ __ __
+
+Now we have to watch out: 'Curr lockset' is really just the previous
+'User lockset'.
+
+    4647 0.101142sec   +1usec 189:RRTU: read returns to user
+
+So the read naturally agrees it's taken.
+
+    4648 0.101145sec   +2usec 184:WBKU: blocking write from user
+    4649 0.101146sec   +1usec 106:User lockset=03 ET SE __ __ __ __
+
+Now user wants to take ET too.
+
+    4650 0.101146sec   +0usec 105:Curr lockset=02 __ SE __ __ __ __
+    4651 0.101150sec   +3usec 005:ET sTAKE
+    4652 0.101150sec   +0usec 08a:         ET_ORQLK => +
+    4653 0.101177sec  +26usec 086:         + => ET_IGRLK
+    4654 0.101178sec   +1usec 007:ET sTAKEN
+
+And it's taken.
+
+    4655 0.101179sec   +1usec 18b:NOUN: no unsettled locks remain
+    4656 0.101179sec   +0usec 182:URDO: user request done
+    4657 0.101187sec   +7usec 188:WRTU: write returns to user
+    4658 0.101190sec   +3usec 185:RBKU: blocking read from user
+    4659 0.101192sec   +2usec 107:Curr lockset=03 ET SE __ __ __ __
+
+The read gives the last user lockset swrite.
+
+    4660 0.101192sec   +0usec 189:RRTU: read returns to user
+    4661 0.101194sec   +2usec 184:WBKU: blocking write from user
+    4662 0.101195sec   +1usec 108:User lockset=04 __ __ SW __ __ __
+
+Now user wants to take SW only.
+
+    4663 0.101196sec   +1usec 107:Curr lockset=03 ET SE __ __ __ __
+
+So ET and SE need to be released.
+
+    4664 0.101197sec   +1usec 025:SW sTAKE
+    4665 0.101198sec   +0usec 0aa:         SW_ORQLK => +
+
+SW take starts..
+
+    4666 0.101200sec   +2usec 008:ET sRELEASE
+
+ET release starts
+
+    4667 0.101201sec   +0usec 088:         ET_ORQLK => -
+    4668 0.101239sec  +38usec 084:         - => ET_IGRLK
+    4669 0.101240sec   +1usec 003:ET sIDLE
+
+ET release finishes
+
+    4670 0.101254sec  +13usec 0a6:         + => SW_IGRLK
+    4671 0.101255sec   +0usec 027:SW sTAKEN
+
+SW take finishes
+
+    4672 0.101255sec   +0usec 18b:NOUN: no unsettled locks remain
+    4673 0.101256sec   +0usec 182:URDO: user request done
+    4674 0.101268sec  +12usec 188:WRTU: write returns to user
+
+SE was never released???#**!)?  How could that happen?
+
+    4675 0.104573sec   +3msec 185:RBKU: blocking read from user
+    4676 0.104581sec   +8usec 10d:Curr lockset=06 __ SE SW __ __ __
+
+And the read agrees that SE is still there.
+
+    4677 0.104582sec   +0usec 189:RRTU: read returns to user
+    4678 0.107756sec   +3msec 185:RBKU: blocking read from user
+    4679 0.107767sec  +11usec 10d:Curr lockset=06 __ SE SW __ __ __
+
+Persistently.
+
+    4680 0.107767sec   +0usec 189:RRTU: read returns to user
+    4681 0.107921sec +153usec 185:RBKU: blocking read from user
+    4682 0.107924sec   +3usec 10d:Curr lockset=06 __ SE SW __ __ __
+
+Persistently.
+
+    4683 0.107925sec   +0usec 189:RRTU: read returns to user
+    4684 0.107930sec   +4usec 184:WBKU: blocking write from user
+    4685 0.107932sec   +2usec 10a:User lockset=05 ET __ SW __ __ __
+
+Now user wants ET and SW
+
+    4686 0.107933sec   +1usec 109:Curr lockset=04 __ __ SW __ __ __
+
+
+
+    4687 0.107948sec  +14usec 005:ET sTAKE
+    4688 0.107949sec   +1usec 08a:         ET_ORQLK => +
+    4689 0.107959sec  +10usec 018:SE sRELEASE
+
+And yet SE gets released..
+
+    4690 0.107960sec   +0usec 098:         SE_ORQLK => -
+    4691 0.108017sec  +56usec 094:         - => SE_IGRLK
+    4692 0.108018sec   +1usec 013:SE sIDLE
+    4693 0.108040sec  +22usec 086:         + => ET_IGRLK
+    4694 0.108041sec   +0usec 007:ET sTAKEN
+    4695 0.108042sec   +1usec 18b:NOUN: no unsettled locks remain
+
+
+:134]
+[135:
+
+Thu Jul 25 08:26:20 2019 Well so we have to fix the damn curr lockset
+to be something reliable.  Not much point in trying to debug this as
+it stands.
+
+:135]
+[136:
+
+Thu Jul 25 08:35:58 2019 Well, the curr lockset event in the read was
+already using current refreshed information, so it's not clear at all
+what's going on.  But we just redid the curr lockset event in the
+write to go for fresh state info too -- and changed
+itcGetCurrentLockInfo to NOT use ITCIterator since "it can't matter"
+there.  Have to stop for nap but going one more time so
+
+BITS OFF
+
+:136]
+[137:
+
+Thu Jul 25 09:03:37 2019 Well so we disabled interrupts around the
+whole dev_write 'kick the itcs' loop, so that it kicks everybody
+before allowing any edge interrupts to run..
+
+..AND NOW LIKE IT ALL WORKS ROCK SOLID NO FAILURES WITH BLOCKING IO ON
+SUCCESSFUL UNCONTESTED LOCK GRABS.
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc# echo -e -n "\0" > /dev/itc/lockevents ; ./spikes/lockstats/lockstats sixgun1
+    ---
+    Trials 10000 in 1.47 sec, 146 usec/trial
+    Succeeded: 10000/100%, failed: 0/0% 
+    Spins: 0 max, 0.000000 avg
+    root@beaglebone:/home/t2/T2-12/lkms/itc# 
+
+Doing 'event1' is a lot slower:
+
+    root@beaglebone:/home/t2/T2-12/lkms/itc#  ./spikes/lockstats/lockstats event1
+    ---
+    Trials 10000 in 2.48 sec, 248 usec/trial
+    Succeeded: 10000/100%, failed: 0/0% 
+    root@beaglebone:/home/t2/T2-12/lkms/itc# 
+
+but that's because each trial is a lock grab followed by a
+release-all, so it's basically twice the work per trial compared to
+sixgun.
+
+We still have to deal with contested locks and all sorts of robustness
+issues, but this is a major landmark.  So it's time for a nap.
+
+BITS OFF
+
+and pushing to the grid.
+
+:137]
+[138:
+
+Thu Jul 25 11:47:03 2019 Well so I didn't nap.  Now that stuff is
+seriously starting to work we need to bend this towards mfmt2's use.
+Could we modify the blocking write so that it succeeds if the desired
+lockset is set and returns an error otherwise?  So no readback would
+be necessary to proceed?  Let's look into it.  What kind of errors
+might we give?
+
+ - If userspace sets either of the top two bits of command: -EINVAL Invalid argument
+
+ - If userspace tries to take an unready lock: -ENXIO No such device or address
+
+ - If userspace tries to take a given lock: -EBUSY Device or resource busy
+
+ - If no unsettled locks but take doesn't match request: -EBADE Invalid exchange
+
+ - If timeout with unsettled locks: -ETIME Timer expired
+
+[139:
+
+Thu Jul 25 12:07:40 2019 Well, that could be.  Can we detect all those conditions?
+
+:139]
+
+:138]
+[140:
+
+Thu Jul 25 12:29:13 2019 So we're struggling because the settlement
+system doesn't distinguish given from taken.  We could distinguish
+them but then the settlement update system would have to set or clear
+multiple bits rather than just one and one.
+
+Why don't we just keep a byte vector of all states and update bits in
+there, then derive settlement states on demand by ORing the
+appropriate state bytes?  Could we maybe auto-build the OR expressions
+from the RS data?
+
+(Also, could we put all the rules in one monster macro, like
+DIRDATAMACRO() and LETSPECMACRO() does now?  Wouldn't that let us, in
+effect, do the 'nested expansions' -- like by-dir within by-state --
+that #including RULES.h doesn't do (because you can't #include from
+inside a macro)?)
+
+:140]
+[141:
+
+Thu Jul 25 14:53:45 2019 OK so it seems like we have done
+ALLRULESMACRO() and that's working as far as it goes.[142:
+
+Thu Jul 25 17:41:28 2019 Well it took more handwork then I wanted, but
+the whole settlement business is turned inside-out and building
+again.  It can't possibly be all right, but nothing to do for it but
+
+BITS OFF
+
+:142]
+
+:141]
+[143:
+
+Fri Jul 26 00:55:44 2019 OK been shamefully hacking without notes
+here.  Tweaked stuff.  Added /sys/class/itc/statistics.  Changed name
+of sGIVE to sGIVEN.  Just reordered RULES.h to bring TAKE, GIVE, IDLE
+closer to the front so itc/statistics is a bit easier to parse.
+Suspecting that will be fine.. but
+
+BITS OFF
+
+:143]
+[144:
+
+Fri Jul 26 01:58:54 2019 v1.1: More tweaks, lockstat reorg to trust
+write status instead of reading...
+
+BITS OFF
+
+:144]
+[145:
+
+Fri Jul 26 03:29:39 2019 Well, more tweaks and fixes -- in particular,
+realizing that errno gets set by magic somewhere between my module and
+userspace, and things are starting to look plausible.  Going to push
+this to the grid and start playing more seriously with contested
+locks..
+
+BITS OFF
+
+:145]
