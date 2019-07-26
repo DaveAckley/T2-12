@@ -1301,7 +1301,8 @@ sub processPacket {
         declareNgbDirAlive($srcDir);
 
         if ($bytes[2] eq "A") {
-            printf("Rcvd 'A' from %d uniq %02x\n",$srcDir,ord($bytes[3]));
+            # Handle old len3 type A packets
+            DPPKT(sprintf("Rcvd 'A' from %d uniq %02x\n",$srcDir,defined($bytes[3]) ? ord($bytes[3]) : 0));
             return;
         }
         if ($bytes[2] eq "F") {
