@@ -32,7 +32,7 @@ test:	FORCE
 	$(MAKE) -C tests
 endif
 
-TAR_SWITCHES+=--exclude=tools --exclude=*~ --exclude=.git --exclude=doc/internal --exclude=spikes --exclude-backups
+TAR_SWITCHES+=--exclude=tools --exclude=*~ --exclude=.git --exclude=doc/internal --exclude-backups
 TAR_SWITCHES+=--exclude=extra
 
 TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
