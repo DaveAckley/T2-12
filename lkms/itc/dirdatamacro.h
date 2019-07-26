@@ -1,0 +1,41 @@
+#ifndef DIRDATAMACRO_H
+#define DIRDATAMACRO_H
+
+//// THE DIRECTION-VS-PIN DATA
+
+/* DIRDATAMACRO() holds the ITC-to-GPIO mapping.  Each ITC is either a
+   fred or a ginger, and uses four gpios, labeled IRQLK, IGRLK, ORQLK,
+   and OGRLK.*/
+
+#define DIRDATAMACRO()                  \
+/*  DIR FRED IRQLK IGRLK ORQLK OGRLK */ \
+  XX(ET,   1,  69,   68,   66,   67)	\
+  XX(SE,   1,  26,   27,   45,   23)	\
+  XX(SW,   0,  61,   10,   65,   22)	\
+  XX(WT,   0,  81,    8,   11,    9)	\
+  XX(NW,   0,  79,   60,   80,   78)	\
+  XX(NE,   1,  49,   14,   50,   51) 
+
+#define XX(DC,fr,p1,p2,p3,p4) DIR_##DC,
+enum { DIRDATAMACRO() DIR_MIN = DIR_ET, DIR_MAX = DIR_NE, DIR_COUNT };
+#undef XX
+
+//// TYPES, CONSTANTS, DATA STRUCTURES
+enum { PIN_MIN = 0, PIN_IRQLK = PIN_MIN, PIN_IGRLK, PIN_ORQLK, PIN_OGRLK, PIN_MAX = PIN_OGRLK, PIN_COUNT };
+
+/* Define the state constants here so STATE_COUNT available to all */
+
+/* GENERATE STATE CONSTANTS */
+#include "RULES.h"
+#define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
+#define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
+#define RS(forState,ef,output,...) forState,
+enum {
+  ALLRULESMACRO()
+  STATE_COUNT
+};
+#undef RS
+#undef RSE
+#undef RSN
+
+#endif /*DIRDATAMACRO_H*/

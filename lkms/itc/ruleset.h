@@ -8,6 +8,14 @@ typedef struct _rule {
   u8 endmarker;
 } Rule;
 
+typedef enum settlementstate {
+  LOCK_UNREADY,    /* for sRESET, sSYNC01, sFAILED, sWAIT */
+  LOCK_AVAILABLE,  /* for sIDLE */
+  LOCK_UNSETTLED,  /* for sTAKE, sRELEASE, sRACE */
+  LOCK_SETTLED,    /* for sTAKEN, sGIVEN */
+  LOCK_RSRVD1
+} SettlementState;
+
 #define RULE_BITS(irqlk,igrlk,isfred,try,free,timeout) (	\
   ((irqlk)<<0) | \
   ((igrlk)<<1) | \
