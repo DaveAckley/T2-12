@@ -1,4 +1,4 @@
-{60}  -*- text -*- 
+{62}  -*- text -*- 
 [0:
 
 Thu Jul  4 16:22:47 2019 OK we're investing more time into debug
@@ -1287,3 +1287,29 @@ just having it sit in TGZS on the host..
 :59]
 
 :58]
+[60:
+
+Sun Jul  7 10:48:03 2019 OK, did a commit, that took a long time what
+with writing a non-trivial-if-not-great commit message for our new
+little trace point programming language.
+
+So anyway, it appears it's time to tear down the keymaster and have a
+close look at its NW ITC, at least.
+
+Powering down.
+
+:60]
+[61:
+
+Sun Jul  7 11:34:43 2019 OK, well, we moved the keymaster BBG+LCD from
+E15 to (a basically new and unused) E224, and indeed, indeed indeed
+indeed, all is fixed.  A software bug masking a hardware bug, and on
+the one hand, two+ days are gone, while on the other hand, we now have
+a much higher-res and more controllable packet tracing system in
+place.
+
+Time to build the cdmd-X.mfzs one more time, but actually released
+them this time, and then plug the keymaster back into the grid and see
+what's what.
+
+:61]
