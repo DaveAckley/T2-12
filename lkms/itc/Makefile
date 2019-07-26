@@ -1,6 +1,6 @@
 TARGET=itc
 obj-m+= $(TARGET).o
-itc-objs+=itcinit.o itcimpl.o
+#itc-objs+=itcinit.o itcimpl.o
 
 MODULES_DIR:=/lib/modules/$(shell uname -r)
 MODULES_BUILD_DIR:=$(MODULES_DIR)/build
@@ -10,7 +10,7 @@ ETC_MODULES_FILE:=/etc/modules-load.d/t2_12_modules.conf
 
 all:	itc.ko testitc
 
-itc.ko:	itcinit.c itcimpl.c $(wildcard *.h) Makefile
+itc.ko:	itc.c itc.c $(wildcard *.h) Makefile
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(CURDIR) modules
 
 testitc:	testitc.c Makefile
@@ -30,7 +30,7 @@ install:	install_files insmod
 
 install_files:	all
 	make INSTALL_MOD_DIR=itc -C /lib/modules/4.4.54-ti-r93/build/ M=$(CURDIR) modules_install
-	test -f $(ETC_MODULES_FILE) || \
+	@test -f $(ETC_MODULES_FILE) || \
 	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
 	grep itc $(ETC_MODULES_FILE) || echo itc >> $(ETC_MODULES_FILE)
 	depmod
