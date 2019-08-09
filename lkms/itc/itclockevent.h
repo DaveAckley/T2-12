@@ -18,7 +18,7 @@ enum {
   LET_FUNC_SPEC=3,   /* special event: arg=eventcode:7 */
 };
 #define LETSPECMACRO() \
-  XX(QGAP,"gap in event queue")  \
+  XX(QGAP,"event queue gap")  \
   XX(URTO,"user request timeout")  \
   XX(URDO,"user request done")  \
   XX(ACTO,"last active timeout")  \
@@ -31,7 +31,7 @@ enum {
   XX(RRTS,"read returns success")  \
   XX(RRTE,"read returns error")  \
   XX(RFIC,"refreshed inputs changed")  \
-  XX(NOUN,"no unsettled locks remain")  \
+  XX(ALST,"all locks settled")  \
 
 enum {
 #define XX(sym,str) LET_SPEC_##sym,

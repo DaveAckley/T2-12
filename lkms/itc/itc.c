@@ -560,25 +560,24 @@ void make_reports(void)
 }
 
 static inline void userRequestDone(s32 status) {
-  ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_URDO));
-  S.userRequestActive = 0;
-  S.userRequestStatus = status;
-  wake_up_interruptible(&S.userWaitQ);
+  if (S.userRequestActive) {
+    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_URDO));
+    S.userRequestActive = 0;
+    S.userRequestStatus = status;
+    wake_up_interruptible(&S.userWaitQ);
+  }
 }
 
 void setState(ITCInfo * itc, ITCState newState) {
   if (itc->state != newState) {
+
+    dirsInState[itc->state] &= ~(1<<itc->direction); /*clear previous state*/
+    itc->state = newState;
+    dirsInState[itc->state] |= 1<<itc->direction; /*set current state*/
+    ++itc->enteredCount[newState];
+
     ADD_LOCK_EVENT(makeStateLockEvent(itc->direction,newState));
-#ifdef REPORT_LOCK_STATE_CHANGES
-    printk(KERN_INFO "ITC %s: %s->%s o%d%d i%d%d\n",
-           itcDirName(itc->direction),
-           getStateName(itc->state),
-           getStateName(newState),
-           itc->pinStates[PIN_ORQLK],
-           itc->pinStates[PIN_OGRLK],
-           itc->pinStates[PIN_IRQLK],
-           itc->pinStates[PIN_IGRLK]);
-#endif
+
     {
       const BitValue newval = (outputsForState[newState]>>1)&1;
       if (itc->pinStates[PIN_ORQLK] != newval) {
@@ -595,14 +594,9 @@ void setState(ITCInfo * itc, ITCState newState) {
     }
 
     itc->lastActive = S.moduleLastActive = jiffies;
-    ++itc->enteredCount[newState];
 
-    dirsInState[itc->state] &= ~(1<<itc->direction); /*clear previous state*/
-    itc->state = newState;
-    dirsInState[itc->state] |= 1<<itc->direction; /*set current state*/
-    
     if (0==getSettlementValue(LOCK_UNSETTLED)) {
-      ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_NOUN));
+      ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_ALST));
       userRequestDone(S.userLockset);
     }
   }

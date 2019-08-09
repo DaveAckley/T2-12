@@ -197,7 +197,7 @@ int dumpevents(void) {
         statename = statenames[state];
       else
         statename = "??";
-      snprintf(eventbuf,100,"%s %s",dirname,statename);
+      snprintf(eventbuf,100,"     [%s %s]",dirname,statename);
     } else if (isPinLockEvent(event)) {
       __u32 dir, pin, val;
       const char * dirname;
@@ -207,9 +207,9 @@ int dumpevents(void) {
       dirname = getDirName(dir);
       pinname = getPinName(pin);
       if (isInput(pin)) {
-        snprintf(eventbuf,100,"         %s => %s_%s",val?"+":"-",dirname,pinname);
+        snprintf(eventbuf,100," %s%s_%s",val?"+":"-",dirname,pinname);
       } else {
-        snprintf(eventbuf,100,"         %s_%s => %s",dirname,pinname,val?"+":"-");
+        snprintf(eventbuf,100,"         %s_%s%s",dirname,pinname,val?"+":"-");
       }
     } else if (isUserLockEvent(event)) {
       __u32 lockset, current;

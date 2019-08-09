@@ -74,7 +74,7 @@ u8 eventSets[] = {
   ,(1<<DIR_NE)|(1<<DIR_ET)
 };
 typedef enum { THREES, SIXGUNS, EVENTS } GenType;
-int doEvents(int iterations) {
+int doEvents(int iterations, unsigned usecdelay) {
   int fd = openOrDie();
   int i;
   int ret;
@@ -96,6 +96,12 @@ int doEvents(int iterations) {
     case ETIME: ++timeoutRequest; break;
     default: 
       ++failedRequest; break;
+    }
+    if (usecdelay) {
+      unsigned usec = random()%(2*usecdelay);
+      struct timespec time;
+      time.tv_nsec = usec*1000;
+      nanosleep(&time,0);
     }
     ret = writeCommand(fd,'\0');
     if (ret < 0) {
@@ -200,8 +206,12 @@ int main(int argc, char **argv) {
   if (argc == 2 && !strcmp("rand10",argv[1])) return speed1(10,true,THREES);
   if (argc == 2 && !strcmp("sixgun1",argv[1])) return speed1(10000,true,SIXGUNS);
   if (argc == 2 && !strcmp("sixgun10",argv[1])) return speed1(10,true,SIXGUNS);
-  if (argc == 2 && !strcmp("event1",argv[1])) return doEvents(10000);
-  if (argc == 2 && !strcmp("event10",argv[1])) return doEvents(10);
+  if (argc == 2 && !strcmp("event1",argv[1])) return doEvents(10000,0);
+  if (argc == 2 && !strcmp("event10",argv[1])) return doEvents(10,0);
+  if (argc == 2 && !strcmp("evu10",argv[1])) return doEvents(10000,10);
+  if (argc == 2 && !strcmp("evu100",argv[1])) return doEvents(10000,100);
+  if (argc == 2 && !strcmp("evu1000",argv[1])) return doEvents(10000,1000);
+
   return 0;
 }
 
