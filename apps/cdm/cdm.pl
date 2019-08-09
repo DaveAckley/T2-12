@@ -38,7 +38,7 @@ my $DEBUG_FLAGS = $DEBUG_FLAG_STANDARD;
 # Hardcode deletions only, for now
 my %triggerMFZs = (
     'cdm-deleteds.mfz' => \&updateDeleteds,
-    'cdmd-MFM.mfz' => \&installCDMD,
+    'cdmd-MFM.mfz' => \&installCDMDMFM,
     'cdmd-T2-12.mfz' => \&installCDMDT2_12,
 #DEPRECATED    'cdmd-T2-GFB.mfz' => \&installCDMDGFB,
 #DEPRECATED    'cdmd-t2.mfz' => \&installOverlay,
@@ -411,9 +411,21 @@ sub runCmdWithSync {
 
 sub installCDMDT2_12 {
     return unless defined installCDMD(@_);
+    print "INSTALLING T2-12\n";
     return unless runCmdWithSync("cd /home/t2/T2-12 && make install","T2-12: make install: ERROR");
     print "EXITING TO RESTART\n";
     exit 17;
+}
+
+sub installCDMDMFM {
+    return unless defined installCDMD(@_);
+    my $mfmt2pid = `ps -C mfmt2 -o pid=`;
+    chomp $mfmt2pid;
+    if ($mfmt2pid =~ /^[0-9]+$/) {
+        print "KILLING mfmt2($mfmt2pid)\n";
+        kill 'INT', $mfmt2pid;
+    }
+    return;
 }
 
 sub installCDMD { # return undef unless install actually happened
