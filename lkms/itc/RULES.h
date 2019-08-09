@@ -40,6 +40,19 @@
       R_INP(i00,sIDLE),     /* we're both just idle */                  \
       R_END(sFAILED))       /* they must have reset, die with them */   \
                                                                         \
+  RSN(sTAKE,o10,LOCK_UNSETTLED,  /** We're going for lock */            \
+      R_ITM(_,sFAILED),     /* both sides fail if timeout waiting for lock */ \
+      R_INP(i00,sTAKE),	    /* we're still hoping for the lock */       \
+      R_INP(i01,sTAKEN),    /* we got the lock */                       \
+      R_INP(i10,sRACE),     /* we both reached for the gun */           \
+      R_END(sFAILED))       /* else punt */                             \
+                                                                        \
+  RSN(sRELEASE,o00,LOCK_UNSETTLED,  /** We're freeing the lock */       \
+      R_ITM(_,sFAILED),     /* fail if timeout waiting for ack */       \
+      R_INP(i01,sRELEASE),  /* waiting for them to ack */               \
+      R_INP(i00,sIDLE),     /* we go idle when they agree */            \
+      R_END(sFAILED))       /* uh-oh the lock broke under us */         \
+                                                                        \
   RSN(sSYNC01,o01,LOCK_UNREADY, /** Out of reset, looking for i01 */    \
       R_ITM(G,sWAIT),       /* ginger goes to special state if timeout waiting for fred */ \
       R_ITC(G,i11,sSYNC01), /* ginger waits while fred's in reset */    \
@@ -53,21 +66,8 @@
       R_INP(i_0,sFAILED),   /* Go fail if any sign of life */           \
       R_END(sWAIT))         /* Otherwise keep waiting (until magic kicks in) */ \
                                                                         \
-  RSN(sTAKE,o10,LOCK_UNSETTLED,  /** We're going for lock */            \
-      R_ITM(_,sFAILED),     /* both sides fail if timeout waiting for lock */ \
-      R_INP(i00,sTAKE),	    /* we're still hoping for the lock */       \
-      R_INP(i01,sTAKEN),    /* we got the lock */                       \
-      R_INP(i10,sRACE),     /* we both reached for the gun */           \
-      R_END(sFAILED))       /* else punt */                             \
-                                                                        \
   RSE(sRACE,o11,LOCK_UNSETTLED,  /** A race has been detected; do magic */ \
       R_END(sRACE))         /* go try again */                          \
-                                                                        \
-  RSN(sRELEASE,o00,LOCK_UNSETTLED,  /** We're freeing the lock */       \
-      R_ITM(_,sFAILED),     /* fail if timeout waiting for ack */       \
-      R_INP(i01,sRELEASE),  /* waiting for them to ack */               \
-      R_INP(i00,sIDLE),     /* we go idle when they agree */            \
-      R_END(sFAILED))       /* uh-oh the lock broke under us */         \
                                                                         \
   RSE(sFAILED,o11,LOCK_UNREADY, /** Something went wrong, reset required  */ \
       R_INP(i11,sRESET),    /* i11, you bet: It's the only way to get */ \
