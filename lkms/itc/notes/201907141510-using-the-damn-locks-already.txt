@@ -1,4 +1,4 @@
-{146}  -*- text -*-
+{149}  -*- text -*-
 [0:
 
 Sun Jul 14 15:11:12 2019 OK so we have 'lots' (~dozen) of tiles built
@@ -2342,3 +2342,102 @@ locks..
 BITS OFF
 
 :145]
+[146:
+
+Fri Jul 26 04:30:27 2019 Well, we've done a few anecdotal
+event1-vs-event1 intertile lockdowns, with the following observations
+so far:
+
+ - The universe didn't end.  No kernel panics or userspace segfaults.
+
+ - The time/trial went up -- like 350-600 usec/trial -- 
+
+:146]
+[147:
+
+Fri Jul 26 10:12:41 2019 Here's a kind of fun sequence:
+
+    2879 0.169363sec +252usec 184:WBKU: blocking write from user
+    2880 0.169364sec   +1usec 100:User lockset=00 __ __ __ __ __ __
+
+Userspace wants to release all locks..
+
+    2881 0.169366sec   +1usec 119:Curr lockset=0c __ __ SW WT __ __
+
+Meaning SW and WT.
+
+    2882 0.169368sec   +2usec 025:     [SW sRELEASE]
+    2883 0.169368sec   +0usec 0a8:         SW_ORQLK-
+    2884 0.169376sec   +7usec 035:     [WT sRELEASE]
+    2885 0.169376sec   +0usec 0b8:         WT_ORQLK-
+
+They move to sRELEASE and drop their ORQLK
+
+    2886 0.169399sec  +23usec 0b4: -WT_IGRLK
+    2887 0.169400sec   +1usec 033:     [WT sIDLE]
+    2888 0.169406sec   +6usec 0a4: -SW_IGRLK
+    2889 0.169407sec   +0usec 023:     [SW sIDLE]
+
+And as the neighbors respond, they move to sIDLE.
+
+    2890 0.169407sec   +0usec 18d:ALST: all locks settled
+    2891 0.169408sec   +0usec 182:URDO: user request done
+
+And the operation is done, though userspace doesn't know it yet.
+
+    2892 0.169422sec  +14usec 082: +ET_IRQLK
+
+Then the ET neighbor wants the lock
+
+    2893 0.169423sec   +0usec 002:     [ET sGIVEN]
+    2894 0.169423sec   +0usec 08e:         ET_OGRLK+
+
+So we move to sGIVEN and raise OGRLK to grant it to them.
+
+    2895 0.169424sec   +1usec 18d:ALST: all locks settled
+
+And once again all locks are in settled states.
+
+    2896 0.169431sec   +6usec 188:WRTS: write returns success
+
+Then the earlier write (dropping all locks) succeeds for userspace
+
+    2897 0.169436sec   +5usec 184:WBKU: blocking write from user
+    2898 0.169437sec   +1usec 106:User lockset=03 ET SE __ __ __ __
+
+Userspace soon tries another grab.  This time it wants ET and SE.
+
+    2899 0.169438sec   +1usec 189:WRTE: write returns error
+
+But ET was given 14usec ago, so this attempt fails fast.
+
+    2900 0.169497sec  +59usec 080: -ET_IRQLK
+
+Eventually ET drops the lock
+
+    2901 0.169498sec   +1usec 003:     [ET sIDLE]
+    2902 0.169499sec   +0usec 08c:         ET_OGRLK-
+
+And we return to sIDLE
+
+    2903 0.169500sec   +1usec 18d:ALST: all locks settled
+    2904 0.169561sec  +61usec 082: +ET_IRQLK
+
+But then it grabs it again.
+
+    2905 0.169563sec   +1usec 002:     [ET sGIVEN]
+    2906 0.169563sec   +0usec 08e:         ET_OGRLK+
+    2907 0.169564sec   +1usec 18d:ALST: all locks settled
+
+Til the cows come home.
+
+:147]
+[148:
+
+Fri Jul 26 10:56:06 2019 So aren't we at a point where we could
+migrate a version of lockstat's guts into mfmt2?  Just for starters?
+So that it could be trying to grab locks and counting statistics --
+and that way we'd see lots of six-way lock interactions rather than
+these puny two-ways that I'm setting up by hand.
+
+:148]
