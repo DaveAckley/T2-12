@@ -1,0 +1,11 @@
+/** Watson.  An element that goes west.
+  \symbol Wa
+  \color #22c
+*/
+element Watson {
+  EventWindow ew;
+  Void behave() {
+     if (ew.isLive(1)) ew.swap(1,0);
+  }
+}
+
