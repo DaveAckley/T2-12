@@ -36,7 +36,7 @@ void LockSit::ReadITCStatus()
   int ret;
   ret = read(itcfd,itcbuffer,ITC_READ_COUNT);
   dieNeg(ret,"read");
-  dieNeg(ret-6,"amount");
+  dieNeg(ret-ITC_READ_COUNT,"amount");
 }
 
 void LockSit::CheckITCStatus()
@@ -57,11 +57,10 @@ void LockSit::DrawITCStatus()
 int ITCLock::StateFromStatus(char stat[ITC_READ_COUNT], unsigned dir)
 {
   unsigned bit = 1<<dir;
-  if (stat[0]&bit) return LOCK_TAKEN;
+  if (stat[0]&bit) return LOCK_RESET;
+  if (stat[1]&bit) return LOCK_TAKEN;
   if (stat[2]&bit) return LOCK_GIVEN;
   if (stat[3]&bit) return LOCK_IDLE;
-  if (stat[4]&bit) return LOCK_FAILED;
-  if (stat[5]&bit) return LOCK_RESET;
   return LOCK_UNSETTLED;
 }
 

@@ -12,7 +12,7 @@ enum LockState { LOCK_MIN=0, LOCK_IDLE=LOCK_MIN, LOCK_TAKEN, LOCK_GIVEN, LOCK_RE
 
 enum { LOCK_STATE_COUNT = LOCK_MAX+1 };
 
-enum { ITC_READ_COUNT = 6 };
+enum { ITC_READ_COUNT = 10 };
 
 
 #define DEVICE_NAME "/dev/itc/locks"
