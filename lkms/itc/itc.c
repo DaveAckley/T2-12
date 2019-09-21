@@ -194,7 +194,7 @@ static const char * dirnames[DIR_COUNT] = { DIRDATAMACRO() };
 
 static void initLockEventState(ITCLockEventState* lec) {
   lec->mStartTime = 0;
-  lec->mShiftDistance = 9; /* divide by 512 -> ~half usec resolution */
+  lec->mShiftDistance = 10; /* divide by 1024 -> ~usec resolution */
   INIT_KFIFO(lec->mEvents);
   mutex_init(&lec->mLockEventReadMutex);
   printk(KERN_INFO "ILES kfifo_len(%d) kfifo_avail(%d)\n",
@@ -735,8 +735,8 @@ static int itcThreadRunner(void *arg) {
   itcIteratorInitialize(&idxItr,5000); // init with rare shuffling
 
   printk(KERN_INFO "itcThreadRunner: Started\n");
+  set_current_state(TASK_RUNNING);
   while(!kthread_should_stop()) {    // Returns true when kthread_stop() is called
-    set_current_state(TASK_RUNNING);
 
     if (S.userRequestActive && time_before(S.userRequestTime + jiffyTimeout/10, jiffies)) {
       ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_URTO)); /*timeout*/
@@ -758,7 +758,8 @@ static int itcThreadRunner(void *arg) {
 
     make_reports();
     set_current_state(TASK_INTERRUPTIBLE);
-    msleep(30);
+    schedule_timeout(jiffyTimeout/2);   /* in TASK_RUNNING again upon return */
+    //msleep(30);
   }
   printk(KERN_INFO "itcThreadRunner: Stopping by request\n");
   return 0;
@@ -1214,7 +1215,7 @@ static int __init itc_init(void)
   printk(KERN_INFO "ITC: Device class created correctly\n"); // Made it! device was initialized
 
   //// 5: Thread start
-  S.itcThreadRunnerTask = kthread_run(itcThreadRunner, NULL, "ITC_lock_timer");  
+  S.itcThreadRunnerTask = kthread_run(itcThreadRunner, NULL, "ITC_LockTimr");  
   if(IS_ERR(S.itcThreadRunnerTask)){                                     
     printk(KERN_ALERT "ITC: Thread creation failed\n");
     ret = PTR_ERR(S.itcThreadRunnerTask);
