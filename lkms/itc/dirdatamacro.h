@@ -7,14 +7,14 @@
    fred or a ginger, and uses four gpios, labeled IRQLK, IGRLK, ORQLK,
    and OGRLK.*/
 
-#define DIRDATAMACRO()                  \
-/*  DIR FRED IRQLK IGRLK ORQLK OGRLK */ \
-  XX(ET,   1,  69,   68,   66,   67)	\
-  XX(SE,   1,  26,   27,   45,   23)	\
-  XX(SW,   0,  61,   10,   65,   22)	\
-  XX(WT,   0,  81,    8,   11,    9)	\
-  XX(NW,   0,  79,   60,   80,   78)	\
-  XX(NE,   1,  49,   14,   50,   51) 
+#define DIRDATAMACRO()                           \
+/*           DIR FRED IRQLK IGRLK ORQLK OGRLK */ \
+/*0 0x01*/ XX(ET,   1,  69,   68,   66,   67)    \
+/*1 0x02*/ XX(SE,   1,  26,   27,   45,   23)    \
+/*2 0x04*/ XX(SW,   0,  61,   10,   65,   22)    \
+/*3 0x08*/ XX(WT,   0,  81,    8,   11,    9)    \
+/*4 0x10*/ XX(NW,   0,  79,   60,   80,   78)    \
+/*5 0x20*/ XX(NE,   1,  49,   14,   50,   51) 
 
 #define XX(DC,fr,p1,p2,p3,p4) DIR_##DC,
 enum { DIRDATAMACRO() DIR_MIN = DIR_ET, DIR_MAX = DIR_NE, DIR_COUNT };
