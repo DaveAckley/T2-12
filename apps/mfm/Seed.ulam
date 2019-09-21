@@ -1,0 +1,14 @@
+/** Fast-spreading seed for DReg.
+    \symbol SD
+    \color #f00
+ */
+element Seed {
+  Int(3) mCount;
+  Void behave() {
+    EventWindow ew;
+    if (mCount++ == mCount.maxof) ew[0] = DReg.instanceof;
+    else
+      for (EventWindow.SiteNum i = 37; i <= 40u; ++i)
+        if (ew[i] is Empty) ew[i] = ew[0];
+  }
+}
