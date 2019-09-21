@@ -18,6 +18,7 @@
 
 
 #include "pin_info_maps.h"
+#include "itcpktevent.h"          /* Get pkt event struct */
   
 typedef enum packet_header_bits {
   PKT_HDR_BITMASK_STANDARD  = 0x80,
@@ -33,15 +34,30 @@ typedef enum packet_header_bits {
   PKT_HDR_BITMASK_LOCAL_TYPE= 0x1f
 } PacketHeaderBits;
 
+/////////TRACING SUPPORT
+
+#define PKT_EVENT_KFIFO_SIZE (1<<11)   /* Guarantee space for 2K ITCPktEvents (8KB total == sizeof(ITCPktEvent)*2048) */
+typedef STRUCT_KFIFO(ITCPktEvent, PKT_EVENT_KFIFO_SIZE) ITCPktEventFIFO;
+
+typedef struct itcpkteventstate {
+  ITCPktEventFIFO mEvents;
+  u64 mStartTime;
+  u8 mShiftDistance;
+  struct mutex mPktEventReadMutex;	///< For read ops on kfifo
+} ITCPktEventState;
+
 #define PRU_MINORS 2   /* low-level access to PRU0, PRU1*/
 #define PKT_MINORS 2   /* processed access to itc, mfm */
+#define EVT_MINORS 1   /* access to pktevt state */
 
-#define MINOR_DEVICES (PRU_MINORS + PKT_MINORS) 
+#define MINOR_DEVICES (PRU_MINORS + PKT_MINORS + EVT_MINORS) 
 #define PRU_MINOR_PRU0 0
 #define PRU_MINOR_PRU1 1
 
 #define PKT_MINOR_ITC 2
 #define PKT_MINOR_MFM 3
+
+#define PKT_MINOR_EVT 4
 
 #define RPMSG_BUF_SIZE 512
 
@@ -136,6 +152,12 @@ typedef struct {
   ITCPacketBuffer mBulkOB;     /* background pkts from userspace awaiting rpmsg to PRU */
 } ITCPRUDeviceState;
 
+/* per 'event' device - /dev/itc/pktevt */
+typedef struct {
+  ITCCharDeviceState mCDevState; /* char device state must be first! */
+  ITCPktEventState mPktEvents;  /* packet events state */
+} ITCEvtDeviceState;
+
 /* per 'processed' packet device - /dev/itc/{packets,mfm} */
 typedef struct {
   ITCCharDeviceState mCDevState; /* char device state must be first! */
@@ -170,6 +192,7 @@ typedef struct {
 
   ITCPRUDeviceState * (mPRUDeviceState[PRU_MINORS]); /* per-PRU-device state for minors 0,1 */
   ITCPktDeviceState * (mPktDeviceState[PKT_MINORS]); /* per-packet-device state for minors 2,3 */
+  ITCEvtDeviceState * (mEvtDeviceState[EVT_MINORS]); /* per-event-device state for minor 4 */
 
   struct task_struct * mShipOBPktTask;     /* kthread to push packets to PRUs */
   wait_queue_head_t mOBWaitQueue;          /* wait queue for mShipOBPktTask */

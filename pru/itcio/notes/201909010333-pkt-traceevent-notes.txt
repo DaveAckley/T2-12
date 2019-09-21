@@ -1,0 +1,626 @@
+{47}  -*- text -*- 
+[0:
+
+Sun Sep  1 03:33:34 2019 OK, well, the packet tracing language was
+good for debugging, but spamming syslog at high speed isn't super
+optimal for performance evaluation.  The kfifo+nanos-based lock event
+tracing stuff is a lot nicer.  And, considering the lock stuff is
+showing us like this:
+
+  ..stuff about taking NW lock..
+    0060 1.474277sec   +1usec 012:     [SE sGIVEN]
+    0061 1.474278sec   +1usec 09e:         SE_OGRLK+
+ ..microseconds here..
+    0062 1.474298sec  +19usec 0c6: +NW_IGRLK
+ ..microseconds there..
+    0063 1.474299sec   +1usec 041:     [NW sTAKEN]
+    0064 1.474300sec   +1usec 18d:ALST: all locks settled
+    0065 1.474301sec   +1usec 182:URDO: user request done
+    0066 1.474323sec  +22usec 188:WRTS: write returns success
+ ..return to mfmt2..
+    0067 2.196728sec +722msec 184:WBKU: blocking write from user
+
+ ..WHAT DAH FOG?  HOLDING THE LOCK FOR MOST OF A FULL SECOND?
+
+    0068 2.196733sec   +5usec 100:User lockset=00 __ __ __ __ __ __
+    0069 2.196734sec   +1usec 121:Curr lockset=10 __ __ __ __ NW __
+    0070 2.196747sec  +13usec 045:     [NW sRELEASE]
+    0071 2.196748sec   +1usec 0c8:         NW_ORQLK-
+ ..stuff about releasing NW lock..
+
+we really do need to drill into cache update processing, with
+similarly accurate timing.
+
+So what's a little dev plan to get us that?  On the lock side, it's
+implemented with:
+
+ /dev/itc/lockevents - READ: get events; WRITE: reset fifo and start time
+ /sys/class/itc/trace_start_time - READ: get start time in nanos
+ /sys/class/itc/shift - READ/WRITE: get/set time resolution bit shift
+
+So analogous class attrs are easy, but doing like /dev/itc/pktevents
+means another minor which is somewhat trickier in itc_pkt.c land, yes?
+[1:
+
+Sun Sep  1 05:15:35 2019 Well seems maybe not so bad.
+
+TODO
+
+[3: Sun Sep  1 09:48:50 2019 Well still in progress but
+DONE :3] - Draft minor 4 for pktevents
+
+[9: Mon Sep  2 01:45:37 2019 Well, starting to run out of XXXs here..
+DONE :9] - Make a new itc_pktevents_fops struct patterned on itc_pkt_fops,
+   with itc_pktevt_{open|read|write|release}.
+
+[4: DONE  :4] - Make an itc_pkt_fops_ptrs[5] array, pointing to itc_pkt_fops for
+   the first four entries and itc_pktevents_fops for the last one
+
+[10: DONE  :10] - Change cdev_init at itc_pkt.c:1892 to use
+   itc_pkt_fops_ptrs[minor_obtained] for the second arg
+
+[11: Mon Sep  2 01:50:40 2019
+DONE :11] - Make associated other changes for devname etc in
+   makeITCCharDeviceState.
+
+[5: DONE  :5] - Extend loop at itc_pkt.c:1691 over 0..2
+
+[6: DONE  :6] - Make itcpktevent.h patterned on itclockevent.h
+
+[7: DONE  :7] - Make struct itcpkteventstate in itc_pkt.h
+
+ [2:
+
+Sun Sep  1 05:56:34 2019 Well so that stuff looks awfully executable
+so let's clear the decks here with a quick
+
+BITS OFF
+
+for T2-12 and MFM both.
+
+:2]
+
+
+:1]
+:0]
+[8:
+
+Sun Sep  1 09:49:31 2019 Nap time.
+
+:8]
+[12:
+
+Mon Sep  2 01:51:37 2019 Urgh, we might be facing attempting to build
+this monster for the first time.  No -- we're still not actually
+adding any packet events anywhere.  Let's get on that.[14: Mon Sep  2
+02:42:21 2019 OK, we're theoretically generating the four 'xfr' events
+which are the main business. :14]  And we haven't
+done the class attrs for shift either..[13: Mon Sep  2 01:58:19 2019
+OK made the class attrs.. said that would be easy..  :13]
+
+:12]
+[15:
+
+Mon Sep  2 02:42:57 2019 So I guess now we're really at trying to
+build this mess?
+
+Think so.
+
+:15]
+[16:
+
+Mon Sep  2 02:50:11 2019 OK fixed a bunch of stupid stuff.  Going
+again. [17:
+
+Mon Sep  2 02:51:47 2019 Uh oh it built.
+
+Well alia jacta and all.
+
+BITS OFF
+
+:17]
+
+:16]
+[18:
+
+Mon Sep  2 03:17:38 2019 Well, we have a new device appearing:
+
+    # ls /dev/itc
+    lockevents  locks  mfm	packets  pktevents  pru0  pru1
+                                         ^^^^^^^^
+    # 
+
+and some new class attributes:
+
+    # cat /sys/class/itc_pkt/shift 
+    10
+    # cat /sys/class/itc_pkt/trace_start_time 
+    0
+    # 
+
+[19:
+
+Mon Sep  2 03:27:40 2019 Well, shall we try to read our packet events?
+Everything's stopped so I don't know that there'll be any.[20:
+
+Mon Sep  2 03:28:40 2019 Seems like nothing there so far.  Let's start
+up cdm.pl.
+
+:20]
+
+:19]
+
+:18]
+[21:
+
+Mon Sep  2 03:30:09 2019 OK kernel panic.  Page fault:
+
+    Sep  2 03:29:42 beaglebone kernel: [280877.919860] Unhandled fault: page domain fault (0x01b) at 0x00d1b948
+    Sep  2 03:29:42 beaglebone kernel: [280877.926362] pgd = dc490000
+    Sep  2 03:29:42 beaglebone kernel: [280877.929170] [00d1b948] *pgd=9c6a9831, *pte=8624634f, *ppte=8624683f
+    Sep  2 03:29:42 beaglebone kernel: [280877.935592] Internal error: : 1b [#1] SMP ARM
+    Sep  2 03:29:42 beaglebone kernel: [280877.940059] Modules linked in: itc_pkt(O) virtio_rpmsg_bus pru_rproc pruss pruss_intc itc(O) 8021q garp mrp stp llc joydev fb_ili9486(C) fbtft(C) ads7846 ti_am335x_adc kfifo_buf industrialio ti_am335x_tsc ti_am335x_tscadc pwm_tiecap omap_aes_driver omap_sham omap_rng rng_core spi_omap2_mcspi evdev uio_pdrv_genirq uio usb_f_mass_storage usb_f_acm u_serial usb_f_ecm usb_f_rndis u_ether libcomposite cmemk(O) spidev tieqep pwm_tiehrpwm [last unloaded: pruss]
+    Sep  2 03:29:42 beaglebone kernel: [280877.980926] CPU: 0 PID: 10182 Comm: cdm.pl Tainted: G         C O    4.4.54-ti-r93 #1
+    Sep  2 03:29:42 beaglebone kernel: [280877.988878] Hardware name: Generic AM33XX (Flattened Device Tree)
+    Sep  2 03:29:42 beaglebone kernel: [280877.995087] task: dacd8d00 ti: dc64a000 task.ti: dc64a000
+    Sep  2 03:29:42 beaglebone kernel: [280878.000660] PC is at itc_pkt_read+0x2dc/0x3f0 [itc_pkt]
+    Sep  2 03:29:42 beaglebone kernel: [280878.006010] LR is at kfifo_copy_to_user+0x140/0x16c
+    Sep  2 03:29:42 beaglebone kernel: [280878.011000] pc : [<bf1b7e5c>]    lr : [<c05d2164>]    psr: 800f0013
+
+:21]
+[22:
+
+Mon Sep  2 03:32:38 2019 Hmm for one thing we need to be calling
+ADD_PKT_EVENT_IRQ not ADD_PKT_EVENT..  I doubt that's our current
+issue though.
+
+We should also turn on debugging before trying this stuff.
+
+We are also in trouble now because when we reboot cdm.pl is going to
+come up all by itself, and presumably re-trigger whatever this is.
+[23:
+
+Mon Sep  2 03:40:16 2019 Going to try diking out all the
+ADD_PKT_EVENT* calls and reinstalling, before rebooting.  We shall
+see. 
+
+:23]
+:22]
+[24:
+
+Mon Sep  2 03:45:17 2019 Well, it seems like we rebuilt and insmodded
+without further panic.  Let's push this a bit before rebooting, but
+after
+
+BITS OFF
+
+:24]
+[25:
+
+Mon Sep  2 03:49:55 2019 Well we seem to be 'working' again even
+without a reboot, getting:
+
+    Discarded 0 packet(s) containing 0 byte(s)
+    ET is alive
+    NW is alive
+    WT is alive
+    SE is alive
+    NE is alive
+    SW is alive
+
+and like
+
+    # cat /sys/class/itc_pkt/statistics 
+    dir psan sfan toan blkbsent blkbrcvd blkpsent blkprcvd pribsent pribrcvd pripsent priprcvd
+    0 0 0 0 0 0 0 0 0 0 0 0
+    1 1 0 0 405 237 8 5 0 0 0 0
+    2 1 0 0 820 697 15 13 5 0 1 0
+    3 1 0 0 595 765 11 15 0 0 0 0
+    4 0 0 0 0 0 0 0 0 0 0 0
+    5 1 0 0 237 405 5 8 0 0 0 0
+    6 1 0 0 697 820 13 15 0 0 0 0
+    7 1 0 0 765 595 15 11 0 0 0 0
+    # 
+
+So I'm wondering if I really managed to get the pktevent fifo and
+mutex initted properly.  Can we look at that again?[26:
+
+Mon Sep  2 03:52:32 2019 Well,
+
+    Sep  2 03:44:54 beaglebone kernel: [281790.658861] ZREG making minor 4 (on minor_obtained 0)
+
+shows we got to itc_pkt_probe
+and then to makeITCEvtDeviceState,
+and then to makeITCCharDeviceState, as attested by:
+
+    Sep  2 03:44:54 beaglebone kernel: [281790.664059] ZERGIN: makeITCCharDeviceState(dacb9808,32936,4,dc6a1bd4) for itc!pktevents
+
+and after that we should have gone to initITCPktEventState, but we
+have no log message for that.[27:
+
+Mon Sep  2 04:09:46 2019 Well, added some more logging and made some
+superstitious tweaks.
+
+BITS OFF
+
+:27]
+
+:26]
+
+:25]
+[28:
+
+Mon Sep  2 04:40:33 2019 Geez it looks like STRUCT_KFIFO treats size
+in units of the supplied type, not necessarily bytes.  So my
+intended-to-be 8KB ITCPktEventFIFO (and ITCLockEventFIFO before it) is
+actually 8K*sizeof(ITCPktEvent)==32KB.  Fixing that in itc_pkt.h --
+but haven't fixed itc.h on the lock side yet.
+
+BITS OFF
+
+:28]
+[29:
+
+Mon Sep  2 04:44:54 2019 OK now we see
+
+    Sep  2 04:43:52 beaglebone kernel: [285327.773890] ZERGINI: initITCPktEventState(dc604078/8256), mutex(dc60609c/24), kfifo(dc604078/8212)
+
+so the kfifo size is more like what we were expecting.
+
+[30:
+
+Mon Sep  2 04:52:19 2019 Well, let's push the dikes into addPktEvent,
+to see if the page fault is in the kfifo_avail condition or in
+addPktEvent..  Eeee. We've been doing all this on top of a page-fault 
+panicked kernel..  How long can we expect to survive?
+[31:
+
+Mon Sep  2 04:56:52 2019 Well, didn't immediately die.. suggesting the
+issue was in addPktEvent rather than the surrounding macro..
+[32:
+
+Mon Sep  2 04:59:03 2019 Putting (just) a printk into addPktEvent.[33:
+
+Mon Sep  2 05:07:41 2019 Well, we've narrowed our diking down to just
+the kfifo_put..
+
+BITS OFF
+
+:33]
+
+:32]
+
+:31]
+
+:30]
+
+:29]
+[34:
+
+Mon Sep  2 05:17:25 2019 Well, I don't see any help for it.  I think
+we have to try allowing the kfifo_put again and see what happens.[35:
+
+Mon Sep  2 05:22:39 2019 OK, trying it..[36:
+
+Mon Sep  2 05:23:06 2019 still.. alive.. ?
+
+Did:
+
+    root@beaglebone:/home/t2/T2-12# echo -n -e "\0" > /dev/itc/pktevents ;echo -e -n "\xc2barfoghettimonstorosoity" > /dev/itc/mfm;echo -e -n "\xc2ba" > /dev/itc/mfm;
+    root@beaglebone:/home/t2/T2-12# 
+
+saw
+
+    Sep  2 05:22:25 beaglebone kernel: [287641.152557] KOKO
+    Sep  2 05:22:59 beaglebone kernel: [287675.089171] addPktEvent(dc62c078,0000006a) kfifo dc62c078, now 261959, time = 255
+    Sep  2 05:22:59 beaglebone kernel: [287675.096809] addPktEvent done
+    Sep  2 05:22:59 beaglebone kernel: [287675.111786] addPktEvent(dc62c078,00000052) kfifo dc62c078, now 22877750, time = 22341
+    Sep  2 05:22:59 beaglebone kernel: [287675.119772] addPktEvent done
+    Sep  2 05:22:59 beaglebone kernel: [287675.139464] addPktEvent(dc62c078,000000ea) kfifo dc62c078, now 50557042, time = 49372
+    Sep  2 05:22:59 beaglebone kernel: [287675.147446] addPktEvent done
+    Sep  2 05:22:59 beaglebone kernel: [287675.150586] VALUE0 [PKTYP]ettimonstorosoity
+    Sep  2 05:22:59 beaglebone kernel: [287675.167519] addPktEvent(dc62c078,000000d2) kfifo dc62c078, now 78611625, time = 76769
+    Sep  2 05:22:59 beaglebone kernel: [287675.175501] addPktEvent done
+    Sep  2 05:22:59 beaglebone kernel: [287675.178636] VALUE0 [P30:
+
+which seems plausibleish as far as it goes.
+
+Now let's try reading pktevents.  There should be something in there
+  now..[37:
+
+Mon Sep  2 05:25:29 2019 And there is!
+
+    root@beaglebone:/home/t2/T2-12# cat /dev/itc/pktevents 
+    ÿ  5EW )ÜÀ uá+iroot@beaglebone:/home/t2/T2-12# 
+
+Having apparently fifteen bytes in there seems weird, but it's
+something.. [38:
+
+Mon Sep  2 05:27:06 2019 A second try seems more sensible:
+
+    root@beaglebone:/home/t2/T2-12# echo -n -e "\0" > /dev/itc/pktevents ;echo -e -n "\xc2barfoghettimonstorosoity" > /dev/itc/mfm;
+    root@beaglebone:/home/t2/T2-12# cat /dev/itc/pktevents 
+    ü  5qÍ uroot@beaglebone:/home/t2/T2-12# 
+
+eight bytes for two events, with
+
+    Sep  2 05:26:46 beaglebone kernel: [287902.593116] addPktEvent(dc62c078,0000006a) kfifo dc62c078, now 258500, time = 252
+    Sep  2 05:26:46 beaglebone kernel: [287902.600753] addPktEvent done
+    Sep  2 05:26:46 beaglebone kernel: [287902.646711] addPktEvent(dc62c078,000000ea) kfifo dc62c078, now 53855584, time = 52593
+    Sep  2 05:26:46 beaglebone kernel: [287902.654692] addPktEvent done
+    Sep  2 05:26:46 beaglebone kernel: [287902.657835] VALUE0 [PKTYP]ettimonstorosoity
+
+in the log..
+
+:38]
+
+:37]
+
+:36]
+
+:35]
+
+:34]
+[39:
+
+Mon Sep  2 05:29:13 2019 So we really have no explanation for the
+original page fault we saw.  We don't actually think we even need to
+use ADD_PKT_EVENT_IRQ either, because we're not doing interrupt stuff
+on the itc_pkt side.  
+
+So that's a bit distressing, but at least things seem to be working
+now.. 
+
+:39]
+[40:
+
+Mon Sep  2 06:21:51 2019 So, I guess it's time to try extending our
+userspace tracelock program to know about pkt events..  First thing we
+are going to do is move it from lkms/itc/spikes/tracelock/ to,
+perhaps, apps/t2/systrace/..
+
+:40]
+[41:
+
+Mon Sep  2 14:32:34 2019 OK so after nap we got t2trace roughed
+together enough to see a couple demo packet events, but when we tried
+to run mfmt2 we got the page fault again:
+
+    Sep  2 14:28:27 beaglebone kernel: [320403.070017] addPktEvent(cac6c078,000000d2) kfifo cac6c078, now 74222375, time = 72482
+    Sep  2 14:28:27 beaglebone kernel: [320403.078045] addPktEvent done
+    Sep  2 14:28:27 beaglebone kernel: [320403.081087] VALUE0 [P30:t
+
+Demo packet messages..
+
+    Sep  2 14:28:30 beaglebone kernel: [320405.552673] ITC: itc!lockevents successfully closed
+    Sep  2 14:30:07 beaglebone kernel: [320502.671988] ITC: itc!locks open #1, flags=02, NB=0/4000
+    Sep  2 14:30:13 beaglebone kernel: [320508.992578] addPktEvent(cac6c078,00000059) kfifo cac6c078, now 105996787084, time = 2849191
+    Sep  2 14:30:13 beaglebone kernel: [320509.001217] addPktEvent done
+    Sep  2 14:30:13 beaglebone kernel: [320509.015794] addPktEvent(cac6c078,0000005f) kfifo cac6c078, now 106019993209, time = 2871853
+    Sep  2 14:30:13 beaglebone kernel: [320509.024411] addPktEvent done
+    Sep  2 14:30:13 beaglebone kernel: [320509.042481] addPktEvent(cac6c078,000000d9) kfifo cac6c078, now 106046685084, time = 2897919
+    Sep  2 14:30:13 beaglebone kernel: [320509.051077] addPktEvent done
+    Sep  2 14:30:13 beaglebone kernel: [320509.054115] addPktEvent(cac6c078,0000015d) kfifo cac6c078, now 106058343709, time = 2909305
+    Sep  2 14:30:13 beaglebone kernel: [320509.062685] addPktEvent done
+    Sep  2 14:30:13 beaglebone kernel: [320509.076454] addPktEvent(cac6c078,000000df) kfifo cac6c078, now 106080663500, time = 2931101
+    Sep  2 14:30:13 beaglebone kernel: [320509.085109] addPktEvent done
+    Sep  2 14:30:13 beaglebone kernel: [320509.088242] addPktEvent(cac6c078,0000015b) kfifo cac6c078, now 106092468750, time = 2942630
+    Sep  2 14:30:13 beaglebone kernel: [320509.096763] addPktEvent done
+
+mfmt2 traffic messages?
+
+    Sep  2 14:30:14 beaglebone kernel: [320509.104492] Unhandled fault: page domain fault (0x01b) at 0x001cf750
+    Sep  2 14:30:14 beaglebone kernel: [320509.110993] pgd = dc670000
+    Sep  2 14:30:14 beaglebone kernel: [320509.113800] [001cf750] *pgd=9c501831, *pte=8965134f, *ppte=8965183f
+    Sep  2 14:30:14 beaglebone kernel: [320509.120222] Internal error: : 1b [#2] SMP ARM
+    Sep  2 14:30:14 beaglebone kernel: [320509.124688] Modules linked in: itc_pkt(O) virtio_rpmsg_bus pru_rproc pruss pruss_intc itc(O) 8021q garp mrp stp llc joydev fb_ili9486(C) fbtft(C) ads7846 ti_am335x_adc kfifo_buf industrialio ti_am335x_tsc ti_am335x_tscadc pwm_tiecap omap_aes_driver omap_sham omap_rng rng_core spi_omap2_mcspi evdev uio_pdrv_genirq uio usb_f_mass_storage usb_f_acm u_serial usb_f_ecm usb_f_rndis u_ether libcomposite cmemk(O) spidev tieqep pwm_tiehrpwm [last unloaded: pruss]
+    Sep  2 14:30:14 beaglebone kernel: [320509.165556] CPU: 0 PID: 16854 Comm: mfmt2 Tainted: G      D  C O    4.4.54-ti-r93 #1
+    Sep  2 14:30:14 beaglebone kernel: [320509.173422] Hardware name: Generic AM33XX (Flattened Device Tree)
+    Sep  2 14:30:14 beaglebone kernel: [320509.179631] task: dc3b9a00 ti: cad78000 task.ti: cad78000
+    Sep  2 14:30:14 beaglebone kernel: [320509.185205] PC is at itc_pkt_read+0x2dc/0x3f0 [itc_pkt]
+    Sep  2 14:30:14 beaglebone kernel: [320509.190557] LR is at kfifo_copy_to_user+0x140/0x16c
+    Sep  2 14:30:14 beaglebone kernel: [320509.195547] pc : [<bf383e84>]    lr : [<c05d2164>]    psr: 60000013
+    Sep  2 14:30:14 beaglebone kernel: [320509.195547] sp : cad79ec0  ip : cad78000  fp : cad79f2c
+    Sep  2 14:30:14 beaglebone kernel: [320509.207251] r10: daa20078  r9 : c0f97a88  r8 : bf387340
+    Sep  2 14:30:14 beaglebone kernel: [320509.212587] r7 : dac9eb40  r6 : daa2108c  r5 : daa20055  r4 : 00000000
+    Sep  2 14:30:14 beaglebone kernel: [320509.219230] r3 : 00000003  r2 : 001cf750  r1 : 000001c0  r0 : cac6c078
+    Sep  2 14:30:14 beaglebone kernel: [320509.225876] Flags: nZCv  IRQs on  FIQs on  Mode SVC_32  ISA ARM  Segment none
+    Sep  2 14:30:14 beaglebone kernel: [320509.233132] Control: 10c5387d  Table: 9c670019  DAC: 00000051
+    Sep  2 14:30:14 beaglebone kernel: [320509.238991] Process mfmt2 (pid: 16854, stack limit = 0xcad78218)
+    Sep  2 14:30:14 beaglebone kernel: [320509.245112] Stack: (0xcad79ec0 to 0xcad7a000)
+    Sep  2 14:30:14 beaglebone kernel: [320509.249585] 9ec0: 00000001 001cf750 cad78000 00000100 001cf750 daa210a4 daa20010 00000003
+    Sep  2 14:30:14 beaglebone kernel: [320509.257893] 9ee0: 00000006 00000000 00000100 dac9eb40 00000100 00000000 cad79f3c dc8ba636
+    Sep  2 14:30:14 beaglebone kernel: [320509.266202] 9f00: c01c36a4 001cf750 dac9eb40 cad79f70 00000100 001cf750 cad78000 00000000
+    Sep  2 14:30:14 beaglebone kernel: [320509.274510] 9f20: cad79f3c cad79f30 c01c2f78 bf383bb4 cad79f6c cad79f40 c01c3800 c01c2f5c
+    Sep  2 14:30:14 beaglebone kernel: [320509.282818] 9f40: c01e2508 c01e1cb0 dac9eb40 c0f97a88 dac9eb41 00000100 001cf750 cad78000
+    Sep  2 14:30:14 beaglebone kernel: [320509.291125] 9f60: cad79fa4 cad79f70 c01c42a8 c01c3780 00000000 00000000 cad78010 dc8ba636
+    Sep  2 14:30:14 beaglebone kernel: [320509.299433] 9f80: 000e4b39 bef14f60 001cf750 bef1afe4 00000003 c0011024 00000000 cad79fa8
+    Sep  2 14:30:14 beaglebone kernel: [320509.307740] 9fa0: c0010e60 c01c4250 bef14f60 001cf750 00000031 001cf750 00000100 00000000
+    Sep  2 14:30:14 beaglebone kernel: [320509.316049] 9fc0: bef14f60 001cf750 bef1afe4 00000003 0018f868 001cef50 bef15f80 00000000
+    Sep  2 14:30:14 beaglebone kernel: [320509.324357] 9fe0: 00000000 b550cbc0 b6cb0579 b6cb0580 80000030 00000031 00000000 00000000
+    Sep  2 14:30:14 beaglebone kernel: [320509.332745] [<bf383e84>] (itc_pkt_read [itc_pkt]) from [<c01c2f78>] (__vfs_read+0x28/0x48)
+    Sep  2 14:30:14 beaglebone kernel: [320509.341149] [<c01c2f78>] (__vfs_read) from [<c01c3800>] (vfs_read+0x8c/0x158)
+    Sep  2 14:30:14 beaglebone kernel: [320509.348413] [<c01c3800>] (vfs_read) from [<c01c42a8>] (SyS_read+0x64/0xcc)
+    Sep  2 14:30:14 beaglebone kernel: [320509.355422] [<c01c42a8>] (SyS_read) from [<c0010e60>] (ret_fast_syscall+0x0/0x44)
+    Sep  2 14:30:14 beaglebone kernel: [320509.363035] Code: e51b205c e16f3f13 e2633020 03a01d07 (e5d22000) 
+    Sep  2 14:30:14 beaglebone kernel: [320509.369252] ---[ end trace 01993eac173c4f40 ]---
+
+And for all that t2trace gives this:
+
+    Start time 320402931372790
+    0001 0.000000sec   +0usec 184:WBKU: blocking write from user
+    0002 0.000006sec   +6usec 100:User lockset=00 __ __ __ __ __ __
+    0003 0.000007sec   +1usec 101:Curr lockset=00 __ __ __ __ __ __
+    0004 0.000009sec   +2usec 188:WRTS: write returns success
+    0005 2.002248sec +2002msec 184:WBKU: blocking write from user
+    0006 2.002253sec   +5usec 160:User lockset=30 __ __ __ __ NW NE
+
+Grab locks.
+
+    0007 2.002254sec   +1usec 101:Curr lockset=00 __ __ __ __ __ __
+    0008 2.002275sec  +21usec 054:     [NE sTAKE]
+    0009 2.002276sec   +1usec 0da:         NE_ORQLK+
+    0010 2.002280sec   +4usec 044:     [NW sTAKE]
+    0011 2.002281sec   +1usec 0ca:         NW_ORQLK+
+    0012 2.002310sec  +28usec 0a2: +SW_IRQLK
+    0013 2.002311sec   +1usec 022:     [SW sGIVEN]
+    0014 2.002311sec   +0usec 0ae:         SW_OGRLK+
+    0015 2.002332sec  +20usec 0d6: +NE_IGRLK
+    0016 2.002332sec   +0usec 051:     [NE sTAKEN]
+    0017 2.002339sec   +7usec 092: +SE_IRQLK
+    0018 2.002340sec   +1usec 012:     [SE sGIVEN]
+    0019 2.002341sec   +1usec 09e:         SE_OGRLK+
+    0020 2.002354sec  +13usec 0c6: +NW_IGRLK
+    0021 2.002354sec   +0usec 041:     [NW sTAKEN]
+    0022 2.002355sec   +1usec 18d:ALST: all locks settled
+    0023 2.002356sec   +1usec 182:URDO: user request done
+    0024 2.002381sec  +24usec 188:WRTS: write returns success
+    0025 2.002746sec +365usec 059:<SE from USR 4-8>
+
+A packet report, allegedly 4-8 bytes, from userspace heading SE.  
+
+    0026 2.025952sec  +23msec 05f:<XX from USR 4-8>
+
+But something's messed up there.
+
+    0027 2.052643sec  +26msec 0d9:<SE to PRU 4-8>
+    0028 2.064303sec  +11msec 15d:<NE from PRU 4-8>
+    0029 2.086622sec  +22msec 0df:<XX to PRU 4-8>
+
+Ditto.  And what's with all these horrible deltas?
+
+    0030 2.098427sec  +11msec 15b:<WT from PRU 4-8>
+
+:41]
+[42:
+
+Mon Sep  2 14:51:12 2019 Well, the page fault was almost certainly
+itc_pkt_read doing 'buf[0]' when buf was pointing to userspace.
+That's basically a copy-paste bug because I'd already fixed analogous
+code, in itc_pkt_write, then missed it in _read.
+
+I think that's fixed now but it seems like I've finally managed to
+wedge things bad enough that 'make insmod' is unlikely to work
+(because
+
+    root@beaglebone:/home/t2/T2-12/apps/t2/t2trace#  lsmod | grep itc
+    itc_pkt                39901  2 
+ ..of that .......................^.. right there..
+    virtio_rpmsg_bus       16076  1 itc_pkt
+    itc                    51595  0 
+    root@beaglebone:/home/t2/T2-12/apps/t2/t2trace# 
+
+for which I cannot seem to find a living user space program that could
+be responsible.)
+
+So I guess we'll be just 'make install'ing in pru/itcio/module and
+then probably finally rebooting, after
+
+BITS OFF
+
+:42]
+[43:
+
+Mon Sep  2 15:03:05 2019 Yeah, can't insmod.  Rebooting and hoping, and
+hoping and booting..
+
+:43]
+[44:
+
+Mon Sep  2 17:08:59 2019 OK so.. it appears that msleep_interruptible
+is NOT woken by wake_up_process, so this code is bustomangissimo:
+
+      while(!kthread_should_stop()) {    /* Returns true when kthread_stop() is called */
+        int waitms = 50;                 /* producers kick us so timeout should be rare backstop */
+        set_current_state(TASK_RUNNING);
+        if (shipCurrentOBPackets()) waitms = 1; /* Except short wait if txbufs ran out or bulk pkts pending */
+        msleep_interruptible(waitms);
+      }
+
+and we're basically always sleeping for 50ms once we have no outbound
+packets.
+
+Causing lots and lots of behavior like this:
+
+    0053 0.001245sec +114usec 05a:<ET from USR 4-8>
+    0054 0.001321sec  +75usec 052:<ET from USR 2-4>
+
+Two outbound packets sent from userspace, ready to fly..
+
+    0055 0.056370sec  +55msec 0da:<ET to PRU 4-8>
+
+But itcOBPktThreadRunner cools its heels for 55msec (that's 55,000usec
+folks!) before deciding to ship anything.
+
+    0056 0.056376sec   +6usec 0d2:<ET to PRU 2-4>
+
+Trying schedule_timeout instead of msleep_interruptible.  After
+
+BITS OFF
+        
+:44][45:
+
+Mon Sep  2 17:22:10 2019 Oh mama, with schedule_timeout now we see
+like: 
+
+    0046 0.000879sec  +15usec 188:WRTS: write returns success
+    0047 0.001002sec +123usec 05e:<WT from USR 4-8>
+
+From userspace..
+
+    0048 0.001035sec  +32usec 0de:<WT to PRU 4-8>
+
+On to the PRUs..
+
+    0049 0.001107sec  +71usec 066:<WT from USR 8-16>
+
+From userspace..
+
+    0050 0.001130sec  +23usec 0e6:<WT to PRU 8-16>
+
+And on to the PRUs..
+
+    0051 0.001183sec  +52usec 15a:<ET from PRU 4-8>
+
+And here's the first one coming back over the loopback.. 
+
+    0052 0.001212sec  +29usec 066:<WT from USR 8-16>
+    0053 0.001235sec  +22usec 0e6:<WT to PRU 8-16>
+
+Before we've even finished sending the whole cache update. 
+
+    0054 0.001256sec  +21usec 066:<WT from USR 8-16>
+    0055 0.001276sec  +19usec 0e6:<WT to PRU 8-16>
+    0056 0.001295sec  +19usec 066:<WT from USR 8-16>
+    0057 0.001314sec  +18usec 0e6:<WT to PRU 8-16>
+..etc..
+
+So it's still all SUPER SLOW in any kind of absolute terms, but it
+should be MUCH FASTER than 6mAER on a benchmark!
+
+Let's FOGGEN TRY IT!
+
+[46:
+
+Mon Sep  2 17:28:12 2019 Note still some slowdowns like this:
+
+    4018 0.287064sec  +38usec 152:<ET from PRU 2-4>
+    4019 0.290847sec   +3msec 1e2:<ET to USR 8-16>
+    4020 0.290856sec   +9usec 1d2:<ET to USR 2-4>
+    4021 0.290920sec  +64usec 052:<ET from USR 2-4>
+    4022 0.291095sec +174usec 0d2:<ET to PRU 2-4>
+    4023 0.291308sec +212usec 156:<WT from PRU 2-4>
+    4024 0.447059sec +155msec 1d6:<WT to USR 2-4>
+
+Over a tenth of a second before userspace picked up that (probably
+'e'nd?)  packet.
+
+    4025 0.447182sec +122usec 184:WBKU: blocking write from user
+    4026 0.447187sec   +5usec 100:User lockset=00 __ __ __ __ __ __
+    4027 0.447188sec   +1usec 111:Curr lockset=08 __ __ __ WT __ __
+
+But still.
+
+:46]
+
+:45]
