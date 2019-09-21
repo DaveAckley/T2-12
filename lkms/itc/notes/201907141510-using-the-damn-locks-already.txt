@@ -1,4 +1,4 @@
-{149}  -*- text -*-
+{150}  -*- text -*-
 [0:
 
 Sun Jul 14 15:11:12 2019 OK so we have 'lots' (~dozen) of tiles built
@@ -2441,3 +2441,20 @@ and that way we'd see lots of six-way lock interactions rather than
 these puny two-ways that I'm setting up by hand.
 
 :148]
+[149:
+
+Tue Sep  3 16:41:39 2019 Well so it's been a month or so since we've
+been here, but with the at-long-last understanding that
+'msleep_interruptible' is not wake_up_process-able, but
+schedule_timeout _is_, we ought to be able to speed up locking a bit
+by making that switch, right?  Or, at least, reduce the load on the
+processor a bit by sleeping longer until we're actually needed?
+
+Trying this change:
+
+    set_current_state(TASK_INTERRUPTIBLE);
+    schedule_timeout(jiffyTimeout/2);   /* in TASK_RUNNING again upon return */
+    //msleep(30);
+
+
+:149]
