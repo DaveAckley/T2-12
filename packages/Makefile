@@ -4,6 +4,9 @@ PACKAGES+=inotify-tools
 PACKAGES+=git g++
 PACKAGES+=software-properties-common python-software-properties
 
+# For unpacking .mfz files in emacs
+PACKAGES+=zip
+
 # Generally useful framebuffer manager?
 PACKAGES+=fbset
 
