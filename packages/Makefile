@@ -2,7 +2,7 @@ PACKAGES+=emacs-nox
 PACKAGES+=fbi
 PACKAGES+=inotify-tools
 PACKAGES+=git g++
-PACKAGES+=software-properties-common python-software-properties
+PACKAGES+=software-properties-common 
 
 # For unpacking .mfz files in emacs
 PACKAGES+=zip
@@ -46,7 +46,8 @@ PACKAGES+=cmake
 PACKAGES+=libsdl1.2-dev libsdl-image1.2-dev libsdl-ttf2.0-dev
 # NOTE WE ARE NOW REQUIRING ppa:ackley/mfm TO ALREADY BE IN THE REPOSITORIES!
 # (SEE /root/T2-12-root-seed.sh FOR WHERE THAT SHOULD HAVE HAPPENED!)
-PACKAGES+=ulam
+# 201912022047 NOT USING MFM OR ULAM from packages ATM
+# PACKAGES+=ulam
 
 # For building LKMs
 PACKAGES+=strace
