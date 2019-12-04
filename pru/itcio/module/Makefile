@@ -25,7 +25,7 @@ clean:	FORCE
 install:	install_files
 
 install_files:	all
-	make INSTALL_MOD_DIR=itc -C /lib/modules/4.4.54-ti-r93/build/ M=$(CURDIR) modules_install
+	make INSTALL_MOD_DIR=itc -C $(KDIR) M=$(CURDIR) modules_install
 	test -f $(ETC_MODULES_FILE) || \
 	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
 	grep $(MNAME) $(ETC_MODULES_FILE) || echo $(MNAME) >> $(ETC_MODULES_FILE)
