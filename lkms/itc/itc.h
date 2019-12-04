@@ -8,7 +8,7 @@
 #include <linux/device.h>          /* Header to support the kernel Driver Model */
 #include <linux/kernel.h>          /* Contains types, macros, functions for the kernel */
 #include <linux/fs.h>              /* Header for the Linux file system support */
-#include <asm/uaccess.h>           /* Required for the copy to user function */
+#include <linux/uaccess.h>         /* Required for the copy to user function */
 #include <linux/mutex.h>	   /* Required for the mutex functionality */
 #include <linux/spinlock.h>        /* For spinlock_t */
 #include <linux/kthread.h>         /* For thread functions */
