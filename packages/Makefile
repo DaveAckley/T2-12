@@ -56,16 +56,17 @@ KERNEL_HEADERS_PKG:=linux-headers-$(KERNEL_VERSION)
 PACKAGES+=$(KERNEL_HEADERS_PKG)
 FLAG_FILE:=.flagfile_INSTALL_COMPLETE
 
-## Packages we can safely remove
+## Packages we can (hopefully safely) remove
 REMOVE_PACKAGES+=doc-beaglebone-getting-started
-REMOVE_PACKAGES+=doc-beaglebone-getting-started
-REMOVE_PACKAGES+=doc-seeed-bbgw-getting-started
+#REMOVE_PACKAGES+=doc-seeed-bbgw-getting-started
+REMOVE_PACKAGES+=c9-core-installer
+REMOVE_PACKAGES+=bone101
 
 build:	FORCE
 	@echo "PACKAGES: $(PACKAGES)"
 	@echo "NOTE: Not doing 'apt-get update' -- do it yourself if you dare"
 
-install:	build
+install:	build preremove
 	@if [ -f $(FLAG_FILE) ] ; then \
 	  echo "NOTE: '$(FLAG_FILE)' detected; installation skipped" ; \
 	else \
@@ -73,6 +74,16 @@ install:	build
 	  apt-get -y install $(PACKAGES) ; \
 	  touch $(FLAG_FILE) ; \
 	fi
+
+preremove:	FORCE
+	@if [ -f $(FLAG_FILE) ] ; then \
+	  echo "NOTE: '$(FLAG_FILE)' detected; preremoval skipped" ; \
+	else \
+	  ping -c 1 -n google.com || (echo Need net to install packages) ; \
+	  apt-get -y remove --purge $(REMOVE_PACKAGES) ; \
+	  touch $(FLAG_FILE) ; \
+	fi
+
 
 clean:	FORCE
 	rm -f *~
