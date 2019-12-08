@@ -431,6 +431,41 @@ static void itcExitGPIOInterrupts(void) {
   }
 }
 
+static void addEventCurrentLockState(unsigned ofState) {
+  if (ofState <= 9) {
+    unsigned long flags;
+    local_irq_save(flags);
+    if (kfifo_avail(&S.mLockEventState.mEvents) < 3*sizeof(ITCLockEvent))  
+      ADD_LOCK_EVENT(makeSpecLockEvent(LET_SPEC_QGAP));
+    else {
+      ADD_LOCK_EVENT(makeSpecLockEvent(LET_SPEC_CLS0 + ofState));
+      ADD_LOCK_EVENT(makeCurrentLockEvent(dirsInState[ofState]));
+    }
+    local_irq_restore(flags);
+  }
+}
+
+static void updateEnabling(unsigned bareLockset) {
+  unsigned long flags;
+  spin_lock_irqsave(&S.mdLock, flags);    // Grab mdLock
+
+  for (itcIteratorStart(&S.userContextIterator); // CRITICAL SECTION: mdLock
+       itcIteratorHasNext(&S.userContextIterator);// CRITICAL SECTION: mdLock
+       ) {
+    ITCDir idx = itcIteratorGetNext(&S.userContextIterator); // CRITICAL SECTION: mdLock
+    ITCInfo * itc = &S.itcInfo[idx];        // CRITICAL SECTION: mdLock
+    unsigned itcbit = 1<<idx;               // CRITICAL SECTION: mdLock
+    bool enable = bareLockset & itcbit;     // CRITICAL SECTION: mdLock
+    if (enable) {                           // CRITICAL SECTION: mdLock
+      if (dirsInState[sDISABLED] & itcbit)    // (enable only affects disabled itcs)
+        setState(itc, sRESET);              // CRITICAL SECTION: mdLock
+    } else {                                // CRITICAL SECTION: mdLock
+      setState(itc,sDISABLED);               // (but disable nukes all states)
+    }                                       // CRITICAL SECTION: mdLock
+  }                                         // CRITICAL SECTION: mdLock
+  spin_unlock_irqrestore(&S.mdLock, flags); // Free mdLock
+}
+
 // itcInterpretCommandByte
 // Returns:
 //
@@ -447,20 +482,54 @@ static void itcExitGPIOInterrupts(void) {
 static ssize_t itcInterpretCommandByte(u8 cmd, bool waitForIt)
 {
   unsigned long flags;
+  unsigned startState, destState, untouchedState;
+  unsigned locksetCmd = (cmd & LOCKSET_CMD_MASK);
+  unsigned bareLockset = (cmd & ~LOCKSET_CMD_MASK);
 
-  if (cmd & 0xc0)  // We only support cmd==0 at present
+  if (locksetCmd == LOCKSET_CMD_VALUE_TRY) {
+
+    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_UTRY));  // Next user lock req is uTRY
+    startState = sIDLE;                                    // We should be coming from sIDLE
+    destState = sTAKEN;                                    // and settling on sTAKEN
+    untouchedState = sGIVEN;                               // And sGIVEN should be untouched
+
+  } else if (locksetCmd == LOCKSET_CMD_VALUE_FREE) {
+
+    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_UFRE));  // Next user lock req is uFREE
+    startState = sGIVEN;                                   // We should be coming from sGIVEN
+    destState = sIDLE;                                     // and settling on sIDLE
+    untouchedState = sTAKEN;                               // And sTAKEN should be untouched
+
+  } else if (locksetCmd == LOCKSET_CMD_VALUE_DROP) {
+
+    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_UDRP));  // Next user lock req is uDROP
+    startState = sTAKEN;                                   // We should be coming from sTAKEN
+    destState = sIDLE;                                     // and settling on sIDLE
+    untouchedState = sGIVEN;                               // And sGIVEN should be untouched
+
+  } else if (locksetCmd == LOCKSET_CMD_VALUE_ENABLE) {
+
+    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_UENB));  // Next user lock req is 'uENABLE'
+    addEventCurrentLockState(sDISABLED);                   // We'll be affecting this
+    updateEnabling(bareLockset);                           // Go do it
+    addEventCurrentLockState(sDISABLED);                   // There's the result
+    return 0;                                              // Enabling always succeeds
+
+  } else                 // (Can't happen since all locksetCmds now defined)
     return -EINVAL;
 
-  ADD_LOCK_EVENT_IRQ(makeUserLockEvent(cmd)); /*user lockset request*/
+  ADD_LOCK_EVENT_IRQ(makeUserLockEvent(bareLockset)); // Next user locks req
 
-  if (getSettlementValue(LOCK_UNREADY)&cmd)
+  if (getSettlementValue(LOCK_UNREADY) & bareLockset)
     return -ENXIO;
   
-  if (dirsInState[sGIVEN] & cmd) /*already given locks*/
-    return -EBUSY;
+  if (dirsInState[untouchedState] & bareLockset)      // Check for conflicts
+    return -EBUSY;   // Can't take what is given or free what is taken
 
-  ADD_LOCK_EVENT(makeCurrentLockEvent(dirsInState[sTAKEN]));
-  if (cmd == dirsInState[sTAKEN]) return 0;            /* You're welcome */
+  addEventCurrentLockState(startState);
+
+  if ((bareLockset & dirsInState[destState]) == bareLockset) // If already have all asked for
+    return 0;                                                // You're welcome
 
   // First set up our request
   spin_lock_irqsave(&S.mdLock, flags);    // Grab mdLock
@@ -491,6 +560,8 @@ static ssize_t itcInterpretCommandByte(u8 cmd, bool waitForIt)
       wait_event_interruptible(S.userWaitQ, !S.userRequestActive);
     }
   }
+
+  addEventCurrentLockState(destState);
 
   return 0;      // 'Operation Worked'..
 }
@@ -598,7 +669,8 @@ void setState(ITCInfo * itc, ITCState newState) {
     if (0==getSettlementValue(LOCK_UNSETTLED)) {
       ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_ALST));
       userRequestDone(S.userLockset);
-    }
+    } else
+      wake_up_process(S.itcThreadRunnerTask); // Look for more consequences?
   }
   gpio_set_value(itc->pins[PIN_ORQLK].gpio,itc->pinStates[PIN_ORQLK]);
   gpio_set_value(itc->pins[PIN_OGRLK].gpio,itc->pinStates[PIN_OGRLK]);
@@ -612,9 +684,13 @@ void updateState(ITCInfo * itc,bool istimeout) {
   unsigned activeFree = 0;
 
   if (S.userRequestActive) {
-    unsigned isTake = (S.userLockset>>itc->direction)&1;
-    activeTry = isTake;
-    activeFree = !isTake;
+    unsigned locksetCmd = S.userLockset & LOCKSET_CMD_MASK;
+    unsigned affected = (S.userLockset>>itc->direction)&1;
+    if (locksetCmd == LOCKSET_CMD_VALUE_TRY)
+      activeTry = affected;
+    else if (locksetCmd == LOCKSET_CMD_VALUE_FREE
+             || locksetCmd == LOCKSET_CMD_VALUE_DROP)
+      activeFree = affected;
   }
 
   stateInput =
@@ -710,7 +786,7 @@ ITCState entryFunction_sRACE(ITCInfo * itc,unsigned stateInput) {
   BUG_ON(!itc);
   
   /* If lucky or time-out, go to idle */
-  if (prandom_u32_max(10) == 0 || (stateInput & BINP_TIMEOUT)) {
+  if (prandom_u32_max(4) == 0 || (stateInput & BINP_TIMEOUT)) {
     return sIDLE;
   }
   return sRACE;
@@ -750,11 +826,22 @@ static int itcThreadRunner(void *arg) {
       userRequestDone(-ETIME);
    }
 
+    {
+      unsigned long flags;
+      bool timeout = time_before(S.moduleLastActive + jiffyTimeout, jiffies);
+      spin_lock_irqsave(&S.mdLock, flags);         // Grab mdLock
+      updateStates(&idxItr,timeout);               // CRITICAL SECTION: mdLock
+      if (timeout) S.moduleLastActive = jiffies;   // CRITICAL SECTION: mdLock
+      spin_unlock_irqrestore(&S.mdLock, flags);    // Free mdLock
+    }
+    
+#if 0
     if (time_before(S.moduleLastActive + jiffyTimeout, jiffies)) {
       /* NOPE WAY TOO MANY OF THESE      addLockEventIRQ(makeSpecLockEvent(LET_SPEC_ACTO)); internal timeout*/
       updateStates(&idxItr,true);
       S.moduleLastActive = jiffies;
     }
+#endif
 
     make_reports();
     set_current_state(TASK_INTERRUPTIBLE);
@@ -824,7 +911,13 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
   error = copy_to_user(buffer, dirsInState, len); // ITC_MUTEX HELD
 
   mutex_unlock(&S.itc_mutex);
-  ADD_LOCK_EVENT_IRQ(makeCurrentLockEvent(dirsInState[sTAKEN])); /*current set of taken*/
+  if (len > 1) {
+    addEventCurrentLockState(sTAKEN);
+    if (len > 2) {
+      addEventCurrentLockState(sGIVEN);
+    }
+  }
+
   ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(error < 0 ? LET_SPEC_RRTE : LET_SPEC_RRTS));  /*returning to user*/
 
   if (error < 0)
@@ -861,16 +954,19 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
 
     mutex_unlock(&S.itc_mutex);
 
-    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(ret < 0 ? LET_SPEC_WRTE : LET_SPEC_WRTS));  /*returning to user*/
-
-    if (ret < 0) {            // If interpretcommandbyte saw a probleml 
-      if (bytesHandled == 0)  // If no bytes yet written
-        return ret;           // ..you get the error code
+    if (ret < 0) {            // If interpretcommandbyte saw a problem
+      if (bytesHandled == 0)  { // If no bytes yet written
+        ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_WRTE));  /* that's an error */
+        return ret;           // ..and you get the error code
+      }
       break;                  // Otherwise you get a partial write
-    } else if (S.userRequestStatus < 0) // If later negotiation failed
+    } else if (S.userRequestStatus < 0) { // If later negotiation failed
+      ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_WRTE));  /* that's an error too */
       return S.userRequestStatus;       // There's your answer
+    }
   }
 
+  ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(bytesHandled < len ? LET_SPEC_WRTP : LET_SPEC_WRTS));  /*returning to user*/
   return bytesHandled;
 }
 
@@ -968,9 +1064,9 @@ static void initModuleState(ITCModuleState* s) {
 static void destroyModuleState(ITCModuleState* s) {
    mutex_destroy(&s->itc_mutex); // destroy the mutex
 }
-static ssize_t itc_class_read_status(struct class *c,
-                                     struct class_attribute *attr,
-                                     char *buf)
+static ssize_t status_show(struct class *c,
+			   struct class_attribute *attr,
+			   char *buf)
 {
   sprintf(buf,"%02x%02x%02x%02x\n"
           ,getSettlementValue(LOCK_UNREADY)
@@ -980,27 +1076,29 @@ static ssize_t itc_class_read_status(struct class *c,
           );
   return strlen(buf);
 }
+CLASS_ATTR_RO(status);
 
-static ssize_t itc_class_read_trace_start_time(struct class *c,
-                                               struct class_attribute *attr,
-                                               char *buf)
+static ssize_t trace_start_time_show(struct class *c,
+				     struct class_attribute *attr,
+				     char *buf)
 {
   sprintf(buf,"%lld\n",S.mLockEventState.mStartTime);
   return strlen(buf);
 }
+CLASS_ATTR_RO(trace_start_time);
 
-static ssize_t itc_class_read_shift(struct class *c,
-                                    struct class_attribute *attr,
-                                    char *buf)
+static ssize_t shift_show(struct class *c,
+			  struct class_attribute *attr,
+			  char *buf)
 {
   sprintf(buf,"%d\n",S.mLockEventState.mShiftDistance);
   return strlen(buf);
 }
 
-static ssize_t itc_class_store_shift(struct class *c,
-                                     struct class_attribute *attr,
-                                     const char *buf,
-                                     size_t count)
+static ssize_t shift_store(struct class *c,
+			   struct class_attribute *attr,
+			   const char *buf,
+			   size_t count)
 {
   u32 shift;
   if (sscanf(buf,"%u",&shift) == 1 && shift < 64) {
@@ -1010,10 +1108,11 @@ static ssize_t itc_class_store_shift(struct class *c,
   }
   return -EINVAL;
 }
+CLASS_ATTR_RW(shift);
 
-static ssize_t itc_class_read_statistics(struct class *c,
-                                         struct class_attribute *attr,
-                                         char *buf)
+static ssize_t statistics_show(struct class *c,
+			       struct class_attribute *attr,
+			       char *buf)
 {
   int dir, state, len = 0;
   len += sprintf(&buf[len],"DIR");
@@ -1033,10 +1132,10 @@ static ssize_t itc_class_read_statistics(struct class *c,
   return strlen(buf);
 }
 
-static ssize_t itc_class_store_statistics(struct class *c,
-                                     struct class_attribute *attr,
-                                     const char *buf,
-                                     size_t count)
+static ssize_t statistics_store(struct class *c,
+				struct class_attribute *attr,
+				const char *buf,
+				size_t count)
 {
   u32 cleardirs, dir, state;
   if (sscanf(buf,"%x",&cleardirs) == 1) {
@@ -1053,8 +1152,10 @@ static ssize_t itc_class_store_statistics(struct class *c,
   }
   return -EINVAL;
 }
+CLASS_ATTR_RW(statistics);
 
 ////////////////BEGIN CLASS ATTRIBUTE STUFF
+#if 0
 static struct class_attribute itc_class_attrs[] = {
   __ATTR(status, 0444, itc_class_read_status, NULL), /*just picking one to have something*/
   __ATTR(trace_start_time, 0444, itc_class_read_trace_start_time, NULL), 
@@ -1069,6 +1170,16 @@ static struct class_attribute itc_class_attrs[] = {
 #endif
   __ATTR_NULL,
 };
+#else
+static struct attribute * class_itc_attrs[] = {
+  &class_attr_status.attr,
+  &class_attr_trace_start_time.attr,
+  &class_attr_shift.attr,
+  &class_attr_statistics.attr,
+  NULL,
+};
+ATTRIBUTE_GROUPS(class_itc);
+#endif
 
 static struct attribute *itc_attrs[] = {
   NULL,
@@ -1091,7 +1202,7 @@ static const struct attribute_group * itc_groups[] = {
 static struct class itc_class_instance = {
   .name = "itc",
   .owner = THIS_MODULE,
-  .class_attrs = itc_class_attrs,
+  .class_groups = class_itc_groups,
   .dev_groups = itc_groups,
 };
 
@@ -1285,7 +1396,8 @@ module_exit(itc_exit);
 MODULE_LICENSE("GPL");            ///< All MFM code is LGPL or GPL licensed
 MODULE_AUTHOR("Dave Ackley");     ///< Email: ackley@ackleyshack.com
 MODULE_DESCRIPTION("T2 intertile lock manager");  ///< modinfo description
-MODULE_VERSION("1.1");            ///< 1.1 201907260159 statistics, extended write status
+MODULE_VERSION("2.0");            ///< 2.0 201909211534 first cut at sGIVEN-uFREE->sRELEASE
+//MODULE_VERSION("1.1");            ///< 1.1 201907260159 statistics, extended write status
 //MODULE_VERSION("1.0");            ///< 1.0 201907250852 sRELEASE allowing fast blocking I/O
 //MODULE_VERSION("0.9");            ///< 0.9 201907250406 online lock settlement info
 //MODULE_VERSION("0.8");            ///< 0.8 201907241208 try stochastic sRACE->sIDLE

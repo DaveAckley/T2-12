@@ -16,6 +16,8 @@
 /////////////
 /////BEGIN RULE SETS
 
+// 201909211534 V2 semantics, where the lock giver chooses when to free it
+
 #define ALLRULESMACRO() /*state numbers determined by this rule order*/ \
   RSN(sRESET,o11,LOCK_UNREADY, /** Initial and ground state, must be first */ \
       R_ITC(G,i11,sSYNC01), /* ginger moves first from sRESET */        \
@@ -24,13 +26,15 @@
       R_END(sFAILED))       /* else punt */                             \
                                                                         \
   RSN(sTAKEN,o10,LOCK_SETTLED,  /** We've got the lock */               \
-      R_USR(uFREE,sRELEASE),/* we want to free the lock */              \
+      R_INP(i00,sIDLE),     /* far side released the lock */            \
+      R_USR(uFREE,sDROP),   /* uFREE here means uDROP the lock */       \
       R_INP(i01,sTAKEN),    /* we still hold the lock */                \
       R_END(sFAILED))       /* uh-oh the lock broke under us */         \
                                                                         \
   RSN(sGIVEN,o01,LOCK_SETTLED,  /** They've got the lock */             \
+      R_USR(uFREE,sRELEASE),/* but we're ready to free that lock */     \
+      R_INP(i00,sIDLE),     /* but they must have dropped it */         \
       R_INP(i10,sGIVEN),    /* they're still holding the lock */        \
-      R_INP(i00,sIDLE),	    /* they freed the lock */                   \
       R_END(sFAILED))       /* else punt */                             \
                                                                         \
   RSN(sIDLE,o00,LOCK_AVAILABLE, /** In sync, waiting for a lock grab */ \
@@ -49,9 +53,15 @@
                                                                         \
   RSN(sRELEASE,o00,LOCK_UNSETTLED,  /** We're freeing the lock */       \
       R_ITM(_,sFAILED),     /* fail if timeout waiting for ack */       \
-      R_INP(i01,sRELEASE),  /* waiting for them to ack */               \
+      R_INP(i10,sRELEASE),  /* they're still holding the lock */        \
       R_INP(i00,sIDLE),     /* we go idle when they agree */            \
       R_END(sFAILED))       /* uh-oh the lock broke under us */         \
+                                                                        \
+  RSN(sDROP,o00,LOCK_UNSETTLED,  /** We're dropping the lock */         \
+      R_ITM(_,sFAILED),     /* fail if timeout waiting for them */      \
+      R_INP(i01,sDROP),     /* they're still granting us the lock */    \
+      R_INP(i00,sIDLE),     /* we go idle when they agree */            \
+      R_END(sFAILED))       /* or hooda fognose what's up */            \
                                                                         \
   RSN(sSYNC01,o01,LOCK_UNREADY, /** Out of reset, looking for i01 */    \
       R_ITM(G,sWAIT),       /* ginger goes to special state if timeout waiting for fred */ \
@@ -66,8 +76,11 @@
       R_INP(i_0,sFAILED),   /* Go fail if any sign of life */           \
       R_END(sWAIT))         /* Otherwise keep waiting (until magic kicks in) */ \
                                                                         \
-  RSE(sRACE,o11,LOCK_UNSETTLED,  /** A race has been detected; do magic */ \
+  RSE(sRACE,o00,LOCK_UNSETTLED,  /** A race has been detected; do magic */ \
       R_END(sRACE))         /* go try again */                          \
+                                                                        \
+  RSN(sDISABLED,o11,LOCK_UNREADY, /** This lock is deliberately dead */ \
+      R_END(sDISABLED))     /* no edges; manual enable required */      \
                                                                         \
   RSE(sFAILED,o11,LOCK_UNREADY, /** Something went wrong, reset required  */ \
       R_INP(i11,sRESET),    /* i11, you bet: It's the only way to get */ \

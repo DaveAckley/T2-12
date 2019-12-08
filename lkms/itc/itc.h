@@ -8,7 +8,8 @@
 #include <linux/device.h>          /* Header to support the kernel Driver Model */
 #include <linux/kernel.h>          /* Contains types, macros, functions for the kernel */
 #include <linux/fs.h>              /* Header for the Linux file system support */
-#include <linux/uaccess.h>         /* Required for the copy to user function */
+#include <asm/uaccess.h>           /* Required for the copy to user function */
+#include <linux/uaccess.h>         /* Now required for the copy to user function */
 #include <linux/mutex.h>	   /* Required for the mutex functionality */
 #include <linux/spinlock.h>        /* For spinlock_t */
 #include <linux/kthread.h>         /* For thread functions */
@@ -96,6 +97,14 @@ typedef struct {             /* General char device state */
 
 #define MINOR_DEVICES 2      /* /dev/itc/locks /dev/itc/lockevents */
 
+enum {
+  LOCKSET_CMD_VALUE_TRY =    0x0<<6,
+  LOCKSET_CMD_VALUE_FREE =   0x1<<6,
+  LOCKSET_CMD_VALUE_DROP =   0x2<<6,
+  LOCKSET_CMD_VALUE_ENABLE = 0x3<<6,
+  LOCKSET_CMD_MASK = 0x3<<6
+};
+
 typedef struct moduleState {
   ITCIterator userContextIterator;
   JiffyUnit moduleLastActive;
@@ -104,7 +113,7 @@ typedef struct moduleState {
 #if 0
   LockSettlements lockSettlements;
 #endif
-  u8 userLockset;
+  u8 userLockset;               ///< 2 bit command + 6 bit lock mask
   bool userRequestActive;
   s32 userRequestStatus;
   dev_t majorNumber;            ///< Our assigned device number

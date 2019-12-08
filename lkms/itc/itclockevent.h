@@ -27,11 +27,26 @@ enum {
   XX(WNBU,"non-blocking write from user")  \
   XX(RNBU,"non-blocking read from user")  \
   XX(WRTS,"write returns success")  \
+  XX(WRTP,"write returns partial write")  \
   XX(WRTE,"write returns error")  \
   XX(RRTS,"read returns success")  \
   XX(RRTE,"read returns error")  \
   XX(RFIC,"refreshed inputs changed")  \
   XX(ALST,"all locks settled")  \
+  XX(UTRY,"user command try")  \
+  XX(UFRE,"user command free")  \
+  XX(UDRP,"user command drop")  \
+  XX(UENB,"user command enable")  \
+  XX(CLS0,"Current locks state 0")  \
+  XX(CLS1,"Current locks state 1")  \
+  XX(CLS2,"Current locks state 2")  \
+  XX(CLS3,"Current locks state 3")  \
+  XX(CLS4,"Current locks state 4")  \
+  XX(CLS5,"Current locks state 5")  \
+  XX(CLS6,"Current locks state 6")  \
+  XX(CLS7,"Current locks state 7")  \
+  XX(CLS8,"Current locks state 8")  \
+  XX(CLS9,"Current locks state 9")  \
 
 enum {
 #define XX(sym,str) LET_SPEC_##sym,
@@ -93,5 +108,7 @@ static inline bool unpackSpecLockEvent(__u32 event,__u32 * code) {
   if (code) *code = (event>>0)&0x7f;
   return true;
 }
+
+static inline __s32 codeOfSpecLockEvent(__u32 event)  { __u32 code; return unpackSpecLockEvent(event, &code) ? code : -1; }
 
 #endif /*ITCLOCKEVENT_H*/
