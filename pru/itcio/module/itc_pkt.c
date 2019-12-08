@@ -528,8 +528,8 @@ static int sprintPktBufInfo(char * buf, int len, ITCPacketBuffer * p)
 {
   len += sprintf(&buf[len]," %u %u %u",
                  kfifo_len(&p->mFIFO),
-                 !list_empty(&p->mReaderQ.task_list),
-                 !list_empty(&p->mWriterQ.task_list));
+                 !waitqueue_active(&p->mReaderQ),
+                 !waitqueue_active(&p->mWriterQ));
   return len;
 }
 
