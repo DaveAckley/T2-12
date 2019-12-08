@@ -8,7 +8,7 @@ GITHUB_TARGETS:=$(patsubst %,$(GITHUB_BASE_DIR)/%,$(GITHUB_DIRS))
 install:	MAKE_DIRS $(GITHUB_TARGETS) 
 
 MAKE_DIRS:	FORCE
-	mkdir -p $(HOME_DIR)/GITHUB
+	mkdir -p $(GITHUB_BASE_DIR)
 
 $(GITHUB_BASE_DIR)/tslib-master:	tslib-1.20-201906240441.tgz default-pointercal
 	tar xvzf $< -C $(GITHUB_BASE_DIR)
