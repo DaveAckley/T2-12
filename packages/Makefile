@@ -58,6 +58,7 @@ FLAG_FILE:=.flagfile_INSTALL_COMPLETE
 REMOVE_FLAG_FILE:=.flagfile_REMOVE_COMPLETE
 
 ## Packages we can (hopefully safely) remove
+#  WARNING YOU CANNOT RELY ON KERNEL_VERSION WHEN 'make preremove' IS RUN!
 REMOVE_PACKAGES+=doc-beaglebone-getting-started
 #REMOVE_PACKAGES+=doc-seeed-bbgw-getting-started
 REMOVE_PACKAGES+=c9-core-installer
