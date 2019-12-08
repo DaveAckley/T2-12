@@ -62,6 +62,10 @@ REMOVE_PACKAGES+=doc-beaglebone-getting-started
 #REMOVE_PACKAGES+=doc-seeed-bbgw-getting-started
 REMOVE_PACKAGES+=c9-core-installer
 REMOVE_PACKAGES+=bone101
+REMOVE_PACKAGES+=bb-node-red-installer
+REMOVE_PACKAGES+=bonescript
+
+UNHOLD_PACKAGES+=c9-core-installer
 
 build:	FORCE
 	@echo "PACKAGES: $(PACKAGES)"
@@ -81,7 +85,9 @@ preremove:	FORCE
 	  echo "NOTE: '$(REMOVE_FLAG_FILE)' detected; preremoval skipped" ; \
 	else \
 	  ping -c 1 -n google.com || (echo Want net when removing packages...um why) ; \
+	  apt-mark unhold $(UNHOLD_PACKAGES) ; \
 	  apt-get -y remove --purge $(REMOVE_PACKAGES) ; \
+	  apt -y autoremove ; \
 	  touch $(REMOVE_FLAG_FILE) ; \
 	fi
 
