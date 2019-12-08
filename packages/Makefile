@@ -55,17 +55,20 @@ KERNEL_VERSION:=$(shell uname -r)
 KERNEL_HEADERS_PKG:=linux-headers-$(KERNEL_VERSION) 
 PACKAGES+=$(KERNEL_HEADERS_PKG)
 FLAG_FILE:=.flagfile_INSTALL_COMPLETE
+REMOVE_FLAG_FILE:=.flagfile_REMOVE_COMPLETE
 
-## Packages we can safely remove
+## Packages we can (hopefully safely) remove
+#  WARNING YOU CANNOT RELY ON KERNEL_VERSION WHEN 'make preremove' IS RUN!
 REMOVE_PACKAGES+=doc-beaglebone-getting-started
-REMOVE_PACKAGES+=doc-beaglebone-getting-started
-REMOVE_PACKAGES+=doc-seeed-bbgw-getting-started
+#REMOVE_PACKAGES+=doc-seeed-bbgw-getting-started
+REMOVE_PACKAGES+=c9-core-installer
+REMOVE_PACKAGES+=bone101
 
 build:	FORCE
 	@echo "PACKAGES: $(PACKAGES)"
 	@echo "NOTE: Not doing 'apt-get update' -- do it yourself if you dare"
 
-install:	build
+install:	build preremove
 	@if [ -f $(FLAG_FILE) ] ; then \
 	  echo "NOTE: '$(FLAG_FILE)' detected; installation skipped" ; \
 	else \
@@ -73,6 +76,16 @@ install:	build
 	  apt-get -y install $(PACKAGES) ; \
 	  touch $(FLAG_FILE) ; \
 	fi
+
+preremove:	FORCE
+	@if [ -f $(REMOVE_FLAG_FILE) ] ; then \
+	  echo "NOTE: '$(REMOVE_FLAG_FILE)' detected; preremoval skipped" ; \
+	else \
+	  ping -c 1 -n google.com || (echo Want net when removing packages...um why) ; \
+	  apt-get -y remove --purge $(REMOVE_PACKAGES) ; \
+	  touch $(REMOVE_FLAG_FILE) ; \
+	fi
+
 
 clean:	FORCE
 	rm -f *~
