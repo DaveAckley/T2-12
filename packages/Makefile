@@ -55,6 +55,7 @@ KERNEL_VERSION:=$(shell uname -r)
 KERNEL_HEADERS_PKG:=linux-headers-$(KERNEL_VERSION) 
 PACKAGES+=$(KERNEL_HEADERS_PKG)
 FLAG_FILE:=.flagfile_INSTALL_COMPLETE
+REMOVE_FLAG_FILE:=.flagfile_REMOVE_COMPLETE
 
 ## Packages we can (hopefully safely) remove
 REMOVE_PACKAGES+=doc-beaglebone-getting-started
@@ -76,12 +77,12 @@ install:	build preremove
 	fi
 
 preremove:	FORCE
-	@if [ -f $(FLAG_FILE) ] ; then \
-	  echo "NOTE: '$(FLAG_FILE)' detected; preremoval skipped" ; \
+	@if [ -f $(REMOVE_FLAG_FILE) ] ; then \
+	  echo "NOTE: '$(REMOVE_FLAG_FILE)' detected; preremoval skipped" ; \
 	else \
-	  ping -c 1 -n google.com || (echo Need net to install packages) ; \
+	  ping -c 1 -n google.com || (echo Want net when removing packages...um why) ; \
 	  apt-get -y remove --purge $(REMOVE_PACKAGES) ; \
-	  touch $(FLAG_FILE) ; \
+	  touch $(REMOVE_FLAG_FILE) ; \
 	fi
 
 
