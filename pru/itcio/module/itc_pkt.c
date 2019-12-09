@@ -258,7 +258,7 @@ static inline int bulkOutboundBytesToPRUDev(ITCPRUDeviceState * prudev) {
 
 /* return size of packet sent, 0 if nothing to send, < 0 if problem */
 static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb) {
-  struct rpmsg_channel * chnl;
+  struct rpmsg_device * rpdev;
   int kfifolen, pktlen, ret;
   BUG_ON(!prudev || !ipb);
 
@@ -287,10 +287,10 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
     //return -EBADSLT;
   }
 
-  chnl = prudev->mRpmsgChannel;
-  BUG_ON(!chnl);
+  rpdev = prudev->mRpmsgDevice;
+  BUG_ON(!rpdev);
 
-  ret = rpmsg_trysend(chnl, prudev->mTempPacketBuffer, pktlen);
+  ret = rpmsg_trysend(rpdev->ept, prudev->mTempPacketBuffer, pktlen);
 
   if (ret == 0) 
     ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_TO_PRU, ipb->mPriority, log2in3(pktlen), prudev->mTempPacketBuffer[0]&0x7));
@@ -345,7 +345,7 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
 static int shipAPacketToPRU(ITCPRUDeviceState * prudevstate) {
   int ret;
   BUG_ON(!prudevstate);
-  BUG_ON(!prudevstate->mRpmsgChannel);
+  BUG_ON(!prudevstate->mRpmsgDevice);
 
   ret = sendPacketViaRPMsg(prudevstate, &prudevstate->mPriorityOB);
   if (ret > 0) return 0;  /* shipped priority */
@@ -395,7 +395,7 @@ __printf(5,6) int sendMsgToPRU(unsigned prunum,
 
   localib = &prudevstate->mLocalIB;
 
-  BUG_ON(!prudevstate->mRpmsgChannel);
+  BUG_ON(!prudevstate->mRpmsgDevice);
 
   va_start(args, fmt);
   len = vsnprintf(buf, bufsiz, fmt, args);
@@ -420,7 +420,7 @@ __printf(5,6) int sendMsgToPRU(unsigned prunum,
                     DUMP_PREFIX_NONE, 16, 1,
                     buf, len, true);
 
-  ret = rpmsg_send(prudevstate->mRpmsgChannel, buf, len);
+  ret = rpmsg_send(prudevstate->mRpmsgDevice->ept, buf, len);
 
   /* Wait, if we're supposed to, for a packet in our kfifo */
   if (wait) {
@@ -444,10 +444,10 @@ __printf(5,6) int sendMsgToPRU(unsigned prunum,
 
 
 /*CLASS ATTRIBUTE STUFF*/
-static ssize_t itc_pkt_class_store_poke(struct class *c,
-                                        struct class_attribute *attr,
-                                        const char *buf,
-                                        size_t count)
+static ssize_t poke_store(struct class *c,
+			  struct class_attribute *attr,
+			  const char *buf,
+			  size_t count)
 {
   unsigned poker;
   if (sscanf(buf,"%u",&poker) == 1) {
@@ -456,19 +456,20 @@ static ssize_t itc_pkt_class_store_poke(struct class *c,
   }
   return -EINVAL;
 }
+CLASS_ATTR_WO(poke);
 
-static ssize_t itc_pkt_class_read_status(struct class *c,
-                                        struct class_attribute *attr,
-                                        char *buf)
+static ssize_t status_show(struct class *c,
+			   struct class_attribute *attr,
+			   char *buf)
 {
   sprintf(buf,"%08x\n",S.mItcEnabledStatus);
   return strlen(buf);
 }
+CLASS_ATTR_RO(status);
 
-
-static ssize_t itc_pkt_class_read_statistics(struct class *c,
-                                             struct class_attribute *attr,
-                                             char *buf)
+static ssize_t statistics_show(struct class *c,
+			       struct class_attribute *attr,
+			       char *buf)
 {
   /* We have a PAGE_SIZE (== 4096) in buf, but won't get near that.  Max size
      presently is something like ( 110 + 8 * ( 2 + 3 * 11 + 8 * 11) ) < 1100 */
@@ -493,27 +494,29 @@ static ssize_t itc_pkt_class_read_statistics(struct class *c,
   }
   return len;
 }
+CLASS_ATTR_RO(statistics);
 
-static ssize_t itc_pkt_class_read_trace_start_time(struct class *c,
-                                                   struct class_attribute *attr,
-                                                   char *buf)
+static ssize_t trace_start_time_show(struct class *c,
+				     struct class_attribute *attr,
+				     char *buf)
 {
   sprintf(buf,"%lld\n",S.mEvtDeviceState[0]->mPktEvents.mStartTime);
   return strlen(buf);
 }
+CLASS_ATTR_RO(trace_start_time);
 
-static ssize_t itc_pkt_class_read_shift(struct class *c,
-                                        struct class_attribute *attr,
-                                        char *buf)
+static ssize_t shift_show(struct class *c,
+			  struct class_attribute *attr,
+			  char *buf)
 {
   sprintf(buf,"%d\n",S.mEvtDeviceState[0]->mPktEvents.mShiftDistance);
   return strlen(buf);
 }
 
-static ssize_t itc_pkt_class_store_shift(struct class *c,
-                                     struct class_attribute *attr,
-                                     const char *buf,
-                                     size_t count)
+static ssize_t shift_store(struct class *c,
+			   struct class_attribute *attr,
+			   const char *buf,
+			   size_t count)
 {
   u32 shift;
   if (sscanf(buf,"%u",&shift) == 1 && shift < 64) {
@@ -523,6 +526,7 @@ static ssize_t itc_pkt_class_store_shift(struct class *c,
   }
   return -EINVAL;
 }
+CLASS_ATTR_RW(shift);
 
 static int sprintPktBufInfo(char * buf, int len, ITCPacketBuffer * p)
 {
@@ -534,9 +538,9 @@ static int sprintPktBufInfo(char * buf, int len, ITCPacketBuffer * p)
 }
 
 
-static ssize_t itc_pkt_class_read_pru_bufs(struct class *c,
-                                           struct class_attribute *attr,
-                                           char *buf)
+static ssize_t pru_bufs_show(struct class *c,
+			     struct class_attribute *attr,
+			     char *buf)
 {
   int len = 0;
   int pru;
@@ -552,10 +556,11 @@ static ssize_t itc_pkt_class_read_pru_bufs(struct class *c,
   }
   return len;
 }
+CLASS_ATTR_RO(pru_bufs);
 
-static ssize_t itc_pkt_class_read_pkt_bufs(struct class *c,
-                                           struct class_attribute *attr,
-                                           char *buf)
+static ssize_t pkt_bufs_show(struct class *c,
+			     struct class_attribute *attr,
+			     char *buf)
 {
   int len = 0;
   int speed;
@@ -569,6 +574,7 @@ static ssize_t itc_pkt_class_read_pkt_bufs(struct class *c,
   }
   return len;
 }
+CLASS_ATTR_RO(pkt_bufs);
 
 static const char * tpStrPattern(TracePoint *tp) {
   static char buf[3+5*TRACE_MAX_LEN];
@@ -1035,34 +1041,35 @@ static void tppGenerateTraceProgram(char *buf, u32 len) {
   tppPutByte(tpp,'\n');
 }
 
-static ssize_t itc_pkt_class_read_trace(struct class *c,
-                                        struct class_attribute *attr,
-                                        char *buf)
+static ssize_t trace_show(struct class *c,
+			  struct class_attribute *attr,
+			  char *buf)
 {
   tppGenerateTraceProgram(buf,PAGE_SIZE-1);
   return strlen(buf);
 }
 
-static ssize_t itc_pkt_class_store_trace(struct class *c,
-                                         struct class_attribute *attr,
-                                         const char *buf,
-                                         size_t count)
+static ssize_t trace_store(struct class *c,
+			   struct class_attribute *attr,
+			   const char *buf,
+			   size_t count)
 {
   return parseTraceProgram(buf,count);
 }
+CLASS_ATTR_RW(trace);
 
-static ssize_t itc_pkt_class_read_debug(struct class *c,
-                                        struct class_attribute *attr,
-                                        char *buf)
+static ssize_t debug_show(struct class *c,
+			  struct class_attribute *attr,
+			  char *buf)
 {
   sprintf(buf,"%x\n",S.mDebugFlags);
   return strlen(buf);
 }
 
-static ssize_t itc_pkt_class_store_debug(struct class *c,
-                                         struct class_attribute *attr,
-                                         const char *buf,
-                                         size_t count)
+static ssize_t debug_store(struct class *c,
+			   struct class_attribute *attr,
+			   const char *buf,
+			   size_t count)
 {
   unsigned tmpdbg;
   bool add = false, sub = false;
@@ -1082,6 +1089,8 @@ static ssize_t itc_pkt_class_store_debug(struct class *c,
   }
   return -EINVAL;
 }
+CLASS_ATTR_RW(debug);
+
 
 static ssize_t itc_pin_write_handler(unsigned pru, unsigned prudir, unsigned bit,
                                      struct class *c,
@@ -1139,27 +1148,29 @@ static ssize_t itc_pin_read_handler(unsigned pru, unsigned prudir, unsigned bit,
 }
 
 #define ITC_INPUT_PIN_FUNC(dir,pin)                                     \
-static ssize_t itc_pkt_class_read_##dir##_##pin(struct class *c,        \
-                                                struct class_attribute *attr, \
-                                                char *buf)              \
+static ssize_t dir##_##pin##_show(struct class *c,			\
+				    struct class_attribute *attr,	\
+				    char *buf)				\
 {                                                                       \
   return itc_pin_read_handler(ITC_DIR_TO_PRU(dir),                      \
                               ITC_DIR_TO_PRUDIR(dir),                   \
                               ITC_DIR_AND_PIN_TO_R31_BIT(dir,pin),      \
                               c,attr,buf);                              \
 }                                                                       \
+CLASS_ATTR_RO(dir##_##pin);						\
 
 #define ITC_OUTPUT_PIN_FUNC(dir,pin)                                    \
-static ssize_t itc_pkt_class_write_##dir##_##pin(struct class *c,       \
-                                                 struct class_attribute *attr, \
-                                                 const char *buf,       \
-                                                 size_t count)          \
+static ssize_t dir##_##pin##_store(struct class *c,			\
+				   struct class_attribute *attr,	\
+				   const char *buf,			\
+				   size_t count)			\
 {                                                                       \
   return itc_pin_write_handler(ITC_DIR_TO_PRU(dir),                     \
                                ITC_DIR_TO_PRUDIR(dir),                  \
                                ITC_DIR_AND_PIN_TO_R30_BIT(dir,pin),     \
                                c,attr,buf,count);                       \
 }                                                                       \
+CLASS_ATTR_WO(dir##_##pin);						\
 
 
 /* ******
@@ -1179,29 +1190,31 @@ FOR_XX_IN_ITC_ALL_DIR
    GENERATE SYSFS CLASS ATTRIBUTES FOR ITC PINS */
 /* input pins are read-only */
 #define ITC_INPUT_PIN_ATTR(dir,pin) \
-  __ATTR(dir##_##pin, 0444, itc_pkt_class_read_##dir##_##pin, NULL)
+  &class_attr_##dir##_##pin.attr
 /* output pins are read-write */
 #define ITC_OUTPUT_PIN_ATTR(dir,pin) \
-  __ATTR(dir##_##pin, 0644, NULL, itc_pkt_class_write_##dir##_##pin)
+  &class_attr_##dir##_##pin.attr
 #define XX(dir) \
   ITC_OUTPUT_PIN_ATTR(dir,TXRDY), \
   ITC_OUTPUT_PIN_ATTR(dir,TXDAT), \
   ITC_INPUT_PIN_ATTR(dir,RXRDY), \
   ITC_INPUT_PIN_ATTR(dir,RXDAT), \
 
-static struct class_attribute itc_pkt_class_attrs[] = {
+static struct attribute * class_itc_pkt_attrs[] = {
   FOR_XX_IN_ITC_ALL_DIR
-  __ATTR(poke, 0200, NULL, itc_pkt_class_store_poke),
-  __ATTR(debug, 0644, itc_pkt_class_read_debug, itc_pkt_class_store_debug),
-  __ATTR(trace, 0644, itc_pkt_class_read_trace, itc_pkt_class_store_trace),
-  __ATTR(trace_start_time, 0444, itc_pkt_class_read_trace_start_time, NULL), 
-  __ATTR(shift, 0644, itc_pkt_class_read_shift, itc_pkt_class_store_shift),
-  __ATTR(status, 0444, itc_pkt_class_read_status, NULL),
-  __ATTR(statistics, 0444, itc_pkt_class_read_statistics, NULL),
-  __ATTR(pru_bufs, 0444, itc_pkt_class_read_pru_bufs, NULL),
-  __ATTR(pkt_bufs, 0444, itc_pkt_class_read_pkt_bufs, NULL),
-  __ATTR_NULL,
+  &class_attr_poke.attr,
+  &class_attr_debug.attr,
+  &class_attr_trace.attr,
+  &class_attr_trace.attr,
+  &class_attr_shift.attr,
+  &class_attr_status.attr,
+  &class_attr_statistics.attr,
+  &class_attr_pru_bufs.attr,
+  &class_attr_pkt_bufs.attr,
+  NULL,
 };
+ATTRIBUTE_GROUPS(class_itc_pkt);
+
 #undef XX
 /* GENERATE SYSFS CLASS ATTRIBUTES FOR ITC PINS: DONE */
 
@@ -1703,11 +1716,11 @@ static void handleLocalStandard3(int minor, u8* bytes, int len)
   }
 }
 
-static void itc_pkt_cb(struct rpmsg_channel *rpmsg_chnl,
+static int itc_pkt_cb(struct rpmsg_device *rpdev,
                        void *data , int len , void *priv,
                        u32 src )
 {
-  ITCPRUDeviceState * prudevstate = dev_get_drvdata(&rpmsg_chnl->dev);
+  ITCPRUDeviceState * prudevstate = dev_get_drvdata(&rpdev->dev);
   ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) prudevstate;
   int minor = MINOR(cdevstate->mDevt);
 
@@ -1846,6 +1859,7 @@ static void itc_pkt_cb(struct rpmsg_channel *rpmsg_chnl,
       }
     }
   }
+  return 0;
 }
 
 static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname, bool routed, bool priority, int minor, int buffer) {
@@ -1877,7 +1891,7 @@ static ITCPRUDeviceState * makeITCPRUDeviceState(struct device * dev,
 {
   ITCCharDeviceState* cdev = makeITCCharDeviceState(dev, sizeof(ITCPRUDeviceState), minor_to_create, err_ret);
   ITCPRUDeviceState* prudev = (ITCPRUDeviceState*) cdev;
-  prudev->mRpmsgChannel = 0; /* caller inits later */
+  prudev->mRpmsgDevice = 0; /* caller inits later */
   initITCPacketBuffer(&prudev->mLocalIB,"mLocalIB",false,false, minor_to_create, BUFFERSET_L);
   initITCPacketBuffer(&prudev->mPriorityOB,"mPriorityOB",true,true, minor_to_create, BUFFERSET_P);
   initITCPacketBuffer(&prudev->mBulkOB,"mBulkOB",true,false, minor_to_create, BUFFERSET_B);
@@ -1898,21 +1912,20 @@ static ITCEvtDeviceState * makeITCEvtDeviceState(struct device * dev,
  * driver probe function
  */
 
-static int itc_pkt_probe(struct rpmsg_channel *rpmsg_chnl)
+static int itc_pkt_probe(struct rpmsg_device *rpdev)
 {
   int ret;
   ITCPRUDeviceState *prudevstate;
   int minor_obtained;
 
-  printk(KERN_INFO "ZORG itc_pkt_probe dev=%p\n", &rpmsg_chnl->dev);
+  printk(KERN_INFO "ZORG itc_pkt_probe dev=%p\n", &rpdev->dev);
 
-  dev_info(&rpmsg_chnl->dev, "chnl: 0x%x -> 0x%x\n", rpmsg_chnl->src,
-           rpmsg_chnl->dst);
+  dev_info(&rpdev->dev, "new channel: 0x%x -> 0x%x\n", rpdev->src, rpdev->dst);
 
-  minor_obtained = rpmsg_chnl->dst - 30;
+  minor_obtained = rpdev->dst - 30;
   if (minor_obtained < 0 || minor_obtained > 1) {
-    dev_err(&rpmsg_chnl->dev, "Failed : Unrecognized destination %d\n",
-            rpmsg_chnl->dst);
+    dev_err(&rpdev->dev, "Failed : Unrecognized destination %d\n",
+            rpdev->dst);
     return -ENODEV;
   }
 
@@ -1926,7 +1939,7 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_chnl)
 
       printk(KERN_INFO "ZROG making minor %d (on minor_obtained %d)\n", minor_to_create, minor_obtained);
 
-      S.mPktDeviceState[i] = makeITCPktDeviceState(&rpmsg_chnl->dev, minor_to_create, &ret);
+      S.mPktDeviceState[i] = makeITCPktDeviceState(&rpdev->dev, minor_to_create, &ret);
 
       printk(KERN_INFO "GROZ made minor %d=%p (err %d)SLORG\n", minor_to_create, S.mPktDeviceState[i], ret);
 
@@ -1939,7 +1952,7 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_chnl)
 
       printk(KERN_INFO "ZREG making minor %d (on minor_obtained %d)\n", minor_to_create, minor_obtained);
 
-      S.mEvtDeviceState[i] = makeITCEvtDeviceState(&rpmsg_chnl->dev, minor_to_create, &ret);
+      S.mEvtDeviceState[i] = makeITCEvtDeviceState(&rpdev->dev, minor_to_create, &ret);
 
       printk(KERN_INFO "GREZ made minor %d=%p (err %d)SLORG\n", minor_to_create, S.mEvtDeviceState[i], ret);
 
@@ -1952,14 +1965,14 @@ static int itc_pkt_probe(struct rpmsg_channel *rpmsg_chnl)
 
   BUG_ON(S.mPRUDeviceState[minor_obtained]);
 
-  prudevstate = makeITCPRUDeviceState(&rpmsg_chnl->dev, minor_obtained, &ret);
+  prudevstate = makeITCPRUDeviceState(&rpdev->dev, minor_obtained, &ret);
 
   printk(KERN_INFO "BLURGE back with devstate=%p\n",prudevstate);
 
   if (!prudevstate)
     return ret;
 
-  prudevstate->mRpmsgChannel = rpmsg_chnl;
+  prudevstate->mRpmsgDevice = rpdev;
 
   S.mPRUDeviceState[minor_obtained] = prudevstate;
 
@@ -2046,7 +2059,7 @@ static const struct attribute_group * itc_pkt_groups[] = {
 static struct class itc_pkt_class_instance = {
   .name = "itc_pkt",
   .owner = THIS_MODULE,
-  .class_attrs = itc_pkt_class_attrs,
+  .class_groups = class_itc_pkt_groups,
   .dev_groups = itc_pkt_groups,
 };
 
@@ -2216,8 +2229,8 @@ static void unmakeITCPRUDeviceState(ITCPRUDeviceState * prudevstate) {
   --S.mOpenPRUMinors;
 }
 
-static void itc_pkt_remove(struct rpmsg_channel *rpmsg_chnl) {
-  ITCPRUDeviceState * prudevstate = dev_get_drvdata(&rpmsg_chnl->dev);
+static void itc_pkt_remove(struct rpmsg_device *rpdev) {
+  ITCPRUDeviceState * prudevstate = dev_get_drvdata(&rpdev->dev);
 
   unmakeITCPRUDeviceState(prudevstate);
 

@@ -16,7 +16,7 @@
 #include <linux/poll.h>
 #include <linux/ctype.h>           /* for isprint, tolower */
 
-
+#include "rpmsg_t2_local.h"       /* XXX HOW ARE YOU SUPPOSED TO GET struct rpmsg?? */
 #include "pin_info_maps.h"
 #include "itcpktevent.h"          /* Get pkt event struct */
   
@@ -145,7 +145,7 @@ typedef struct {             /* General char device state */
 typedef struct {
   ITCCharDeviceState mCDevState; /* char device state must be first! */
 
-  struct rpmsg_channel *mRpmsgChannel; /* IO channel to PRU */
+  struct rpmsg_device *mRpmsgDevice; /* IO channel to PRU */
   unsigned char mTempPacketBuffer[RPMSG_MAX_PACKET_SIZE]; /* Buffer for pkt transfer grr */
   ITCPacketBuffer mLocalIB;    /* for non-standard packet replies from PRU */
   ITCPacketBuffer mPriorityOB; /* urgent pkts from userspace awaiting rpmsg to PRU */
