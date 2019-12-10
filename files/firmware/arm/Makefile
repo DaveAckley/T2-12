@@ -1,4 +1,4 @@
-FIRMWARE_BUILD_DIR:=/opt/source/dtb-4.4-ti
+FIRMWARE_BUILD_DIR:=$(shell uname -r | sed 's/\([0-9][0-9]*[.][0-9][0-9]*\)[^-]*-ti.*/\/opt\/source\/dtb-\1-ti/')
 FIRMWARE_FILES_DIR:=$(FIRMWARE_BUILD_DIR)/src/arm
 DTS_FILES:=$(wildcard *dts)
 DTSI_FILES:=$(wildcard *dtsi)
