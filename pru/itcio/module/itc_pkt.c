@@ -1203,14 +1203,14 @@ FOR_XX_IN_ITC_ALL_DIR
 static struct attribute * class_itc_pkt_attrs[] = {
   FOR_XX_IN_ITC_ALL_DIR
   &class_attr_poke.attr,
-  &class_attr_debug.attr,
-  &class_attr_trace.attr,
-  &class_attr_trace.attr,
-  &class_attr_shift.attr,
   &class_attr_status.attr,
   &class_attr_statistics.attr,
+  &class_attr_trace_start_time.attr,
+  &class_attr_shift.attr,
   &class_attr_pru_bufs.attr,
   &class_attr_pkt_bufs.attr,
+  &class_attr_trace.attr,
+  &class_attr_debug.attr,
   NULL,
 };
 ATTRIBUTE_GROUPS(class_itc_pkt);
