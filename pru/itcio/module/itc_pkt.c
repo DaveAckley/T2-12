@@ -244,10 +244,6 @@ static void destroyITCThreads(ITCModuleState *s) {
   s->mShipOBPktTask = 0;
 }
 
-static void destroyITCModuleState(ITCModuleState *s) {
-  destroyITCThreads(s);
-}
-
 static inline int bytesInITCPacketBuffer(ITCPacketBuffer * ipb) {
   return kfifo_len(&ipb->mFIFO);
 }
@@ -2230,7 +2226,13 @@ static void unmakeITCPRUDeviceState(ITCPRUDeviceState * prudevstate) {
 }
 
 static void itc_pkt_remove(struct rpmsg_device *rpdev) {
+
   ITCPRUDeviceState * prudevstate = dev_get_drvdata(&rpdev->dev);
+
+  /* thread is last made so first destroyed */
+  if (S.mOpenPRUMinors == PRU_MINORS) {
+    destroyITCThreads(&S);
+  }
 
   unmakeITCPRUDeviceState(prudevstate);
 
@@ -2304,7 +2306,6 @@ static int __init itc_pkt_init (void)
 
 static void __exit itc_pkt_exit (void)
 {
-  destroyITCModuleState(&S);
 
   unregister_rpmsg_driver(&itc_pkt_driver);
   class_unregister(&itc_pkt_class_instance);
