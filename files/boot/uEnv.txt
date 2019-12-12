@@ -1,71 +1,71 @@
 #Docs: http://elinux.org/Beagleboard:U-boot_partitioning_layout_2.0
 
-uname_r=4.4.54-ti-r93
+uname_r=4.14.108-ti-r124
 #uuid=
 #AHAX was
 #dtb=
 dtb=am335x-bonegreen-t2-12.dtb
 
-##BeagleBone Black/Green dtb's for v4.1.x (BeagleBone White just works..)
-
-##BeagleBone Black: HDMI (Audio/Video) disabled:
-#dtb=am335x-boneblack-emmc-overlay.dtb
-
-##BeagleBone Black: eMMC disabled:
-#dtb=am335x-boneblack-hdmi-overlay.dtb
-
-##BeagleBone Black: HDMI Audio/eMMC disabled:
-#dtb=am335x-boneblack-nhdmi-overlay.dtb
-
-##BeagleBone Black: HDMI (Audio/Video)/eMMC disabled:
-#dtb=am335x-boneblack-overlay.dtb
-
-##BeagleBone Black: wl1835
-#dtb=am335x-boneblack-wl1835mod.dtb
-
-##BeagleBone Green: eMMC disabled
-#dtb=am335x-bonegreen-overlay.dtb
-
 ###U-Boot Overlays###
 ###Documentation: http://elinux.org/Beagleboard:BeagleBoneBlack_Debian#U-Boot_Overlays
 ###Master Enable
-#enable_uboot_overlays=1
+enable_uboot_overlays=1
+###
 ###Overide capes with eeprom
 #uboot_overlay_addr0=/lib/firmware/<file0>.dtbo
 #uboot_overlay_addr1=/lib/firmware/<file1>.dtbo
 #uboot_overlay_addr2=/lib/firmware/<file2>.dtbo
 #uboot_overlay_addr3=/lib/firmware/<file3>.dtbo
+###
+###Additional custom capes
+#uboot_overlay_addr4=/lib/firmware/<file4>.dtbo
+#uboot_overlay_addr5=/lib/firmware/<file5>.dtbo
+#uboot_overlay_addr6=/lib/firmware/<file6>.dtbo
+#uboot_overlay_addr7=/lib/firmware/<file7>.dtbo
+###
 ###Custom Cape
-#dtb_overlay=/lib/firmware/<file4>.dtbo
-###Disable auto loading of virtual capes (emmc/video/wireless)
+#dtb_overlay=/lib/firmware/<file8>.dtbo
+###
+###Disable auto loading of virtual capes (emmc/video/wireless/adc)
 #disable_uboot_overlay_emmc=1
 #disable_uboot_overlay_video=1
 #disable_uboot_overlay_audio=1
 #disable_uboot_overlay_wireless=1
+#disable_uboot_overlay_adc=1
+###
+###PRUSS OPTIONS
+###pru_rproc (4.14.x-ti kernel)
+uboot_overlay_pru=/lib/firmware/AM335X-PRU-RPROC-4-14-TI-00A0.dtbo
+###pru_rproc (4.19.x-ti kernel)
+#uboot_overlay_pru=/lib/firmware/AM335X-PRU-RPROC-4-19-TI-00A0.dtbo
+###pru_uio (4.14.x-ti, 4.19.x-ti & mainline/bone kernel)
+#uboot_overlay_pru=/lib/firmware/AM335X-PRU-UIO-00A0.dtbo
+###
 ###Cape Universal Enable
-#enable_uboot_cape_universal=1
-###U-Boot fdt tweaks...
+enable_uboot_cape_universal=1
+###
+###Debug: disable uboot autoload of Cape
+#disable_uboot_overlay_addr0=1
+#disable_uboot_overlay_addr1=1
+#disable_uboot_overlay_addr2=1
+#disable_uboot_overlay_addr3=1
+###
+###U-Boot fdt tweaks... (60000 = 384KB)
 #uboot_fdt_buffer=0x60000
 ###U-Boot Overlays###
 
-# AHAX
-# was:cmdline=coherent_pool=1M net.ifnames=0 quiet cape_universal=enable
-# was: cmdline=coherent_pool=1M net.ifnames=0 cape_universal=enable
-cmdline=coherent_pool=1M net.ifnames=0
+# AHAS
+# was:cmdline=coherent_pool=1M net.ifnames=0 rng_core.default_quality=100 quiet
+cmdline=coherent_pool=1M net.ifnames=0 rng_core.default_quality=100
 
 #In the event of edid real failures, uncomment this next line:
-#cmdline=coherent_pool=1M net.ifnames=0 quiet cape_universal=enable video=HDMI-A-1:1024x768@60e
+#cmdline=coherent_pool=1M net.ifnames=0 rng_core.default_quality=100 quiet video=HDMI-A-1:1024x768@60e
 
-##Example v3.8.x
-#cape_disable=capemgr.disable_partno=
-#cape_enable=capemgr.enable_partno=
-
-##Example v4.1.x
-#cape_disable=bone_capemgr.disable_partno=
-#AHAX trying boot-time overlaying..
-#AHAX but that doesn't seem to help so going to rc.local
-#cape_enable=bone_capemgr.enable_partno=cape-universal2
+#Use an overlayfs on top of a read-only root filesystem:
+#cmdline=coherent_pool=1M net.ifnames=0 rng_core.default_quality=100 quiet overlayroot=tmpfs
 
 ##enable Generic eMMC Flasher:
 ##make sure, these tools are installed: dosfstools rsync
 #cmdline=init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh
+
+#cmdline=init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3-bbg.sh
