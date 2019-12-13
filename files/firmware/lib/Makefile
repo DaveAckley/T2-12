@@ -10,12 +10,13 @@ touch:	FORCE
 	touch $(OVERLAY_FILES)
 
 $(INSTALL_DIR)/%.dtbo:	$(INSTALL_DIR)/%.dts
-	make -C /opt/source/bb.org-overlays
+	make -C /opt/source/bb.org-overlays 
 
 $(INSTALL_DIR)/%.dts:	%.dts
 	cp $^ $@ || (echo Must be root ; exit 2)
 
 install:	$(INSTALLED_DTBO_FILES)
+	make -C /opt/source/bb.org-overlays install
 
 clean:	FORCE
 	rm -f $(DTBO_FILES)
