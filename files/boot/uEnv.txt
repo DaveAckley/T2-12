@@ -18,7 +18,8 @@ enable_uboot_overlays=1
 #uboot_overlay_addr3=/lib/firmware/<file3>.dtbo
 ###
 ###Additional custom capes
-#uboot_overlay_addr4=/lib/firmware/<file4>.dtbo
+#AHAX 201912130343 LOAD OUR DISPLAY
+uboot_overlay_addr4=/lib/firmware/T2-WAVESHARE35A-00A0.dtbo
 #uboot_overlay_addr5=/lib/firmware/<file5>.dtbo
 #uboot_overlay_addr6=/lib/firmware/<file6>.dtbo
 #uboot_overlay_addr7=/lib/firmware/<file7>.dtbo
