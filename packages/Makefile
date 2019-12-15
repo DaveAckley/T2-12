@@ -7,6 +7,9 @@ PACKAGES+=software-properties-common
 # For unpacking .mfz files in emacs
 PACKAGES+=zip
 
+# For CDM crypto checking
+PACKAGES+=libcrypt-openssl-rsa-perl
+
 # Generally useful framebuffer manager?
 PACKAGES+=fbset
 
