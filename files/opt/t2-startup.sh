@@ -9,7 +9,7 @@ logger STARTING T2 FINAL BOOT CONFIG -- SORT OF
 #sleep 2
 
 logger T2 FINAL BOOT CONFIG: boot-config-pin
-config-pin -f /opt/scripts/t2/boot-config-pin.txt
+config-pin -c /opt/scripts/t2/boot-config-pin.txt
 #sleep 1
 
 #logger T2 FINAL BOOT CONFIG: ADC
