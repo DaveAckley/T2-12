@@ -1,10 +1,10 @@
 [Unit]
 Description=Boot time cdm processing
-Requires=t2-splash-screen.service
-After=t2-splash-screen.service
+Requires=mfm-run.service
+After=mfm-run.service
 
 [Service]
-Type=oneshot
+Type=simple
 #cdm.sh installed by ../../apps/cdm/
 ExecStart=/opt/scripts/t2/cdm.sh
 
