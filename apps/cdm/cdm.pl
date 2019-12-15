@@ -253,7 +253,7 @@ sub checkMFZDataFor {
 
     #### REPLACE THIS WITH 'mfzrun VERIFY' ONCE AVAILABLE
     my $path = getFinfoPath($finfo);
-    my $cmd = "echo Q | mfzrun -kd /cdm $path list";
+    my $cmd = "echo Q | $mfzrunProgPath -kd /cdm $path list";
     my $output = `$cmd`;
 
     if ($output =~ /.*?signer handle '(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})' is not recognized!/) {
