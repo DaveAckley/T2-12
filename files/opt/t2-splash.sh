@@ -13,6 +13,7 @@ while [ ! -c /dev/fb0 ]; do
 done
 
 # Run splash screen
+export SDL_NOMOUSE=1
 /opt/scripts/t2/sdlsplash /opt/scripts/t2/t2-splash.png
 
 exit 0
