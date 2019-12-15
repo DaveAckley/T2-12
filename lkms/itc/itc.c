@@ -347,6 +347,8 @@ static void itcExitITC(ITCInfo * itc)
   printk(KERN_INFO "ITC exit %s\n", dn);
 }
 
+static void itcExitGPIOs(void) ;
+
 static void itcInitGPIOs(void) {
 
   /////
@@ -357,6 +359,9 @@ static void itcInitGPIOs(void) {
 
   // Init the user context iterator, with very rare shuffling
   itcIteratorInitialize(&S.userContextIterator, 100000);
+
+  printk(KERN_INFO "ITC PREFREEING PINS??\n");
+  itcExitGPIOs();
 
   printk(KERN_INFO "ITC allocating %d pins\n", count);
 
