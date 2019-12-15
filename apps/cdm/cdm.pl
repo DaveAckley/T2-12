@@ -44,7 +44,8 @@ my %triggerMFZs = (
 #DEPRECATED    'cdmd-t2.mfz' => \&installOverlay,
     );
 my %cdmdTargetDirs = (
-    'cdmd-MFM.mfz' => "/home/t2/GITHUB",
+    'cdmd-MFM.mfz' => "/home/t2",
+#DEPRECATED    'cdmd-MFM.mfz' => "/home/t2/GITHUB",
     'cdmd-T2-12.mfz' => "/home/t2",
 #DEPRECATED    'cdmd-T2-GFB.mfz' => "/home/t2/GITHUB/GFB",
 #DEPRECATED    'cdmd-t2.mfz' => "/home",
@@ -130,7 +131,7 @@ my @subDirs = ($commonSubdir, $pendingSubdir,$logSubdir,$pubkeySubdir);
 my $commonPath = "$baseDir/$commonSubdir";
 my $pendingPath = "$baseDir/pending";
 
-my $mfzrunProgPath = "/home/t2/GITHUB/MFM/bin/mfzrun";
+my $mfzrunProgPath = "/home/t2/MFM/bin/mfzrun";
 
 sub flushPendingDir {
     my $count = remove_tree($pendingPath);
@@ -1367,7 +1368,8 @@ sub checkUserButton {
 my $statPID;
 #my $statProgPath = "/home/t2/GITHUB/GFB/T2-GFB/stat13.pl";
 #my $statProgPath = "/home/t2/T2-12/apps/cdm/runStat.sh";
-my $statProgPath = "/home/t2/GITHUB/MFM/bin/t2viz";
+#my $statProgPath = "/home/t2/GITHUB/MFM/bin/t2viz";
+my $statProgPath = "/home/t2/MFM/bin/t2viz";
 my $statProgName = "t2viz";
 my $statProgHelper = "/home/t2/T2-12/apps/mfm/RUN_SDL";
 
