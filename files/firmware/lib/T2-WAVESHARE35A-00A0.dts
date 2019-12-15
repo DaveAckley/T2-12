@@ -1,0 +1,164 @@
+/*
+ * Based on waveshare35a-overlay.dts from
+ * https://github.com/swkim01/waveshare-dtoverlays/blob/master/waveshare35a-overlay.dts
+ * where it was posted without a license.
+ *
+ * Modifications for T2 on BBG by Dave Ackley, placed in the public domain.
+ *
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/am33xx.h>
+#include <dt-bindings/board/am335x-bbw-bbb-base.h>
+
+/ {
+	compatible = "ti,beaglebone", "ti,beaglebone-black";
+
+	/* identification */
+	part-number = "waveshare35a";
+	version = "00A0";
+
+
+	fragment@0 {
+		target = <&spi0>;
+		__overlay__ {
+			status = "okay";
+
+			spidev@0 {
+				status = "disabled";
+			};
+
+			spidev@1 {
+				status = "disabled";
+			};
+		};
+	};
+
+	/*
+	 * Helper to show loaded overlays under: /proc/device-tree/chosen/overlays/
+	 */
+	fragment@1 {
+		target-path="/";
+		__overlay__ {
+
+			chosen {
+				overlays {
+                                     T2-WAVESHARE35A-00A0 = __TIMESTAMP__;
+				};
+			};
+		};
+	};
+
+	/*
+	 * Free up the pins used by the cape from the pinmux helpers.
+	 */
+	fragment@2 {
+		target = <&ocp>;
+		__overlay__ {
+			P9_22_pinmux { status = "disabled"; };	/* spi0_sclk */
+			P9_18_pinmux { status = "disabled"; };	/* spi0_d1 */
+			P9_21_pinmux { status = "disabled"; };	/* spi0_d0 */
+			P9_17_pinmux { status = "disabled"; };	/* spi0_cs0 */
+			P9_20_pinmux { status = "disabled"; };	/* TP_CS */
+			P9_15_pinmux { status = "disabled"; };	/* DSP_DC */
+			P9_11_pinmux { status = "disabled"; };	/* DSP_PWRON */
+			P9_19_pinmux { status = "disabled"; };	/* TP_IRQ */
+		};
+	};
+
+//fragment@3 unused
+
+	fragment@4 {
+		target = <&am33xx_pinmux>;
+		__overlay__ {
+			waveshare35a_pins: pinmux_waveshare35a_pins {
+				pinctrl-single,pins = <
+					BONE_P9_22 (PIN_OUTPUT_PULLDOWN | MUX_MODE0)	/* P9.22 spi0_sclk */
+					BONE_P9_18 (PIN_INPUT_PULLUP | MUX_MODE0)	/* P9.18 spi0_d1 */
+					BONE_P9_21 (PIN_OUTPUT_PULLUP | MUX_MODE0)	/* P9.21 spi0_d0 */
+					BONE_P9_17 (PIN_OUTPUT_PULLUP | MUX_MODE0)	/* P9.17 spi0_cs0 */
+					BONE_P9_20 (PIN_OUTPUT_PULLUP | MUX_MODE7)	/* P9.20 TP_CS gpio0_12 gpio12 */
+				>;
+			};
+
+			lcd_ctrl_pins: pinmux_lcd_ctrl_pins {
+				pinctrl-single,pins = <
+                                	BONE_P9_15 (PIN_OUTPUT_PULLUP | MUX_MODE7)	/* P9.15 DSP_DC gpio1_16 gpio48 */
+                                        BONE_P9_11 (PIN_OUTPUT_PULLUP | MUX_MODE7)	/* P9.11 DSP_PWRON gpio0_30 gpio30 */
+					BONE_P9_19 (PIN_INPUT_PULLUP | MUX_MODE7)	/* P9.19 TP_IRQ gpio0_13 gpio13 */
+				>;
+			};
+		};
+	};
+
+	fragment@5 {
+		target = <&spi0>;
+		__overlay__ {
+			/* needed to avoid dtc warning */
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			ti,pindir-d0-out-d1-in = <1>; /* T2 uses d0 as out and d1 as in */
+
+
+			waveshare35a: waveshare35a@0 {
+				compatible = "ilitek,ili9486";
+				reg = <0>;
+
+                                pinctrl-names = "default";
+			        pinctrl-0 = <&waveshare35a_pins &lcd_ctrl_pins>;
+
+				spi-max-frequency = <32320000>;
+				txbuflen = <32768>;
+				rotate = <270>;
+				bgr = <0>;
+				fps = <15>;
+				buswidth = <8>;
+				regwidth = <16>;
+				reset-gpios = <&gpio0 30 0>; /* Using custom reset code to drive DSP_PWRON */
+         			dc-gpios = <&gpio1 16 0>;
+				debug = <3>;
+
+				init = <0x10000b0 0x00
+				        0x1000011
+					0x20000ff
+					0x100003a 0x55
+					0x1000036 0x28
+					0x10000c2 0x44
+					0x10000c5 0x00 0x00 0x00 0x00
+					0x10000e0 0x0f 0x1f 0x1c 0x0c 0x0f 0x08 0x48 0x98 0x37 0x0a 0x13 0x04 0x11 0x0d 0x00
+					0x10000e1 0x0f 0x32 0x2e 0x0b 0x0d 0x05 0x47 0x75 0x37 0x06 0x10 0x03 0x24 0x20 0x00
+					0x10000e2 0x0f 0x32 0x2e 0x0b 0x0d 0x05 0x47 0x75 0x37 0x06 0x10 0x03 0x24 0x20 0x00
+					/* piscreen -> waveshare35a */
+					0x1000036 0x28
+					0x1000011
+					0x1000029>;
+			};
+
+			waveshare35a_ts: waveshare35a-ts@1 {
+				compatible = "ti,ads7846";
+				reg = <1>;
+
+				spi-max-frequency = <2000000>;
+				interrupts = <13 2>; /* high-to-low edge triggered */
+				interrupt-parent = <&gpio0>;
+				pendown-gpio = <&gpio0 13 0>;
+				ti,x-plate-ohms = /bits/ 16 <60>;
+				ti,pressure-max = /bits/ 16 <255>;
+				ti,swap-xy = <1>;
+			};
+		};
+	};
+	__overrides__ {
+		speed =		<&waveshare35a>,"spi-max-frequency:0";
+		txbuflen =	<&waveshare35a>,"txbuflen:0";
+		rotate =	<&waveshare35a>,"rotate:0";
+		fps =		<&waveshare35a>,"fps:0";
+		bgr =		<&waveshare35a>,"bgr:0";
+		debug =		<&waveshare35a>,"debug:0";
+		swapxy =	<&waveshare35a_ts>,"ti,swap-xy;0";
+	};
+};
