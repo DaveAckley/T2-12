@@ -60,12 +60,14 @@ static const s16 default_init_sequence[] = {
 	-3
 };
 
+/* DON'T NEED?
 static void reset(struct fbtft_par *par)
 {
-  printk(KERN_INFO "FB_ILI9476_T2 IS IN FOGGEN RESET (%p)\n",
-         par
+  printk(KERN_INFO "FB_ILI9476_T2 IS IN FOGGEN RESET (%p->gpio.reset=%d)\n",
+         par,par->gpio.reset
          );
 }
+*/
 
 static void set_addr_win(struct fbtft_par *par, int xs, int ys, int xe, int ye)
 {
@@ -112,7 +114,7 @@ static struct fbtft_display display = {
 	.fbtftops = {
 		.set_addr_win = set_addr_win,
 		.set_var = set_var,
-                .reset = reset,
+/*XXX DONT NEED TO OVERRIDE?                .reset = reset, */
 	},
 };
 

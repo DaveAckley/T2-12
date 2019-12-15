@@ -20,20 +20,16 @@ clean:	FORCE
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(CURDIR) clean
 	rm -f testitc *.o *~
 
-insmod:	all rmmod
-	sudo insmod itc.ko
+# insmod:	all rmmod
+# 	sudo insmod itc.ko
 
-rmmod:
-	rmmod itc 2>/dev/null || exit 0
+# rmmod:
+# 	rmmod itc 2>/dev/null || exit 0
 
-install:	install_files insmod
+install:	install_files
 
 install_files:	all
-	make INSTALL_MOD_DIR=itc -C $(MODULES_BUILD_DIR) M=$(CURDIR) modules_install
-	@test -f $(ETC_MODULES_FILE) || \
-	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
-	grep itc $(ETC_MODULES_FILE) || echo itc >> $(ETC_MODULES_FILE)
-	depmod
+	make INSTALL_MOD_DIR=kernel/drivers/staging/fbtft -C $(MODULES_BUILD_DIR) M=$(CURDIR) modules_install
 
 uninstall:	FORCE
 	@echo "WRITE ME" && exit 1
