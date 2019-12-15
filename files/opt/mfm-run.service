@@ -4,7 +4,7 @@ Requires=t2-splash-screen.service
 After=t2-splash-screen.service
 
 [Service]
-Type=oneshot
+Type=simple
 #mfm.sh installed by ../../apps/mfm/
 ExecStart=/opt/scripts/t2/mfm.sh
 
