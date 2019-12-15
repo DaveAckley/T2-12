@@ -5,11 +5,11 @@
 ## Power up the display well before fbtft tries to init it
 
 # DSP_PWRON (gpio 30) output
-P9_11 high
+#NOW OWNED BY T2-WAVESHAREA, was:P9_11 high
 
 # NYI: Part of some future hacky script to control LCD power
-# DSP_WAKE (gpio 31) input
-P9_13 input
+# EXT_PWR_EN (gpio 31) output
+#P9_13 gpio_pd
 
 ## Nothing actually left to do here at present, since all the
 ## non-gpios are finally being set up by the DT, but keeping this in
@@ -47,7 +47,7 @@ P9_92 pruout
 P9_31 pruin
 P9_29 pruin
 # Note also that 'P9_42' and 'P9_92' conflict, so P9_42 must be gpio input
-P9_42 input
+P9_42 gpio_input
 
 # SOUTHEAST TERMINAL
 P9_27 pruout
@@ -56,7 +56,7 @@ P9_91 pruout
 P9_30 pruin
 P8_16 pruin
 # Note also that 'P9_41' and 'P9_91' conflict, so P9_41 must be gpio input
-P9_42 input
+P9_42 gpio_input
 
 # SOUTHWEST TERMINAL
 P9_25 pruout
