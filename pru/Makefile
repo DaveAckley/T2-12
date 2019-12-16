@@ -1,6 +1,6 @@
 #DON'T NEED OUR OWN RPMSG_LIB ANYMORE?
 #WAS:PRUDIRS:=lib itcio
-PRUDIRS:=itcio
+PRUDIRS:=lib itcio
 
 CMDS:=build install clean realclean touch
 
