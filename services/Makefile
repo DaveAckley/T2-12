@@ -1,7 +1,8 @@
 SERVICES_STOP+=apache2.service
-SERVICES_STOP+=bonescript-autorun.service bonescript.service bonescript.socket
-SERVICES_STOP+=cloud9.service cloud9.socket
-SERVICES_STOP+=roboticscape.service
+#AHAX 201912160341 We've now uninstalled bonescript, cloud9, and roboticscape I believe
+#SERVICES_STOP+=bonescript-autorun.service bonescript.service bonescript.socket
+#SERVICES_STOP+=cloud9.service cloud9.socket
+#SERVICES_STOP+=roboticscape.service
 
 FLAG_FILE:=.flagfile_INSTALL_COMPLETE
 
