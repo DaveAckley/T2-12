@@ -4,7 +4,8 @@ MAKE_DIR_FOR_INSTALL_DIR:=
 DTBO_FILES:=$(patsubst %.dts,%.dtbo,$(OVERLAY_FILES))
 INSTALLED_DTBO_FILES:=$(patsubst %,$(INSTALL_DIR)/%,$(DTBO_FILES))
 
-all:	$(INSTALLED_DTBO_FILES)
+all:	FORCE
+	echo Only 'make install' does anything in this directory
 
 touch:	FORCE
 	touch $(OVERLAY_FILES)
