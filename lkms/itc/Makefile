@@ -26,7 +26,7 @@ insmod:	all rmmod
 rmmod:
 	rmmod itc 2>/dev/null || exit 0
 
-install:	install_files insmod
+install:	install_files 
 
 install_files:	all
 	make INSTALL_MOD_DIR=itc -C $(MODULES_BUILD_DIR) M=$(CURDIR) modules_install
