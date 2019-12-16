@@ -6,6 +6,6 @@ $(CMDS):	$(PRUDIRS)
 
 
 $(PRUDIRS):	FORCE
-	cd $@; make PRU_CGT=/usr/share/ti/cgt-pru $(MAKECMDGOALS)
+	cd $@; make $(MAKECMDGOALS)
 
 .PHONY:	FORCE

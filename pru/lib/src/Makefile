@@ -6,7 +6,7 @@ $(SUBDIRS):
 	@$(MAKE) PRU_CGT=/usr/share/ti/cgt-pru -C $@
 
 clean:
-	@for d in $(SUBDIRS); do (cd $$d; $(MAKE) clean ); done
+	@for d in $(SUBDIRS); do (cd $$d; $(MAKE) PRU_CGT=/usr/share/ti/cgt-pru clean ); done
 
 .PHONY: all clean $(SUBDIRS)
 

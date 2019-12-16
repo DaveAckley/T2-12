@@ -7,7 +7,16 @@ CMDS:=build install clean realclean touch
 $(CMDS):	$(PRUDIRS)
 
 
-$(PRUDIRS):	FORCE
+$(PRUDIRS):	check_bin
 	cd $@; make $(MAKECMDGOALS)
+
+
+check_bin:	FORCE
+	@if [ ! -L /usr/share/ti/cgt-pru/bin ] ; then \
+	  ln -s /usr/bin /usr/share/ti/cgt-pru/bin ;\
+	  echo Linked /usr/bin to /usr/share/ti/cgt-pru/bin ;\
+	fi ;\
+	done
+
 
 .PHONY:	FORCE
