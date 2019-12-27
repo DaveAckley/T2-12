@@ -15,6 +15,6 @@ realclean:	clean touch
 install:	touch $(OUTPUT)
 
 $(OUTPUT):	$(INPUT)
-	cp $< $@  || (echo Must be root ; exit 2)
+	cat $< | sed 's/^uname_r=\(.*\)$/uname_r='`uname -r`'/' > $@  || (echo Must be root ; exit 2)
 
 .PHONY:	FORCE
