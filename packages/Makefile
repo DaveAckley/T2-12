@@ -62,12 +62,14 @@ REMOVE_FLAG_FILE:=.flagfile_REMOVE_COMPLETE
 
 ## Packages we can (hopefully safely) remove
 #  WARNING YOU CANNOT RELY ON KERNEL_VERSION WHEN 'make preremove' IS RUN!
-REMOVE_PACKAGES+=doc-beaglebone-getting-started
-#REMOVE_PACKAGES+=doc-seeed-bbgw-getting-started
-REMOVE_PACKAGES+=c9-core-installer
-REMOVE_PACKAGES+=bone101
+REMOVE_PACKAGES+=bb-bbai-firmware
 REMOVE_PACKAGES+=bb-node-red-installer
+REMOVE_PACKAGES+=bone101
 REMOVE_PACKAGES+=bonescript
+REMOVE_PACKAGES+=c9-core-installer
+REMOVE_PACKAGES+=doc-beaglebone-getting-started
+REMOVE_PACKAGES+=rfkill
+REMOVE_PACKAGES+=ti-open-cl
 
 UNHOLD_PACKAGES+=c9-core-installer
 
