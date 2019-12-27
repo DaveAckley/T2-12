@@ -16,7 +16,6 @@ check_bin:	FORCE
 	  ln -s /usr/bin /usr/share/ti/cgt-pru/bin ;\
 	  echo Linked /usr/bin to /usr/share/ti/cgt-pru/bin ;\
 	fi ;\
-	done
 
 
 .PHONY:	FORCE
