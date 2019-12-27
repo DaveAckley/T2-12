@@ -5,6 +5,7 @@ HDRS:=$(patsubst %.cpp,%.h,$(SRCS))
 
 #CFLAGS += -Wall -Werror -pedantic -ansi -g2 -fno-stack-protector
 CFLAGS += -Wall -Werror -pedantic -ansi -g2
+CFLAGS += -Wno-deprecated-declarations
 LIBS += -lncurses
 
 CMDS:=build touch install clean realclean
