@@ -20,7 +20,7 @@ PACKAGES+=lrzsz
 PACKAGES+=libinline-perl libimager-perl libmath-bezier-perl libmath-gradient-perl libtest-most-perl
 
 # also some fonts:
-PACKAGES+=ttf-freefont
+PACKAGES+=fonts-freefont-ttf
 #jessie doesn't have: libfile-map-perl libperlio-layers-perl ??
 # For home-building File::Map
 PACKAGES+=libtest-fatal-perl libtest-warnings-perl
