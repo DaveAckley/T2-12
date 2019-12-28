@@ -14,7 +14,11 @@ realclean:	clean touch
 
 install:	touch $(OUTPUT)
 
+DOLLAR:=$
+UNAME_R:=$(shell uname -r)
+CMD:=s/^uname_r=\(.*\)$(DOLLAR)/uname_r=$(UNAME_R)/
+
 $(OUTPUT):	$(INPUT)
-	cat $< | sed 's/^uname_r=\(.*\)$/uname_r='`uname -r`'/' > $@  || (echo Must be root ; exit 2)
+	cat $< | sed "$(CMD)" > $@ || (echo Must be root ; exit 2)
 
 .PHONY:	FORCE
