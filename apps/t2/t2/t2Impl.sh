@@ -10,15 +10,25 @@ done
 echo $TAG "/dev/fb0 EXISTS"
 sleep 1
     
-sleep 1
 lsmod | grep itc
-sleep 1
 
 echo $TAG "STARTING PRUS"
-sleep 1
-echo 'start' > /sys/class/remoteproc/remoteproc1/state
-echo 'start' > /sys/class/remoteproc/remoteproc2/state
-sleep 1
+prus=$(ls /sys/class/remoteproc/remoteproc[12]/state)
+unset started
+for pru in $prus ; do
+    state=$(cat $pru)
+    if [ "x$state" = "xoffline" ] ; then
+	echo $TAG "Starting $pru"
+	started="$started $pru"
+	echo 'start' > $pru
+	sleep 1
+    else
+	echo $TAG "$pru is $state, not starting it"
+    fi
+done
+
+echo $TAG "Started $started"
+
 echo $TAG "PRUS AWAY"
 
 printf "OTHER STUB STUFF IN FUTURE HERE\n"
