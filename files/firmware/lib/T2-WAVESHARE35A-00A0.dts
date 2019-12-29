@@ -76,7 +76,7 @@
 		__overlay__ {
 			waveshare35a_pins: pinmux_waveshare35a_pins {
 				pinctrl-single,pins = <
-					BONE_P9_22 (PIN_OUTPUT_PULLDOWN | MUX_MODE0)	/* P9.22 spi0_sclk */
+					BONE_P9_22 (PIN_INPUT_PULLUP | MUX_MODE0)	/* P9.22 spi0_sclk NB>>INPUT NOT OUTPUT!! */
 					BONE_P9_18 (PIN_INPUT_PULLUP | MUX_MODE0)	/* P9.18 spi0_d1 */
 					BONE_P9_21 (PIN_OUTPUT_PULLUP | MUX_MODE0)	/* P9.21 spi0_d0 */
 					BONE_P9_17 (PIN_OUTPUT_PULLUP | MUX_MODE0)	/* P9.17 spi0_cs0 */
@@ -118,9 +118,9 @@
 				fps = <15>;
 				buswidth = <8>;
 				regwidth = <16>;
-				reset-gpios = <&gpio0 30 0>; /* Using custom reset code to drive DSP_PWRON */
+				reset-gpios = <&gpio0 30 1>; /* Using custom reset code to drive DSP_PWRON */
          			dc-gpios = <&gpio1 16 0>;
-				debug = <3>;
+				debug = <2>;
 
 				init = <0x10000b0 0x00
 				        0x1000011
@@ -145,7 +145,7 @@
 				spi-max-frequency = <2000000>;
 				interrupts = <13 2>; /* high-to-low edge triggered */
 				interrupt-parent = <&gpio0>;
-				pendown-gpio = <&gpio0 13 0>;
+				pendown-gpio = <&gpio0 13 1>;
 				ti,x-plate-ohms = /bits/ 16 <60>;
 				ti,pressure-max = /bits/ 16 <255>;
 				ti,swap-xy = <1>;
