@@ -21,7 +21,7 @@ for pru in $prus ; do
 	echo $TAG "Starting $pru"
 	started="$started $pru"
 	echo 'start' > $pru
-	sleep 1
+	sleep 1.5
     else
 	echo $TAG "$pru is $state, not starting it"
     fi
