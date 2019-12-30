@@ -8,6 +8,8 @@ SERVICE_OUTPUTS:=$(patsubst %,$(SERVICE_DIR)/%,$(SERVICE_FILES))
 SERVICE_PATH:=$(SERVICE_DIR)/$(SERVICE_FILE)
 SPLASH_PNG_IN:=MFM-T2-10.png
 SPLASH_PNG_OUT:=$(OUTPUT_DIR)/t2-splash.png
+CLOBBERED_STARTUP_SCRIPT_IN:=am335x_evm.sh
+CLOBBERED_STARTUP_SCRIPT_OUT:=/opt/scripts/boot/$(CLOBBERED_STARTUP_SCRIPT_IN)
 
 all:	FORCE
 	@ls -l $(INPUTS)
@@ -20,13 +22,16 @@ clean:	FORCE
 
 realclean:	clean touch
 
-install:	$(OUTPUT_DIR) $(OUTPUTS) $(SERVICE_OUTPUTS) $(SPLASH_PNG_OUT)
+install:	$(OUTPUT_DIR) $(OUTPUTS) $(SERVICE_OUTPUTS) $(SPLASH_PNG_OUT) $(CLOBBERED_STARTUP_SCRIPT_OUT)
 
 $(OUTPUT_DIR)/%:	%
 	mkdir -p $(OUTPUT_DIR) || (echo Must be root ; exit 2)
 	cp $^ $@ || (echo Must be root ; exit 2)
 
 $(SPLASH_PNG_OUT):	$(SPLASH_PNG_IN) $(OUTPUT_DIR)
+	cp $< $@ || (echo Must be root ; exit 2)
+
+$(CLOBBERED_STARTUP_SCRIPT_OUT):	$(CLOBBERED_STARTUP_SCRIPT_IN)
 	cp $< $@ || (echo Must be root ; exit 2)
 
 $(SERVICE_DIR)/%:	%
