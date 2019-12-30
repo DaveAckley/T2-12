@@ -1,10 +1,14 @@
 #Docs: http://elinux.org/Beagleboard:U-boot_partitioning_layout_2.0
 
+#Following 'uname_r=' line gets updated during 'make install'
 uname_r=4.14.108-ti-r124
+
 #uuid=
 #AHAX was
 #dtb=
-dtb=am335x-bonegreen-t2-12.dtb
+#dtb=am335x-bonegreen-t2-12.dtb
+#..but setting dtb now gets overridden by 'uboot_base_dtb'?
+uboot_base_dtb=am335x-bonegreen-t2-12.dtb
 
 ###U-Boot Overlays###
 ###Documentation: http://elinux.org/Beagleboard:BeagleBoneBlack_Debian#U-Boot_Overlays
@@ -40,14 +44,19 @@ disable_uboot_overlay_wireless=1
 ###
 ###PRUSS OPTIONS
 ###pru_rproc (4.14.x-ti kernel)
-uboot_overlay_pru=/lib/firmware/AM335X-PRU-RPROC-4-14-TI-00A0.dtbo
+#uboot_overlay_pru=/lib/firmware/AM335X-PRU-RPROC-4-14-TI-00A0.dtbo
+
+###AHAX BUT THE RPROC VERSION STILL NEEDS TO BE SELECTED MANUALLY :(
 ###pru_rproc (4.19.x-ti kernel)
-#uboot_overlay_pru=/lib/firmware/AM335X-PRU-RPROC-4-19-TI-00A0.dtbo
+uboot_overlay_pru=/lib/firmware/AM335X-PRU-RPROC-4-19-TI-00A0.dtbo
+
 ###pru_uio (4.14.x-ti, 4.19.x-ti & mainline/bone kernel)
 #uboot_overlay_pru=/lib/firmware/AM335X-PRU-UIO-00A0.dtbo
 ###
 ###Cape Universal Enable
-enable_uboot_cape_universal=1
+#AHAX was
+#enable_uboot_cape_universal=1
+enable_uboot_cape_universal=
 ###
 ###Debug: disable uboot autoload of Cape
 #disable_uboot_overlay_addr0=1
