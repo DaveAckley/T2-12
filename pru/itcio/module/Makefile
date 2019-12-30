@@ -29,7 +29,9 @@ install_files:	all
 	test -f $(ETC_MODULES_FILE) || \
 	  echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
 	grep $(MNAME) $(ETC_MODULES_FILE) || echo $(MNAME) >> $(ETC_MODULES_FILE)
-	grep cmemk $(ETC_MODULES_FILE) || echo cmemk >> $(ETC_MODULES_FILE)
+# Mon Dec 30 02:58:36 2019 WE NOW SUSPECT cmemk IN PART OF OUR BOOT INSTABILITY
+# AND SINCE WE ARE NOT CURRENTLY USING IT LET'S NOT DO IT
+#	grep cmemk $(ETC_MODULES_FILE) || echo cmemk >> $(ETC_MODULES_FILE)
 	depmod
 
 
