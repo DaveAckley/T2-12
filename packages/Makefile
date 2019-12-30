@@ -69,7 +69,7 @@ REMOVE_PACKAGES+=bonescript
 REMOVE_PACKAGES+=c9-core-installer
 REMOVE_PACKAGES+=doc-beaglebone-getting-started
 REMOVE_PACKAGES+=rfkill
-#REMOVE_PACKAGES+=ti-open-cl
+REMOVE_PACKAGES+=ti-open-cl
 
 UNHOLD_PACKAGES+=c9-core-installer
 
