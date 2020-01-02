@@ -17,7 +17,7 @@
 
 #include "am33xx.dtsi"
 #include "am335x-bone-common.dtsi"
-#include "am335x-bone-common-univ.dtsi"
+#include "am335x-bone-common-univ-t2.dtsi"
 #include "am335x-bonegreen-common-t2.dtsi"
 /* #include "am335x-bone-jtag.dtsi" */
 
