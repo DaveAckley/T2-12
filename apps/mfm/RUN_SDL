@@ -1,8 +1,10 @@
 #!/bin/bash
 
+export TSLIB_CONSOLEDEVICE=none
 export TSLIB_TSDEVICE=/dev/input/event1
 export TSLIB_FBDEVICE=/dev/fb0
 export TSLIB_CALIBFILE=/etc/pointercal
+export TSLIB_CONFFILE=/etc/ts.conf
 export SDL_VIDEODRIVER=fbcon
 export SDL_MOUSEDRV=TSLIB
 export SDL_MOUSEDEV=/dev/input/event1
@@ -13,11 +15,11 @@ echo "Started $PROG_PID"
 
 # Grrrr once again needed
 # No longer needed (due to extra exports above?)
-sleep 3
+#sleep 3
 # Currently have no idea why SDL progs on the tiles hang until they
 # get a (particular?) signal.  Guessing it's about the lack of a tty..
-kill -TSTP %1
-kill -CONT %1
-sleep 1
+#kill -TSTP %1
+#kill -CONT %1
+#sleep 1
 trap "kill -INT $PROG_PID" SIGINT SIGTERM
 wait
