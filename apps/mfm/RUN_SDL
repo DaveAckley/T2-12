@@ -2,16 +2,16 @@
 
 export TSLIB_CONSOLEDEVICE=none
 export TSLIB_TSDEVICE=/dev/input/event1
-export TSLIB_FBDEVICE=/dev/fb0
-export TSLIB_CALIBFILE=/etc/pointercal
-export TSLIB_CONFFILE=/etc/ts.conf
+#export TSLIB_FBDEVICE=/dev/fb0
+#export TSLIB_CALIBFILE=/etc/pointercal
+#export TSLIB_CONFFILE=/etc/ts.conf
 export SDL_VIDEODRIVER=fbcon
 export SDL_MOUSEDRV=TSLIB
 export SDL_MOUSEDEV=/dev/input/event1
 export SDL_NO_RAWKBD=1
 "$@" &
 export PROG_PID=$!
-echo "Started $PROG_PID"
+echo "Started $PROG_PID ($@)"
 
 # Grrrr once again needed
 # No longer needed (due to extra exports above?)
@@ -21,5 +21,5 @@ echo "Started $PROG_PID"
 #kill -TSTP %1
 #kill -CONT %1
 #sleep 1
-trap "kill -INT $PROG_PID" SIGINT SIGTERM
+#trap "kill -INT $PROG_PID" SIGINT SIGTERM
 wait
