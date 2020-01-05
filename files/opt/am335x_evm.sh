@@ -886,6 +886,8 @@ if [ "x${check_getty_tty}" = "xinactive" ] ; then
 echo "${log} LOG: AHAXMARK24210"
     echo "${log} LOG: AHAXZAPPED systemctl restart serial-getty@ttyGS0.service || true"
     #systemctl restart serial-getty@ttyGS0.service || true
+    systemctl stop serial-getty@ttyGS0.service || true
+    systemctl disable serial-getty@ttyGS0.service || true
 echo "${log} LOG: AHAXMARK24211"
 fi
 echo "${log} LOG: AHAXMARK243"
