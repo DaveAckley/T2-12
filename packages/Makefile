@@ -48,8 +48,12 @@ PACKAGES+=libdatetime-format-strptime-perl
 #PACKAGES+=cmake
 PACKAGES+=libts-dev libts-bin
 
+### HANDLE SDL PACKAGES SEPARATELY SINCE WE'RE GRR BUILDING IT
+# SEE ../extra/Makefile FOR DETAILS
 # For sdlsplash
-PACKAGES+=libsdl1.2-dev libsdl-image1.2-dev libsdl-ttf2.0-dev
+#SDL_BASE_PACKAGES+=libsdl1.2-dev libsdl1.2debian
+#SDL_EXTRA_PACKAGES+=libsdl-image1.2-dev libsdl-ttf2.0-dev
+
 # NOTE WE ARE NOW REQUIRING ppa:ackley/mfm TO ALREADY BE IN THE REPOSITORIES!
 # (SEE /root/T2-12-root-seed.sh FOR WHERE THAT SHOULD HAVE HAPPENED!)
 # 201912022047 NOT USING MFM OR ULAM from packages ATM

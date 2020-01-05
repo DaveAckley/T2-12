@@ -5,7 +5,7 @@ GITHUB_BASE_DIR:=$(HOME_DIR)/GITHUB
 GITHUB_DIRS:=tslib-master
 GITHUB_TARGETS:=$(patsubst %,$(GITHUB_BASE_DIR)/%,$(GITHUB_DIRS))
 
-install:	default-pointercal .FLAG_INSTALLED_SDL
+install:	default-pointercal INSTALL
 	@echo BUILDING SDL AND INSTALLING default-pointercal
 	cp default-pointercal /etc/pointercal
 
@@ -23,7 +23,22 @@ $(GITHUB_BASE_DIR)/tslib-master:	tslib-1.20-201906240441.tgz default-pointercal
 TMPSDLDIR:=/tmp/SDLINSTALL
 SDLZIP:=sdl1.2-master.zip
 SDLCONFIGUREFLAGS:=--enable-video-opengl=no --enable-video-x11=no --enable-esd=no --prefix=/usr
-.FLAG_INSTALLED_SDL:	REMOVE_BASE_PACKAGES
+INSTALL:	.FLAG_SDL_INSTALLED
+
+#SDL_BASE_PACKAGES+=libsdl1.2-dev libsdl1.2debian
+SDL_EXTRA_PACKAGES+=libsdl-image1.2-dev libsdl-ttf2.0-dev
+SDL_BASE_DEBS:=$(wildcard *.deb)
+
+.FLAG_SDL_INSTALLED:	.FLAG_SDL_EXTRA_INSTALLED
+	touch $@
+
+.FLAG_SDL_EXTRA_INSTALLED:	.FLAG_SDL_DUMMY_INSTALLED
+	apt install -y $(SDL_EXTRA_PACKAGES) && touch $@
+
+.FLAG_SDL_DUMMY_INSTALLED:	.FLAG_SDL_BASE_INSTALLED
+	dpkg -i $(SDL_BASE_DEBS) && touch $@
+
+.FLAG_SDL_BASE_INSTALLED:	
 	rm -rf $(TMPSDLDIR)
 	mkdir -p $(TMPSDLDIR)
 	cp $(SDLZIP) $(TMPSDLDIR)
@@ -33,11 +48,10 @@ SDLCONFIGUREFLAGS:=--enable-video-opengl=no --enable-video-x11=no --enable-esd=n
 	make && \
 	make install && \
 	popd && \
-	touch .FLAG_INSTALLED_SDL && \
+	touch $@ && \
 	echo SDL INSTALLED SUCCESSFULLY
 
-SDLBASEPACKAGES:=libsdl1.2-dev libsdl1.2debian
-REMOVE_BASE_PACKAGES:	FORCE
-	dpkg -r --force-depends $(SDLBASEPACKAGES) || echo "COULDN'T REMOVE $(SDLBASEPACKAGES)"
+CLEAN_ALL_FLAGS:	FORCE
+	rm -f .FLAG*
 
 .PHONY:	FORCE
