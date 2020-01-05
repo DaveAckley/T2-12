@@ -23,7 +23,7 @@ $(GITHUB_BASE_DIR)/tslib-master:	tslib-1.20-201906240441.tgz default-pointercal
 TMPSDLDIR:=/tmp/SDLINSTALL
 SDLZIP:=sdl1.2-master.zip
 SDLCONFIGUREFLAGS:=--enable-video-opengl=no --enable-video-x11=no --enable-esd=no --prefix=/usr
-.FLAG_INSTALLED_SDL:
+.FLAG_INSTALLED_SDL:	REMOVE_BASE_PACKAGES
 	rm -rf $(TMPSDLDIR)
 	mkdir -p $(TMPSDLDIR)
 	cp $(SDLZIP) $(TMPSDLDIR)
@@ -35,5 +35,9 @@ SDLCONFIGUREFLAGS:=--enable-video-opengl=no --enable-video-x11=no --enable-esd=n
 	popd && \
 	touch .FLAG_INSTALLED_SDL && \
 	echo SDL INSTALLED SUCCESSFULLY
+
+SDLBASEPACKAGES:=libsdl1.2-dev libsdl1.2debian
+REMOVE_BASE_PACKAGES:	FORCE
+	dpkg -r --force-depends $(SDLBASEPACKAGES) || echo "COULDN'T REMOVE $(SDLBASEPACKAGES)"
 
 .PHONY:	FORCE
