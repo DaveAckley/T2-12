@@ -60,3 +60,4 @@ dkms.conf
 
 # Flag files
 .flagfile_*
+.FLAG_*
