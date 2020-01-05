@@ -15,11 +15,11 @@ echo "Started $PROG_PID ($@)"
 
 # Grrrr once again needed
 # No longer needed (due to extra exports above?)
-#sleep 3
+sleep 2.5
 # Currently have no idea why SDL progs on the tiles hang until they
 # get a (particular?) signal.  Guessing it's about the lack of a tty..
-#kill -TSTP %1
-#kill -CONT %1
-#sleep 1
-#trap "kill -INT $PROG_PID" SIGINT SIGTERM
+kill -TSTP %1
+kill -CONT %1
+sleep 1
+trap "kill -INT $PROG_PID" SIGINT SIGTERM
 wait
