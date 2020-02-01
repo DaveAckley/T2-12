@@ -175,11 +175,11 @@ in the NOTES buffer"
 
     (set-buffer buf)
     (insert "[")
-    (insert-string num)
+    (insert (format "%d" num))
     (insert ": ")
     (setq foo (point))
     (insert "  :")
-    (insert-string num)
+    (insert (format "%d" num))
     (insert "]")
     (and atendp (insert "\n")); Fri Feb 21 10:10:45 1997 try to avoid leaving
                                         ; lines w/o newlines at EOF (to make diff/patch happy)
@@ -192,7 +192,7 @@ in the NOTES buffer"
   (save-excursion
     (goto-char 2)
     (mark-word 1)
-    (string-to-int (buffer-substring (point) (mark)))))
+    (string-to-number (buffer-substring (point) (mark)))))
 
 (defun quarry-kill-num ()
   "delete current level number"
@@ -207,7 +207,7 @@ in the NOTES buffer"
   (save-excursion
     (quarry-kill-num)
     (goto-char 2)
-    (insert-string num)))
+    (insert (format "%d" num))))
 
 (defun quarry-increment-num ()
   "increment and return level number"
