@@ -8,15 +8,18 @@
 #MOVING ON TO mfmt2
 cd /
 while [ true ] ; do
-    echo Launching mfmt2
+    echo Launching itcSpike
+    /home/t2/MFM/bin/itcSpike
+    echo itcSpike exited status $? -- RESTARTING
+#    echo Launching mfmt2
 #    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/GITHUB/MFM/bin/mfmt2 {1H1} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/11.mfs -cp /home/t2/T2-12/apps/mfm/11.mfs -ep /home/t2/T2-12/apps/mfm/libcue.so --run -a 0 -n
 #    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/GITHUB/MFM/bin/mfmt2 {{1H1}} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/12.mfs -cp /home/t2/T2-12/apps/mfm/12.mfs -ep /home/t2/T2-12/apps/mfm/libcue11.so --run -a 0 -n
 #    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/GITHUB/MFM/bin/mfmt2 {{1H1}} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/12.mfs -cp /home/t2/T2-12/apps/mfm/12.mfs -ep /home/t2/T2-12/apps/mfm/libcue12.so --run -a 0 -n
 #    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/GITHUB/MFM/bin/mfmt2 {{1H1}} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/14stats.mfs --startsymbol Wa -ep /home/t2/T2-12/apps/mfm/libcueWander.so --run -a 0 -n -wf 10
 #    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/GITHUB/MFM/bin/mfmt2 {{1H1}} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/14stats.mfs --startsymbol Wa -ep /home/t2/T2-12/apps/mfm/libcueWatson.so --run -a 0 -n -wf 10
 #    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/GITHUB/MFM/bin/mfmt2 {{1H1}} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/14stats.mfs --startsymbol SD -ep /home/t2/T2-12/apps/mfm/libcueSD.so --run -a 0 -n -wf 10 -e 10
-    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/MFM/bin/mfmt2 {{1H1}} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/14stats.mfs --startsymbol SD -ep /home/t2/T2-12/apps/mfm/libcueSD.so --run -a 0 -n -wf 10 -e 10
-    echo mfmt2 exited status $? -- RESTARTING
+#    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/MFM/bin/mfmt2 {{1H1}} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/14stats.mfs --startsymbol SD -ep /home/t2/T2-12/apps/mfm/libcueSD.so --run -a 0 -n -wf 10 -e 10
+#    echo mfmt2 exited status $? -- RESTARTING
     sleep 2
 done
 
