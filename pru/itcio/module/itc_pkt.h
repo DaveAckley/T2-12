@@ -79,15 +79,17 @@ typedef enum {
   DBG_PKT_SENT      = 0x00000002,
   DBG_PKT_ROUTE     = 0x00000004,
   DBG_PKT_ERROR     = 0x00000008,
-  DBG_TRACE_PARSE   = 0x00000010,
-  DBG_TRACE_EXEC    = 0x00000020,
-  DBG_TRACE_FULL    = 0x00000040,
+  DBG_PKT_DROPS     = 0x00000010,
+  //0x020..0x800 rsrvd
+  DBG_TRACE_PARSE   = 0x00001000,
+  DBG_TRACE_EXEC    = 0x00002000,
+  DBG_TRACE_FULL    = 0x00004000,
 } DebugFlags;
 
 #define DBGP(mask) ((mask)&S.mDebugFlags)
 #define DBGIF(mask) if (DBGP(mask))
-#define DBGPRINTK(mask, printkargs...) do { DBGIF(mask) printk(printkargs); } while (0);
-#define DBGPRINT_HEX_DUMP(mask, printhexdumpargs...) do { DBGIF(mask) print_hex_dump(printhexdumpargs); } while (0);
+#define DBGPRINTK(mask, printkargs...) do { DBGIF(mask) printk(printkargs); } while (0)
+#define DBGPRINT_HEX_DUMP(mask, printhexdumpargs...) do { DBGIF(mask) print_hex_dump(printhexdumpargs); } while (0)
 
 #define DBG_NAME_MAX_LENGTH 32
 #define TRACE_MAX_LEN 4

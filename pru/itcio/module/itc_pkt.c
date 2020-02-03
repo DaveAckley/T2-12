@@ -1772,11 +1772,12 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
           ipb = &pktdev->mUserIB;
 
           if (kfifo_avail(&ipb->mFIFO) < len) 
-            printk(KERN_ERR "(%s) Inbound %s queue full, dropping %s len=%d packet\n",
-                   getDirName(type&0x7),
-                   ipb->mName,
-                   urgent ? "priority" : "bulk",
-                   len);
+            DBGPRINTK(DBG_PKT_DROPS,
+                      KERN_INFO "(%s) Inbound %s queue full, dropping %s len=%d packet\n",
+                      getDirName(type&0x7),
+                      ipb->mName,
+                      urgent ? "priority" : "bulk",
+                      len);
           else {
             tpReportIfMatch(&ipb->mTraceInsert, pktdev->mCDevState.mName, true, data, len, ipb);
 
@@ -1835,8 +1836,9 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
       ipb = &prudev->mLocalIB;
 
       if (kfifo_avail(&ipb->mFIFO) < len) 
-        printk(KERN_ERR "(%s) Inbound queue full, dropping PRU%d len=%d packet\n",
-               getDirName(type&0x7), minor, len);
+        DBGPRINTK(DBG_PKT_DROPS,
+                  KERN_INFO "(%s) Inbound queue full, dropping PRU%d len=%d packet\n",
+                  getDirName(type&0x7), minor, len);
       else {
         u32 copied;
 
