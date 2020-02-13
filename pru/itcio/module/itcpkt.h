@@ -19,11 +19,51 @@
 #include "rpmsg_t2_local.h"       /* XXX HOW ARE YOU SUPPOSED TO GET struct rpmsg?? */
 #include "pin_info_maps.h"
 #include "itcpktevent.h"          /* Get pkt event struct */
-  
+#include "itcmfm.h"               /* For ITCLevelState_ops & assoc */
+
+/* DIR6 definitions based on T2-12/lkms/itc//dirdatamacro.h, BUT ARE
+   DEFINED HERE SEPARATELY.  
+
+   'dir8' definitions (e.g., 'ITC_DIR's) are defined in pin_info.maps
+ */
+#define DIR6_ET 0
+#define DIR6_SE 1
+#define DIR6_SW 2
+#define DIR6_WT 3
+#define DIR6_NW 4
+#define DIR6_NE 5
+#define DIR6_COUNT 6
+
+static inline u32 mapDir6ToDir8(u32 dir6) {
+  switch (dir6) {
+  default:      return DIR8_COUNT;
+  case DIR6_ET: return DIR_NAME_TO_DIR8(ET);
+  case DIR6_SE: return DIR_NAME_TO_DIR8(SE);
+  case DIR6_SW: return DIR_NAME_TO_DIR8(SW);
+  case DIR6_WT: return DIR_NAME_TO_DIR8(WT);
+  case DIR6_NW: return DIR_NAME_TO_DIR8(NW);
+  case DIR6_NE: return DIR_NAME_TO_DIR8(NE);
+  }
+}
+
+static inline u32 mapDir8ToDir6(u32 dir8) {
+  switch (dir8) {
+  default:      return DIR6_COUNT;
+  case DIR_NAME_TO_DIR8(ET): return DIR6_ET;
+  case DIR_NAME_TO_DIR8(SE): return DIR6_SE;
+  case DIR_NAME_TO_DIR8(SW): return DIR6_SW;
+  case DIR_NAME_TO_DIR8(WT): return DIR6_WT;
+  case DIR_NAME_TO_DIR8(NW): return DIR6_NW;
+  case DIR_NAME_TO_DIR8(NE): return DIR6_NE;
+  }
+}
+
+const char * getDir8Name(u8 dir8) ;
+
 typedef enum packet_header_bits {
   PKT_HDR_BITMASK_STANDARD  = 0x80,
   PKT_HDR_BITMASK_LOCAL     = 0x40,
-  PKT_HDR_BITMASK_MFMT      = 0x20,
+  PKT_HDR_BITMASK_URGENT    = 0x20,
 
   // Standard Routed bits
   PKT_HDR_BITMASK_OVERRUN   = 0x10,
@@ -33,6 +73,11 @@ typedef enum packet_header_bits {
   // Standard Local bits
   PKT_HDR_BITMASK_LOCAL_TYPE= 0x1f
 } PacketHeaderBits;
+
+typedef enum packet_header_byte1_bits {
+  PKT_HDR_BYTE1_BITMASK_MFM  = 0x80,      /* MFM traffic (rather than flash) */
+  PKT_HDR_BYTE1_BITMASK_KITC = 0x40,      /* Kernel ITC traffic (rather than userspace) */
+} PacketHeaderByte1Bits;
 
 /////////TRACING SUPPORT
 
@@ -49,15 +94,25 @@ typedef struct itcpkteventstate {
 #define PRU_MINORS 2   /* low-level access to PRU0, PRU1*/
 #define PKT_MINORS 2   /* processed access to itc, mfm */
 #define EVT_MINORS 1   /* access to pktevt state */
+#define MFM_MINORS DIR6_COUNT   /* demuxed per-itc mfm packets */
 
-#define MINOR_DEVICES (PRU_MINORS + PKT_MINORS + EVT_MINORS) 
+#define MINOR_DEVICES (PRU_MINORS + PKT_MINORS + EVT_MINORS + MFM_MINORS) 
 #define PRU_MINOR_PRU0 0
 #define PRU_MINOR_PRU1 1
 
-#define PKT_MINOR_ITC 2
-#define PKT_MINOR_MFM 3
+#define PKT_MINOR_BULK 2
+#define PKT_MINOR_FLASH 3
 
 #define PKT_MINOR_EVT 4
+
+#define PKT_MINOR_MFM_BASE 5
+
+#define PKT_MINOR_MFM_ET (PKT_MINOR_MFM_BASE+DIR6_ET) /*  5 */
+#define PKT_MINOR_MFM_SE (PKT_MINOR_MFM_BASE+DIR6_SE) /*  6 */
+#define PKT_MINOR_MFM_SW (PKT_MINOR_MFM_BASE+DIR6_SW) /*  7 */
+#define PKT_MINOR_MFM_WT (PKT_MINOR_MFM_BASE+DIR6_WT) /*  8 */
+#define PKT_MINOR_MFM_NW (PKT_MINOR_MFM_BASE+DIR6_NW) /*  9 */
+#define PKT_MINOR_MFM_NE (PKT_MINOR_MFM_BASE+DIR6_NE) /*  10 */
 
 #define RPMSG_BUF_SIZE 512
 
@@ -80,7 +135,10 @@ typedef enum {
   DBG_PKT_ROUTE     = 0x00000004,
   DBG_PKT_ERROR     = 0x00000008,
   DBG_PKT_DROPS     = 0x00000010,
-  //0x020..0x800 rsrvd
+  //0x020..0x80 rsrvd
+  DBG_MISC100       = 0x00000100,
+  DBG_MISC200       = 0x00000200,
+  //0x0400..0x800 rsrvd
   DBG_TRACE_PARSE   = 0x00001000,
   DBG_TRACE_EXEC    = 0x00002000,
   DBG_TRACE_FULL    = 0x00004000,
@@ -93,7 +151,7 @@ typedef enum {
 
 #define DBG_NAME_MAX_LENGTH 32
 #define TRACE_MAX_LEN 4
-typedef struct {
+typedef struct {  /** 'struct tracepoint' already declared by linux/tracepoint-defs.h */
   u8 mActiveLength;
   u8 mMask[TRACE_MAX_LEN];
   u8 mValue[TRACE_MAX_LEN];
@@ -106,7 +164,7 @@ enum {
   BUFFERSET_B
 };
 
-typedef struct {
+typedef struct tracepointparser {
   TracePoint mPattern;
   size_t mCount;
   u8 * mProgram;
@@ -116,12 +174,12 @@ typedef struct {
 } TracePointParser;
 
 #define TRACEPOINT_PROGRAM_MAX_LEN 1024
-typedef struct {
+typedef struct tracepointprogram {
   u32 mLength;
   u8 mCode[TRACEPOINT_PROGRAM_MAX_LEN];
 } TracePointProgram;
 
-typedef struct {
+typedef struct itcpacketbuffer {
   ITCPacketFIFO     mFIFO;   /* a packet fifo for some purpose */
   wait_queue_head_t mReaderQ;/* for readers waiting for fifo non-empty */
   wait_queue_head_t mWriterQ;/* for writers waiting for fifo non-full */
@@ -129,13 +187,13 @@ typedef struct {
   char mName[DBG_NAME_MAX_LENGTH];   /* debug name of buffer */
   u8 mMinor;                         /* minor of this buffer */
   u8 mBuffer;                        /* buffer code of this buffer */
-  bool mRouted;              /* Packets in this buffer are routed */
-  bool mPriority;            /* This is a priority buffer */
+  bool mRouted;              /* Packets in this outbound buffer are routed */
+  bool mPriority;            /* This is a priority outbound buffer */
   TracePoint mTraceInsert;   /* What fifo additions to trace */
   TracePoint mTraceRemove;   /* What fifo removals to trace */
 } ITCPacketBuffer;
 
-typedef struct {             /* General char device state */
+typedef struct itcchardevicestate {             /* General char device state */
   struct cdev mLinuxCdev;    /* Linux character device state */
   struct device *mLinuxDev;  /* Ptr to linux device struct */
   dev_t mDevt;               /* Major:minor assigned to this device */
@@ -144,7 +202,7 @@ typedef struct {             /* General char device state */
 } ITCCharDeviceState;
 
 /* per rpmsg-probed device -- in our case, per PRU */
-typedef struct {
+typedef struct itcprudevicestate {
   ITCCharDeviceState mCDevState; /* char device state must be first! */
 
   struct rpmsg_device *mRpmsgDevice; /* IO channel to PRU */
@@ -155,49 +213,82 @@ typedef struct {
 } ITCPRUDeviceState;
 
 /* per 'event' device - /dev/itc/pktevt */
-typedef struct {
+typedef struct itcevtdevicestate {
   ITCCharDeviceState mCDevState; /* char device state must be first! */
   ITCPktEventState mPktEvents;  /* packet events state */
 } ITCEvtDeviceState;
 
 /* per 'processed' packet device - /dev/itc/{packets,mfm} */
-typedef struct {
+typedef struct itcpktdevicestate {
   ITCCharDeviceState mCDevState; /* char device state must be first! */
   ITCPacketBuffer mUserIB;  /* pkts from PRU awaiting delivery to userspace */
 } ITCPktDeviceState;
 
-typedef struct {
+/* per 'mfm itc' device - currently /dev/itc/bydir/{ET,SE,SW,WT,NW,NE} */
+typedef struct itcmfmdevicestate {
+  ITCPktDeviceState mPktDevState;/* pkt device state must be first! */
+  bool mStale;                   /* set on write to mfzid, cleared on open */
+  u8 mDir6;                      /* implied by minor but for convenience */
+  ITCLevelState mLevelState;
+} ITCMFMDeviceState;
+
+typedef struct itctrafficcounts {
   uint32_t mBytesSent;
   uint32_t mBytesReceived;
   uint32_t mPacketsSent;
   uint32_t mPacketsReceived;
 } ITCTrafficCounts;
 
+typedef enum trafficcounttypes {
+  TRAFFIC_BULK,
+  TRAFFIC_URGENT,
+  TRAFFIC_COUNT_TYPES
+} TrafficCountTypes;
+
 /* per dirnum */
-typedef struct {
-  ITCTrafficCounts mCounts[2];  /* 0 == bulk, 1 == priority */
+typedef struct itctrafficstats {
+  ITCTrafficCounts mCounts[TRAFFIC_COUNT_TYPES];
   uint32_t mDirNum;
   uint32_t mPacketSyncAnnouncements;
   uint32_t mSyncFailureAnnouncements;
   uint32_t mTimeoutAnnouncements;
 } ITCTrafficStats;
 
+/* struct for kthread since now we're having two.. */
+typedef struct itckthreadstate {
+  struct task_struct * mThreadTask; /* kthread */
+  wait_queue_head_t mWaitQueue;     /* wait queue for the thread */
+} ITCKThreadState;
+
 /* 'global' state, so far as we can structify it */
-typedef struct {
+typedef struct itcmodulestate {
   DebugFlags        mDebugFlags;
   dev_t             mMajorDevt;     /* our dynamically-allocated major device number */
 
   int               mOpenPRUMinors;/* how many of our minors have (ever?) been opened */
 
   uint32_t          mItcEnabledStatus; /* dirnum -> packet enabled status one hex digit per */
-  ITCTrafficStats   mItcStats[ITC_DIR_COUNT]; /* statistics per ITC (0 and 4 unused in T2) */
+  ITCTrafficStats   mItcStats[DIR8_COUNT]; /* statistics per ITC (0 and 4 unused in T2) */
+  MFMTileState      mMFMTileState;     /* info about userspace mfm config */
 
   ITCPRUDeviceState * (mPRUDeviceState[PRU_MINORS]); /* per-PRU-device state for minors 0,1 */
   ITCPktDeviceState * (mPktDeviceState[PKT_MINORS]); /* per-packet-device state for minors 2,3 */
   ITCEvtDeviceState * (mEvtDeviceState[EVT_MINORS]); /* per-event-device state for minor 4 */
+  ITCMFMDeviceState * (mMFMDeviceState[MFM_MINORS]); /* per-ITCMFM-device state for minor 5..10 */
 
+  ITCKThreadState mOBPktThread;
+  ITCKThreadState mKITCLevelThread;
+#if 0
   struct task_struct * mShipOBPktTask;     /* kthread to push packets to PRUs */
   wait_queue_head_t mOBWaitQueue;          /* wait queue for mShipOBPktTask */
+#endif
 } ITCModuleState;
+
+extern ITCModuleState S;
+
+/*** PUBLIC FUNCTIONS */
+
+bool isITCEnabledStatusByDir8(int dir8) ;
+
 
 #endif /* ITC_PKT_H */

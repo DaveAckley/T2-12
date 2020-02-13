@@ -12,7 +12,8 @@
  *
  */
 
-#include "itc_pkt.h"
+#include "itcpkt.h"
+#include "itcmfm.h"
 
 static bool shipCurrentOBPackets(void) ;
 
@@ -44,15 +45,16 @@ static ITCCharDeviceState * makeITCCharDeviceState(struct device * dev,
 #define MORE_DEBUGGING 0
 #endif
 
-static ITCModuleState S;  /* Our module-global state */
+ITCModuleState S;               /* Our module-global state */
 
-static int mapPruAndPrudirToDirNum(int pru, int prudir) {
+/** WARNING: RETURNS DIR8_COUNT ON UNKNWON PRU/PRUDIR COMBOS **/
+static u32 mapPruAndPrudirToDir8(int pru, int prudir) {
   switch ((pru<<3)|prudir) {
 #define XX(dir)                                                         \
-  case (ITC_DIR_TO_PRU(dir)<<3) | ITC_DIR_TO_PRUDIR(dir): return ITC_DIR_TO_DIR_NUM(dir);
+  case (DIR_NAME_TO_PRU(dir)<<3) | DIR_NAME_TO_PRUDIR(dir): return DIR_NAME_TO_DIR8(dir);
 FOR_XX_IN_ITC_ALL_DIR
 #undef XX
-  default: return -1;
+  default: return DIR8_COUNT;
   }
 }
 
@@ -106,21 +108,22 @@ static void initITCTrafficStats(ITCTrafficStats *s, int dir)
   s->mPacketSyncAnnouncements = 0;
   s->mSyncFailureAnnouncements = 0;
   s->mTimeoutAnnouncements = 0;
-  for (i = 0; i < 2; ++i)
+  for (i = 0; i < TRAFFIC_COUNT_TYPES; ++i)
     initITCTrafficCounts(&s->mCounts[i]);
 }
 
-static ITCTrafficStats * getITCTrafficStatsFromDir(u32 dirnum)
+static ITCTrafficStats * getITCTrafficStatsFromDir8(u32 dir8)
 {
-  BUG_ON(dirnum >= ITC_DIR_COUNT);
-  return &S.mItcStats[dirnum];
+  BUG_ON(dir8 >= DIR8_COUNT);
+  return &S.mItcStats[dir8];
 }
 
+/** RETURNS 0 on illegal pru/prudir */
 static ITCTrafficStats * getITCTrafficStats(u8 pru, u8 prudir)
 {
-  int dir = mapPruAndPrudirToDirNum(pru,prudir);
-  if (dir < 0) return 0;
-  return getITCTrafficStatsFromDir(dir);
+  u32 dir8 = mapPruAndPrudirToDir8(pru,prudir);
+  if (dir8 >= DIR8_COUNT) return 0;
+  return getITCTrafficStatsFromDir8(dir8);
 }
 
 ///////////////////// PACKET EVENT TRACING STUFF
@@ -185,8 +188,8 @@ static void addPktEvent(ITCPktEventState* pes, u32 event) {
 }
 
 static void wakeOBPktShipper(void) {
-  if (S.mShipOBPktTask) 
-    wake_up_process(S.mShipOBPktTask);
+  if (S.mOBPktThread.mThreadTask) 
+    wake_up_process(S.mOBPktThread.mThreadTask);
   else
     printk(KERN_ERR "No S.mShipOBPktTask?\n");
 }
@@ -206,6 +209,13 @@ static int itcOBPktThreadRunner(void *arg) {
   return 0;
 }
 
+static void initMFMTileState(MFMTileState *ts)
+{
+  ts->mMFMPid = -1;              /* No pid has written config to us */
+  ts->mToken = 0;                /* So we've never initialized our token */
+  ts->mMFZId[0] = '\0';          /* And our null-terminated id is empty */
+}
+
 static void initITCModuleState(ITCModuleState *s)
 {
   {
@@ -213,8 +223,11 @@ static void initITCModuleState(ITCModuleState *s)
     for (i = 0; i < PRU_MINORS; ++i) s->mPRUDeviceState[i] = 0;
     for (i = 0; i < PKT_MINORS; ++i) s->mPktDeviceState[i] = 0;
     for (i = 0; i < EVT_MINORS; ++i) s->mEvtDeviceState[i] = 0;
-    for (i = 0; i < ITC_DIR_COUNT; ++i) initITCTrafficStats(&s->mItcStats[i], i);
+    for (i = 0; i < MFM_MINORS; ++i) s->mMFMDeviceState[i] = 0;
+    for (i = 0; i < DIR8_COUNT; ++i) initITCTrafficStats(&s->mItcStats[i], i);
   }
+
+  initMFMTileState(&s->mMFMTileState);
 
 #if MORE_DEBUGGING
   s->mDebugFlags = 0xf; /* some default debugging */
@@ -226,22 +239,33 @@ static void initITCModuleState(ITCModuleState *s)
   s->mItcEnabledStatus = 0;  // Assume all dirs disabled
 }
 
+static void createITCThread(ITCKThreadState * ts,int (*funcptr)(void*),void * arg,const char * name)
+{
+  init_waitqueue_head(&ts->mWaitQueue);
+
+  ts->mThreadTask = kthread_run(funcptr, arg, name);
+
+  if (IS_ERR(ts->mThreadTask)) 
+    printk(KERN_ALERT "ITC: %s Thread creation failed\n",name);
+  else
+    printk(KERN_INFO "ITC: Created thread %s %p\n",name, ts->mThreadTask);
+}
+
 static void createITCThreads(ITCModuleState *s)
 {
-  init_waitqueue_head(&s->mOBWaitQueue);
+  createITCThread(&s->mOBPktThread,    itcOBPktThreadRunner,s,"ITC_PktShipr");
+  createITCThread(&s->mKITCLevelThread,itcLevelThreadRunner,s,"KITC_LvlRunr");
+}
 
-  s->mShipOBPktTask = kthread_run(itcOBPktThreadRunner, NULL, "ITC_PktShipr");
-
-  if (IS_ERR(s->mShipOBPktTask)) 
-    printk(KERN_ALERT "ITC: Thread creation failed\n");
-  else
-    printk(KERN_INFO "ITC: Created thread mShipOBPktTask %p\n",s->mShipOBPktTask);
+static void destroyITCThread(ITCKThreadState *ts) {
+  BUG_ON(!ts->mThreadTask);
+  kthread_stop(ts->mThreadTask);
+  ts->mThreadTask = 0;
 }
 
 static void destroyITCThreads(ITCModuleState *s) {
-  BUG_ON(!s->mShipOBPktTask);
-  kthread_stop(s->mShipOBPktTask);    /* Kill the shipping thread */
-  s->mShipOBPktTask = 0;
+  destroyITCThread(&s->mKITCLevelThread);
+  destroyITCThread(&s->mOBPktThread);
 }
 
 static inline int bytesInITCPacketBuffer(ITCPacketBuffer * ipb) {
@@ -317,9 +341,9 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
   tpReportIfMatch(&ipb->mTraceRemove, prudev->mCDevState.mName, false, prudev->mTempPacketBuffer, pktlen, ipb);
 
   if (ipb->mRouted) { /* Do stats on routed buffers */
-    u8 itcDir = prudev->mTempPacketBuffer[0]&0x7;  /* Get direction from header */
-    ITCTrafficStats * t = getITCTrafficStatsFromDir(itcDir);
-    u32 index = ipb->mPriority ? 1 : 0;
+    u8 dir8 = prudev->mTempPacketBuffer[0]&0x7;  /* Get direction from header */
+    ITCTrafficStats * t = getITCTrafficStatsFromDir8(dir8);
+    u32 index = ipb->mPriority ? TRAFFIC_URGENT : TRAFFIC_BULK;
     BUG_ON(!t);
     ++t->mCounts[index].mPacketsSent;
     t->mCounts[index].mBytesSent += pktlen;
@@ -471,8 +495,8 @@ static ssize_t statistics_show(struct class *c,
      presently is something like ( 110 + 8 * ( 2 + 3 * 11 + 8 * 11) ) < 1100 */
   int len = 0;
   int itc, speed;
-  len += sprintf(&buf[len], "dir psan sfan toan blkbsent blkbrcvd blkpsent blkprcvd pribsent pribrcvd pripsent priprcvd\n");
-  for (itc = 0; itc < ITC_DIR_COUNT; ++itc) {
+  len += sprintf(&buf[len], "dir psan sfan toan blkbsent blkbrcvd blkpsent blkprcvd urgbsent urgbrcvd urgpsent urgprcvd\n");
+  for (itc = 0; itc < DIR8_COUNT; ++itc) {
     ITCTrafficStats * t = &S.mItcStats[itc];
     len += sprintf(&buf[len], "%u %u %u %u",
                    itc,
@@ -480,7 +504,7 @@ static ssize_t statistics_show(struct class *c,
                    t->mSyncFailureAnnouncements,
                    t->mTimeoutAnnouncements
                    );
-    for (speed = 0; speed < 2; ++speed) {
+    for (speed = 0; speed < TRAFFIC_COUNT_TYPES; ++speed) {
       ITCTrafficCounts *c = &t->mCounts[speed];
       len += sprintf(&buf[len], " %u %u %u %u",
                      c->mBytesSent, c->mBytesReceived,
@@ -822,7 +846,8 @@ static void tppStorePattern(TracePointParser * tpp, bool onInsert, bool onRemove
   DBGPRINTK(DBG_TRACE_PARSE,KERN_INFO "TPZP store pattern enter %d %d, minor %x, buffers %x\n",
             onInsert, onRemove, tpp->mMinorSet, tpp->mBufferSet);
 
-  for (m = 0; m < PKT_MINOR_EVT; ++m) { /* for all PRU + PKT (but not EVT) minors */
+  /* XXX Tracing needs updating throughout for MFM minors */
+  for (m = 0; m < PKT_MINOR_EVT; ++m) { /* for all PRU + PKT (but not EVT **NOR MFM**) minors */
     if (!(tpp->mMinorSet&(1<<m))) continue; /*but not this minor*/
 
     for (b = 0; b < 4; ++b) {  /* for all buffers */
@@ -1087,6 +1112,53 @@ static ssize_t debug_store(struct class *c,
 }
 CLASS_ATTR_RW(debug);
 
+static ssize_t mfzid_show(struct class *c,
+			  struct class_attribute *attr,
+			  char *buf)
+{
+  MFMTileState * ts = &S.mMFMTileState;
+  sprintf(buf,"%d %d %s\n",
+          ts->mMFMPid,
+          ts->mToken,
+          ts->mMFZId
+          );
+  return strlen(buf);
+}
+
+static ssize_t mfzid_store(struct class *c,
+			   struct class_attribute *attr,
+			   const char *buf,
+			   size_t count)
+{
+  u32 i;
+  MFMTileState * ts = &S.mMFMTileState;
+
+  if (count > MAX_MFZ_NAME_LENGTH) return -EFBIG; /*too big*/
+
+  if (ts->mToken == 0)  /* First time randomize */
+    ts->mToken = prandom_u32_max(U8_MAX)+1u; /*range 1..U8_MAX*/
+  else while (++ts->mToken == 0) { /* zero-skip increment */ }
+
+  ts->mMFMPid = task_pid_nr(current);
+
+  for (i = 0; i < count; ++i)
+    ts->mMFZId[i] = buf[i];
+  ts->mMFZId[i] = '\0';
+  
+  /* Invalidate the KITCs */
+  for (i = 0; i < MFM_MINORS; ++i) {
+    BUG_ON(!S.mMFMDeviceState[i]);
+    S.mMFMDeviceState[i]->mStale = true;
+  }
+
+  printk(KERN_INFO "mfzid set; len=%d, token=%d, written by %d\n",
+         count,
+         ts->mToken,
+         ts->mMFMPid);
+  return count;
+}
+CLASS_ATTR_RW(mfzid);
+
 
 static ssize_t itc_pin_write_handler(unsigned pru, unsigned prudir, unsigned bit,
                                      struct class *c,
@@ -1148,9 +1220,9 @@ static ssize_t dir##_##pin##_show(struct class *c,			\
 				    struct class_attribute *attr,	\
 				    char *buf)				\
 {                                                                       \
-  return itc_pin_read_handler(ITC_DIR_TO_PRU(dir),                      \
-                              ITC_DIR_TO_PRUDIR(dir),                   \
-                              ITC_DIR_AND_PIN_TO_R31_BIT(dir,pin),      \
+  return itc_pin_read_handler(DIR_NAME_TO_PRU(dir),                     \
+                              DIR_NAME_TO_PRUDIR(dir),                  \
+                              DIR_NAME_AND_PIN_TO_R31_BIT(dir,pin),     \
                               c,attr,buf);                              \
 }                                                                       \
 CLASS_ATTR_RO(dir##_##pin);						\
@@ -1161,9 +1233,9 @@ static ssize_t dir##_##pin##_store(struct class *c,			\
 				   const char *buf,			\
 				   size_t count)			\
 {                                                                       \
-  return itc_pin_write_handler(ITC_DIR_TO_PRU(dir),                     \
-                               ITC_DIR_TO_PRUDIR(dir),                  \
-                               ITC_DIR_AND_PIN_TO_R30_BIT(dir,pin),     \
+  return itc_pin_write_handler(DIR_NAME_TO_PRU(dir),                    \
+                               DIR_NAME_TO_PRUDIR(dir),                 \
+                               DIR_NAME_AND_PIN_TO_R30_BIT(dir,pin),    \
                                c,attr,buf,count);                       \
 }                                                                       \
 CLASS_ATTR_WO(dir##_##pin);						\
@@ -1263,6 +1335,32 @@ static int itc_pktevt_open(struct inode *inode, struct file *filp)
   return ret;
 }
 
+static int itc_mfmitc_open(struct inode *inode, struct file *filp)
+{
+
+  ITCMFMDeviceState * mfmdevstate = (ITCMFMDeviceState *) inode->i_cdev;
+
+  /* ITCMFMDeviceState structs begin with an ITCPktDeviceState! */
+  ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mfmdevstate;
+
+  /* Which in turn begin with an ITCPktDeviceState! */
+  ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) pktdevstate;
+
+#if MORE_DEBUGGING
+  printk(KERN_INFO "itc_mfmitc_open %d:%d\n",
+         MAJOR(cdevstate->mDevt),
+         MINOR(cdevstate->cDevt));
+#endif
+
+  if (cdevstate->mDeviceOpenedFlag) return -EBUSY;  /* Already in use */
+  if (mfmdevstate->mStale) return -ESTALE;          /* mfzid was written, we need to be closed */
+
+  cdevstate->mDeviceOpenedFlag = true;
+  filp->private_data = mfmdevstate;
+
+  return 0;
+}
+
 
 /** @brief The callback for when the device is closed/released by
  *  the userspace program
@@ -1301,53 +1399,78 @@ static int itc_pktevt_release(struct inode *inode, struct file *filp)
   return 0;
 }
 
-static const char * getDirName(u8 dir) {
-  switch (dir) {
-  case 0: return "N?";  /* what what? */
-  case 1: return "NE";
-  case 2: return "ET";
-  case 3: return "SE";
-  case 4: return "S?";  /* on T2 you say? */
-  case 5: return "SW";
-  case 6: return "WT";
-  case 7: return "NW";
+static int itc_mfmitc_release(struct inode *inode, struct file *filp)
+{
+
+  ITCMFMDeviceState * mfmdevstate = (ITCMFMDeviceState *) inode->i_cdev;
+
+  /* ITCMFMDeviceState structs begin with an ITCPktDeviceState! */
+  ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mfmdevstate;
+
+  /* Which in turn begin with an ITCPktDeviceState! */
+  ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) pktdevstate;
+
+#if MORE_DEBUGGING
+  printk(KERN_INFO "itc_mfmitc_release %d:%d\n",
+         MAJOR(cdevstate->mDevt),
+         MINOR(cdevstate->cDevt));
+#endif
+
+  cdevstate->mDeviceOpenedFlag = false; /* OK, we're not open */
+  mfmdevstate->mStale = false;          /* OK, we're not stale if reopened now */
+
+  return 0;
+}
+
+
+const char * getDir8Name(u8 dir8) {
+  switch (dir8) {
+  case DIR_NAME_TO_DIR8(NT): return "N?";  /* what what? */
+  case DIR_NAME_TO_DIR8(NE): return "NE";
+  case DIR_NAME_TO_DIR8(ET): return "ET";
+  case DIR_NAME_TO_DIR8(SE): return "SE";
+  case DIR_NAME_TO_DIR8(ST): return "S?";  /* on T2 you say? */
+  case DIR_NAME_TO_DIR8(SW): return "SW";
+  case DIR_NAME_TO_DIR8(WT): return "WT";
+  case DIR_NAME_TO_DIR8(NW): return "NW";
   }
   return "??";
 }
 
 static void setITCEnabledStatus(int pru, int prudir, int enabled) {
-  int dirnum4 = mapPruAndPrudirToDirNum(pru,prudir)<<2;
-  int bit = (0x1<<dirnum4);
+  u32 dir8 = mapPruAndPrudirToDir8(pru,prudir); /*returns 8 on bad*/
+  u32 dir8x4 = dir8<<2;
+  int bit = (0x1<<dir8x4);
   bool existing = (S.mItcEnabledStatus & bit);
   if (enabled && !existing) {
     S.mItcEnabledStatus |= bit;
     printk(KERN_INFO "ITCCHANGE:UP:%s\n",
-           getDirName(mapPruAndPrudirToDirNum(pru,prudir)));
+           getDir8Name(mapPruAndPrudirToDir8(pru,prudir)));
   } else if (!enabled && existing) {
     S.mItcEnabledStatus &= ~bit;
     printk(KERN_INFO "ITCCHANGE:DOWN:%s\n",
-           getDirName(mapPruAndPrudirToDirNum(pru,prudir)));
+           getDir8Name(mapPruAndPrudirToDir8(pru,prudir)));
   }
 }
 
-static int isITCEnabledStatusByITCDir(int itcDir) {
-  int dirnum4 = itcDir<<2;
-  return (S.mItcEnabledStatus>>dirnum4)&0x1;
+bool isITCEnabledStatusByDir8(int dir8) {
+  int dir8x4 = dir8<<2;
+  return (S.mItcEnabledStatus>>dir8x4)&0x1;
 }
 
 static int routeOutboundStandardPacket(const unsigned char pktHdr, size_t pktLen)
 {
-  int itcDir;
+  int dir8;
   int newminor;
   if (pktLen == 0) return -EINVAL;
   if ((pktHdr & 0x80) == 0) return -ENXIO; /* only standard packets can be routed */
-  itcDir = pktHdr & 0x7;
-  if (!isITCEnabledStatusByITCDir(itcDir)) return -EHOSTUNREACH;
+  dir8 = pktHdr & 0x7;
+  if (!isITCEnabledStatusByDir8(dir8)) return -EHOSTUNREACH;
 
-  switch (itcDir) {
+  switch (dir8) {
 
   default: newminor = -ENODEV; break;
-#define XX(dir) case ITC_DIR_TO_DIR_NUM(dir): newminor = ITC_DIR_TO_PRU(dir); break;
+#define XX(dir) case DIR_NAME_TO_DIR8(dir): newminor = DIR_NAME_TO_PRU(dir); break;
 FOR_XX_IN_ITC_ALL_DIR
 #undef XX
   }
@@ -1355,32 +1478,17 @@ FOR_XX_IN_ITC_ALL_DIR
   return newminor;
 }
 
-/** @brief This callback used when data is being written to the device
- *  from user space.  Note that although rpmsg allows messages over
- *  500 bytes long, so that's the limit for talking to a local PRU,
- *  intertile packets are limited to at most 255 bytes.  Here, that
- *  limit is enforced only for minor 2 (/dev/itc/packets) and minor 3
- *  (/dev/itc/mfm) because packets sent there are necessarily routable
- *  intertile.
- *
- *  @param filp A pointer to a file object
- *  @param buf The buffer to that contains the data to write to the device
- *  @param count The number of bytes to write from buf
- *  @param offset The offset if required
- */
-
-static ssize_t itc_pkt_write(struct file *file,
-                             const char __user *buf,
-                             size_t count, loff_t *offset)
+static ssize_t writePacketHelper(struct file *file,
+                                 const char __user *buf,
+                                 size_t count, loff_t *offset,
+                                 ITCCharDeviceState * cdevstate)
 {
-  /* All our device state structs begin with an ITCCharDeviceState! */
-  ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) file->private_data;
   int minor = MINOR(cdevstate->mDevt);
 
   unsigned char pktHdr;
   bool bulkRate = true;  /* assume slow boat */
 
-  DBGPRINTK(DBG_PKT_SENT, KERN_INFO "itc_pkt_write(%d) enter %s\n",minor, cdevstate->mName);
+  DBGPRINTK(DBG_PKT_SENT, KERN_INFO "writePacketHelper(%d) enter %s\n",minor, cdevstate->mName);
 
   if (count > RPMSG_MAX_PACKET_SIZE) {
     dev_err(cdevstate->mLinuxDev, "Data length (%d) exceeds rpmsg buffer size", count);
@@ -1392,12 +1500,13 @@ static ssize_t itc_pkt_write(struct file *file,
     return -EFAULT;
   }
 
-  DBGPRINTK(DBG_PKT_SENT, KERN_INFO "itc_pkt_write(%d) read pkt type %s from user\n",minor, strPktHdr(pktHdr));
+  DBGPRINTK(DBG_PKT_SENT, KERN_INFO "writePacketHelper(%d) read pkt type %s from user\n",minor, strPktHdr(pktHdr));
 
-  if (minor == PKT_MINOR_ITC || minor == PKT_MINOR_MFM) {
+  if (minor == PKT_MINOR_BULK || minor == PKT_MINOR_FLASH ||
+      (minor >= PKT_MINOR_MFM_ET && minor <= PKT_MINOR_MFM_NE)) {
     int newMinor = routeOutboundStandardPacket(pktHdr, count);
 
-    DBGPRINTK(DBG_PKT_SENT, KERN_INFO "itc_pkt_write(%d) routing %s to minor %d\n",minor, strPktHdr(pktHdr), newMinor);
+    DBGPRINTK(DBG_PKT_SENT, KERN_INFO "writePacketHelper(%d) routing %s to minor %d\n",minor, strPktHdr(pktHdr), newMinor);
 
     //    printk(KERN_INFO "CONSIDERINGO ROUTINGO\n");
     if (newMinor < 0)
@@ -1408,7 +1517,7 @@ static ssize_t itc_pkt_write(struct file *file,
       return -EINVAL;
     }
 
-    if (minor == PKT_MINOR_MFM) bulkRate = false; 
+    if (minor != PKT_MINOR_BULK) bulkRate = false; 
 
     BUG_ON(newMinor > PRU_MINOR_PRU1);
 
@@ -1428,7 +1537,7 @@ static ssize_t itc_pkt_write(struct file *file,
     ITCPacketBuffer * ipb = bulkRate ? &prudevstate->mBulkOB : &prudevstate->mPriorityOB;
     unsigned int copied;
 
-    DBGPRINTK(DBG_PKT_SENT, KERN_INFO "itc_pkt_write(%d) prewait %s\n",minor, ipb->mName);
+    DBGPRINTK(DBG_PKT_SENT, KERN_INFO "writePacketHelper(%d) prewait %s\n",minor, ipb->mName);
     while (kfifo_avail(&ipb->mFIFO) < count) {
       if (file->f_flags & O_NONBLOCK) {
         ret = -EAGAIN;
@@ -1468,7 +1577,7 @@ static ssize_t itc_pkt_write(struct file *file,
       ret = kfifo_from_user(&ipb->mFIFO, buf, count, &copied);
 
       if (ret == 0) 
-        ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_FROM_USR, minor == PKT_MINOR_MFM, log2in3(copied), tmp[0]&0x7));
+        ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_FROM_USR, minor != PKT_MINOR_BULK, log2in3(copied), tmp[0]&0x7));
 
       DBGPRINTK(DBG_PKT_ROUTE,
                 KERN_INFO "Copied %d user->%s:%s, count %d, avail %d, len %d, ret %d\n",
@@ -1484,6 +1593,30 @@ static ssize_t itc_pkt_write(struct file *file,
 
     return ret ? ret : copied;
   }
+}
+
+/** @brief This callback used when data is being written to the device
+ *  from user space.  Note that although rpmsg allows messages over
+ *  500 bytes long, so that's the limit for talking to a local PRU,
+ *  intertile packets are limited to at most 255 bytes.  Here, that
+ *  limit is enforced only for minor 2 (/dev/itc/bulk) and minor 3
+ *  (/dev/itc/flash) because packets sent there are necessarily
+ *  routable intertile.
+ *
+ *  @param filp A pointer to a file object
+ *  @param buf The buffer to that contains the data to write to the device
+ *  @param count The number of bytes to write from buf
+ *  @param offset The offset if required
+ */
+
+static ssize_t itc_pkt_write(struct file *file,
+                             const char __user *buf,
+                             size_t count, loff_t *offset)
+{
+  /* All our device state structs begin with an ITCCharDeviceState! */
+  ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) file->private_data;
+  
+  return writePacketHelper(file,buf,count,offset,cdevstate);
 }
 
 static ssize_t itc_pktevt_write(struct file *filep, const char *buffer, size_t len, loff_t *offset)
@@ -1586,7 +1719,7 @@ static ssize_t itc_pkt_read(struct file *file, char __user *buf,
     }
     ret = kfifo_to_user(fifo, buf, count, &copied);
     if (ret == 0)
-      ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_TO_USR,minor == PKT_MINOR_MFM, log2in3(copied), tmp[0]&0x7));
+      ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_TO_USR,minor != PKT_MINOR_BULK, log2in3(copied), tmp[0]&0x7));
     DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_pkt_read(%d) post kfifo_to_user ret=%d copied=%d\n",
               minor,ret,copied);
   }
@@ -1627,6 +1760,81 @@ static ssize_t itc_pktevt_read(struct file *file, char __user *buf,
   return ret ? ret : copied;
 }
 
+static ssize_t itc_mfmitc_read(struct file *file, char __user *buf,
+                               size_t count, loff_t *ppos)
+{
+  ITCMFMDeviceState * mfmdevstate = (ITCMFMDeviceState *) file->private_data;
+
+  /* ITCMFMDeviceState structs begin with an ITCPktDeviceState! */
+  ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mfmdevstate;
+
+  /* Which in turn begin with an ITCPktDeviceState! */
+  ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) pktdevstate;
+
+  ITCPacketBuffer * ipb;
+  ITCPacketFIFO * fifo;
+
+  int ret = 0;
+  u32 copied;
+
+  int minor = MINOR(cdevstate->mDevt);
+  DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_mfmitc_read(%d) enter %s\n",minor, cdevstate->mName);
+
+  BUG_ON(minor < PKT_MINOR_MFM_ET || minor > PKT_MINOR_MFM_NE);
+
+  ipb = &(pktdevstate->mUserIB);
+  fifo = &(ipb->mFIFO);
+
+  DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_mfmitc_read(%d) prelock ipb %s\n",minor,ipb->mName);
+
+  if (mutex_lock_interruptible(&ipb->mLock))
+    return -ERESTARTSYS;
+
+  DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_mfmitc_read(%d) pre kfifo check, %s empty=%d, len=%d, pktlen=%d\n",
+            minor,
+            ipb->mName,
+            kfifo_is_empty(fifo),
+            kfifo_len(fifo),
+            kfifo_len(fifo) == 0 ? -1 : kfifo_peek_len(fifo));
+
+  while (kfifo_is_empty(fifo)) {
+    if (file->f_flags & O_NONBLOCK) {
+      ret = -EAGAIN;
+      break;
+    }
+    if (wait_event_interruptible(ipb->mReaderQ, !kfifo_is_empty(fifo))) {
+      ret = -ERESTARTSYS;
+      break;
+    }
+  }
+
+  DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_mfmitc_read(%d) post kfifo check ret= %d\n",minor,ret);
+
+  if (ret == 0) {
+    ret = kfifo_to_user(fifo, buf, count, &copied);
+    DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_mfmitc_read(%d) post kfifo_to_user ret=%d copied=%d\n",
+              minor,ret,copied);
+  }
+  mutex_unlock(&ipb->mLock);
+
+  return ret ? ret : copied;
+}
+
+static ssize_t itc_mfmitc_write(struct file *file,
+                                const char __user *buf,
+                                size_t count, loff_t *offset)
+{
+  ITCMFMDeviceState * mfmdevstate = (ITCMFMDeviceState *) file->private_data;
+
+  /* ITCMFMDeviceState structs begin with an ITCPktDeviceState! */
+  ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mfmdevstate;
+
+  /* Which in turn begin with an ITCPktDeviceState! */
+  ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) pktdevstate;
+
+  return writePacketHelper(file,buf,count,offset,cdevstate);
+}
+
 
 static const struct file_operations itc_pkt_fops = {
   .owner= THIS_MODULE,
@@ -1644,12 +1852,27 @@ static const struct file_operations itc_pktevt_fops = {
   .release= itc_pktevt_release,
 };
 
+static const struct file_operations itc_mfmitc_fops = {
+  .owner= THIS_MODULE,
+  .open	= itc_mfmitc_open,
+  .read = itc_mfmitc_read,
+  .write= itc_mfmitc_write,
+  .release= itc_mfmitc_release,
+};
+
+
 static const struct file_operations *(itc_pkt_fops_ptrs[MINOR_DEVICES]) = {
-  &itc_pkt_fops,
-  &itc_pkt_fops,
-  &itc_pkt_fops,
-  &itc_pkt_fops,
-  &itc_pktevt_fops
+  &itc_pkt_fops,       /* PRU_MINOR_PRU0 */
+  &itc_pkt_fops,       /* PRU_MINOR_PRU1 */
+  &itc_pkt_fops,       /* PRU_MINOR_ITC */
+  &itc_pkt_fops,       /* PRU_MINOR_MFM */
+  &itc_pktevt_fops,    /* PRU_MINOR_EVT */
+  &itc_mfmitc_fops,    /* PKT_MINOR_MFM_ET */
+  &itc_mfmitc_fops,    /* PKT_MINOR_MFM_SE */
+  &itc_mfmitc_fops,    /* PKT_MINOR_MFM_SW */
+  &itc_mfmitc_fops,    /* PKT_MINOR_MFM_WT */
+  &itc_mfmitc_fops,    /* PKT_MINOR_MFM_NW */
+  &itc_mfmitc_fops     /* PKT_MINOR_MFM_NE */
 };
 
 // See firmware/LinuxIO.c:CSendFromThread for 0xc3 packet format
@@ -1668,7 +1891,7 @@ static void handleLocalStandard3(int minor, u8* bytes, int len)
   prudir = bytes[3]-'0';
   val4 = bytes[4]-'0';
 
-  dirname = getDirName(mapPruAndPrudirToDirNum(pru,prudir));
+  dirname = getDir8Name(mapPruAndPrudirToDir8(pru,prudir));
 
   t = getITCTrafficStats(pru,prudir);  /* t == 0 if prudir == 3 */
 
@@ -1713,8 +1936,8 @@ static void handleLocalStandard3(int minor, u8* bytes, int len)
 }
 
 static int itc_pkt_cb(struct rpmsg_device *rpdev,
-                       void *data , int len , void *priv,
-                       u32 src )
+                      void *data , int len , void *priv,
+                      u32 src )
 {
   ITCPRUDeviceState * prudevstate = dev_get_drvdata(&rpdev->dev);
   ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) prudevstate;
@@ -1728,22 +1951,25 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
                     DUMP_PREFIX_NONE, 16, 1,
                     data, len, true);
 
-  if (len > 0) {
+  if (len > 1) {
     u8 * bytes = (u8*) data;
     u8 type = bytes[0];
+    u8 byte1 = bytes[1];
 
     if (type&PKT_HDR_BITMASK_STANDARD) {   // Standard packet
 
       if (!(type&PKT_HDR_BITMASK_LOCAL)) { // Standard routed packet
 
-        u32 dir = type&PKT_HDR_BITMASK_DIR;
+        u32 dir8 = type&PKT_HDR_BITMASK_DIR;
+        u32 dir6 = mapDir8ToDir6(dir8);
+        BUG_ON(dir6 >= DIR6_COUNT);
 
         if (type&PKT_HDR_BITMASK_OVERRUN) {
-          printk(KERN_ERR "(%s) Packet overrun reported on size %d packet\n", getDirName(type&0x7), len);
+          printk(KERN_ERR "(%s) Packet overrun reported on size %d packet\n", getDir8Name(type&0x7), len);
         }
 
         if (type&PKT_HDR_BITMASK_ERROR) {
-          printk(KERN_ERR "(%s) Packet error reported on size %d packet\n", getDirName(type&0x7),len);
+          printk(KERN_ERR "(%s) Packet error reported on size %d packet\n", getDir8Name(type&0x7),len);
           DBGPRINT_HEX_DUMP(DBG_PKT_ERROR,
                             KERN_INFO, minor ? "<pru1: " : "<pru0: ",
                             DUMP_PREFIX_NONE, 16, 1,
@@ -1751,52 +1977,62 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
         }
 
         if (len > ITC_MAX_PACKET_SIZE) {
-          printk(KERN_ERR "(%s) Truncating overlength (%d) packet\n",getDirName(type&0x7),len);
+          printk(KERN_ERR "(%s) Truncating overlength (%d) packet\n",getDir8Name(type&0x7),len);
           len = ITC_MAX_PACKET_SIZE;
         }
 
         { /* Deliver to appropriate device */
 
-          ITCPktDeviceState * pktdev;
+          ITCPktDeviceState * pktdev = 0;
           ITCPacketBuffer * ipb;
-          bool urgent = type&PKT_HDR_BITMASK_MFMT;
-          u32 index = urgent ? 1 : 0;
-          ITCTrafficStats * t = getITCTrafficStatsFromDir(dir);
+          bool urgent = type&PKT_HDR_BITMASK_URGENT;
+          u32 idx = urgent ? TRAFFIC_URGENT : TRAFFIC_BULK;
+          ITCTrafficStats * t = getITCTrafficStatsFromDir8(dir8);
 
-          t->mCounts[index].mPacketsReceived++;
-          t->mCounts[index].mBytesReceived += len;
+          t->mCounts[idx].mPacketsReceived++;
+          t->mCounts[idx].mBytesReceived += len;
 
-          pktdev = S.mPktDeviceState[index]; /* 0==/dev/itc/packets, 1==/dev/itc/mfm */
-
-          BUG_ON(!pktdev);
-          ipb = &pktdev->mUserIB;
-
-          if (kfifo_avail(&ipb->mFIFO) < len) 
-            DBGPRINTK(DBG_PKT_DROPS,
-                      KERN_INFO "(%s) Inbound %s queue full, dropping %s len=%d packet\n",
-                      getDirName(type&0x7),
-                      ipb->mName,
-                      urgent ? "priority" : "bulk",
-                      len);
-          else {
-            tpReportIfMatch(&ipb->mTraceInsert, pktdev->mCDevState.mName, true, data, len, ipb);
-
-            kfifo_in(&ipb->mFIFO, data, len); 
-
-            ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_FROM_PRU, urgent, log2in3(len), type&0x7));
-
-            DBGPRINTK(DBG_PKT_RCVD,
-                      KERN_INFO "Stashed %s/%d packet for pktdev %s ipb %s, waking %p\n",
-                      strPktHdr(bytes[0]),
-                      len,
-                      pktdev->mCDevState.mName,
-                      ipb->mName,
-                      &ipb->mReaderQ);
+          /* Set up pktdev depending on destination */
+          if (!urgent)  /* bulk traffic is all delivered to /dev/itc/bulk */
+            pktdev = S.mPktDeviceState[0]; /* 0==/dev/itc/bulk */
+          else if (!(byte1&PKT_HDR_BYTE1_BITMASK_MFM)) /* urgent non-mfm is flash traffic */
+            pktdev = S.mPktDeviceState[1]; /* 1==/dev/itc/flash */
+          else if (!(byte1&PKT_HDR_BYTE1_BITMASK_KITC)) { /* mfm non-kitc is event traffic */
+            pktdev = &S.mMFMDeviceState[dir6]->mPktDevState;
+          } else /* URG & MFM & ITC are all 1 */{
+            handleKITCPacket(S.mMFMDeviceState[dir6], bytes, len);
+            /*pktdev remains 0*/
           }
-          
-          wake_up_interruptible(&ipb->mReaderQ);
-        }
 
+          if (pktdev) {
+            ipb = &pktdev->mUserIB;
+
+            if (kfifo_avail(&ipb->mFIFO) < len) 
+              DBGPRINTK(DBG_PKT_DROPS,
+                        KERN_INFO "(%s) Inbound %s queue full, dropping %s len=%d packet\n",
+                        getDir8Name(type&0x7),
+                        ipb->mName,
+                        urgent ? "priority" : "bulk",
+                        len);
+            else {
+              tpReportIfMatch(&ipb->mTraceInsert, pktdev->mCDevState.mName, true, data, len, ipb);
+
+              kfifo_in(&ipb->mFIFO, data, len); 
+
+              ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_FROM_PRU, urgent, log2in3(len), type&0x7));
+
+              DBGPRINTK(DBG_PKT_RCVD,
+                        KERN_INFO "Stashed %s/%d packet for pktdev %s ipb %s, waking %p\n",
+                        strPktHdr(bytes[0]),
+                        len,
+                        pktdev->mCDevState.mName,
+                        ipb->mName,
+                        &ipb->mReaderQ);
+            }
+          
+            wake_up_interruptible(&ipb->mReaderQ);
+          }
+        }
       } else {                             // Standard local packet
         ITCPacketBuffer * ipb;
 
@@ -1838,7 +2074,7 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
       if (kfifo_avail(&ipb->mFIFO) < len) 
         DBGPRINTK(DBG_PKT_DROPS,
                   KERN_INFO "(%s) Inbound queue full, dropping PRU%d len=%d packet\n",
-                  getDirName(type&0x7), minor, len);
+                  getDir8Name(type&0x7), minor, len);
       else {
         u32 copied;
 
@@ -1906,6 +2142,21 @@ static ITCEvtDeviceState * makeITCEvtDeviceState(struct device * dev,
   return evtdev;
 }
 
+static ITCMFMDeviceState * makeITCMFMDeviceState(struct device * dev,
+                                                 int minor_to_create,
+                                                 int * err_ret)
+{
+  ITCCharDeviceState* cdev = makeITCCharDeviceState(dev, sizeof(ITCMFMDeviceState), minor_to_create, err_ret);
+  ITCMFMDeviceState* mfmdev = (ITCMFMDeviceState*) cdev;
+  ITCPktDeviceState* pktdev = (ITCPktDeviceState*) mfmdev;
+  initITCPacketBuffer(&pktdev->mUserIB, "mUserIB",false,false,minor_to_create,BUFFERSET_P);
+  mfmdev->mStale = false;
+  BUG_ON(minor_to_create < PKT_MINOR_MFM_ET || minor_to_create > PKT_MINOR_MFM_NE);
+  mfmdev->mDir6 = minor_to_create - PKT_MINOR_MFM_ET;
+  initITCLevelState(&mfmdev->mLevelState);
+  return mfmdev;
+}
+
 /*
  * driver probe function
  */
@@ -1931,9 +2182,8 @@ static int itc_pkt_probe(struct rpmsg_device *rpdev)
   if (S.mOpenPRUMinors == 0) {
 
     unsigned i;
-
-    for (i = 0; i <= 1; ++i) {
-      unsigned minor_to_create = i + PKT_MINOR_ITC;
+    for (i = 0; i <= 1; ++i) { /* Make PKT_MINOR_BULK & PKT_MINOR_FLASH */
+      unsigned minor_to_create = i + PKT_MINOR_BULK;
 
       printk(KERN_INFO "ZROG making minor %d (on minor_obtained %d)\n", minor_to_create, minor_obtained);
 
@@ -1945,7 +2195,7 @@ static int itc_pkt_probe(struct rpmsg_device *rpdev)
         return ret;
     }
 
-    for (i = 0; i <= 0; ++i) {
+    for (i = 0; i <= 0; ++i) { /* Make PKT_MINOR_EVT */
       unsigned minor_to_create = i + PKT_MINOR_EVT;
 
       printk(KERN_INFO "ZREG making minor %d (on minor_obtained %d)\n", minor_to_create, minor_obtained);
@@ -1955,6 +2205,19 @@ static int itc_pkt_probe(struct rpmsg_device *rpdev)
       printk(KERN_INFO "GREZ made minor %d=%p (err %d)SLORG\n", minor_to_create, S.mEvtDeviceState[i], ret);
 
       if (!S.mEvtDeviceState[i])
+        return ret;
+    }
+
+    for (i = DIR6_ET; i <= DIR6_NE; ++i) { /* Make PKT_MINOR_MFM_ET .. PKT_MINOR_MFM_NE */
+      unsigned minor_to_create = i + PKT_MINOR_MFM_BASE;
+
+      printk(KERN_INFO "MREG making minor %d (on minor_obtained %d)\n", minor_to_create, minor_obtained);
+
+      S.mMFMDeviceState[i] = makeITCMFMDeviceState(&rpdev->dev, minor_to_create, &ret);
+
+      printk(KERN_INFO "MREZ made minor %d=%p (err %d)MLORG\n", minor_to_create, S.mMFMDeviceState[i], ret);
+
+      if (!S.mMFMDeviceState[i])
         return ret;
     }
   }
@@ -2126,13 +2389,20 @@ ITCCharDeviceState * makeITCCharDeviceState(struct device * dev,
   BUG_ON(struct_size < sizeof(ITCCharDeviceState));
 
   switch (minor_obtained) {
-  case PKT_MINOR_ITC: snprintf(devname,BUFSZ,"itc!packets"); break;
-  case PKT_MINOR_MFM: snprintf(devname,BUFSZ,"itc!mfm"); break;
+  case PKT_MINOR_BULK: snprintf(devname,BUFSZ,"itc!bulk"); break;
+  case PKT_MINOR_FLASH: snprintf(devname,BUFSZ,"itc!flash"); break;
   case PKT_MINOR_EVT: snprintf(devname,BUFSZ,"itc!pktevents"); break;
   case PRU_MINOR_PRU0:
   case PRU_MINOR_PRU1:
-    snprintf(devname,BUFSZ,"itc!pru%d",minor_obtained);
+    snprintf(devname,BUFSZ,"itc!pru!%d",minor_obtained);
     break;
+  case PKT_MINOR_MFM_ET: snprintf(devname,BUFSZ,"itc!mfm!ET"); break;
+  case PKT_MINOR_MFM_SE: snprintf(devname,BUFSZ,"itc!mfm!SE"); break;
+  case PKT_MINOR_MFM_SW: snprintf(devname,BUFSZ,"itc!mfm!SW"); break;
+  case PKT_MINOR_MFM_WT: snprintf(devname,BUFSZ,"itc!mfm!WT"); break;
+  case PKT_MINOR_MFM_NW: snprintf(devname,BUFSZ,"itc!mfm!NW"); break;
+  case PKT_MINOR_MFM_NE: snprintf(devname,BUFSZ,"itc!mfm!NE"); break;
+    
   default: BUG_ON(1);
   }
 
@@ -2218,6 +2488,12 @@ static void unmakeITCEvtDeviceState(ITCEvtDeviceState * evtdevstate) {
   unmakeITCCharDeviceState((ITCCharDeviceState *) evtdevstate);
 }
 
+static void unmakeITCMFMDeviceState(ITCMFMDeviceState * mfmdevstate) {
+  ITCPktDeviceState * pktdev = (ITCPktDeviceState*) mfmdevstate;
+  unmakePacketBuffer(&pktdev->mUserIB);
+  unmakeITCCharDeviceState((ITCCharDeviceState *) mfmdevstate);
+}
+
 static void unmakeITCPRUDeviceState(ITCPRUDeviceState * prudevstate) {
   BUG_ON(S.mOpenPRUMinors < 1);
   unmakePacketBuffer(&prudevstate->mLocalIB);
@@ -2240,10 +2516,12 @@ static void itc_pkt_remove(struct rpmsg_device *rpdev) {
 
   if (S.mOpenPRUMinors == 0) {
     int i;
-    for (i = PKT_MINORS - 1; i >= 0; --i)
-      unmakeITCPktDeviceState(S.mPktDeviceState[i]);
+    for (i = MFM_MINORS - 1; i >= 0; --i)
+      unmakeITCMFMDeviceState(S.mMFMDeviceState[i]);
     for (i = EVT_MINORS - 1; i >= 0; --i)
       unmakeITCEvtDeviceState(S.mEvtDeviceState[i]);
+    for (i = PKT_MINORS - 1; i >= 0; --i)
+      unmakeITCPktDeviceState(S.mPktDeviceState[i]);
   }
 }
 
