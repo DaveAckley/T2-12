@@ -21,7 +21,7 @@ my $CDM_PKT_TYPE_BYTE = chr($CDM_PKT_TYPE);
 
 my $MAX_MFZ_NAME_LENGTH = 28+4; # 4 for '.mfz'
 
-my $pktdev = "/dev/itc/packets";
+my $pktdev = "/dev/itc/bulk";
 my $mode = O_RDWR|O_NONBLOCK;
 
 my @dirnames = ("NT", "NE", "ET", "SE", "ST", "SW", "WT", "NW");
