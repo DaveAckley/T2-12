@@ -11,6 +11,7 @@
 
 MNAME:=itc_pkt
 obj-m += $(MNAME).o
+$(MNAME)-objs+= itcpkt.o itcmfm.o
 
 KDIR?=/lib/modules/$(shell uname -r)/build
 
