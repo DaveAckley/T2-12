@@ -1,0 +1,1053 @@
+{101}  -*- text -*-
+[0:
+[3:
+[35:
+[36:
+
+Thu Feb  6 14:20:38 2020 And here we are.
+
+:36]
+Thu Feb  6 14:19:30 2020 MOVING THIS TO
+/home/t2/T2-12/pru/itcio/notes/ since we're now about LKM hacking
+again.
+
+:35]
+[4:
+
+Sun Feb  2 01:29:46 2020 And here we are.
+
+:4]
+Sun Feb  2 01:28:16 2020 MOVING THIS TO
+/home/t2/MFM/src/drivers/itcSpike/ where we've been working for a
+while now..
+
+:3]
+
+
+Sat Feb  1 04:15:53 2020 So, starting in to a spike to get more real
+about ITC state machines for the levels and so forth.
+
+First question: Are we going to redo the itc_pkt to break out the
+packet channels?  Right now, MFM/src/drivers/mfmt2/include/MFMIO.h is
+opening MFM_DEV_PATH == /dev/itc/mfm and that's that.[1:
+
+Sat Feb  1 04:48:19 2020 And we're already doing a loop, in
+mfmt2/src/main.cpp, to ship flash traffic, since we have to customize
+the packet headers.  With separate devices I suppose we could even
+have the LKM slug the src/dst info into the pkt hdr.
+
+Well I think it's pretty clear we're thinking of making
+/dev/itc/mfm/{ET..NE} devices, so why don't we get on down to
+~/T2-12/pru/itcio/module/ and see what that might involve.  One think
+to think about is that packet writes will still need to be merged into
+the outbound queue for the appropriate pru, so the locking on that
+could start actually getting stressed, since there will be six (well,
+three) separate devices that might be trying to a given outbound kfifo
+at once.
+
+But nap first.[2:
+
+Sat Feb  1 10:00:37 2020 OK, let's have some
+
+TODO
+
+[5: Sun Feb  2 01:30:16 2020
+DONE :5] - Make a tiny little stub that we'll grow into the itc level
+   sequencer.
+
+[12: Wed Feb  5 04:34:28 2020
+DONE :12] - Change boot sequence to start the stub INSTEAD of mfm, so the
+   former can grab /dev/itc/mfm
+
+[13: MFMIO.h/cpp was already that, so
+DONE :13] - Maybe let's make a little abstraction that wraps /dev/itc/mfm and
+   turns it into a like pollable pseudo-device?  So we could start our
+   level sequencing code without immediately doing the LKM stuff?
+
+[14:
+DONE:14] - Rough up some packet formats for the levels
+
+[15:
+DONE :15] - Demo first-cut on-tile level sequencer talking on loop-back then
+   between tiles, with results visible ONLY in the log file -- NO
+   DISPLAY HACKING ALLOWED :)
+
+:2]
+
+:1]
+
+:0]
+[6:
+
+Sun Feb  2 05:01:08 2020 OK we're at ITC::sendLevelPacket() so we need
+a packet format.  What do cache updates currently use?  Let's just get
+OoB wrt that?[7:
+
+Sun Feb  2 05:04:16 2020 In src/core/include/Packet.h, we have like
+PacketType::UPDATE_BEGIN == 'b'.[8:
+
+Sun Feb  2 05:25:31 2020 But that's the second byte.  The packet
+actually starts with
+
+      u8 cmd = 0xa0|dir8; // STD MFM pkt hdr
+      packet.Printf("%c",cmd);
+
+according to src/drivers/mfmt2/src/main.cpp:262
+
+So let's just keep going with the second byte scheme, I guess.  The
+cache processing code appears to be using second byte types [ucea].
+We notice they're all 7 bit ASCII.  If we take the high bit for our
+level scheme we can pack the level and stage all into the second byte,
+with room leftover..
+
+     0   1   2   3   4   5   6   7
+   +---+---+---+---+---+---+---+---+
+   | 1 | L1| L0| S1| S0|RV0|RV1|RV2|
+   +---+---+---+---+---+---+---+---+
+
+Three bits left over, if we say no more than three levels.
+[9:
+
+Sun Feb  2 05:41:39 2020 Well let's do that.  We can always change it
+if pressing needs come up.[10:
+
+Sun Feb  2 05:45:26 2020 Uhhhhm except flash traffic is already using
+the top bit of byte 1.
+
+      if (amt > 1 && (buf[1] & 0x80)) // byte 1 MSB set is MFM SPECIAL, clear is
+
+So we'll need to rethink.  Probably just draft 'l' or 'L' for Level
+packet, and take another byte and not worry about it.
+
+But first nap.
+
+
+:10]
+
+:9]
+:8]
+
+:7]
+
+:6]
+[11:
+
+Sun Feb  2 12:21:36 2020 OK, so we're sending 'l' packets to ourselves
+via loopback cable, and handling them a little, and are getting quite
+close to the frontier of chnlSim.pl's implemented behavior.  But it's
+time to move the flag, so we've got to get this stuff actually into
+the tree for safety..
+
+:11]
+[16:
+
+Wed Feb  5 04:35:19 2020 OK so we're post-t2sup#269 and want to get
+some thoughts down while they still don't seem to suck.
+
+A LEVEL has
+
+ - SUPPORTS.  These are things that must be true to remain in or at
+   the LEVEL.  The level code should check all these things every time
+   it runs, and if any are untrue the level crashes.
+
+ - PROPERTIES.  These are things that can be accessed, and can affect
+   processing both within level code and by other entities
+
+ - Triggers? Advancers? Exiters?  These are the conditions that allow
+   advancing from one level to another.
+
+[17:
+
+Wed Feb  5 04:58:46 2020 So the problem with levels is that you can't
+fork states, because you have this one dimensional notion of altitude,
+of progress, of sequence.  So you have to fold all cases at a given
+level into the properties of that level -- like COMPATIBLE vs
+INCOMPATIBLE physics.
+
+The good thing about levels is you can do altitude comparisons.  You
+can say 'if (foo.level >= ACTIVE)' or whatever, and have that be a
+meaningful thing.
+
+[18:
+
+Wed Feb  5 05:07:06 2020 There's also the interlock implied by the
+stages, reflecting the distributed aspect of the state machine.  In
+principle we could be looking to stage-interlock not just ITC<->ITC
+but also the ITC<->TileModel.
+
+Could there be a cross-entity global notion of levels?  And things
+might but at different levels on that scale, but they'd still be
+commensurate.
+
+MFMT2 can be:
+
+  CLOSED - not running, or starting up or loading or ..
+  OPEN - running events under whatever circumstances prevail
+
+ITCs can be
+
+  CLOSED - not connected, or negotiating physics, or incompatible physics
+  OPEN - handling locks and cache updates between compatible MFMT2s
+
+[19:
+
+Wed Feb  5 06:29:54 2020 In addition, entities might be stable or
+unstable within a level.  Entering/stable/leaving?  What is the
+purpose(s) of stability?
+
+ - Coordination with remote entities
+ - Non-atomic processing internal to level
+
+Externally we say something isn't really AT a level until they are at
+least STABLE in that level.
+
+:19]
+
+:18]
+
+:17]
+:16]
+[20:
+
+Wed Feb  5 06:51:12 2020
+
+TILE
+  Coordination tasks:
+  (1) Host PRUs
+  (2) Host ..
+  Computation tasks
+
+ITC
+  Coordination tasks:
+   (1) Host Tile
+   (2) Peer ITC
+   (3) Host MFM
+  Computation tasks:
+   (1) Compatibility check
+
+MFM
+  Coordination tasks:
+   (1) Local ITCs (limited)
+
+
+
+                          TIMEOUT       RCVE
+ ITC::CLOSED::ENTER       reannounce    ITC::CLOSED::ENTER -> ITC::CLOSED::STABLE
+                          + remain
+
+ ITC::FAILED::
+
+:20]
+[21:
+
+Wed Feb  5 07:28:34 2020 What if we move the compatibility negotiation
+into the kernel???  That would certainly establish the decoupling of
+the ITCs from MFMT2.
+
+How might it work?
+
+Open /dev/mfmctl for read/write.  It's single user so that's how mfmt2
+locks out any other userspace competitors.  Write MFZ fingerprint to
+it?  Poll to read it for events?  Do we even believe in events?  Vs
+states?  Perhaps advisory events just to speed things up, but the
+event just triggers reading states, rather than trusting the advice.
+Everything should still work, just slower, even if all events (other
+than timeouts) are ignored.
+[22:
+
+Wed Feb  5 08:54:16 2020 So an event is really just like a wake-up,
+rather than a real event.  Even a timeout is really just a wake-up,
+and the entity checks its own internal clock to see if it's a 'real'
+timeout.
+
+I do think we're going to go to actual time-based intervals for
+timeouts and such, though, rather than the count-based stuff from this
+weekend.  After all, that's counting wake-ups, which we JUST SAID
+weren't supposed to matter if they happened or not.
+
+But we only want intervals, not absolute times, and only at say
+millisecond res.
+
+[23:
+
+Wed Feb  5 09:26:12 2020 When we accumulate state, like advancing a
+level, we associate a rate at which we expect that state to be
+refreshed.  And indeed, maybe we do not think in terms of a single
+timeout for an entity, but in terms of a timeout for refreshing each
+bit of state it is maintaining.
+
+But first nap.
+
+:23]
+
+:22]
+
+
+:21]
+[24:
+
+Wed Feb  5 12:48:58 2020 Suppose we try to rough out an LKM approach
+to mfm configuration and cache updates.  Goals:
+
+ - Userspace informs LKM of its ability to run events of some given
+   MFZ and no other.  After that returns successfully, all KITC fds
+   have been put into an error state, and userspace must close and
+   reopen those connections before they can be used.
+
+ - User space sees 'only' cache updates (and flash traffic?) via the
+   new device.  And KITC status, OPEN/CLOSED, with open implying
+   'ready for events'.   'And like everything,' we should somehow get
+   a wake-up when a KITC changes, or we can interrogate it at our own
+   rate.
+
+When mfm considers an event window it tries for locks on the ITCs it
+believes to be OPEN, and goes from there.
+
+[25:
+
+Wed Feb  5 15:58:17 2020 Are we saying we'd just expand itc_pkt for
+this, or would there be a separate LKM?  I guess we're saying expand
+itc_pkt.  We don't want to figure out how to call between LKMs for
+example.
+
+So,
+
+TODO
+[29: Thu Feb  6 11:13:11 2020
+
+DONE :29] - Review itc_pkt.[ch] to remember what we're dealing with.
+
+[37: Thu Feb  6 14:20:58 2020
+DONE :37] - Make an expanded struct for each direction, and
+
+[50: Fri Feb  7 14:45:10 2020
+DONE :50] - Make a struct for mfm info like the mfzversion.
+
+[45: Fri Feb  7 12:03:33 2020 
+DONE :45] - Review packet formats to see where we could fit it the inter-itc
+   negotiation stuff (aka 'level packets').
+
+[38:
+DONE :38] - Also review for expanding to per-ITC packet-IO devices to
+   userspace.  Like /dev/itc/mfm/ET../dev/itc/mfm/NE or whatever.
+
+:25]
+
+:24]
+[26:
+
+Thu Feb  6 01:15:57 2020 So for starters, we're talking about a bunch
+of new minors, right?  For the record, here's what we're using now:
+
+    t2@beaglebone:~/T2-12/pru/itcio/module$ ls -l /dev/itc/* | sort -k 1.1,1.2 -k 5n -k 6n
+    crw------- 1 root root 237, 0 Feb  5 01:23 /dev/itc/pru0
+    crw------- 1 root root 237, 1 Feb  5 01:23 /dev/itc/pru1
+    crw------- 1 root root 237, 2 Feb  5 01:23 /dev/itc/packets
+    crw------- 1 root root 237, 3 Feb  5 01:23 /dev/itc/mfm
+    crw------- 1 root root 237, 4 Feb  5 01:23 /dev/itc/pktevents
+    crw------- 1 root root 238, 0 Feb  5 01:23 /dev/itc/locks
+    crw------- 1 root root 238, 1 Feb  5 01:23 /dev/itc/lockevents
+    t2@beaglebone:~/T2-12/pru/itcio/module$
+
+so we'd be talking SIX more minors under /dev/itc?  And does this mean
+they ALL need/want to be DIRECTLY under /dev/itc?  Well, maybe not.
+The makeITCCharDeviceState code like at itc_pkt.c:2129 does:
+
+  switch (minor_obtained) {
+  case PKT_MINOR_ITC: snprintf(devname,BUFSZ,"itc!packets"); break;
+  case PKT_MINOR_MFM: snprintf(devname,BUFSZ,"itc!mfm"); break;
+  case PKT_MINOR_EVT: snprintf(devname,BUFSZ,"itc!pktevents"); break;
+
+so perhaps we could 'just' do "itc!mfm!ET" ?  Except that would imply
+/dev/itc/mem is a directory not a device.  But maybe "itc!bydir!ET" or
+whatever.  Or maybe device /dev/itc/mfm does become a directory -- do
+we still need it as a device if we're exploding the itcs by direction?
+Bulk traffic still goes by /dev/itc/packets; flash traffic will appear
+in the by-direction queues (?), along with the 'mfm' traffic.  So
+
+Assuming we really can go more than one '!' deep in that naming
+scheme.
+[27:
+
+Thu Feb  6 02:54:13 2020 So anyway.  I think itc_pkt.[ch] isn't in
+terrible shape for adding another chunk of minors.  For now, let's
+preserve /dev/itc/mfm and try going with /dev/itc/bydir/ET..[28:
+
+Thu Feb  6 11:00:15 2020 Post coffee with Melanie and Chris Thachuk.
+
+[30:
+
+Thu Feb  6 11:13:32 2020 So let's go for more minors.  This part of
+the hack is basically about demuxing the inbound mfm packets on a
+per-direction basis, and we can do that separately from moving
+additional protocol negotiation into the kernel.[31:
+
+Thu Feb  6 14:00:25 2020 OK so we theoretically have six more minors
+being built and torn down, all untested.  Wait, where did we actually
+name their paths?[32:
+
+Thu Feb  6 14:05:21 2020 And their paths have been named.  All, as
+previously mentioned, untested.
+
+We have a new script on the workstation,
+CDM-TGZS-BACKUP/scripts/PullT2HomeDir, that just rsyncs /home/t2, with
+no versioning or extra redundancy on the workstation side.  But trying
+that now because I think we're facing
+
+BITS OFF
+
+:32]
+
+:31]
+
+:30]
+
+:28]
+
+:27]
+:26]
+[33:
+
+Thu Feb  6 14:17:05 2020 OK well we seem to have survived
+install+reboot okay so far.  No logoops that I can see.  And we see
+this:
+
+    root@beaglebone:~# ls /dev/itc
+    bydir  lockevents  locks  mfm  packets	pktevents  pru0  pru1
+    root@beaglebone:~# ls /dev/itc/bydir
+    ET  NE	NW  SE	SW  WT
+    root@beaglebone:~# ls -l /dev/itc/bydir
+    total 0
+    crw------- 1 root root 237,  5 Feb  6 14:10 ET
+    crw------- 1 root root 237, 10 Feb  6 14:10 NE
+    crw------- 1 root root 237,  9 Feb  6 14:10 NW
+    crw------- 1 root root 237,  6 Feb  6 14:10 SE
+    crw------- 1 root root 237,  7 Feb  6 14:10 SW
+    crw------- 1 root root 237,  8 Feb  6 14:10 WT
+    root@beaglebone:~#
+
+which all seems plausible.
+
+[34:
+
+Thu Feb  6 14:18:43 2020 But, this file is currently in ~/MFM, which
+seems wrong since we're now into LKM stuff over in ~/T2-12/pru.
+
+:34]
+:33]
+[39:
+
+Thu Feb  6 14:44:59 2020 So let's see if we can demux inbound MFM
+packets to our new devices, while still sending them to /dev/itc/mfm
+as well.[40:
+
+Fri Feb  7 02:45:27 2020 Well, we'd have to introduce a new packet
+copying thing to do that, so maybe let's just bite the bullet and
+stop sending to /dev/itc/mfm.  However, we're wondering if while we're
+tearing all this up, we might make yet another minor to represent
+flash traffic.  With the desired semantics being that flash traffic
+reads are not demuxed per-dir6, but perhaps flash writes are
+automatically broadcast in all active dir6s.
+
+Actually now that I say it perhaps /dev/itc/mfm could be repurposed
+for flash traffic, rather than creating yet another minor?  So we'd
+
+(1) Insert a diversion around itc_pkt.c:1768 where we'd fall through
+    on flash traffic, but go off to some new demux handler for
+    everything else.
+
+(2) Change the code around itc_pkt.c:1399 to broadcast flash traffic
+    rather than routing it.
+
+[41:
+
+Fri Feb  7 06:26:56 2020 So how do we distinguish flash traffic, and
+'ITC level' traffic, at the LKM level?
+
+
+
+:41]
+
+:40]
+
+:39]
+[42:
+
+Fri Feb  7 10:33:48 2020 OK, well I spent a couple hours, here, making
+T2-12/doc/T2-Packet-Header-Formats-11.ods and .pdf files.  It presumes
+we're going to take byte 1 bit 7 on routed standard packets to mean
+'MFM traffic', as opposed to 'flash traffic', so itc_pkt can split
+those streams before delivery to userspace.
+
+It further presumes we're going to take byte 1 bit 6 on MFM traffic to
+mean 'ITC level traffic', which is to be handled by itc_pkt.c and
+never delivered to userspace, directly, at all.  That leaves only six
+bits for the the cache packet type code, so we can't just be happy and
+use 7 bit ASCII.  Now, according to MFM/core/include/Packet.h, we
+currently have cache type codes [bucea] in use, and none of them fit
+in six bits.
+
+But I'm thinking now might be the time to support merging cache
+'minipackets' together for transport anyway, in which case we might
+not even be using the remaining six bits of byte 1, and might just be
+starting at byte 2.
+
+[43:
+
+Fri Feb  7 10:49:26 2020 Let's see.
+
+ Format: UPDATE_BEGIN + s16:CX + s16:CY          --5 bytes
+ Format: UPDATE + u8:SITENO + T:ATOM             --14 bytes
+ Format: CHECK + u8:SITENO + T:ATOM              --14 bytes
+ Format: UPDATE_END                              --1 bytes
+ Format: UPDATE_ACK + u8:CONSISTENT_ATOM_COUNT   --2 bytes
+
+So we could fit like (/ 250 14) ~16 site updates anyway in a single
+packet, and a DReg- or Res-like diffuser would be (+ 5 14 14 1) < 40
+bytes all done, if no check atoms were needed.  (Or alternatively,
+more than a dozen check atoms could be included and still fit in one
+packet.)
+
+Worst case, if we had to ship absolutely the whole event window, we'd
+be talking (+ 5 (* 41 14) 1) == 580 bytes, meaning three packets.
+
+:43]
+
+:42]
+[44:
+
+Fri Feb  7 11:52:08 2020 So where are we?  Have we got some to-do to
+check off?[46:
+
+Fri Feb  7 12:03:45 2020 Well, all that's left on the most recent
+to-do is an mfm struct to capture downward state information.  Let's
+knock that out.[47:
+
+Fri Feb  7 12:53:19 2020 So, what ARE we going to use as the real 'MFZ
+version string'?  The question drives the issue of what kind of
+intertile security -- if any -- are we going to have in these
+'research-only prototype tiles'.  About the best we could do, if we
+wanted to, was to have some kind of private key inside the MFZ, and do
+a challenge-response during KITC level negotiation.  But that would be
+BS because it would only prove that the peer tile HAD POSSESSION of
+some particular MFZ secret key, and not also that the peer tile WAS
+RUNNING THE ASSOCIATED CODE unmodified.
+
+So we shouldn't pretend we're getting intertile SECURITY here, and
+just focus on avoiding intertile ACCIDENTS.  Seems like a hash of the
+whole damn MFZ file would be the obvious way to go.  A SHA256 is 64
+bytes in hex.  Suppose we make the max length 127 bytes.[48:
+
+Fri Feb  7 13:14:03 2020 Actually, what does cdm.pl do?[49:
+
+Fri Feb  7 13:22:40 2020 cdm.pl appears to use the FIRST HALF (16
+bytes/32 hex) of the (32 bytes/64 hex) sha256 result.
+
+Suppose we do this:
+
+(1) Take the whole sha256 result as the id, but handle it in binary,
+    taking 32 bytes.
+
+(2) Make the max id string like 50 bytes.
+
+(3) As part of leveling up, after we establish matching ids, we
+    exchange a random token of perhaps 2 or 4 bytes.  That's what
+    we'll use in later status announcements.  So a lower level is
+    supported by matching ids, but a higher level is supported by
+    matching side-specific tokens.  Maybe 2 bytes each, and the
+    confirmation packet supplies our two bytes and our belief about
+    their two bytes.  And we pick a random non-zero starting point
+    when the LKM inits, and then increment-skipping-zero from there.
+
+
+:49]
+
+:48]
+
+:47]
+
+:46]
+
+:44]
+[51:
+
+Fri Feb  7 14:45:33 2020 OK, made an mfmstate thing and initted it.
+How do we set the config?  'echo $id > /sys/class/itc_pkt/mfzid'?
+
+Well let's try more
+
+TODO
+
+[53: Fri Feb  7 16:39:14 2020
+DONE :53] - Init MFMTileState via /sys/class/itc_pkt/mfzid
+
+[64: Sat Feb  8 15:28:06 2020 
+DONE :64] - Draft the KITC levels considering the mfzid/seqno distinction
+
+[54:
+DONE :54] - Make code to open ITCMFMDeviceStatuss.  Ensure they are exclusive use.
+
+[55:
+DONE :55] - Mod ITCMFMDeviceStatus to have an invalid flag to set forcing reopen
+
+[99: Thu Feb 13 13:38:13 2020
+DONE :99] - Rename /dev/itc/mfm to /dev/itc/flash and route flash traffic there.
+
+:51]
+[52:
+
+Fri Feb  7 16:38:45 2020 OK time to break for cooking dinner, but we
+have some cargo cult progress at least.
+[56:
+
+Fri Feb  7 16:39:40 2020 All that crab builds but is totally untested
+at present.
+
+:56]
+:52]
+[57:
+
+Sat Feb  8 00:08:42 2020 So, the levels, the levels, let's try again.
+
+Level 0: ALONE
+  Requires:        Nothing
+  Announce stages: false
+  Entry timeout:   1000+-100ms
+  On timeout:      Re-enter
+  Update on:       ITCCHANGE, L rcvd, timeout
+  Stage1 on:       PacketSync
+  Stage2 on:       PacketSync
+  Advance on:      PacketSync
+
+Level 1: KITC
+  Requires:        PacketSync
+  Announce stages: true
+  Entry timeout:   300+-100ms
+  On timeout:      Re-enter
+  Update on:       ITCCHANGE, L rcvd, timeout
+  Stage0 argument: None
+  Stage1 on:       t>=1.0 && t<2.0
+  Stage2 on:       t>=1.0 && t<2.0
+  Advance on:      t>=1.1 && u==1.2
+
+Level 2: CONFIG
+  Requires:        t>=1.1
+  Announce stages: true
+  Entry timeout:   300+-100ms
+  On timeout:      if u==2.1, Backoff else Retreat
+  Update on:       ITCCHANGE, L rcvd, timeout
+  Stage0 argument: MFZId
+  Stage1 on:       t>=2.0 && t.MFZId!=u.MFZId
+  Stage2 on:       t>=2.0 && t.MFZId==u.MFZId
+  Stage2 argument: mfm.seqno
+  Advance on:      t>=2.2 && u==2.2
+
+Level 3: MFM
+  Requires:        t>=2.2 && mfm.seqno == t.seqno
+  Announce stages: true
+  Entry timeout:   1000+-100ms
+  On timeout:      if u>=3.1 backoff else re-enter
+  Update on:       ITCCHANGE, L rcvd, timeout
+  Stage0 argument: mfm.seqno t.seqno
+  Stage1 on:       t>=3.0 && mfm.seqno == t.seqno
+  Stage2 on:       false
+  Advance on:      false
+
+:57]
+[58:
+
+Sat Feb  8 07:24:45 2020 Well I presume stages 0..3, there, in part
+because of compat/incompat but also because we gave two bits for stage
+in the level packet, but I'm thinking we should go back to just stages
+0..2 and do compat/incompat with additional state, like we're already
+kind of doing for their seqno.  Or something.
+
+[59: Sat Feb  8 07:32:13 2020 
+
+ - KITCs are updated on: ITCCHANGE, L rcvd, timeout
+
+ - Level confirmation packet data is cumulative.
+
+ - update begins with requirements check.  Level requirements are
+   cumulative.  If currently supported level < previous level, enter
+   at currently supported level, stage 0.  Otherwise enter at previous
+   level, previous stage.
+
+ - All timeouts are randomized +- 25%
+
+ - Most recently received peer level info is stored in 't'.  't' data
+   is reset on restart or if T timeout expires.
+
+DEFAULT LEVEL VALUES:
+  Requires:        t>=(L-1).1
+  U timeout:       100ms, re-enter
+  T timeout:       500ms, retreat
+  Exchange:        nothing
+  Decide:          true
+  Confirm:         nothing
+  Advance:         t>=L.1 && u==L.2
+
+Level 0 CONTACT
+  Requires:        Nothing
+  U timeout:       10000ms, restart
+  T timeout:       10000ms, restart
+  Advance:         PacketSync
+
+Level 1 COMMUNICATION
+  Requires:        PacketSync
+  Exchange:        u.seqno
+  Confirm:         u.seqno + t.seqno
+
+Level 2 COMPATIBILITY
+  Exchange:        MFZId
+  Decide:          d = u.MFZId == t.MFZId
+  Confirm:         d
+
+Level 3 COMPUTATION
+  U timeout:       10000ms, re-enter
+  T timeout:       50000ms, retreat
+  Advance:         false
+
+:59]
+
+:58]
+[60:
+
+Sat Feb  8 09:33:59 2020 OK, so :59: seems to have some potential.
+Separate Us-vs-Them timeouts seems pretty key, in the spirit of
+output strict, input generous.  Was picking times so we'd send our
+stuff at least twice, and probably three times, before giving up for
+lack of their stuff in response.
+
+Could we start going to code here?  Flesh out 'class' structs and
+'method' funcs?  We're going to try to go array-of-structs-of-fncptrs,
+right?  What might the functions be?
+
+  enum LevelAction { DO_REENTER, DO_RESTART, DO_RETREAT, DO_ADVANCE, DO_CONTINUE };
+  bool levelRequires(ITCMFMDeviceState * itc) ;
+  LevelAction levelTimeout(ITCMFMDeviceState * itc, bool usNotThem, u32 & nextTimeoutAroundMs) ;
+  u32 levelSend(ITCMFMDeviceState * itc, bool exchangeNotConfirm, char * pkt, u32 startIndex) ;
+  u32 levelReceive(ITCMFMDeviceState * itc, bool exchangeNotConfirm, char * pkt, u32 startIndex) ;
+  LevelAction levelDecide(ITCMFMDeviceState * itc) ;
+
+:60]
+[61:
+
+Sat Feb  8 15:01:08 2020 Urgh just did a big reorg including renaming
+itc_pkt.[ch] to itcpkt.[ch] to get the 'multiple source file building
+into one ko module' working.  It now appears to be building but I'm
+terrified to try it.
+
+I guess we do our risky 'rsync pull' to get our
+
+BITS OFF
+
+:61][62:
+
+Sat Feb  8 15:08:26 2020 Well, 'make install'ing..
+
+:62]
+[63:
+
+Sat Feb  8 15:13:45 2020 Well we appear to have survived reboot
+without oops.
+
+Soooo can we check some stuff off heah?
+[65:
+
+Sat Feb  8 15:28:57 2020 Well, I still don't really want to rename
+/dev/itc/mfm to /dev/itc/flash, so let's instead make up some new
+
+TODO
+
+[68: Sat Feb  8 22:19:51 2020
+DONE :68] - Finish setting up the structs for the draft levels
+
+[80: Mon Feb 10 15:57:31 2020
+DONE :80] - Detect and divert on whatever now counts as 'L' packets
+
+[98: Thu Feb 13 13:37:55 2020 Anyway basically
+DONE :98] - Make a generic level update() function for externals to call.
+
+[81:
+DONE :81] - Get some level-related crab appearing in the log file.
+
+:65]
+
+:63]
+[66:
+
+Sat Feb  8 17:24:29 2020 OK having been doing horrible XX YY macro
+hackery, and have gotten as far as declaring the needed 'custom level
+functions', but not yet defined them:
+
+      CC [M]  /home/t2/T2-12/pru/itcio/module/itcmfm.o
+    /home/t2/T2-12/pru/itcio/module/itcmfm.c:43:48: warning: ‘ilsRequireCONTACT’ used but never defined
+     #define YY1(NM,TYPE) static Level##TYPE##_func ils##TYPE##NM;
+                                                    ^~~
+    /home/t2/T2-12/pru/itcio/module/itcmfm.c:46:3: note: in expansion of macro ‘YY1’
+       YY##REQ(NAM,Require)                \
+       ^~
+    /home/t2/T2-12/pru/itcio/module/itcmfm.c:33:9: note: in expansion of macro ‘XX’
+     /* 0 */ XX(CONTACT,      1,  1,   0,   0,            _)    \
+             ^~
+    /home/t2/T2-12/pru/itcio/module/itcmfm.c:51:1: note: in expansion of macro ‘ALL_LEVELS_MACRO’
+     ALL_LEVELS_MACRO();
+     ^~~~~~~~~~~~~~~~
+    /home/t2/T2-12/pru/itcio/module/itcmfm.c:43:48: warning: ‘ilsTimeoutCONTACT’ used but never defined
+     #define YY1(NM,TYPE) static Level##TYPE##_func ils##TYPE##NM;
+
+etc
+
+So that's where to pick up.  But it's Saturday evening so break
+  time.[67:
+
+Sat Feb  8 22:19:20 2020 OK, so log-only versions of the level
+customizations are building.  
+
+:67]
+
+:66]
+[69:
+
+Sun Feb  9 08:06:14 2020 Well, so finally went back and systematized
+the dir8-vs-dir6 distinction more thoroughly, which meant hitting tons
+of stuff all over the place.  But it's building again; untested.
+
+We've theoretically detected when a KITC packet has arrived, but we're
+just logging when it hits.
+
+Perhaps we should head back down to loopback-only and then give this a
+try?  We haven't done much on the send side yet so we could probably
+handmake a KITC packet and inject it.[70:
+
+Sun Feb  9 08:35:00 2020 Well since we're blowing it all up we also
+did the device renaming.  Now we have:
+
+  /dev/itc/bulk
+  /dev/itc/flash
+  /dev/itc/pru/0
+  /dev/itc/pru/1
+  /dev/itc/mfm/ET
+    ..
+  /dev/itc/mfm/NE
+
+but userspace still can't read or write anything via /dev/itc/mfm/*
+
+[71:
+
+Sun Feb  9 08:44:36 2020 We need to merge itc_pkt_write and
+itc_mfmitc_write.  They might end up being the same or nearly so.  We
+could have itc_mfmitc slug in the correct destination automatically
+before dishing off to the factored-out guts of itc_pkt_write.
+
+But first, business of the day.
+
+:71]
+
+:70]
+
+:69]
+[72:
+
+Sun Feb  9 11:48:54 2020 Well, risky
+
+BITS OFF
+
+:72]
+[73:
+
+Sun Feb  9 12:12:26 2020 OK so had some BUG_ONs hit due to error
+checking in mapPruAndPruDirToDir8, but hacked around that and now
+appear to be coming up again.
+
+Have rehacked cdm.pl to look for /dev/itc/bulk.
+
+TODO
+
+[74: Mon Feb 10 12:50:02 2020
+DONE :74] - Rehack MFMIO (MFM/src/drivers/itcSpike11) to open all six
+   /dev/itc/mfm/* devices!  
+
+:73]
+[75:
+
+Mon Feb 10 12:50:22 2020 OK, userspace is now hitting the fact that
+itc_mfmitc_write returns -EOPNOTSUPP so we need to implement that.
+
+:75]
+[76:
+
+Mon Feb 10 13:19:00 2020 Well trying that write implementation after
+
+BITS OFF
+
+:76]
+[77:
+
+Mon Feb 10 13:23:15 2020 OK we're back.  We have an ET-WT loopback
+plugged in, and itcSpike is seeing their PS, but not deciding they are
+compatible.  Let's dig in.
+
+:77]
+[78:
+
+Mon Feb 10 14:39:22 2020 OK it was 'user error' -- we're writing 'l00'
+packets from itcSpike11, and they are now, 'correctly', being
+delivered to /dev/itc/flash, because they do not have the MFM bit
+(0x80) set on byte 1.
+
+So we need to send proper MFM packets!  Buut, actually, officially, we
+don't want to be sending 'l' packets from userspace at all, we want to
+be having itcmfm.c doing that.  Are we getting to the point where we
+go back to that?
+
+:78]
+[79:
+
+Mon Feb 10 15:55:29 2020 OK, finally we got to this:
+
+    root@beaglebone:/home/t2/T2-12/pru/itcio/module# tail /var/log/syslog
+    Feb 10 15:55:04 beaglebone kernel: [ 5519.721844] (ET) HANDLE ITC TRAFFIC HERE (2) packet
+    Feb 10 15:55:04 beaglebone kernel: [ 5519.756940] (WT) HANDLE ITC TRAFFIC HERE (2) packet
+    Feb 10 15:55:04 beaglebone kernel: [ 5519.819234] (ET) HANDLE ITC TRAFFIC HERE (2) packet
+    Feb 10 15:55:04 beaglebone kernel: [ 5519.832708] (WT) HANDLE ITC TRAFFIC HERE (2) packet
+
+meaning we have successfully diverted on level packets and gotten crab
+into the log file..
+[82:
+
+Mon Feb 10 15:57:51 2020 So now let's get an itcmfm dispatch to call
+there, and foggen call it.
+
+:82]
+:79]
+[83:
+
+Mon Feb 10 17:06:00 2020 Quick evening break.  On return, I think
+ready to try touching some of the ITCMFMDeviceState unique data
+members.  [84:
+
+Mon Feb 10 18:58:12 2020 Well, that worked for what little it was
+doing.  It's getting to be time to have an idea how timeouts are
+supposed to be generated.  Hoping we don't need another kthread,
+right? [85:
+
+Mon Feb 10 19:09:07 2020 Well, we probably do need another kthread,
+but I don't want to try to get into that now.
+
+Couldn't we get a fair chunk going just with responses to packets?  
+
+:85]
+
+:84]
+
+:83]
+[86:
+
+Mon Feb 10 19:21:21 2020 OK, so one thing we need right away is to
+ACTUALLY GENERATE A STRUCT TO HOLD OUR ITC STATE.  That's a leftover
+undone bit from the XX hackery.[87: Mon Feb 10 19:24:32 2020 Or, did
+we decide to ditch that for the hardcoded ITCLevelState that we
+already see in itcmfm.h?[88:
+
+Mon Feb 10 19:26:28 2020 I think we did but if we didn't let's do that
+now.  [89:
+
+Mon Feb 10 19:33:05 2020 Trying to implement from :59:
+
+:89]
+
+:88]  :87]
+
+:86]
+[90:
+
+Wed Feb 12 06:55:56 2020 Well, let's set up a KITC timing thread in
+  itcmfm.c[91:
+
+Wed Feb 12 07:46:48 2020 Getting there.  Abstracted the thread
+creation stuff.  Still need the threadrunner routine, though wow:
+
+    make[1]: Entering directory '/usr/src/linux-headers-4.19.79-ti-r30'
+      CC [M]  /home/t2/T2-12/pru/itcio/module/itcpkt.o
+      LD [M]  /home/t2/T2-12/pru/itcio/module/itc_pkt.o
+      Building modules, stage 2.
+      MODPOST 1 modules
+    WARNING: "itcLevelThreadRunner" [/home/t2/T2-12/pru/itcio/module/itc_pkt.ko] undefined!
+      CC      /home/t2/T2-12/pru/itcio/module/itc_pkt.mod.o
+      LD [M]  /home/t2/T2-12/pru/itcio/module/itc_pkt.ko
+    make[1]: Leaving directory '/usr/src/linux-headers-4.19.79-ti-r30'
+
+"Successful build, exit status 0"
+
+:91]
+
+:90]
+[92:
+
+Wed Feb 12 15:46:45 2020 OK, so we have some of the level callbacks
+kind of implemented.  Need more.  Also need to start handling level
+packets.  How do we do that?
+
+TODO
+
+ - Review the update requirements check.  In particular,
+
+ - Deal with the 'entering' clauses in :59:.
+
+ - Deal with the timeout randomization and mTimeout management
+
+[97: Thu Feb 13 13:37:17 2020
+DONE:97] - Deal with storing the most recently received peer level info in 't' 
+
+ - Finish implementing the default requires, using 't'
+
+ - Finish implementing the default advance, using 't'
+
+ - Flesh out non-default cb's of CONTACT
+
+ - Flesh out non-default cb's of COMMUNICATION
+
+ - Flesh out non-default cb's of COMPATIBILITY
+
+ - Flesh out non-default cb's of COMPUTATION
+
+ - See this stuff BEGIN to work.
+
+:92]
+[93:
+
+Wed Feb 12 16:22:47 2020 OK, in handleKITCPacket, do we know we're
+dealing with a 'level packet'?[94:
+
+Wed Feb 12 16:24:20 2020 Yes, we do, because itc_pkt_cb checked URG &
+MFM & ITC before it dispatched to us.  So that means we have a
+LevelStage in the bottom five bits of packet[1];
+
+:94]
+
+:93]
+[95:
+
+Thu Feb 13 08:50:40 2020 OK we need to reboot so long overdue to get
+our
+
+BITS OFF
+
+:95]
+[96:
+
+Thu Feb 13 13:36:48 2020 All right it's time to move the flag again.
+Let's see where we are here.[100:
+
+Thu Feb 13 13:38:32 2020 Well didn't get much in the latest set of
+to-dos but there you are.  Have still been doing infrastructure ahead
+of that stuff.  We have the ITCLevelState structs getting implemented
+with at least some plausibility now, etc.
+
+BITS OFF
+
+:100]
+
+:96]
