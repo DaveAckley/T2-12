@@ -1,0 +1,15 @@
+{1}  -*- text -*- 
+[0:
+
+Fri Feb 14 02:24:33 2020 Well, been a while since I've been here in
+the lock code.  Reason at present is to pull out the ITCIterator stuff
+so we can use it in itcmfm over on the itc_pkt side.
+
+I.. was just thinking that now because I made itc_iterator.h, I'd have
+to change lkms/itc over to the 'multiple source file' LKM structure,
+but since I didn't make -- and don't need to make -- itc_iterator.c, I
+guess I don't have to?  Bugs me to have a .h without its .c, but...
+
+Leaving it as is.  We'll see.
+
+:0]

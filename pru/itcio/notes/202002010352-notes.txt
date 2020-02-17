@@ -1,4 +1,4 @@
-{101}  -*- text -*-
+{126}  -*- text -*-
 [0:
 [3:
 [35:
@@ -1051,3 +1051,353 @@ BITS OFF
 :100]
 
 :96]
+[101:
+
+Thu Feb 13 16:07:08 2020 OK, flag moved.
+
+:101]
+[102:
+
+Thu Feb 13 16:34:58 2020 OK, so :59: says 'KITCs are updated on:
+ITCCHANGE, L rcvd, timeout'.  We've implemented a cut at updating on
+timeout, but how do we update on 'L rcvd'?  The idea, such as it was,
+was to call the .packetio callback at that time.  But is that an
+'update'?  Like do the level support checks happen at that time?
+
+Or do we perhaps imagine that level packets 'arrive between' updates
+and are always handled wrt the cached state at that time?
+
+That seems bad, like we'll end up leaning on the timeout when we
+wanted that just to be a backstop.  So that says we DO want to update
+as part of packet handling.  Do we update before or after the
+.packetio callback?  Or do we somehow let the update call that
+callback?  Right now updateKITC() doesn't have the arguments to know
+about any possible packet.. But that seems wrong anyway.
+
+So that says we should call .packetio 'asynchronously', but also call
+update.  Before or after?  [103:
+
+Fri Feb 14 01:27:35 2020 Let's say before.  Handle the packet, then
+update.  What's the downside, handling a packet without realizing a
+timeout had already occurred?  If there actually is a packet you'd
+think we want to deal with it.  And again, we're trying to avoid
+leaning on timeouts at all on error-free paths.
+
+:103]
+
+:102]
+[104:
+
+Fri Feb 14 06:06:55 2020 Trying to get to the point of using
+.packetio, and starting to think the interface is stupid.  As I
+understand it, the distinction between 'exchange' and 'confirm' is
+supposed to be strictly determined by what stage we're in within the
+level.  So why not just have a single 'handleInboundLevelPacket' sort
+of callback, and let the callee decide how to interpret it?
+
+But nap now.
+[105:
+
+Fri Feb 14 11:00:35 2020 Because we were going to use .packetio also
+for generating outbound packet args?  How was that going to work?[106:
+
+Fri Feb 14 11:03:15 2020 Well, in :60: we had TWO functions listed:
+
+  u32 levelSend(ITCMFMDeviceState * itc, bool exchangeNotConfirm, char * pkt, u32 startIndex) ;
+  u32 levelReceive(ITCMFMDeviceState * itc, bool exchangeNotConfirm, char * pkt, u32 startIndex) ;
+
+each with the exchangeNotConfirm, which would cover the four cases of
+sending and receiving during exchange and confirm.  But that somehow
+folded down to .packetio with only two cases, how?[107:
+
+Fri Feb 14 11:48:56 2020 Let's change that bool to recvNotSend and let
+the callback decide what to expect/generate based on its own view of
+the level state.
+
+:107]
+
+:106]
+
+:105]
+
+:104]
+[108:
+
+Fri Feb 14 15:27:24 2020 OK, so, what happens after we do the
+requirements check in update?  :59: is kind of silent on this matter.
+
+We update mUCurrentLS based on level requirements and the :59:
+language.  ..Then we call the .decide callback?  And it does,
+something, maybe?  ..And then call the .advance callback?  And if it
+returns true we do like mUCurrentLS.level++, mUCurrentLS.stage=0?
+When do we send a level packet?[109:
+
+Fri Feb 14 15:57:23 2020 Well, in :57: we have an 'Announce stages:
+BOOL' row, but that didn't make it into :59:.  Was there going to be
+some kind of special return from something?  Is that something that
+LevelAction is supposed to cover?[110:
+
+Fri Feb 14 16:06:54 2020 So I think the idea was auto-announce the
+level when it changes?  Or whenever the level or stage changes?  Maybe
+that's it.  Then we'd need to be checking that in the update
+requirements check loop.  But that was probably it.
+
+:110]
+
+:109]
+
+:108]
+[111:
+
+Fri Feb 14 17:22:00 2020 OK, so, now the question is: Why do we have
+both a .advance callback, and a DO_ADVANCE LevelAction coming back
+from .decide?
+[112:
+
+Fri Feb 14 17:39:03 2020 So it's about the stage numbers.  We enter at
+LX0 for some level X.  When that's a new LS for us, we send a LX0
+packet that includes the 'exchange' data.  After we receive an LX0
+packet (ignoring L(X-1)2 packets), we go to LX1, run the .decide, and
+(if we DO_CONTINUE anyway), we send a LX1 packet including the
+'confirm' data.  When we get an LX1 packet (ignoring LX0 packets), we
+confirm it matches (HOW??), and go to LX2.
+
+Each step along the way there, we were running the .advance callback
+as well?  And by default it was saying false until they're at least at
+LX1 and we're at LX2?
+
+STILL NOT CLEAR AGAIN.  But time to cook.
+
+:112]
+:111]
+[113:
+
+Fri Feb 14 23:01:52 2020 OK,
+
+recv packet:
+
+ - Modify state based on packet and current expectations.  State
+   includes mTLastLS plus whatever you parsed out of the packet.
+
+ - Then call update
+
+update:
+
+ - Compute newly supported level based on packet sync, TLastLS, and so
+   forth
+
+ - Compare to mUCurrentLS. 
+
+ - If different, attempt to send level packet.  Custom sendPacket can
+   return 0 to abort packet send.
+
+ - If packet send apparently succeeds, set mUCurrentLS to new LS.  If
+   packet send apparently fails, do not change mUCurrentLS (but
+   shorten utimeout?  But we need to avoid getting into a tight
+   spamming-a-full-outbound-buffer loop.  )
+
+..and that's it?  That's all?  The rest is magic?
+
+ - Update is also called on timeout and ITCCHANGE.  (ITCCHANGE will be
+   caught by the requirements check so nothing special is needed
+   there.)
+
+:113]
+[114:
+
+Sat Feb 15 05:39:25 2020 Where in update do we check the timeouts?
+Before or after computing the support?  Perhaps after?  So that we
+could be.. ..should we be saying that 'still time available' is
+implicitly part of the support for the current level?
+
+So that if there's a mismatch, we're going to reset the timeouts based
+on entering a new state anyway 
+
+
+[115:
+
+Sat Feb 15 06:36:06 2020 Restate premises.
+
+update:
+ - Find supported level by requirements
+   - If the now-supported level is below our previous level, attempt
+     to enter that level.  After that attempt, the update is done,
+     regardless if it succeeded or failed.
+
+ - If our previous level is still supported, determine action:
+   - If our timeout has expired, the action is our UTimeout action.
+   - If not, see if their timeout has expired.  If so, the action is
+     our TTimeout action.
+   - If not, call .advance to see if we can advance.  If so, the
+     action is DO_ADVANCE.  Otherwise the action is DO_CONTINUE.
+
+ - After the action has been determined, do that action.  DO_CONTINUE
+   means stay at the current level, otherwise compute the new level
+   implied by the action and attempt to enter that level.
+
+ - DONE
+
+
+attempting to enter a level:
+ - start a packet for that level
+ - call the level-specific packet writer (for exchange or confirm as
+   depending on the stage we're attempting to enter) to complete or
+   abort it
+ - if completed, attempt to send it.
+ - If packet aborted or send succeeds, enter the level
+ - Otherwise remain in previous level
+
+
+enter a level:
+ - set mUCurrentLS to the level
+ - push U and T timeouts based on the level
+
+recv packet:
+ - Parse their LS from packet, store it in TLastLS
+
+ - Call exchange or confirm parser as appropriate to TLastLS -- THEIR
+   LEVEL, not ours.
+
+ - Push our TTimeout for them based on OUR level, not theirs. (?)
+
+ - Then call update
+
+[116:
+
+Sat Feb 15 14:53:33 2020 OK, after sleep.
+
+So I'm wondering if it might not be stupid to have two full copies of
+the ITCLevelState for each ITC, one representing US and one
+representing THEM.  Instead of having like both UCurrentLS and TLastLS
+in one struct.
+
+Doesn't that seem like it wants to be a 'no brainer'?  The idea would
+be that received level packets would just get parsed into THEM's
+ITCLevelStruct no questions asked..
+
+Could we ditch the UTimeout vs TTimeout distinction as well, and have
+a single timeout per ITCLevelState?  That seems more questionable,
+because we'd be using THEM.mTimeout to represent when WE'RE going to
+time them out, not anything about what they're going to do.
+
+Although I suppose possibly if we switched from notion of a stored
+timeout to a stored 'last activity', setting THEM.mLastActivity based
+on packet arrival time isn't that bogus.
+
+But we still need someone to say when 'that long ago' becomes 'too
+long ago'.  How would the thread runner decide who to update?[117:
+
+Sat Feb 15 15:18:09 2020 If we're willing to callback for the timeout
+inside the thread runner -- which we already are, right? -- the
+previous activity is all we need?  Well, I guess we'd need to compare
+both US (last and timeout) and THEM (last and timeout) to determine
+whether an update is warranted.
+[118:
+
+Sat Feb 15 15:23:18 2020 Aand, do we set US 'lastActivity' based on
+when we last (apparently successfully) sent a packet?  That would be
+most symmetric with setting THEM lastActivity based on receiving one.
+
+It also has the nice flavor that it's explicitly about packets and
+traffic and communications.
+
+And it makes it so that if we failed to send a packet due to buffer
+exhaustion say, we won't push back our (effective) timeout by changing
+lastActivity.
+
+So.. could we do this?  Let's at least look at the structs.[119:
+
+Sat Feb 15 16:20:03 2020 Well jeez yeah I think so.  Maybe switch to
+something like:
+
+typedef struct {
+  ITCSideState mUs;
+  ITCSideState mThem;
+} ITCLevelState;
+
+typedef struct {
+  unsigned long mLastAnnounce;  /* Time in jiffies */
+  MFMToken   mToken;            /* Physics ID from MFM */
+  MFZId      mMFZId;            /* MFZId from */
+  LevelStage mLevelStage;       /* Endpoint LevelStage from Them */
+  bool       mCompat;           /* True if Them and Us are known compatible */
+} ITCSideState;
+
+[120: 
+
+Sat Feb 15 16:28:21 2020 What happened to the seqno in all this?  No
+hits in itcmfm.[ch].  And didn't the seqno thing also suggest we were
+going to stack the packet generators and parsers?  So that every level
+packet at L1.0+ will have a seqno..  Do we still want to go that
+route?
+
+Time to cook.
+
+[121:
+
+Sat Feb 15 22:30:22 2020 So an argument against seqnos is that we're
+trying to be robust in the face of packet loss, by asserting our LS in
+every packet and minimizing shared state.
+
+(If we did the packet-stacking idea we could still have the levels
+append different state depending on the level of the packet they are
+appending to.  That's how we wouldn't have to have the MFZId in every
+L2.1+ packet, for example, and how we could have just the 'd' residue
+going forward.  Just have to tell the .packetio guys what the actual
+packet level is, separate from the level they are 'prime' for.)
+
+What were the seqnos supposed to accomplish?  We were worried about
+enough stuff getting dropped in transit that the recipient could miss
+an entire physics bounce or something, and end up indefinitely out of
+sync.  And seqnos were supposed to avoid that because we'd best-effort
+know if we missed packets.  And what do we do if we miss a packet?
+DO_RESTART, I guess, which will block us from going forwards until we
+pick and agree on new seqnos.  That almost makes some sense.  
+[122:
+
+Sat Feb 15 23:20:09 2020 Now, what good does receiving their ack of
+our seqno do?  In TCP that's what allows us to dump the buffers we'd
+been saving in case we needed to retransmit, but we're not talking a
+retransmit/reliable stream here, are we?
+
+We'd thought it would be handy to give cache updates confidence the
+far side was indeed responding to the request we thought they were --
+and as we contemplate the possibilities of doing precision
+event-window locking, rather than edge and corner locking, we could
+conceivably have a number of transactions in progress and not know
+what order the far side was going to respond to them.  And at that
+point we'd really need some kind of transaction tags to match up --
+but they wouldn't be seqnos, so...
+
+:122]
+:121]
+
+:120]
+:119]
+
+:118]
+:117]
+
+:116]
+
+:115]
+
+:114]
+[123:
+
+Sat Feb 15 23:41:00 2020 Well fog it let's just do along the lines of
+:119: -- plus a seqno -- and see where it gets us.
+
+:123]
+[124:
+
+Sun Feb 16 16:16:39 2020 Jeez we compiled clean.  But I'm sure there's
+horrible gaps all over the place.[125:
+
+Sun Feb 16 16:18:05 2020
+
+RISKY BITS OFF
+
+:125]
+
+:124]
