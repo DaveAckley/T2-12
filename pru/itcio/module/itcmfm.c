@@ -221,7 +221,7 @@ static inline void sendLevelPacket(ITCMFMDeviceState *ds, bool forceTimeoutPush)
   ITCLevelState * ils;
   LevelStage ourLS;
 
-  ssize_t ret;
+  ssize_t ret = 0;
   BUG_ON(!ds);
 
   dir6 = ds->mDir6;
@@ -241,19 +241,21 @@ static inline void sendLevelPacket(ITCMFMDeviceState *ds, bool forceTimeoutPush)
     BUG_ON(!ops);
     index = ops->packetio(ds, false, index, buf, ITC_MAX_PACKET_SIZE);
     if (index == 0) /*return 0 says abort packet send.. good?*/
-      return;
+      break;
   }
 
-  DBGPRINTK(DBG_LVL_PIO,"sendLevelPacket us=L%02x them=L%02x, pkt=L%02x\n",
+  DBGPRINTK(DBG_LVL_PIO,"sendLevelPacket us=L%02x them=L%02x, len=%d\n",
             getLevelStageAsByte(ils->mUs.mLevelStage),
             getLevelStageAsByte(ils->mThem.mLevelStage),
-            getLevelStageAsByte(buf[1]));
+            index);
   DBGPRINT_HEX_DUMP(DBG_LVL_PIO,
                     KERN_INFO, getDir8Name(mapDir6ToDir8(ds->mDir6)),
                     DUMP_PREFIX_OFFSET, 16, 1,
                     buf, index, true);
 
-  ret = trySendUrgentRoutedKernelPacket(buf,index);
+  if (index > 0)
+    ret = trySendUrgentRoutedKernelPacket(buf,index);
+
   if (ret == 0 || forceTimeoutPush) {
     itcSideStateSetLastAnnounceToNow(&ils->mUs);
   }
@@ -351,6 +353,9 @@ static u32 ilsPacketIO_CONTACT(ITCMFMDeviceState* ds,
     LevelStage ourLS = itcGetOurLevelStage(ils);
     BUG_ON(startIdx + 2 > len);
 
+    if (!isITCEnabledStatusByDir8(dir8))  /* don't try without PS */
+      return 0;
+
     pkt[startIdx++] = 0xa0|dir8;  /*standard+urgent to dir8*/
     pkt[startIdx++] = 0xc0|ourLS; /*mfm+itc+our levelstage*/
   }
@@ -382,9 +387,14 @@ static bool ilsAdvance_CONTACT(ITCMFMDeviceState* ds) {
 /****/
 /* COMMUNICATE */
 
-static bool ilsRequire_COMMUNICATE(ITCMFMDeviceState* kitc) {
-  printk(KERN_ERR "%s:%d WHY DON'T YOU WRITE ME\n",__FILE__,__LINE__);
-  return true;
+static bool ilsRequire_COMMUNICATE(ITCMFMDeviceState* ds) {
+  /* Fail without PACKET SYNC */
+  u32 dir8;
+  bool ret;
+  BUG_ON(!ds);
+  dir8 = mapDir6ToDir8(ds->mDir6);
+  ret = isITCEnabledStatusByDir8(dir8);
+  return ret;
 }
 
 static u32 ilsPacketIO_COMMUNICATE(ITCMFMDeviceState* kitc,
