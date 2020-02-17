@@ -16,8 +16,8 @@
 /*4 0x10*/ XX(NW,   0,  79,   60,   80,   78)    \
 /*5 0x20*/ XX(NE,   1,  49,   14,   50,   51) 
 
-#define XX(DC,fr,p1,p2,p3,p4) DIR_##DC,
-enum { DIRDATAMACRO() DIR_MIN = DIR_ET, DIR_MAX = DIR_NE, DIR_COUNT };
+#define XX(DC,fr,p1,p2,p3,p4) DIR6_##DC,
+enum { DIRDATAMACRO() DIR6_MIN = DIR6_ET, DIR6_MAX = DIR6_NE, DIR6_COUNT };
 #undef XX
 
 //// TYPES, CONSTANTS, DATA STRUCTURES

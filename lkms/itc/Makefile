@@ -2,6 +2,8 @@ TARGET=itc
 obj-m+= $(TARGET).o
 #itc-objs+=itcinit.o itcimpl.o
 
+EXTRA_CFLAGS := -I$(src)/../include
+
 MODULES_DIR:=/lib/modules/$(shell uname -r)
 MODULES_BUILD_DIR:=$(MODULES_DIR)/build
 MODULES_OUTPUT_DIR:=$(MODULES_DIR)/kernel/drivers/$(TARGET)
