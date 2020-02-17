@@ -212,7 +212,7 @@ static inline void recvLevelPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
   }
 }
 
-static inline void sendLevelPacket(ITCMFMDeviceState *ds)
+static inline void sendLevelPacket(ITCMFMDeviceState *ds, bool forceTimeoutPush)
 {
   u8 buf[ITC_MAX_PACKET_SIZE+1];
   u32 level, curLevel, index = 0;
@@ -231,8 +231,10 @@ static inline void sendLevelPacket(ITCMFMDeviceState *ds)
 
   curLevel = getLevelFromLevelStage(ourLS);
 
+#if 0 /*done by ilsPacketIO_CONTACT now*/
   buf[index++] = 0xa0|dir8;  /*standard+urgent to dir8*/
   buf[index++] = 0xc0|ourLS; /*mfm+itc+our levelstage*/
+#endif
 
   for (level = 0; level <= curLevel; ++level) {
     ITCLSOps *ops = theLevels[level];
@@ -252,11 +254,13 @@ static inline void sendLevelPacket(ITCMFMDeviceState *ds)
                     buf, index, true);
 
   ret = trySendUrgentRoutedKernelPacket(buf,index);
-  if (ret != 0) {
-    printk(KERN_INFO "sendLevelPacket hdr=0x%02x got %d\n",
-           buf[0], ret);
-  } else {
+  if (ret == 0 || forceTimeoutPush) {
     itcSideStateSetLastAnnounceToNow(&ils->mUs);
+  }
+  if (ret != 0) {
+    printk(KERN_INFO "sendLevelPacket (pushto=%s) hdr=0x%02x got %d\n",
+           forceTimeoutPush ? "T" : "F",
+           buf[0], ret);
   }
 
 }
@@ -484,7 +488,7 @@ int itcLevelThreadRunner(void *arg)
       BUG_ON(!mds);
       timeout = itcLevelStateGetEarliestTimeout(&mds->mLevelState);
       DBGPRINTK(DBG_MISC100,"kitc=%d, timeout=%lu, now=%lu\n",kitc,timeout,now);
-      if (time_after_eq(timeout, now)) {
+      if (time_after_eq(now, timeout)) {
         updateKITC(mds);
         /* XXX updateKITC has to handle this now: pushTimeout(mds,true); */
         timeout = itcLevelStateGetEarliestTimeout(&mds->mLevelState);
@@ -634,9 +638,24 @@ void updateKITC(ITCMFMDeviceState * mds)
                   getLevelStageAsByte(curLS),
                   getLevelStageAsByte(advanceLS));
         ss->mLevelStage = advanceLS;
-        sendLevelPacket(mds);
+        sendLevelPacket(mds,false); /*pushes timeout if sent*/
       }
     }
   }
+  {
+    /**** REANNOUNCE IF WE HAVE TIMED OUT */
+    unsigned long now = jiffies;
+    unsigned long uto = itcSideStateGetTimeout(ss);
+    if (time_after_eq(jiffies, uto)) {
+      sendLevelPacket(mds,true); /*pushes timeout for sure*/
+      DBGPRINTK(DBG_MISC200,"(%s) REANNOUNCED L%02x, now=%lu, uto=%lu, new=%lu\n",
+                getDir8Name(mapDir6ToDir8(mds->mDir6)),
+                getLevelStageAsByte(ss->mLevelStage),
+                now,
+                uto,
+                itcSideStateGetTimeout(ss));
+    }
+  }
+
 }
 
