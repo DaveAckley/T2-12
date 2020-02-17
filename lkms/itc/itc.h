@@ -24,39 +24,14 @@
 
 #include "dirdatamacro.h"          /* Get itc pin info and basic enums */ 
 #include "itclockevent.h"          /* Get lock event struct */
+#include "itc_iterator.h"          /* Get randomized itc iteratros */
 #include "ruleset.h"               /* Get rule macros and constants, LockSettlements */
 
 typedef unsigned long JiffyUnit;
 typedef unsigned long ITCCounter;
-typedef unsigned char ITCDir;
-typedef ITCDir ITCDirSet[DIR_COUNT];
-typedef int ITCIteratorUseCount;
 typedef unsigned char ITCState;
 typedef unsigned int BitValue;
 typedef int IRQNumber;
-
-typedef struct itciterator {
-  ITCIteratorUseCount m_usesRemaining;
-  ITCIteratorUseCount m_averageUsesPerShuffle;
-  ITCDir m_nextIndex;
-  ITCDirSet m_indices;
-} ITCIterator;
-
-void itcIteratorShuffle(ITCIterator * itr) ;
-
-void itcIteratorInitialize(ITCIterator * itr, ITCIteratorUseCount avguses) ;
-
-static inline void itcIteratorStart(ITCIterator * itr) {
-  if (--itr->m_usesRemaining < 0) itcIteratorShuffle(itr);
-  itr->m_nextIndex = 0;
-}
-static inline bool itcIteratorHasNext(ITCIterator * itr) {
-  return itr->m_nextIndex < DIR_COUNT;
-}
-static inline ITCDir itcIteratorGetNext(ITCIterator * itr) {
-  BUG_ON(!itcIteratorHasNext(itr));
-  return itr->m_indices[itr->m_nextIndex++];
-}
 
 /////////TRACING SUPPORT
 
@@ -108,7 +83,7 @@ enum {
 typedef struct moduleState {
   ITCIterator userContextIterator;
   JiffyUnit moduleLastActive;
-  ITCInfo itcInfo[DIR_COUNT];
+  ITCInfo itcInfo[DIR6_COUNT];
   JiffyUnit userRequestTime;
 #if 0
   LockSettlements lockSettlements;

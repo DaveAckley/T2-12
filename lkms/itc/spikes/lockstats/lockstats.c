@@ -11,7 +11,7 @@
 
 #include <stdbool.h> /* for bool, true, jeez */
 
-#include "dirdatamacro.h" /*for DIR_ET etc, and sTAKEN etc*/
+#include "dirdatamacro.h" /*for DIR6_ET etc, and sTAKEN etc*/
 
 #define LOCK_DEV "/dev/itc/locks"
 typedef unsigned char u8;
@@ -60,18 +60,18 @@ struct timespec diff(struct timespec start, struct timespec end)
   return temp;
 }
 u8 eventSets[] = {
-  (1<<DIR_ET)
-  ,(1<<DIR_ET)|(1<<DIR_SE)
-  ,(1<<DIR_SE)
-  ,(1<<DIR_SE)|(1<<DIR_SW)
-  ,(1<<DIR_SW)
-  ,(1<<DIR_SW)|(1<<DIR_WT)
-  ,(1<<DIR_WT)
-  ,(1<<DIR_WT)|(1<<DIR_NW)
-  ,(1<<DIR_NW)
-  ,(1<<DIR_NW)|(1<<DIR_NE)
-  ,(1<<DIR_NE)
-  ,(1<<DIR_NE)|(1<<DIR_ET)
+  (1<<DIR6_ET)
+  ,(1<<DIR6_ET)|(1<<DIR6_SE)
+  ,(1<<DIR6_SE)
+  ,(1<<DIR6_SE)|(1<<DIR6_SW)
+  ,(1<<DIR6_SW)
+  ,(1<<DIR6_SW)|(1<<DIR6_WT)
+  ,(1<<DIR6_WT)
+  ,(1<<DIR6_WT)|(1<<DIR6_NW)
+  ,(1<<DIR6_NW)
+  ,(1<<DIR6_NW)|(1<<DIR6_NE)
+  ,(1<<DIR6_NE)
+  ,(1<<DIR6_NE)|(1<<DIR6_ET)
 };
 typedef enum { THREES, SIXGUNS, EVENTS } GenType;
 int doEvents(int iterations, unsigned usecdelay) {

@@ -162,7 +162,7 @@ const Rule *(ruleSetDispatchTable[STATE_COUNT]) = {
     { p2, GPIOF_IN|GPIOF_EXPORT_DIR_FIXED,          #DC "_IGRLK"}, \
     { p3, GPIOF_OUT_INIT_LOW|GPIOF_EXPORT_DIR_FIXED,#DC "_ORQLK"}, \
     { p4, GPIOF_OUT_INIT_LOW|GPIOF_EXPORT_DIR_FIXED,#DC "_OGRLK"}, },
-static struct gpio pins[DIR_COUNT][4] = { DIRDATAMACRO() };
+static struct gpio pins[DIR6_COUNT][4] = { DIRDATAMACRO() };
 #undef XX
 
 static ITCModuleState S = {
@@ -181,13 +181,13 @@ static ITCModuleState S = {
   // .itc_mutex;
 
   
-#define XX(DC,fr,p1,p2,p3,p4) { .direction = DIR_##DC, .isFred = fr, .pins = pins[DIR_##DC] },
+#define XX(DC,fr,p1,p2,p3,p4) { .direction = DIR6_##DC, .isFred = fr, .pins = pins[DIR6_##DC] },
   .itcInfo = { DIRDATAMACRO() }
 #undef XX
 };
 
 #define XX(DC,fr,p1,p2,p3,p4) #DC,
-static const char * dirnames[DIR_COUNT] = { DIRDATAMACRO() };
+static const char * dirnames[DIR6_COUNT] = { DIRDATAMACRO() };
 #undef XX
 
 ///////////////////// LOCKEVENT TRACING STUFF
@@ -244,28 +244,19 @@ static void addLockEvent(ITCLockEventState* lec, u32 event) {
 
 const char * itcDirName(ITCDir d)
 {
-  if (d > DIR_MAX) return "(Illegal)";
+  if (d > DIR6_MAX) return "(Illegal)";
   return dirnames[d];
 }
   
-void itcIteratorInitialize(ITCIterator * itr, ITCIteratorUseCount avguses) {
-  int i;
-  BUG_ON(!itr);
-  BUG_ON(avguses <= 0);
-  BUG_ON((avguses<<1) <= 0);
-  itr->m_averageUsesPerShuffle = avguses;
-  for (i = 0; i < DIR_COUNT; ++i) itr->m_indices[i] = i;
-  itcIteratorShuffle(itr);
-}
-
+#if 0 /*Moved to itc_iterator.h for wider use*/
 void itcIteratorShuffle(ITCIterator * itr) {
   ITCDir i;
   BUG_ON(!itr);
   itr->m_usesRemaining = 
     prandom_u32_max(itr->m_averageUsesPerShuffle<<1) + 1; /* max is double avg, given uniform random */
 
-  for (i = DIR_MAX; i > 0; --i) {
-    int j = prandom_u32_max(i+1); /* generates 0..DIR_MAX down to 0..1 */
+  for (i = DIR6_MAX; i > 0; --i) {
+    int j = prandom_u32_max(i+1); /* generates 0..DIR6_MAX down to 0..1 */
     if (i != j) {
       ITCDir tmp = itr->m_indices[i];
       itr->m_indices[i] = itr->m_indices[j];
@@ -284,6 +275,7 @@ void itcIteratorShuffle(ITCIterator * itr) {
          itr->m_usesRemaining
          );
 }
+#endif
 
 static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned value, unsigned int irq)
 {
@@ -303,9 +295,9 @@ static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned 
 #define ZZ(DC,suf)                                                                                  \
 static irq_handler_t itc_irq_handler##DC##suf(unsigned int irq, void *dev_id, struct pt_regs *regs) \
 {                                                                                                   \
-  return itc_irq_edge_handler(&S.itcInfo[DIR_##DC],                                                 \
+  return itc_irq_edge_handler(&S.itcInfo[DIR6_##DC],                                                 \
                               PIN##suf,                                                             \
-                              gpio_get_value(S.itcInfo[DIR_##DC].pins[PIN##suf].gpio),              \
+                              gpio_get_value(S.itcInfo[DIR6_##DC].pins[PIN##suf].gpio),              \
 			      irq);	                                                            \
 }
 DIRDATAMACRO()
@@ -382,7 +374,7 @@ static void itcInitGPIOs(void) {
   /// Now do local (per-ITC) inits
   {
     ITCDir i;
-    for (i = DIR_MIN; i <= DIR_MAX; ++i) {
+    for (i = DIR6_MIN; i <= DIR6_MAX; ++i) {
       BUG_ON(i != S.itcInfo[i].direction);  /* Assert we inited directions properly */
       itcInitITC(&S.itcInfo[i]);
     }
@@ -394,7 +386,7 @@ static void itcInitGPIOInterrupts(void) {
   /// Now install irq handlers for everybody
 
 #define ZZ(DC,suf) { 				                              \
-    ITCInfo * itc = &S.itcInfo[DIR_##DC];                                     \
+    ITCInfo * itc = &S.itcInfo[DIR6_##DC];                                     \
     const struct gpio * gp = &itc->pins[PIN##suf];                            \
     int result;                                                               \
     IRQNumber in = gpio_to_irq(gp->gpio);                                     \
@@ -431,7 +423,7 @@ static void itcExitGPIOInterrupts(void) {
   /////
   /// Now do local (per-itc) cleanup
 
-  for (i = DIR_MIN; i <= DIR_MAX; ++i) {
+  for (i = DIR6_MIN; i <= DIR6_MAX; ++i) {
     itcExitITC(&S.itcInfo[i]);
   }
 }
@@ -610,7 +602,7 @@ void make_reports(void)
 {
   int i;
 
-  for (i = DIR_MIN; i <= DIR_MAX; ++i) {
+  for (i = DIR6_MIN; i <= DIR6_MAX; ++i) {
     if (S.itcInfo[i].lastReported == S.itcInfo[i].lastActive) continue;
 #ifdef REPORT_LOCK_STATE_CHANGES
     printk(KERN_INFO "ITC %s(%s): o%d%d i%d%d, f%lu, r%lu, at%lu, ac%lu, gr%lu, co%lu, it%lu, emQ%lu, emG%lu\n",
@@ -1125,7 +1117,7 @@ static ssize_t statistics_show(struct class *c,
     len += sprintf(&buf[len]," %s",stateNames[state]);
   len += sprintf(&buf[len],"\n");
   
-  for (dir = 0; dir < DIR_COUNT; ++dir) {
+  for (dir = 0; dir < DIR6_COUNT; ++dir) {
     ITCInfo * iti = &S.itcInfo[dir];
     len += sprintf(&buf[len],"%s ",itcDirName(dir));
 
@@ -1145,7 +1137,7 @@ static ssize_t statistics_store(struct class *c,
   u32 cleardirs, dir, state;
   if (sscanf(buf,"%x",&cleardirs) == 1) {
     printk(KERN_INFO "store statistics %u\n",cleardirs);
-    for (dir = 0; dir < DIR_COUNT; ++dir) {
+    for (dir = 0; dir < DIR6_COUNT; ++dir) {
       if (cleardirs & (1<<dir)) {
         ITCInfo * iti = &S.itcInfo[dir];
         for (state = 0; state < STATE_COUNT; ++state) 
