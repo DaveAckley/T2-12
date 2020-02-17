@@ -397,10 +397,17 @@ static bool ilsRequire_COMMUNICATE(ITCMFMDeviceState* ds) {
   return ret;
 }
 
-static u32 ilsPacketIO_COMMUNICATE(ITCMFMDeviceState* kitc,
+static u32 ilsPacketIO_COMMUNICATE(ITCMFMDeviceState* ds,
                                    bool recvNotSend, u32 startIdx,
                                    u8 *pkt, u32 len) {
-  printk(KERN_ERR "%s:%d WHY DON'T YOU WRITE ME\n",__FILE__,__LINE__);
+  BUG_ON(!ds);
+  BUG_ON(!pkt);
+  BUG_ON(startIdx==0);
+  DBGPRINTK(DBG_LVL_PIO,"%s recv=%s startIdx=%d len=%d\n",
+            __FUNCTION__,
+            recvNotSend ? "true" : "false",
+            startIdx,
+            len);
   return startIdx;
 }
 
@@ -540,10 +547,10 @@ void updateKITC(ITCMFMDeviceState * mds)
   u32 prevStage, enterStage;
   u32 level;
   BUG_ON(!mds);
-  printk(KERN_INFO "(%s) UPDATE KITC them=L%02x\n",
-         getDir8Name(mapDir6ToDir8(mds->mDir6)),
-         getLevelStageAsByte(mds->mLevelState.mThem.mLevelStage)
-         );
+  DBGPRINTK(DBG_MISC200,"(%s) UPDATE KITC them=L%02x\n",
+            getDir8Name(mapDir6ToDir8(mds->mDir6)),
+            getLevelStageAsByte(mds->mLevelState.mThem.mLevelStage)
+            );
   ils = &mds->mLevelState;
   ss = &ils->mUs;
   prevLS = ss->mLevelStage;
@@ -575,9 +582,9 @@ void updateKITC(ITCMFMDeviceState * mds)
       break;
     }
   }
-  printk(KERN_INFO "(%s) UPDATE post reqmts enterlevel=%d, enterstage=%d\n",
-         getDir8Name(mapDir6ToDir8(mds->mDir6)),
-         enterLevel,enterStage);
+  DBGPRINTK(DBG_MISC200,"(%s) UPDATE post reqmts enterlevel=%d, enterstage=%d\n",
+            getDir8Name(mapDir6ToDir8(mds->mDir6)),
+            enterLevel,enterStage);
 
   /* Set entry level */
   newLS = makeLevelStage(enterLevel, enterStage);
@@ -615,10 +622,10 @@ void updateKITC(ITCMFMDeviceState * mds)
     default: BUG_ON(1);
     }
 
-    printk(KERN_INFO "(%s) MORE ME UPDATE newLS=L%02x nextls=L%02x\n",
-           getDir8Name(mapDir6ToDir8(mds->mDir6)),
-           getLevelStageAsByte(newLS),
-           getLevelStageAsByte(nextLS));
+  DBGPRINTK(DBG_MISC200,"(%s) MORE ME UPDATE newLS=L%02x nextls=L%02x\n",
+            getDir8Name(mapDir6ToDir8(mds->mDir6)),
+            getLevelStageAsByte(newLS),
+            getLevelStageAsByte(nextLS));
   }
   {
     /*** RUN .advance ***/
