@@ -15,6 +15,8 @@ $(MNAME)-objs+= itcpkt.o itcmfm.o
 
 KDIR?=/lib/modules/$(shell uname -r)/build
 
+EXTRA_CFLAGS := -I$(src)/../../../lkms/include
+
 ETC_MODULES_FILE:=/etc/modules-load.d/t2_12_modules.conf
 
 all:	FORCE
