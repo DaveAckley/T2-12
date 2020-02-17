@@ -21,6 +21,8 @@
 #include "itcpktevent.h"          /* Get pkt event struct */
 #include "itcmfm.h"               /* For ITCLevelState_ops & assoc */
 
+#include "dirdatamacro.h"         /* For DIR6_ET, DIR6_COUNT, etc */
+#if 0
 /* DIR6 definitions based on T2-12/lkms/itc//dirdatamacro.h, BUT ARE
    DEFINED HERE SEPARATELY.  
 
@@ -33,6 +35,7 @@
 #define DIR6_NW 4
 #define DIR6_NE 5
 #define DIR6_COUNT 6
+#endif
 
 static inline u32 mapDir6ToDir8(u32 dir6) {
   switch (dir6) {
@@ -138,6 +141,8 @@ typedef enum {
   //0x020..0x80 rsrvd
   DBG_MISC100       = 0x00000100,
   DBG_MISC200       = 0x00000200,
+  DBG_LVL_PIO       = 0x00000400,   /*level packet IO*/
+  DBG_LVL_LSC       = 0x00000800,   /*level stage change*/
   //0x0400..0x800 rsrvd
   DBG_TRACE_PARSE   = 0x00001000,
   DBG_TRACE_EXEC    = 0x00002000,
@@ -258,6 +263,7 @@ typedef struct itctrafficstats {
 typedef struct itckthreadstate {
   struct task_struct * mThreadTask; /* kthread */
   wait_queue_head_t mWaitQueue;     /* wait queue for the thread */
+  ITCIterator mDir6Iterator;        /* provide a per-thread iterator */
 } ITCKThreadState;
 
 /* 'global' state, so far as we can structify it */
@@ -290,5 +296,6 @@ extern ITCModuleState S;
 
 bool isITCEnabledStatusByDir8(int dir8) ;
 
+ssize_t trySendUrgentRoutedKernelPacket(const u8 *pkt, size_t count) ;
 
 #endif /* ITC_PKT_H */

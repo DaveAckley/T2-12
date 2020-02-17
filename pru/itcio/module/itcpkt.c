@@ -239,11 +239,16 @@ static void initITCModuleState(ITCModuleState *s)
   s->mItcEnabledStatus = 0;  // Assume all dirs disabled
 }
 
-static void createITCThread(ITCKThreadState * ts,int (*funcptr)(void*),void * arg,const char * name)
+static void createITCThread(ITCKThreadState * ts,
+                            int (*funcptr)(void*),
+                            ITCIteratorUseCount avguses,
+                            const char * name)
 {
+  BUG_ON(!ts);
   init_waitqueue_head(&ts->mWaitQueue);
-
-  ts->mThreadTask = kthread_run(funcptr, arg, name);
+  itcIteratorInitialize(&ts->mDir6Iterator,avguses);
+  
+  ts->mThreadTask = kthread_run(funcptr, (void*) ts, name);
 
   if (IS_ERR(ts->mThreadTask)) 
     printk(KERN_ALERT "ITC: %s Thread creation failed\n",name);
@@ -253,8 +258,8 @@ static void createITCThread(ITCKThreadState * ts,int (*funcptr)(void*),void * ar
 
 static void createITCThreads(ITCModuleState *s)
 {
-  createITCThread(&s->mOBPktThread,    itcOBPktThreadRunner,s,"ITC_PktShipr");
-  createITCThread(&s->mKITCLevelThread,itcLevelThreadRunner,s,"KITC_LvlRunr");
+  createITCThread(&s->mOBPktThread,    itcOBPktThreadRunner,5000,"ITC_PktShipr");
+  createITCThread(&s->mKITCLevelThread,itcLevelThreadRunner,5000,"KITC_LvlRunr");
 }
 
 static void destroyITCThread(ITCKThreadState *ts) {
@@ -1478,6 +1483,42 @@ FOR_XX_IN_ITC_ALL_DIR
   return newminor;
 }
 
+ssize_t trySendUrgentRoutedKernelPacket(const u8 *pkt, size_t count)
+{
+  int minor;
+  ITCCharDeviceState * cdevstate;
+  ITCPRUDeviceState * prudevstate;
+  ITCPacketBuffer * ipb;
+  int ret;
+        
+  if (count == 0 || count > ITC_MAX_PACKET_SIZE) return -EINVAL;
+
+  minor = routeOutboundStandardPacket(*pkt, count);
+  if (minor < 0) return minor; /* bad routing */
+
+  BUG_ON(minor > PRU_MINOR_PRU1);
+
+  cdevstate = (ITCCharDeviceState*) S.mPRUDeviceState[minor];
+  BUG_ON(!cdevstate);
+
+  prudevstate = (ITCPRUDeviceState*) cdevstate;
+  ipb = &prudevstate->mPriorityOB;  /*priority dispatch only at present*/
+
+  DBGPRINTK(DBG_PKT_ROUTE,
+            KERN_INFO "Routing %s %s/%d packet to %s\n",
+            "priority",
+            strPktHdr(*pkt),
+            count,
+            cdevstate->mName);
+
+  if (kfifo_avail(&ipb->mFIFO) < count) return -EAGAIN; /* Never block */
+  ret = kfifo_in(&ipb->mFIFO, pkt, count); /*0 on no room else count*/
+
+  wakeOBPktShipper(); /* if we got this far, kick the linux->pru thread */
+
+  return ret ? ret : -ENOSPC;
+}
+
 static ssize_t writePacketHelper(struct file *file,
                                  const char __user *buf,
                                  size_t count, loff_t *offset,
@@ -1943,8 +1984,11 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
   ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) prudevstate;
   int minor = MINOR(cdevstate->mDevt);
 
+  if (minor < 0 || minor > 1) {
+    printk(KERN_ERR "itc_pkt_cb received %d from %d\n",len, minor);
+  }
+  
   BUG_ON(minor < 0 || minor > 1);
-  //  printk(KERN_INFO "Received %d from %d\n",len, minor);
 
   DBGPRINT_HEX_DUMP(DBG_PKT_RCVD,
                     KERN_INFO, minor ? "<pru1: " : "<pru0: ",
