@@ -250,6 +250,9 @@ static inline void recvLevelPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
     index = ops->packetio(ds, true, index, packet, len);
     if (index == 0) break; /* recv aborted */
   }
+  if (index) {
+
+  }
 }
 
 static inline void sendLevelPacket(ITCMFMDeviceState *ds, bool forceTimeoutPush)

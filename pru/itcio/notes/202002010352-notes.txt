@@ -1407,11 +1407,7 @@ Mon Feb 17 09:52:05 2020 OK time to move the flag again.  We've made a
 bunch of progress but there's still lots of gaps and confusion in the
 code.  Current status is do like:
 
-<<<<<<< HEAD
     # echo f00 > /sys/class/itc_pkt/debug ; sleep 10 ; echo 0 >/sys/class/itc_pkt/debug
-=======
-    # echo f00 > /sys/class/itc_pkt/debug ; sleep 10 ; echo 0 >/sys/class/itc_pkt/debug 
->>>>>>> 2e56aeb9bf1efc668488f2e68b2e83d1b86b8753
 
 to flash debugging, and see stuff like:
 
@@ -1640,11 +1636,7 @@ Tue Feb 18 17:26:52 2020 Hmm,
 
     root@beaglebone:~# getconf CLK_TCK
     100
-<<<<<<< HEAD
     root@beaglebone:~#
-=======
-    root@beaglebone:~# 
->>>>>>> 2e56aeb9bf1efc668488f2e68b2e83d1b86b8753
 
 and
 
@@ -1825,4 +1817,3 @@ could have been significant work lost.
 RISKY BITS OFF
 
 :151]
-
