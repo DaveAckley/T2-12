@@ -1,4 +1,4 @@
-{126}  -*- text -*-
+{145}  -*- text -*-
 [0:
 [3:
 [35:
@@ -1401,3 +1401,302 @@ RISKY BITS OFF
 :125]
 
 :124]
+[126:
+
+Mon Feb 17 09:52:05 2020 OK time to move the flag again.  We've made a
+bunch of progress but there's still lots of gaps and confusion in the
+code.  Current status is do like:
+
+    # echo f00 > /sys/class/itc_pkt/debug ; sleep 10 ; echo 0 >/sys/class/itc_pkt/debug 
+
+to flash debugging, and see stuff like:
+
+    [14054.095675] (NW) UPDATE ss->mLevelStage=L00 advance=false
+    [14054.107739] diffToNext=-3499100, jifTil=-3499079
+    [14054.119011] final diffToNext=-3499100
+    [14054.643753] kitc=0, timeout=3438240, now=3438416
+    [14054.651715] (ET) UPDATE KITC them=L10
+    [14054.661984] (ET) UPDATE reqmts level=0, ops=91665ae0
+    [14054.673107] (ET) UPDATE reqmts level=1, ops=86da6820
+    [14054.683718] (ET) UPDATE post reqmts enterlevel=1, enterstage=0
+    [14054.698782] (ET) UPDATE ss->mLevelStage=L10 decideAction=5
+    [14054.711049] (ET) MORE ME UPDATE newLS=L10 nextls=L10
+    [14054.722806] (ET) UPDATE ss->mLevelStage=L10 advance=false
+    [14054.735310] ilsPacketIO_CONTACT recv=false startIdx=0 len=255
+    [14054.747751] ilsPacketIO_COMMUNICATE recv=false startIdx=2 len=255
+    [14054.762948] sendLevelPacket us=L10 them=L10, len=2
+    [14054.774857] ET00000000: a2 c4                                            ..
+    [14054.789850] itcSideStateSetLastAnnounceToNow: timeoutVar=100, now=3438452, nextTo=3438575
+    [14054.798268] recvLevelPacket us=L10 them=L10, pkt=L10
+    [14054.803309] WT00000000: a6 c4                                            ..
+    [14054.810337] ilsPacketIO_CONTACT recv=true startIdx=0 len=2
+    [14054.815876] itcSideStateSetLastAnnounceToNow: timeoutVar=500, now=3438459, nextTo=3438851
+    [14054.824119] ilsPacketIO_COMMUNICATE recv=true startIdx=2 len=2
+    [14054.830004] (WT) UPDATE KITC them=L10
+    [14054.833714] (WT) UPDATE reqmts level=0, ops=91665ae0
+    [14054.838743] (WT) UPDATE reqmts level=1, ops=86da6820
+    [14054.843758] (WT) UPDATE post reqmts enterlevel=1, enterstage=0
+    [14054.849659] (WT) UPDATE ss->mLevelStage=L10 decideAction=5
+    [14054.855197] (WT) MORE ME UPDATE newLS=L10 nextls=L10
+    [14054.860210] (WT) UPDATE ss->mLevelStage=L10 advance=false
+    [14054.865659] ilsPacketIO_CONTACT recv=false startIdx=0 len=255
+    [14054.871456] ilsPacketIO_COMMUNICATE recv=false startIdx=2 len=255
+    [14054.877603] sendLevelPacket us=L10 them=L10, len=2
+    [14054.882441] WT00000000: a6 c4                                            ..
+    [14054.889470] itcSideStateSetLastAnnounceToNow: timeoutVar=100, now=3438477, nextTo=3438572
+    [14054.897710] sendLevelPacket (pushto=T) hdr=0xa6 got 2
+    [14054.902812] (WT) REANNOUNCED L10, now=3438471, uto=3438259, new=3438572
+    [14054.912141] recvLevelPacket us=L10 them=L10, pkt=L10
+    [14054.917243] ET00000000: a2 c4                                            ..
+    [14054.924279] ilsPacketIO_CONTACT recv=true startIdx=0 len=2
+    [14054.929824] itcSideStateSetLastAnnounceToNow: timeoutVar=500, now=3438487, nextTo=3438884
+    [14054.938064] ilsPacketIO_COMMUNICATE recv=true startIdx=2 len=2
+    [14054.943948] (ET) UPDATE KITC them=L10
+    [14054.947654] (ET) UPDATE reqmts level=0, ops=91665ae0
+    [14054.952667] (ET) UPDATE reqmts level=1, ops=86da6820
+    [14054.957678] (ET) UPDATE post reqmts enterlevel=1, enterstage=0
+    [14054.963561] (ET) UPDATE ss->mLevelStage=L10 decideAction=5
+    [14054.969107] (ET) MORE ME UPDATE newLS=L10 nextls=L10
+    [14054.974120] (ET) UPDATE ss->mLevelStage=L10 advance=false
+    [14054.999793] sendLevelPacket (pushto=T) hdr=0xa2 got 2
+    [14055.011620] (ET) REANNOUNCED L10, now=3438438, uto=3438240, new=3438575
+    [14055.026905] diffToNext=0, jifTil=159
+    [14055.035909] kitc=1, timeout=4294906276, now=3438416
+    [14055.047735] (SE) UPDATE KITC them=L00
+
+with an ET-WT loopback cable.
+
+:126]
+[127:
+
+Mon Feb 17 23:12:49 2020 OK.  I really really have to be working on
+OTHER STUFF but we're finally making 'progress' here and I'm loathe to
+give up on the state that I am still managing to hold in my head.
+
+So going again here.[128:
+
+Mon Feb 17 23:14:31 2020 Changing the default timeouts to 300/1000.
+
+:128]
+
+:127]
+[129:
+
+Mon Feb 17 23:26:07 2020 Implementing .require default
+
+:129]
+[130:
+
+Tue Feb 18 01:50:26 2020 So one current issue is we don't announce if
+advance returns false, even if we've changed stages.
+
+We're wondering if we really need .advance at all.  At the moment it's
+only used by the limiting cases:
+
+    #define ALL_LEVELS_MACRO()                                    \
+    /*         name   cust req tmo, pio, dcd, adv, state (NOT USED) */ \
+    /* 0 */ XX(CONTACT,      1,  1,   1,   0,   1,            _)       \
+    /* 1 */ XX(COMMUNICATE,  1,  0,   1,   0,   0,   _/*u16 ttoken*/)  \
+    /* 2 */ XX(COMPATIBILITY,0,  0,   1,   1,   0, _/*MFZId tMFZId*/)  \
+    /* 3 */ XX(COMPUTATION,  0,  1,   0,   0,   1,            _)       \
+
+..but ilsAdvance_CONTACT is where we check for packet sync, so that is
+pretty important.  ilsAdvance_COMPUTATION just returns false, but it
+wouldn't be so bad to automatically infer that on the last level
+anyway.
+
+But the first advance matters.  Is it that we want .advance to be ||'d
+with LS change, to decide when to announce?  That seems wrong.  We
+want to announce every LS change once we have packet sync.  And it
+almost seems like we'd prefer to announce all LS changes, period, with
+some understanding that the announcement getting tossed somewhere
+below when there's no packet sync.
+
+But in any case it seems we definitely want to decouple announcements
+from advancements.
+
+:130]
+[131:
+
+Tue Feb 18 03:14:39 2020 So we have an awful lot of fingers in the
+changing-the-LS pie inside updateKITC:
+
+ - We begin with 'prevLS' captured on entry to updateKITC.  Now, could
+   that have been changed, during recvLevelPacket, since the last
+   updateKITC?  Or does recvLevelPacket just manipulate other state --
+   like mThem -- but leave mUs alone?[132: Seems only mThem is touched..  :132]
+
+ - The .require loop produces a maximum supported level[133: Tue Feb
+   18 03:42:06 2020  ..that's in local 'newLS' and immediately stored
+   in mUs.mLevelStage.  Not sure if we want to commit that fast but
+   we'll see.
+
+ - We then run .decide JUST FOR THAT NOW-STORED newLS, and get an
+   action which leads to 'nextLS'.  So now there's 'prevLS', 'newLS',
+   and 'nextLS', all at least potentially different.
+
+ - Then we run .advance based on the then-prevailing mUs (== newLS
+   ATM).  If it returns true, we set 'advanceLS' by incrementing
+   newLS, if there's any headroom left considering MAX_LEVEL_NUMBER.
+
+ - Then, AND ONLY THEN, we announce, if advanceLS ends up different
+   than (effectively) newLS.
+
+So that's clearly messed up.  We won't ever announce downshifts?
+
+We should make whatever decisions about LS we want -- and that
+obviously needs to be thought through again -- but then at the end of
+updateKITC we should announce based only on the final LS vs the prevLS
+we captured on entering.
+[134:
+
+Tue Feb 18 06:26:20 2020 So, post walk: How should the post-updateKITC
+LS be determined?  Consider the factors:
+
+ 0: prevLS: The LS we had at the beginning of the updateKITC
+ 1: supportLS: The LS determined by the prev LS and the current support
+ 2: uTimeoutLS: The LS implied by the .timeout LevelAction if mUs timeout occured
+ 3: tTimeoutLS: The LS implied by the .timeout LevelAction if mThem timeout occured
+ 4: decideLS: The LS implied by the .decide LevelAction
+ 5: advanceLS: The LS implied by the .advance LevelAction
+
+Derive:
+ downLS : The min of whichever 1-3 are applicable.
+
+If downLS < prevLS, then resultLS = downLS.
+else {
+   compute decideLS
+   if decideLS < prevLS, then result = decideLS
+   else {
+     compute advanceLS
+     if advanceLS > prevLS, then result = advanceLS
+   }
+}
+
+then if resultLS != prevLS {
+  mUs.mLevelStage = resultLS
+  sendLevelPacket
+}
+[135:
+
+Tue Feb 18 13:59:53 2020 So could we make it a find-first-down-LS loop
+and only check advance if no downs are found?  And simplify things
+that way?
+
+:135]
+:134]
+
+:133]
+
+:131]
+[136:
+
+Tue Feb 18 17:03:06 2020 Well, building clean again.  Now updateKITC
+is basically just a loop and a check and a send:
+
+    void updateKITC(ITCMFMDeviceState * mds)
+    {
+ ..
+      for (i = 0; i < sizeof(lsEvals)/sizeof(lsEvals[0]); ++i) {
+        LSEvaluator eval = lsEvals[i];
+        nextLS = (*eval)(mds,prevLS);
+        if (nextLS != prevLS) break; /* found a move, stop */
+      }
+      if (nextLS != prevLS) {
+        ss->mLevelStage = nextLS;
+        sendLevelPacket(mds,false); /*pushes timeout if sent*/
+      }
+    }
+
+with the idea that '.advance' is last in the lsEvals:
+
+    static LSEvaluator lsEvals[] = {
+      &lsEvaluatorSupport,
+      &lsEvaluatorUTimeout,
+      &lsEvaluatorTTimeout,
+      &lsEvaluatorDecide,
+      &lsEvaluatorAdvance
+    };
+
+..and it's the only one that might go up in LS; all the rest go down
+or stay the same.
+
+With this 'clean' scheme, we may be going to sendLevelPacket when
+there isn't PS, what will happen there?  [137:
+
+Tue Feb 18 17:09:54 2020 What will happen is ilsPacketIO_CONTACT will
+detect no PS and return 0, causing sendLevelPacket to NOT attempt to
+send a packet but YES TO update the utimeout as if we had.
+
+And ilsTimeout_CONTACT appears to set everybody's timeouts to 10k
+jiffies (which is probably 10s?) which seems plenty long to come back
+around and check PS.[138:
+
+Tue Feb 18 17:26:52 2020 Hmm,
+
+    root@beaglebone:~# getconf CLK_TCK
+    100
+    root@beaglebone:~# 
+
+and
+
+/usr/include/asm-generic/param.h:6
+
+    #ifndef HZ
+    #define HZ 100
+    #endif
+
+suggest on my BBG, a jiffy is 1/100s, so 10k jiffies would be 100s..
+
+:138]
+
+:137]
+
+:136]
+[139:
+
+Tue Feb 18 17:42:56 2020
+
+RISKY BITS OFF
+
+:139]
+[140:
+
+Tue Feb 18 17:51:53 2020 Have to break for cooking; just started
+debugging.  Got to where ET and WT advanced to L01, but then it seems
+that WT is thinking it's still L00 and is announcing L01 again..[141:
+
+Wed Feb 19 01:13:39 2020 Added more logging to follow along closer.
+
+RISKY BITS OFF
+
+:141]
+
+:140]
+[142:
+
+Wed Feb 19 03:08:44 2020 Still tracing through.  Bug in
+lsEvaluatorSupport wasn't dropping us back when level support failed.
+Still fussing with timeout and timedifferences.  Going again.
+
+RISKY BITS OFF
+
+:142]
+[143:
+
+Wed Feb 19 03:44:33 2020 OK so the lsEvals[] iteration has the problem
+that it's not (necessarily or usually) pushing expired timeouts, so
+they keep happening.
+
+We wanted to tie the timeout push to sending level announcements but
+that seems unreliable at least at present.  Could we say that just
+returning the mTimeoutAction is grounds enough for pushing the
+timeout, then it's somebody else's problem if they didn't do a send or
+whatever due to that mTimeoutAction?[144:
+
+Wed Feb 19 03:49:19 2020 Well, trying that.  But that still won't deal
+with multiple timeouts hitting in a single updateKITC
+
+:144]
+
+:143]
