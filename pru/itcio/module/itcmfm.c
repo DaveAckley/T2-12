@@ -26,6 +26,8 @@ ITCLSOps *(theLevels[MAX_LEVEL_NUMBER]);      /*FORWARD*/
 
 /**** MISC HELPERS ****/
 
+static inline u32 msToJiffies(u32 ms) { return ms * HZ / 1000; }
+
 static unsigned long plusOrMinus25pct(u32 amt) {
   if (amt >= 8) {  /* don't randomize if too tiny */
     u32 delta = prandom_u32_max((amt>>1)+1); /*random in 0..amt/2 */
@@ -61,12 +63,18 @@ static unsigned long itcSideStateSetLastAnnounceToNow(ITCSideState *ss)
   unsigned long now = jiffies;
   ITCLSOps * ops = itcSideStateGetLevelOps(ss);
   u32 timeoutVar = 0;
-  ops->timeout(0, ss->mIsUs, &timeoutVar);
+  u32 fuzzedTimeoutVar;
+  ss->mTimeoutAction = ops->timeout(0, ss->mIsUs, &timeoutVar);
+  fuzzedTimeoutVar = plusOrMinus25pct(timeoutVar);
   ss->mLastAnnounce = now;
-  ss->mNextTimeout = now + plusOrMinus25pct(timeoutVar);
-  DBGPRINTK(DBG_MISC200,"%s: timeoutVar=%d, now=%lu, nextTo=%lu\n",
+  ss->mNextTimeout = now + fuzzedTimeoutVar;
+  ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_TIMEOUT));
+  DBGPRINTK(DBG_MISC200,"%s: %s=L%02x TO=%d[%d], now=%lu, nextTo=%lu\n",
             __FUNCTION__,
+            ss->mIsUs ? "mUs" : "mThem",
+            getLevelStageAsByte(ss->mLevelStage),
             timeoutVar,
+            fuzzedTimeoutVar,
             now,
             ss->mNextTimeout
             );
@@ -76,14 +84,46 @@ static unsigned long itcSideStateSetLastAnnounceToNow(ITCSideState *ss)
 
 /**** LEVEL DEFAULTS ****/
 
-static bool ilsRequireDefault(ITCMFMDeviceState* kitc) {
-  printk(KERN_ERR "%s:%d WHY DON'T YOU WRITE ME\n",__FILE__,__LINE__);
-  return true;
+
+
+static bool ilsRequireDefault(ITCMFMDeviceState* mds) {
+  /* Implementing: 
+     Requires:        t>=(L-1).1
+  */
+  ITCLevelState * ils;
+  LevelStage uLS, tLS;
+  u32 uL, tL, tS;
+  bool ret;
+  BUG_ON(!mds);
+  ils = &mds->mLevelState;
+  uLS = ils->mUs.mLevelStage;
+  tLS = ils->mThem.mLevelStage;
+  do {
+    uL = getLevelFromLevelStage(uLS);
+    if (uL == 0) { ret = true; break; } /*can't be less than us*/
+
+    tL = getLevelFromLevelStage(tLS);
+    if (tL < uL-1) { ret = false; break; } /*not >= L-1.anything*/
+
+    tS = getStageFromLevelStage(tLS);
+    if (tL == uL-1 && tS < 1) { ret = false; break; } /*(L-1).0 too low*/
+
+    ret = true;
+  } while (0);
+
+  DBGPRINTK(DBG_MISC200,"(%s) %s: u%02x t%02x ->%s\n"
+            ,getDir8Name(mapDir6ToDir8(mds->mDir6))
+            ,__FUNCTION__
+            ,getLevelStageAsByte(uLS)
+            ,getLevelStageAsByte(tLS)
+            ,ret ? "true" : "false"
+            );
+  return ret;
 }
 
 static LevelAction ilsTimeoutDefault(ITCMFMDeviceState* kitc, bool usNotThem, u32 *nextTimeoutPtr) {
   if (nextTimeoutPtr) 
-    *nextTimeoutPtr = usNotThem ? 100 : 500;
+    *nextTimeoutPtr = usNotThem ? msToJiffies(200) : msToJiffies(500);
   return usNotThem ? DO_REENTER : DO_RETREAT;
 }
 
@@ -343,6 +383,8 @@ static u32 ilsPacketIO_CONTACT(ITCMFMDeviceState* ds,
     /* Pick up their info*/
     ss = &ds->mLevelState.mThem;
     ss->mLevelStage = byte1 & 0x1f;
+
+    ADD_ITC_EVENT(makeItcLSEvent(ds->mDir6,IEV_LST,ss->mLevelStage));
     itcSideStateSetLastAnnounceToNow(ss);
 
   } else {
@@ -363,10 +405,9 @@ static u32 ilsPacketIO_CONTACT(ITCMFMDeviceState* ds,
   return startIdx;
 }
 
-
 static LevelAction ilsTimeout_CONTACT(ITCMFMDeviceState* kitc, bool usNotThem, u32 *nextTimeoutPtr) {
   if (nextTimeoutPtr) 
-    *nextTimeoutPtr = 10000;
+    *nextTimeoutPtr = msToJiffies(2500);
   return DO_RESTART;
 }
 
@@ -433,7 +474,7 @@ static LevelAction ilsDecide_COMPATIBILITY(ITCMFMDeviceState* kitc) {
 
 static LevelAction ilsTimeout_COMPUTATION(ITCMFMDeviceState* kitc, bool usNotThem, u32 *nextTimeoutPtr) {
   if (nextTimeoutPtr) 
-    *nextTimeoutPtr = usNotThem ? 10000 : 50000;
+    *nextTimeoutPtr = usNotThem ? msToJiffies(5000) : msToJiffies(15000);
   return usNotThem ? DO_REENTER : DO_RETREAT;
 }
 
@@ -452,6 +493,7 @@ static void initITCSideState(ITCSideState * ss, bool isUs)
   BUG_ON(!ss);
   ss->mLastAnnounce = now - (prandom_u32_max(50)+(isUs ? 100 : 10));
   ss->mNextTimeout = now + (prandom_u32_max(50)+(isUs ? 10 : 100));
+  ss->mTimeoutAction = DO_CONTINUE;
   ss->mToken = 0;
   ss->mMFZId[0] = '\0';
   ss->mLevelStage = 0;
@@ -482,7 +524,7 @@ unsigned long itcLevelStateGetEarliestTimeout(ITCLevelState * ils)
   return time_before(uto, tto) ? uto : tto;
 }
 
-#define jiffyDiffy(au32,bu32) ((s32) ((au32)-(bu32)))
+#define jiffiesFromAtoB(au32,bu32) ((s32) ((bu32)-(au32)))
 int itcLevelThreadRunner(void *arg)
 {
   ITCKThreadState * ks = (ITCKThreadState*) arg;
@@ -496,7 +538,9 @@ int itcLevelThreadRunner(void *arg)
   set_current_state(TASK_RUNNING);
   while(!kthread_should_stop()) {    /* Returns true when kthread_stop() is called */
     unsigned long now = jiffies;
+    unsigned long nextEarliestTimeout;
     s32 diffToNext = 0;
+    DBGPRINTK(DBG_MISC100,"====================\n");
     for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
       ITCDir kitc = itcIteratorGetNext(itr);
       ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
@@ -504,23 +548,44 @@ int itcLevelThreadRunner(void *arg)
       s32 jiffiesTilTimeout;
       BUG_ON(!mds);
       timeout = itcLevelStateGetEarliestTimeout(&mds->mLevelState);
-      DBGPRINTK(DBG_MISC100,"kitc=%d, timeout=%lu, now=%lu\n",kitc,timeout,now);
+      DBGPRINTK(DBG_MISC100,"(%s) TIME REMAINING=%d\n",
+                getDir8Name(mapDir6ToDir8(mds->mDir6)),
+                jiffiesFromAtoB(now,timeout));
       if (time_after_eq(now, timeout)) {
         updateKITC(mds);
         /* XXX updateKITC has to handle this now: pushTimeout(mds,true); */
         timeout = itcLevelStateGetEarliestTimeout(&mds->mLevelState);
-        if (timeout == now) ++timeout; /*can't be now*/
+        if (time_after_eq(now,timeout)) {
+          printk(KERN_WARNING "(%s) Timeout still expired after updateKITC (%lu, now %lu)\n",
+                 getDir8Name(mapDir6ToDir8(mds->mDir6)),
+                 timeout,now);
+          timeout = now+1; /*can't be now or earlier*/
+        }
       }
-      jiffiesTilTimeout = jiffyDiffy(timeout,now);
-      DBGPRINTK(DBG_MISC100,"diffToNext=%d, jifTil=%d\n",diffToNext,jiffiesTilTimeout);
-      if (diffToNext == 0 || diffToNext > jiffiesTilTimeout)
+      jiffiesTilTimeout = jiffiesFromAtoB(now,timeout);
+      DBGPRINTK(DBG_MISC100,"(%s) diffToNext=%d, jifTil=%d\n",
+                getDir8Name(mapDir6ToDir8(mds->mDir6)),
+                diffToNext,
+                jiffiesTilTimeout);
+      if (diffToNext == 0 || time_before(timeout, nextEarliestTimeout)) {
         diffToNext = jiffiesTilTimeout;
+        nextEarliestTimeout = timeout;
+      }
     }
-    DBGPRINTK(DBG_MISC100,"final diffToNext=%d\n",diffToNext);
-    if (diffToNext == 0) diffToNext = HZ/2; /* Really?  Nothing coming up at all?  Go 500ms */
-    diffToNext = HZ/2; /*XXX WTF?*/
-    set_current_state(TASK_INTERRUPTIBLE);
-    schedule_timeout(diffToNext);   /* in TASK_RUNNING again upon return */
+    diffToNext = jiffiesFromAtoB(nextEarliestTimeout,jiffies);
+    if (diffToNext < 0)
+      DBGPRINTK(DBG_MISC100,"GOING AGAIN (diffToNext=%d)\n",diffToNext);
+    else {
+      DBGPRINTK(DBG_MISC100,"PREPARING TO SLEEP FOR %d\n",diffToNext);
+      if (diffToNext <= 0) diffToNext = HZ/2; /* Really?  Nothing coming up at all?  Go 500ms */
+      else if (diffToNext > msToJiffies(10000)) {
+        printk(KERN_WARNING "Excess diffToNext %d, changing to %d\n",
+               diffToNext, HZ);
+        diffToNext = HZ;
+      }
+      set_current_state(TASK_INTERRUPTIBLE);
+      schedule_timeout(diffToNext);   /* in TASK_RUNNING again upon return */
+    }
   }
   printk(KERN_INFO "itcLevelThreadRunner: Stopping by request\n");
   return 0;
@@ -538,25 +603,82 @@ void handleKITCPacket(ITCMFMDeviceState * ds, u8 * packet, u32 len)
   updateKITC(ds);      
 }
 
+typedef LevelStage (*LSEvaluator)(ITCMFMDeviceState * mds, LevelStage prevls) ;
+static LevelStage lsEvaluatorSupport(ITCMFMDeviceState * mds, LevelStage prevls) ;
+static LevelStage lsEvaluatorUTimeout(ITCMFMDeviceState * mds, LevelStage prevls) ;
+static LevelStage lsEvaluatorTTimeout(ITCMFMDeviceState * mds, LevelStage prevls) ;
+static LevelStage lsEvaluatorDecide(ITCMFMDeviceState * mds, LevelStage prevls) ;
+static LevelStage lsEvaluatorAdvance(ITCMFMDeviceState * mds, LevelStage prevls) ;
+
+static LSEvaluator lsEvals[] = {
+  &lsEvaluatorSupport,
+  &lsEvaluatorUTimeout,
+  &lsEvaluatorTTimeout,
+  &lsEvaluatorDecide,
+  &lsEvaluatorAdvance
+};
+
 void updateKITC(ITCMFMDeviceState * mds)
 {
   ITCLevelState * ils;
   ITCSideState * ss;
-  u8 prevLS, newLS;
-  u32 prevLevel, enterLevel;
-  u32 prevStage, enterStage;
-  u32 level;
+  LevelStage prevLS, nextLS;
+  u32 i;
+
   BUG_ON(!mds);
-  DBGPRINTK(DBG_MISC200,"(%s) UPDATE KITC them=L%02x\n",
+  ADD_ITC_EVENT(makeItcDirEvent(mds->mDir6,IEV_DIR_UPBEG));
+  DBGPRINTK(DBG_MISC200,"(%s) >>>UPDATE KITC us=L%02x them=L%02x\n",
             getDir8Name(mapDir6ToDir8(mds->mDir6)),
+            getLevelStageAsByte(mds->mLevelState.mUs.mLevelStage),
             getLevelStageAsByte(mds->mLevelState.mThem.mLevelStage)
             );
   ils = &mds->mLevelState;
   ss = &ils->mUs;
   prevLS = ss->mLevelStage;
-  prevLevel = enterLevel = getLevelFromLevelStage(prevLS);
-  prevStage = enterStage = getStageFromLevelStage(prevLS);
-  BUG_ON(prevLevel >= MAX_LEVEL_NUMBER);
+  for (i = 0; i < sizeof(lsEvals)/sizeof(lsEvals[0]); ++i) {
+    LSEvaluator eval = lsEvals[i];
+    nextLS = (*eval)(mds,prevLS);
+    DBGPRINTK(DBG_MISC200,"(%s) LSE[%d] prevLS=L%02x -> nextLS=L%02x\n",
+              getDir8Name(mapDir6ToDir8(mds->mDir6)),
+              i,
+              getLevelStageAsByte(prevLS),
+              getLevelStageAsByte(nextLS)
+              );
+    if (nextLS != prevLS) break; /* found a move, stop */
+  }
+  if (nextLS != prevLS) {
+    ss->mLevelStage = nextLS;
+
+    ADD_ITC_EVENT(makeItcLSEvent(mds->mDir6,IEV_LSU,ss->mLevelStage));
+
+    sendLevelPacket(mds,false); /*pushes timeout if sent*/
+  }
+  
+  DBGPRINTK(DBG_MISC200,"(%s) <<<END UPDATE KITC us=L%02x them=L%02x\n",
+            getDir8Name(mapDir6ToDir8(mds->mDir6)),
+            getLevelStageAsByte(mds->mLevelState.mUs.mLevelStage),
+            getLevelStageAsByte(mds->mLevelState.mThem.mLevelStage)
+            );
+  ADD_ITC_EVENT(makeItcDirEvent(mds->mDir6,IEV_DIR_UPEND));
+}
+
+static LevelStage lsEvaluatorSupport(ITCMFMDeviceState * mds, LevelStage prevLS)
+{
+  ITCLevelState * ils;
+  ITCSideState * ss;
+  LevelStage newLS;
+  u32 level, prevLevel;
+  BUG_ON(!mds);
+  DBGPRINTK(DBG_MISC200,"(%s) %s us=L%02x them=L%02x\n",
+            getDir8Name(mapDir6ToDir8(mds->mDir6)),
+            __FUNCTION__,
+            getLevelStageAsByte(mds->mLevelState.mUs.mLevelStage),
+            getLevelStageAsByte(mds->mLevelState.mThem.mLevelStage)
+            );
+  ils = &mds->mLevelState;
+  ss = &ils->mUs;
+  newLS = prevLS; /*assume just carry through*/
+  prevLevel = getLevelFromLevelStage(newLS);
 
   /****
      - update begins with requirements check.  Level requirements are
@@ -567,93 +689,176 @@ void updateKITC(ITCMFMDeviceState * mds)
   for (level = 0; level <= prevLevel; ++level) {
     ITCLSOps *ops = theLevels[level];
     bool ret;
-    DBGPRINTK(DBG_MISC200,"(%s) UPDATE reqmts level=%d, ops=%p\n",
-              getDir8Name(mapDir6ToDir8(mds->mDir6)),
-           level,
-           ops);
     BUG_ON(!ops);
     BUG_ON(!ops->require);
     ret = (*ops->require)(mds);
+    DBGPRINTK(DBG_MISC200,"(%s) %s reqmts level=%d, prevLevel=%d, ret=%d\n",
+              getDir8Name(mapDir6ToDir8(mds->mDir6)),
+              __FUNCTION__,
+              level,
+              prevLevel,
+              ret);
     if (ret) continue; /* Level is supported */
     /*Level is not supported*/
-    if (level < prevLevel) {
-      enterLevel = level;
-      enterStage = 0;
+    if (level > 0) { /* If we have any place to fall */
+      newLS = makeLevelStage(level - 1, 0);  /* drop back to previous level */
       break;
     }
   }
-  DBGPRINTK(DBG_MISC200,"(%s) UPDATE post reqmts enterlevel=%d, enterstage=%d\n",
+  DBGPRINTK(DBG_MISC200,"(%s) %s newLS=0x%02x\n",
             getDir8Name(mapDir6ToDir8(mds->mDir6)),
-            enterLevel,enterStage);
+            __FUNCTION__,
+            getLevelStageAsByte(newLS));
+  return newLS;
+}
 
-  /* Set entry level */
-  newLS = makeLevelStage(enterLevel, enterStage);
-  ss->mLevelStage = newLS;
-  {
-    /*** RUN .decide ***/
-    u8 nextLS;
-    ITCLSOps *ops = theLevels[enterLevel];
-    LevelAction decideAction;
-    BUG_ON(!ops);
-    BUG_ON(!ops->decide);
-    decideAction = (*ops->decide)(mds);
-    DBGPRINTK(DBG_MISC200,"(%s) UPDATE ss->mLevelStage=L%02x decideAction=%d\n",
-              getDir8Name(mapDir6ToDir8(mds->mDir6)),
-              getLevelStageAsByte(ss->mLevelStage),
-              decideAction);
-    switch (decideAction) {
-    case DO_REENTER:
-      nextLS = makeLevelStage(enterLevel,0);
-      break;
-    case DO_RESTART:
-      nextLS = makeLevelStage(0,0);
-      break;
-    case DO_RETREAT:
-      if (enterLevel > 0) enterLevel--;
-      nextLS = makeLevelStage(enterLevel, 0);
-      break;
-    case DO_ADVANCE:
-      if (enterLevel < MAX_LEVEL_NUMBER-1) enterLevel++;
-      nextLS = makeLevelStage(enterLevel, 0);
-      break;
-    case DO_CONTINUE:
-      nextLS = makeLevelStage(enterLevel,enterStage);
-      break;
-    default: BUG_ON(1);
-    }
-
-  DBGPRINTK(DBG_MISC200,"(%s) MORE ME UPDATE newLS=L%02x nextls=L%02x\n",
-            getDir8Name(mapDir6ToDir8(mds->mDir6)),
-            getLevelStageAsByte(newLS),
-            getLevelStageAsByte(nextLS));
+static LevelStage applyLevelActionToLevelStage(LevelAction action, LevelStage ls)
+{
+  u32 prevLevel = getLevelFromLevelStage(ls);
+  LevelStage newLS = ls;
+  
+  switch (action) {
+  case DO_REENTER:
+    newLS = makeLevelStage(prevLevel,0);
+    break;
+  case DO_RESTART:
+    newLS = makeLevelStage(0,0);
+    break;
+  case DO_RETREAT:
+    if (prevLevel > 0) prevLevel--;
+    newLS = makeLevelStage(prevLevel, 0);
+    break;
+  case DO_ADVANCE:
+    if (prevLevel < MAX_LEVEL_NUMBER-1) prevLevel++;
+    newLS = makeLevelStage(prevLevel, 0);
+    break;
+  default:
+    printk(KERN_ERR "%s illegal action %d ignored\n",
+           __FUNCTION__,
+           action);
+    /*FALL THROUGH*/
+  case DO_CONTINUE:
+    break;
   }
-  {
-    /*** RUN .advance ***/
-    LevelStage curLS = ss->mLevelStage;
-    LevelStage advanceLS;
-    u8 curLevel = getLevelFromLevelStage(curLS);
-    u8 curStage = getStageFromLevelStage(curLS);
-    ITCLSOps *ops = theLevels[curLevel];
-    bool ret;
-    BUG_ON(!ops);
-    BUG_ON(!ops->advance);
-    ret = (*ops->advance)(mds);
-    DBGPRINTK(DBG_MISC200,"(%s) UPDATE ss->mLevelStage=L%02x advance=%s\n",
+  DBGPRINTK(DBG_MISC200,"%s(%d, L%02x)->L%02x\n",
+            __FUNCTION__,
+            action,
+            getLevelStageAsByte(ls),
+            getLevelStageAsByte(newLS)
+            );
+  return newLS;
+}
+
+static LevelStage ssEvaluatorCheckTimeout(ITCSideState * ss, LevelStage prevLS)
+{
+  LevelStage newLS = prevLS;
+  unsigned long uto;
+  BUG_ON(!ss);
+  uto = itcSideStateGetTimeout(ss);
+  if (time_after_eq(jiffies, uto)) {
+    newLS = applyLevelActionToLevelStage(ss->mTimeoutAction,prevLS);
+    itcSideStateSetLastAnnounceToNow(ss);
+  }
+  return newLS;
+}
+
+static LevelStage lsEvaluatorUTimeout(ITCMFMDeviceState * mds, LevelStage prevLS)
+{
+  ITCLevelState * ils;
+  ITCSideState * ss;
+  BUG_ON(!mds);
+  ils = &mds->mLevelState;
+  ss = &ils->mUs;
+  return ssEvaluatorCheckTimeout(ss, prevLS);
+}
+
+static LevelStage lsEvaluatorTTimeout(ITCMFMDeviceState * mds, LevelStage prevLS)
+{
+  ITCLevelState * ils;
+  ITCSideState * ss;
+  BUG_ON(!mds);
+  ils = &mds->mLevelState;
+  ss = &ils->mThem;
+  return ssEvaluatorCheckTimeout(ss, prevLS);
+}
+
+static LevelStage lsEvaluatorDecide(ITCMFMDeviceState * mds, LevelStage prevLS)
+{
+  ITCLevelState * ils;
+  ITCSideState * ss;
+  LevelStage newLS;
+  u32 prevLevel;
+  ITCLSOps *ops;
+  LevelAction decideAction;
+
+  BUG_ON(!mds);
+  ils = &mds->mLevelState;
+  ss = &ils->mThem;
+  newLS = prevLS; /*assume just carry through*/
+  prevLevel = getLevelFromLevelStage(newLS);
+
+  ops = theLevels[prevLevel];
+  
+  BUG_ON(!ops);
+  BUG_ON(!ops->decide);
+  decideAction = (*ops->decide)(mds);
+
+  DBGPRINTK(DBG_MISC200,"(%s) %s ss->mLevelStage=L%02x decideAction=%d\n",
+            getDir8Name(mapDir6ToDir8(mds->mDir6)),
+            __FUNCTION__,
+            getLevelStageAsByte(ss->mLevelStage),
+            decideAction);
+
+  newLS = applyLevelActionToLevelStage(decideAction, prevLS);
+
+  DBGPRINTK(DBG_MISC200,"(%s) %s prevLS=L%02x newls=L%02x\n",
+            getDir8Name(mapDir6ToDir8(mds->mDir6)),
+            __FUNCTION__,
+            getLevelStageAsByte(prevLS),
+            getLevelStageAsByte(newLS));
+  return newLS;
+}
+
+static LevelStage lsEvaluatorAdvance(ITCMFMDeviceState * mds, LevelStage prevLS)
+{
+  /*** RUN .advance ***/
+  LevelStage curLS = prevLS;
+  LevelStage advanceLS = curLS; /*assume no advance*/
+  u8 curLevel = getLevelFromLevelStage(curLS);
+  u8 curStage = getStageFromLevelStage(curLS);
+  ITCLSOps *ops = theLevels[curLevel];
+  bool ret;
+  BUG_ON(!ops);
+  BUG_ON(!ops->advance);
+  ret = (*ops->advance)(mds);
+  DBGPRINTK(DBG_MISC200,"(%s) %s UPDATE prevLS=L%02x advance=%s\n",
+            getDir8Name(mapDir6ToDir8(mds->mDir6)),
+            __FUNCTION__,
+            getLevelStageAsByte(prevLS),
+            ret ? "true" : "false");
+  if (ret) {
+    if (curStage < 2) 
+      advanceLS = makeLevelStage(curLevel, curStage+1);
+    else if (curLevel < MAX_LEVEL_NUMBER-1)
+      advanceLS = makeLevelStage(curLevel+1, 0);
+  }
+  if (advanceLS != curLS) {
+    DBGPRINTK(DBG_LVL_LSC,"(%s) ADVANCING L%02x -> L%02x\n",
               getDir8Name(mapDir6ToDir8(mds->mDir6)),
-              getLevelStageAsByte(ss->mLevelStage),
-              ret ? "true" : "false");
-    if (ret) {
-      if (curStage < 2) 
-        advanceLS = makeLevelStage(curLevel, curStage+1);
-      else if (curLevel < MAX_LEVEL_NUMBER-1)
-        advanceLS = makeLevelStage(curLevel+1, 0);
-      else
-        advanceLS = curLS;
-      if (advanceLS != curLS) {
-        DBGPRINTK(DBG_LVL_LSC,"(%s) ADVANCING L%02x -> L%02x\n",
-                  getDir8Name(mapDir6ToDir8(mds->mDir6)),
-                  getLevelStageAsByte(curLS),
-                  getLevelStageAsByte(advanceLS));
+              getLevelStageAsByte(curLS),
+              getLevelStageAsByte(advanceLS));
+  }
+  return advanceLS;
+}
+
+#if 0
+    else
+      advanceLS = curLS;
+    if (advanceLS != curLS) {
+      DBGPRINTK(DBG_LVL_LSC,"(%s) ADVANCING L%02x -> L%02x\n",
+                getDir8Name(mapDir6ToDir8(mds->mDir6)),
+                getLevelStageAsByte(curLS),
+                getLevelStageAsByte(advanceLS));
         ss->mLevelStage = advanceLS;
         sendLevelPacket(mds,false); /*pushes timeout if sent*/
       }
@@ -676,3 +881,4 @@ void updateKITC(ITCMFMDeviceState * mds)
 
 }
 
+#endif

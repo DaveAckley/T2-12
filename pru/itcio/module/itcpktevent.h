@@ -71,4 +71,65 @@ static inline bool unpackSpecPktEvent(__u32 event,__u32 * code) {
   return true;
 }
 
+/**** KITC EVENTS ****/
+
+enum {
+  IEV_LST = 0,
+  IEV_LSU = 1
+};
+
+enum {
+  IEV_DIR_ITCDN = 0,
+  IEV_DIR_ITCUP = 1,
+  IEV_DIR_UPBEG = 2,
+  IEV_DIR_UPEND = 3,
+  IEV_DIR_RSRV4 = 4,
+  IEV_DIR_RSRV5 = 5,
+  IEV_DIR_RSRV6 = 6,
+  IEV_DIR_RSRV7 = 7
+};
+
+enum {
+  IEV_SPEC_TIMEOUT = LEVELACTION_COUNT,
+};
+static inline __u32 makeItcLSEvent(__u32 dir6, __u32 usNotThem, __u32 ls) {
+  return ((dir6&0x7)<<6) | ((usNotThem&0x1)<<5) | ((ls&0x1f)<<0);
+}
+
+static inline __u32 makeItcDirEvent(__u32 dir6, __u32 op) {
+  return ((6&0x7)<<6) | ((op&0x7)<<3) | ((dir6&0x7)<<0);
+}
+
+static inline __u32 makeItcSpecEvent(__u32 spec) {
+  return ((7&0x7)<<6) | ((spec&0x3f)<<0);
+}
+
+static inline bool isItcLSEvent(__u32 event) { return (((event)>>6)&0x7) < 6; }
+
+static inline bool isItcDirEvent(__u32 event) { return (((event)>>6)&0x7) == 6; }
+
+static inline bool isItcSpecEvent(__u32 event) { return (((event)>>6)&0x7) == 7; }
+
+static inline bool unpackItcLSEvent(__u32 event,__u32 * dir6,__u32 * usNotThem,__u32 * ls) {
+  if (!isItcLSEvent(event)) return false;
+  if (dir6) *dir6 = (event>>6)&0x7;
+  if (usNotThem) *usNotThem = (event>>5)&0x1;
+  if (ls) *ls = (event>>0)&0x1f;
+  return true;
+}
+
+static inline bool unpackItcDirEvent(__u32 event,__u32 * dir6,__u32 * op) {
+  if (!isItcDirEvent(event)) return false;
+  if (dir6) *dir6 = (event>>0)&0x7;
+  if (op) *op = (event>>3)&0x7;
+  return true;
+}
+
+static inline bool unpackItcSpecEvent(__u32 event,__u32 * spec) {
+  if (!isItcSpecEvent(event)) return false;
+  if (spec) *spec = (event>>0)&0x3f;
+  return true;
+}
+
+
 #endif /*ITCPKTEVENT_H*/

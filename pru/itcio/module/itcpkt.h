@@ -18,10 +18,43 @@
 
 #include "rpmsg_t2_local.h"       /* XXX HOW ARE YOU SUPPOSED TO GET struct rpmsg?? */
 #include "pin_info_maps.h"
-#include "itcpktevent.h"          /* Get pkt event struct */
 #include "itcmfm.h"               /* For ITCLevelState_ops & assoc */
+#include "itcpktevent.h"          /* Get pkt event struct */
 
 #include "dirdatamacro.h"         /* For DIR6_ET, DIR6_COUNT, etc */
+
+#define ADD_PKT_EVENT(event)                                              \
+  do {                                                                    \
+   if (kfifo_avail(&(S.mEvtDeviceState[0]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) \
+     addPktEvent(&(S.mEvtDeviceState[0]->mPktEvents),(event));          \
+  } while(0)   
+
+#define ADD_ITC_EVENT(event)                                              \
+  do {                                                                    \
+   if (kfifo_avail(&(S.mEvtDeviceState[1]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) \
+     addPktEvent(&(S.mEvtDeviceState[1]->mPktEvents),(event));          \
+  } while(0)   
+
+#define ADD_PKT_EVENT_IRQ(event)                                          \
+  do {                                                                     \
+    if (kfifo_avail(&(S.mEvtDeviceState[0]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) { \
+      unsigned long flags;                                                 \
+      local_irq_save(flags);                                               \
+      addPktEvent(&(S.mEvtDeviceState[0]->mPktEvents),(event));         \
+      local_irq_restore(flags);                                            \
+    }                                                                      \
+  } while(0)
+
+#define ADD_ITC_EVENT_IRQ(event)                                          \
+  do {                                                                     \
+    if (kfifo_avail(&(S.mEvtDeviceState[1]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) { \
+      unsigned long flags;                                                 \
+      local_irq_save(flags);                                               \
+      addPktEvent(&(S.mEvtDeviceState[1]->mPktEvents),(event));         \
+      local_irq_restore(flags);                                            \
+    }                                                                      \
+  } while(0)
+
 #if 0
 /* DIR6 definitions based on T2-12/lkms/itc//dirdatamacro.h, BUT ARE
    DEFINED HERE SEPARATELY.  
@@ -94,9 +127,14 @@ typedef struct itcpkteventstate {
   struct mutex mPktEventReadMutex;	///< For read ops on kfifo
 } ITCPktEventState;
 
+/*WARNING: IF INTERRUPT HANDLERS ARE IN USE (which they are evidently
+  NOT in itcpkt), THEN THIS MUST BE CALLED ONLY AT INTERRUPT LEVEL OR
+  WITH INTERRUPTS DISABLED */
+extern void addPktEvent(ITCPktEventState* pes, u32 event) ;
+
 #define PRU_MINORS 2   /* low-level access to PRU0, PRU1*/
 #define PKT_MINORS 2   /* processed access to itc, mfm */
-#define EVT_MINORS 1   /* access to pktevt state */
+#define EVT_MINORS 2   /* access to pktevt, itcevt state */
 #define MFM_MINORS DIR6_COUNT   /* demuxed per-itc mfm packets */
 
 #define MINOR_DEVICES (PRU_MINORS + PKT_MINORS + EVT_MINORS + MFM_MINORS) 
@@ -107,15 +145,16 @@ typedef struct itcpkteventstate {
 #define PKT_MINOR_FLASH 3
 
 #define PKT_MINOR_EVT 4
+#define PKT_MINOR_ITC_EVT 5
 
-#define PKT_MINOR_MFM_BASE 5
+#define PKT_MINOR_MFM_BASE 6
 
-#define PKT_MINOR_MFM_ET (PKT_MINOR_MFM_BASE+DIR6_ET) /*  5 */
-#define PKT_MINOR_MFM_SE (PKT_MINOR_MFM_BASE+DIR6_SE) /*  6 */
-#define PKT_MINOR_MFM_SW (PKT_MINOR_MFM_BASE+DIR6_SW) /*  7 */
-#define PKT_MINOR_MFM_WT (PKT_MINOR_MFM_BASE+DIR6_WT) /*  8 */
-#define PKT_MINOR_MFM_NW (PKT_MINOR_MFM_BASE+DIR6_NW) /*  9 */
-#define PKT_MINOR_MFM_NE (PKT_MINOR_MFM_BASE+DIR6_NE) /*  10 */
+#define PKT_MINOR_MFM_ET (PKT_MINOR_MFM_BASE+DIR6_ET) /*  6 */
+#define PKT_MINOR_MFM_SE (PKT_MINOR_MFM_BASE+DIR6_SE) /*  7 */
+#define PKT_MINOR_MFM_SW (PKT_MINOR_MFM_BASE+DIR6_SW) /*  8 */
+#define PKT_MINOR_MFM_WT (PKT_MINOR_MFM_BASE+DIR6_WT) /*  9 */
+#define PKT_MINOR_MFM_NW (PKT_MINOR_MFM_BASE+DIR6_NW) /*  10 */
+#define PKT_MINOR_MFM_NE (PKT_MINOR_MFM_BASE+DIR6_NE) /*  11 */
 
 #define RPMSG_BUF_SIZE 512
 
@@ -217,7 +256,7 @@ typedef struct itcprudevicestate {
   ITCPacketBuffer mBulkOB;     /* background pkts from userspace awaiting rpmsg to PRU */
 } ITCPRUDeviceState;
 
-/* per 'event' device - /dev/itc/pktevt */
+/* per 'event' device - /dev/itc/pktevt, /dev/itc/itcevt */
 typedef struct itcevtdevicestate {
   ITCCharDeviceState mCDevState; /* char device state must be first! */
   ITCPktEventState mPktEvents;  /* packet events state */
@@ -279,8 +318,8 @@ typedef struct itcmodulestate {
 
   ITCPRUDeviceState * (mPRUDeviceState[PRU_MINORS]); /* per-PRU-device state for minors 0,1 */
   ITCPktDeviceState * (mPktDeviceState[PKT_MINORS]); /* per-packet-device state for minors 2,3 */
-  ITCEvtDeviceState * (mEvtDeviceState[EVT_MINORS]); /* per-event-device state for minor 4 */
-  ITCMFMDeviceState * (mMFMDeviceState[MFM_MINORS]); /* per-ITCMFM-device state for minor 5..10 */
+  ITCEvtDeviceState * (mEvtDeviceState[EVT_MINORS]); /* per-event-device state for minor 4,5 */
+  ITCMFMDeviceState * (mMFMDeviceState[MFM_MINORS]); /* per-ITCMFM-device state for minor 6..11 */
 
   ITCKThreadState mOBPktThread;
   ITCKThreadState mKITCLevelThread;

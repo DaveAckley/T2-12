@@ -150,24 +150,8 @@ static int startPktEventTrace(ITCPktEventState* pes) {
   return 0;
 }
 
-#define ADD_PKT_EVENT(event)                                              \
-  do {                                                                    \
-   if (kfifo_avail(&(S.mEvtDeviceState[0]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) \
-     addPktEvent(&(S.mEvtDeviceState[0]->mPktEvents),(event));          \
-  } while(0)   
-
-#define ADD_PKT_EVENT_IRQ(event)                                          \
-  do {                                                                     \
-    if (kfifo_avail(&(S.mEvtDeviceState[0]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) { \
-      unsigned long flags;                                                 \
-      local_irq_save(flags);                                               \
-      addPktEvent(&(S.mEvtDeviceState[0]->mPktEvents),(event));         \
-      local_irq_restore(flags);                                            \
-    }                                                                      \
-  } while(0)
-
 /*MUST BE CALLED ONLY AT INTERRUPT LEVEL OR WITH INTERRUPTS DISABLED*/
-static void addPktEvent(ITCPktEventState* pes, u32 event) {
+void addPktEvent(ITCPktEventState* pes, u32 event) {
   ITCPktEvent tmp;
   u64 now = ktime_get_raw_fast_ns() - pes->mStartTime;
   tmp.time = (u32) (now>>pes->mShiftDistance); // Cut down to u23
@@ -530,11 +514,28 @@ static ssize_t trace_start_time_show(struct class *c,
 }
 CLASS_ATTR_RO(trace_start_time);
 
+static ssize_t itc_trace_start_time_show(struct class *c,
+				     struct class_attribute *attr,
+				     char *buf)
+{
+  sprintf(buf,"%lld\n",S.mEvtDeviceState[1]->mPktEvents.mStartTime);
+  return strlen(buf);
+}
+CLASS_ATTR_RO(itc_trace_start_time);
+
 static ssize_t shift_show(struct class *c,
 			  struct class_attribute *attr,
 			  char *buf)
 {
   sprintf(buf,"%d\n",S.mEvtDeviceState[0]->mPktEvents.mShiftDistance);
+  return strlen(buf);
+}
+
+static ssize_t itc_shift_show(struct class *c,
+			  struct class_attribute *attr,
+			  char *buf)
+{
+  sprintf(buf,"%d\n",S.mEvtDeviceState[1]->mPktEvents.mShiftDistance);
   return strlen(buf);
 }
 
@@ -551,7 +552,22 @@ static ssize_t shift_store(struct class *c,
   }
   return -EINVAL;
 }
+
+static ssize_t itc_shift_store(struct class *c,
+			   struct class_attribute *attr,
+			   const char *buf,
+			   size_t count)
+{
+  u32 shift;
+  if (sscanf(buf,"%u",&shift) == 1 && shift < 64) {
+    printk(KERN_INFO "store shift %u\n",shift);
+    S.mEvtDeviceState[1]->mPktEvents.mShiftDistance = shift;
+    return count;
+  }
+  return -EINVAL;
+}
 CLASS_ATTR_RW(shift);
+CLASS_ATTR_RW(itc_shift);
 
 static int sprintPktBufInfo(char * buf, int len, ITCPacketBuffer * p)
 {
@@ -1279,7 +1295,9 @@ static struct attribute * class_itc_pkt_attrs[] = {
   &class_attr_status.attr,
   &class_attr_statistics.attr,
   &class_attr_trace_start_time.attr,
+  &class_attr_itc_trace_start_time.attr,
   &class_attr_shift.attr,
+  &class_attr_itc_shift.attr,
   &class_attr_pru_bufs.attr,
   &class_attr_pkt_bufs.attr,
   &class_attr_trace.attr,
@@ -1324,6 +1342,30 @@ static int itc_pktevt_open(struct inode *inode, struct file *filp)
 
 #if MORE_DEBUGGING
   printk(KERN_INFO "itc_pktevt_open %d:%d\n",
+         MAJOR(cdevstate->mDevt),
+         MINOR(cdevstate->cDevt));
+#endif
+
+  if (!cdevstate->mDeviceOpenedFlag) {
+    cdevstate->mDeviceOpenedFlag = true;
+    filp->private_data = cdevstate;
+    ret = 0;
+  }
+
+  if (ret)
+    dev_err(cdevstate->mLinuxDev, "Device already open\n");
+
+  return ret;
+}
+
+static int itc_itcevt_open(struct inode *inode, struct file *filp)
+{
+  int ret = -EBUSY;
+  /* All our device state structs begin with an ITCCharDeviceState! */
+  ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) inode->i_cdev;
+
+#if MORE_DEBUGGING
+  printk(KERN_INFO "itc_itcevt_open %d:%d\n",
          MAJOR(cdevstate->mDevt),
          MINOR(cdevstate->cDevt));
 #endif
@@ -1404,6 +1446,22 @@ static int itc_pktevt_release(struct inode *inode, struct file *filp)
   return 0;
 }
 
+static int itc_itcevt_release(struct inode *inode, struct file *filp)
+{
+  /* All our device state structs begin with an ITCCharDeviceState! */
+  ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) inode->i_cdev;
+
+#if MORE_DEBUGGING
+  printk(KERN_INFO "itc_itcevt_release %d:%d\n",
+         MAJOR(cdevstate->mDevt),
+         MINOR(cdevstate->mDevt));
+#endif
+
+  cdevstate->mDeviceOpenedFlag = false;
+
+  return 0;
+}
+
 static int itc_mfmitc_release(struct inode *inode, struct file *filp)
 {
 
@@ -1451,10 +1509,12 @@ static void setITCEnabledStatus(int pru, int prudir, int enabled) {
     S.mItcEnabledStatus |= bit;
     printk(KERN_INFO "ITCCHANGE:UP:%s\n",
            getDir8Name(mapPruAndPrudirToDir8(pru,prudir)));
+    ADD_ITC_EVENT(makeItcDirEvent(mapDir8ToDir6(dir8),IEV_DIR_ITCUP));
   } else if (!enabled && existing) {
     S.mItcEnabledStatus &= ~bit;
     printk(KERN_INFO "ITCCHANGE:DOWN:%s\n",
            getDir8Name(mapPruAndPrudirToDir8(pru,prudir)));
+    ADD_ITC_EVENT(makeItcDirEvent(mapDir8ToDir6(dir8),IEV_DIR_ITCDN));
   }
 }
 
@@ -1693,6 +1753,39 @@ static ssize_t itc_pktevt_write(struct file *filep, const char *buffer, size_t l
   return ret ? ret : len;
 }
 
+static ssize_t itc_itcevt_write(struct file *filep, const char *buffer, size_t len, loff_t *offset)
+{
+  /* All our device state structs begin with an ITCCharDeviceState! */
+  ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) filep->private_data;
+  int minor = MINOR(cdevstate->mDevt);
+  ITCEvtDeviceState * evtdevstate = (ITCEvtDeviceState*) cdevstate;
+
+  s32 ret;
+  u8 evtCmd;
+
+  BUG_ON(minor != PKT_MINOR_ITC_EVT);
+
+  if (len != 1)  /* Only allowed to write one byte */
+    return -EPERM;
+
+  ret = copy_from_user(&evtCmd, buffer, 1);
+  if (ret != 0) {
+    printk(KERN_INFO "Itc: copy_from_user failed\n");
+    return -EFAULT;
+  }
+
+  if (evtCmd != 0)       /*we only support 0->RESET at the moment*/
+    return -EINVAL;
+
+  // Flush the event kfifo and set up for trace
+  while ( (ret = startPktEventTrace(&evtdevstate->mPktEvents)) ) {
+    if ((filep->f_flags & O_NONBLOCK) || (ret != -EINTR))
+      break;
+  }
+
+  return ret ? ret : len;
+}
+
 static ssize_t itc_pkt_read(struct file *file, char __user *buf,
                             size_t count, loff_t *ppos)
 {
@@ -1801,6 +1894,38 @@ static ssize_t itc_pktevt_read(struct file *file, char __user *buf,
   return ret ? ret : copied;
 }
 
+static ssize_t itc_itcevt_read(struct file *file, char __user *buf,
+                               size_t len, loff_t *ppos)
+{
+  int ret = 0;
+  u32 copied;
+  ITCCharDeviceState *cdevstate = file->private_data;
+  int minor = MINOR(cdevstate->mDevt);
+  ITCPktEventState * pes = &(((ITCEvtDeviceState *) cdevstate)->mPktEvents);
+  ITCPktEventFIFO * fifo = &(pes->mEvents);
+
+  BUG_ON(minor != PKT_MINOR_ITC_EVT);
+  len = len/sizeof(ITCPktEvent)*sizeof(ITCPktEvent); // Round off
+
+  DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_pktevt_read(%s) enter\n",cdevstate->mName);
+
+  // Get read lock to read the event kfifo
+  while ( (ret = mutex_lock_interruptible(&pes->mPktEventReadMutex)) ) {
+    if ((file->f_flags & O_NONBLOCK) || (ret != -EINTR)) return ret;
+  }
+
+  DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_itcevt_read(%s) pre kfifo check, empty=%d, len=%d, pktlen=%d\n",
+            cdevstate->mName,
+            kfifo_is_empty(fifo),
+            kfifo_len(fifo),
+            kfifo_len(fifo) == 0 ? -1 : kfifo_peek_len(fifo));
+
+  ret = kfifo_to_user(fifo, buf, len, &copied);
+  mutex_unlock(&pes->mPktEventReadMutex);
+
+  return ret ? ret : copied;
+}
+
 static ssize_t itc_mfmitc_read(struct file *file, char __user *buf,
                                size_t count, loff_t *ppos)
 {
@@ -1893,6 +2018,14 @@ static const struct file_operations itc_pktevt_fops = {
   .release= itc_pktevt_release,
 };
 
+static const struct file_operations itc_itcevt_fops = {
+  .owner= THIS_MODULE,
+  .open	= itc_itcevt_open,
+  .read = itc_itcevt_read,
+  .write= itc_itcevt_write,
+  .release= itc_itcevt_release,
+};
+
 static const struct file_operations itc_mfmitc_fops = {
   .owner= THIS_MODULE,
   .open	= itc_mfmitc_open,
@@ -1908,6 +2041,7 @@ static const struct file_operations *(itc_pkt_fops_ptrs[MINOR_DEVICES]) = {
   &itc_pkt_fops,       /* PRU_MINOR_ITC */
   &itc_pkt_fops,       /* PRU_MINOR_MFM */
   &itc_pktevt_fops,    /* PRU_MINOR_EVT */
+  &itc_itcevt_fops,    /* PRU_MINOR_ITC_EVT */
   &itc_mfmitc_fops,    /* PKT_MINOR_MFM_ET */
   &itc_mfmitc_fops,    /* PKT_MINOR_MFM_SE */
   &itc_mfmitc_fops,    /* PKT_MINOR_MFM_SW */
@@ -2239,7 +2373,7 @@ static int itc_pkt_probe(struct rpmsg_device *rpdev)
         return ret;
     }
 
-    for (i = 0; i <= 0; ++i) { /* Make PKT_MINOR_EVT */
+    for (i = 0; i < EVT_MINORS; ++i) { /* Make PKT_MINOR_EVT and PKT_MINOR_ITC_EVT */
       unsigned minor_to_create = i + PKT_MINOR_EVT;
 
       printk(KERN_INFO "ZREG making minor %d (on minor_obtained %d)\n", minor_to_create, minor_obtained);
@@ -2436,6 +2570,7 @@ ITCCharDeviceState * makeITCCharDeviceState(struct device * dev,
   case PKT_MINOR_BULK: snprintf(devname,BUFSZ,"itc!bulk"); break;
   case PKT_MINOR_FLASH: snprintf(devname,BUFSZ,"itc!flash"); break;
   case PKT_MINOR_EVT: snprintf(devname,BUFSZ,"itc!pktevents"); break;
+  case PKT_MINOR_ITC_EVT: snprintf(devname,BUFSZ,"itc!itcevents"); break;
   case PRU_MINOR_PRU0:
   case PRU_MINOR_PRU1:
     snprintf(devname,BUFSZ,"itc!pru!%d",minor_obtained);
@@ -2630,7 +2765,6 @@ static int __init itc_pkt_init (void)
 
 static void __exit itc_pkt_exit (void)
 {
-
   unregister_rpmsg_driver(&itc_pkt_driver);
   class_unregister(&itc_pkt_class_instance);
   unregister_chrdev_region(S.mMajorDevt,
@@ -2644,7 +2778,9 @@ MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Dave Ackley <ackley@ackleyshack.com>");
 MODULE_DESCRIPTION("T2 intertile packet communications subsystem");  ///< modinfo description
 
-MODULE_VERSION("0.6");            ///< 0.6 for /dev/itc/pktevents
+MODULE_VERSION("0.8");            ///< 0.8 for /dev/itc/itcevents
+/// 0.7 for KITCs
+/// 0.6 for /dev/itc/pktevents
 /// 0.5 for /dev/itc/mfm
 /// 0.4 for general internal renaming and reorg
 /// 0.3 for renaming to itc_pkt
