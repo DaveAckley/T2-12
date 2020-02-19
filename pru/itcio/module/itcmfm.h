@@ -86,6 +86,7 @@ typedef struct {
 typedef struct {
   unsigned long mLastAnnounce;  /* Time in jiffies (by local clock) */
   unsigned long mNextTimeout;   /* Based on timeout when last announce was set */
+  LevelAction mTimeoutAction;   /* What to do it mNextTimeout hits */
   MFMToken   mToken;            /* Physics ID from MFM */
   MFZId      mMFZId;            /* MFZId from MFM */
   LevelStage mLevelStage;       /* This side's LevelStage */
