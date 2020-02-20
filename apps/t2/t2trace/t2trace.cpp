@@ -311,7 +311,7 @@ struct EventSource {
   bool getEventTime(__u64 & when) {
     if (!mHaveLast && !tryRead()) return false;
     if (!mHaveLast) return false;
-    when = (getTimeField()<<mShift) + mStart;
+    when = (((__u64) getTimeField())<<mShift) + mStart;
     return true;
   }
 
@@ -557,10 +557,10 @@ struct Reporter {
       mLast = nanos;
       formatDelta(incrns, negincr, delta1, 20);
 
-      printf("%04d %s%8.6fsec%s%s %03x:%s\n",
+      printf("%04d %s%8.6fsec %s %03x:%s\n",
              ++mEventsDumped,
              negsec ? "-" : " ", sec,
-             negincr ? " " : " ", delta1,
+             delta1,
              es.getEventValue(), eventbuf);
 
       mCurNanos = nanos;
