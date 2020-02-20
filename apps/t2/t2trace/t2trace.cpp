@@ -29,23 +29,6 @@ namespace Dirs {
     static const Dir DIR_COUNT = 8;
 }
 
-#if 0  /*supplied by itcpkt.h*/
-static inline __u32 mapDir8ToDir6(__u32 dir8) {
-  switch (dir8) {
-  case Dirs::NORTH: 
-  case Dirs::SOUTH: 
-  default: return DIR_COUNT;
-      
-  case Dirs::NORTHEAST: return DIR_NE;
-  case Dirs::EAST:      return DIR_ET;
-  case Dirs::SOUTHEAST: return DIR_SE;
-  case Dirs::SOUTHWEST: return DIR_SW;
-  case Dirs::WEST:      return DIR_WT;
-  case Dirs::NORTHWEST: return DIR_NW;
-  }
-}
-#endif
-
 const char *dirnames[] = {
 #define XX(DC,fr,p1,p2,p3,p4) #DC,
   DIRDATAMACRO()
@@ -69,6 +52,10 @@ const char *statenames[] = {
 #define PKT_EVENT_DEV "/dev/itc/pktevents"
 #define PKT_TIME_PATH "/sys/class/itc_pkt/trace_start_time"
 #define PKT_SHIFT_PATH "/sys/class/itc_pkt/shift"
+
+#define KITC_EVENT_DEV "/dev/itc/itcevents"
+#define KITC_TIME_PATH "/sys/class/itc_pkt/itc_trace_start_time"
+#define KITC_SHIFT_PATH "/sys/class/itc_pkt/itc_shift"
 
 const char * getXfrName(__u32 xfr) {
   switch (xfr) {
@@ -152,8 +139,63 @@ const char * getPktSpecSymDesc(__u32 spec) {
   return "pktspecsymdesc?";
 }
 
+//// KITC SPECIALS
+const char *kitcspecsymnames[] = {
+#define XX(sym,str) #sym,
+  ITCEVTSPECMACRO()
+#undef XX
+  0
+};
+
+const char *kitcspecsymdesc[] = {
+#define XX(sym,str) str,
+  ITCEVTSPECMACRO()
+#undef XX
+  0
+};
+
+const char * getKitcSpecSymName(__u32 spec) {
+  if (spec < sizeof(kitcspecsymnames)/sizeof(kitcspecsymnames[0]))
+    return kitcspecsymnames[spec];
+  return "kitcspecsymname?";
+ }
+
+const char * getKitcSpecSymDesc(__u32 spec) {
+  if (spec < sizeof(kitcspecsymdesc)/sizeof(kitcspecsymdesc[0]))
+    return kitcspecsymdesc[spec];
+  return "kitcspecsymdesc?";
+}
+
+const char *kitcdirspecsymnames[] = {
+#define XX(sym,str) #sym,
+  IEVDIRMACRO()
+#undef XX
+  0
+};
+
+const char *kitcdirspecsymdesc[] = {
+#define XX(sym,str) str,
+  IEVDIRMACRO()
+#undef XX
+  0
+};
+
+const char * getKitcDirSpecSymName(__u32 spec) {
+  if (spec < sizeof(kitcdirspecsymnames)/sizeof(kitcdirspecsymnames[0]))
+    return kitcdirspecsymnames[spec];
+  return "kitcdirspecsymname?";
+ }
+
+const char * getKitcDirSpecSymDesc(__u32 spec) {
+  if (spec < sizeof(kitcdirspecsymdesc)/sizeof(kitcdirspecsymdesc[0]))
+    return kitcdirspecsymdesc[spec];
+  return "kitcdirspecsymdesc?";
+}
+
+
 typedef unsigned char u8;
 
+#if 0
 int openOrDie(const char * name) {
   int fd = open(name, O_RDWR|O_NONBLOCK);
   if (fd < 0) {
@@ -198,6 +240,7 @@ struct timespec diff(struct timespec start, struct timespec end)
   }
   return temp;
 }
+#endif
 
 static int readWholeFile(const char* path, char * buffer, unsigned len) {
   FILE * fd = fopen(path, "r");
@@ -239,8 +282,20 @@ static int readOneDecimalNumber(const char* path,  __s64 * valret) {
   return 0;
 }
 
+enum Dumps {
+  DUMP_LOCKS=    0x0001,
+  DUMP_PACKETS=  0x0002,
+  DUMP_KITC=     0x0004,
+
+  DUMP_ALL=-1
+};
+
 struct EventSource {
-  EventSource(const char * sourceName, const char * evtPath,const char * timePath,const char * shiftPath)
+  EventSource(const char * sourceName,
+              const char * evtPath,
+              const char * timePath,
+              const char * shiftPath,
+              Dumps bit)
     : mSourceName(sourceName)
     , mEventPath(evtPath)
     , mStartTimePath(timePath)
@@ -249,9 +304,11 @@ struct EventSource {
     , mFd(-1)
     , mShift(-1)
     , mStart(0)
+    , mDumpBit(bit)
   {
     init();
   }
+  bool isDump(Dumps bits) const { return mDumpBit&bits; }
 
   virtual void unpackEvent(char buffer[100]) = 0;
 
@@ -335,11 +392,12 @@ struct EventSource {
   int mFd;
   int mShift;
   __u64 mStart;
+  Dumps mDumpBit;
 };
 
 struct EventSourceLock : public EventSource {
   EventSourceLock()
-    : EventSource("Locks", LOCK_EVENT_DEV,LOCK_TIME_PATH,LOCK_SHIFT_PATH)
+    : EventSource("Locks", LOCK_EVENT_DEV,LOCK_TIME_PATH,LOCK_SHIFT_PATH,DUMP_LOCKS)
     , mPrevCode(-1)
   { }
 
@@ -368,7 +426,7 @@ struct EventSourceLock : public EventSource {
         statename = statenames[state];
       else
         statename = "??";
-      snprintf(eventbuf,100,"     [%s %s]",dirname,statename);
+      snprintf(eventbuf,100,"L     [%s %s]",dirname,statename);
     } else if (isPinLockEvent(event)) {
       __u32 dir, pin, val;
       const char * dirname;
@@ -378,9 +436,9 @@ struct EventSourceLock : public EventSource {
       dirname = getDir6Name(dir);
       pinname = getPinName(pin);
       if (isInput(pin)) {
-        snprintf(eventbuf,100," %s%s_%s",val?"+":"-",dirname,pinname);
+        snprintf(eventbuf,100,"L %s%s_%s",val?"+":"-",dirname,pinname);
       } else {
-        snprintf(eventbuf,100,"         %s_%s%s",dirname,pinname,val?"+":"-");
+        snprintf(eventbuf,100,"L         %s_%s%s",dirname,pinname,val?"+":"-");
       }
     } else if (isUserLockEvent(event)) {
       const char * statename = 0;
@@ -389,14 +447,14 @@ struct EventSourceLock : public EventSource {
       int i;
       unpackUserLockEvent(event,&lockset, &current);
       if (!current)
-        pos += snprintf(&eventbuf[pos],100-pos,"%s lockset=%02x",
+        pos += snprintf(&eventbuf[pos],100-pos,"L %s lockset=%02x",
                         "User",lockset);
       else {
         if (mPrevCode < 0)  // curr lockset without prev spec lock event?
-          pos += snprintf(&eventbuf[pos],100-pos,"%s lockset=%02x",
+          pos += snprintf(&eventbuf[pos],100-pos,"L %s lockset=%02x",
                           "????",lockset);
         else {
-          pos += snprintf(&eventbuf[pos],100-pos,"Curr lockset=%02x", lockset);
+          pos += snprintf(&eventbuf[pos],100-pos,"L Curr lockset=%02x", lockset);
           statename = statenames[mPrevCode-LET_SPEC_CLS0];
         }
       }
@@ -411,7 +469,7 @@ struct EventSourceLock : public EventSource {
       __u32 code;
       unpackSpecLockEvent(event,&code);
       if (code < LET_SPEC_CLS0 || code > LET_SPEC_CLSF) // Don't report modifiers for next event
-        snprintf(eventbuf,100,"L%s: %s",
+        snprintf(eventbuf,100,"L L%s: %s",
                  getSpecSymName(code),
                  getSpecSymDesc(code)
                  );
@@ -439,7 +497,7 @@ struct EventSourceLock : public EventSource {
 };
 
 struct EventSourcePkt : public EventSource {
-  EventSourcePkt() : EventSource("Packets", PKT_EVENT_DEV,PKT_TIME_PATH,PKT_SHIFT_PATH) { }
+  EventSourcePkt() : EventSource("Packets", PKT_EVENT_DEV,PKT_TIME_PATH,PKT_SHIFT_PATH,DUMP_PACKETS) { }
   ITCPktEvent mLast;
   __u32 getTimeField() const { return mLast.time; }
   __u32 getEventField() const { return mLast.event; }
@@ -467,7 +525,7 @@ struct EventSourcePkt : public EventSource {
       else if (xfr == PEV_XFR_FROM_PRU) spacer = "    ";
       else if (xfr == PEV_XFR_TO_USR) spacer = "      ";
       
-      snprintf(eventbuf,100,"%s<%s %s %d-%d>",spacer,dirname,xfrname,minlen,maxlen);
+      snprintf(eventbuf,100,"P %s<%s %s %d-%d>",spacer,dirname,xfrname,minlen,maxlen);
       
     } else if (isSpecPktEvent(event)) {
       __u32 code;
@@ -475,7 +533,58 @@ struct EventSourcePkt : public EventSource {
       const char * specname = getPktSpecSymName(code);
       const char * specdesc = getPktSpecSymDesc(code);
  
-      snprintf(eventbuf,100,"P%s: %s", specname, specdesc);
+      snprintf(eventbuf,100,"P P%s: %s", specname, specdesc);
+    } else abort();
+  }
+  bool readNext() {
+    unsigned got = read(mFd,&mLast,sizeof(mLast));
+    if (got == 0) return false;
+    if (got != sizeof(mLast)) abort();
+    return true;
+  }
+};
+
+struct EventSourceKITC : public EventSource {
+  EventSourceKITC() : EventSource("KITC", KITC_EVENT_DEV,KITC_TIME_PATH,KITC_SHIFT_PATH,DUMP_KITC) { }
+  ITCPktEvent mLast;
+  __u32 getTimeField() const { return mLast.time; }
+  __u32 getEventField() const { return mLast.event; }
+
+  virtual bool atStoppingEvent() {
+    if (!mHaveLast || !isItcSpecEvent(getEventField())) return false;
+    __u32 code;
+    unpackItcSpecEvent(getEventField(),&code);
+    return code == IEV_SPEC_QGAP;
+  }
+
+  virtual void unpackEvent(char eventbuf[100]) {
+    __u32 event = getEventField();
+    if (isItcLSEvent(event)) {
+      __u32 dir6, usNotThem, ls;
+      const char * dirname;
+      if (!unpackItcLSEvent(event,&dir6,&usNotThem,&ls)) abort();
+      dirname = getDir6Name(dir6);
+      const char * spacer = "";
+      if (usNotThem) spacer = " u->";
+      else spacer = "  t->";
+      
+      snprintf(eventbuf,100,"K (%s)%sL%02x",dirname,spacer,getLevelStageAsByte(ls));
+      
+    } else if (isItcDirEvent(event)) {
+      __u32 dir6, op;
+      if (!unpackItcDirEvent(event,&dir6,&op)) abort();
+      const char * dirname = getDir6Name(dir6);
+      const char * specname = getKitcDirSpecSymName(op);
+      const char * specdesc = getKitcDirSpecSymDesc(op);
+ 
+      snprintf(eventbuf,100,"K (%s) %s: %s", dirname, specname, specdesc);
+    } else if (isItcSpecEvent(event)) {
+      __u32 code;
+      if (!unpackItcSpecEvent(event,&code)) abort();
+      const char * specname = getKitcSpecSymName(code);
+      const char * specdesc = getKitcSpecSymDesc(code);
+      snprintf(eventbuf,100,"K [%s: %s]", specname, specdesc);
+      
     } else abort();
   }
   bool readNext() {
@@ -570,33 +679,53 @@ struct Reporter {
   }
 };
 
-int dumpevents(bool dumplocks, bool dumppackets) {
+int dumpevents(Dumps bits) {
   EventSourceLock lev;
   EventSourcePkt pev;
+  EventSourceKITC kev;
+  EventSource *sources[] = {&lev, &pev, &kev};
+  const int SOURCES = sizeof(sources)/sizeof(sources[0]);
   __u64 start = 0;
-  if (dumplocks && lev.getStartTime() > start) start = lev.getStartTime();
-  if (dumppackets && pev.getStartTime() > start) start = pev.getStartTime();
+  for (int s = 0; s < SOURCES; ++s) {
+    EventSource *es = sources[s];
+    if (es->isDump(bits) && es->getStartTime() > start) start = es->getStartTime();
+  }
 
   Reporter rep(start);
 
   int eventsDumped = 0;
   printf("Start time %lld\n",start);
-  bool haveLev, havePev;
-  __u64 curLev, curPev;
 
-  while (!lev.atStoppingEvent() && ! pev.atStoppingEvent()) {
-    haveLev = lev.getEventTime(curLev);
-    havePev = pev.getEventTime(curPev);
-    if (!haveLev && !havePev) break;
-    // Discard events prior to later start
-    if (curLev < start && dumplocks) { lev.tryRead(); continue; } 
-    if (curPev < start && dumppackets) { pev.tryRead(); continue; }
+  bool done = false;
+  while (!done) {
+    for (int s = 0; s < SOURCES; ++s) {
+      EventSource *es = sources[s];
+      if (!es->isDump(bits)) continue;
+      if (es->atStoppingEvent()) { done = true; break; }
+    }
+    if (done) break;
+    __u64 earliestTime;
+    int earliestIndex = -1;
+    for (int s = 0; s < SOURCES; ++s) {
+      EventSource *es = sources[s];
+      bool curSource;
+      __u64 curTime;
+      if (!es->isDump(bits)) continue;
+      curSource = es->getEventTime(curTime);
+      if (curSource) {
+        if (earliestIndex < 0 || curTime < earliestTime) {
+          earliestIndex = s;
+          earliestTime = curTime;
+        }
+      }
+    }
+    if (earliestIndex < 0) break; /*nobody left active*/
+    if (earliestTime < start) {
+      sources[earliestIndex]->tryRead(); /*toss oldest pre-start-time event*/
+      continue;
+    }
     ++eventsDumped;
-    if (haveLev && havePev) {
-      if (curLev < curPev) rep.reportEvent(lev,dumplocks);
-      else rep.reportEvent(pev,dumppackets);
-    } else if (haveLev) rep.reportEvent(lev,dumplocks);
-    else rep.reportEvent(pev,dumppackets);
+    rep.reportEvent(*sources[earliestIndex],true);
   }
   return 0;
 }
@@ -606,8 +735,17 @@ int main(int argc, char **argv) {
     printf("%s USETHESOURCE\n",argv[0]);
     return 1;
   }
-  if (argc == 2 && !strcmp("dumpevents",argv[1])) return dumpevents(true,true);
-  if (argc == 2 && !strcmp("dumplocks",argv[1])) return dumpevents(true,false);
-  if (argc == 2 && !strcmp("dumppackets",argv[1])) return dumpevents(false,true);
-  return 2;
+  __u32 bits = 0;
+  for (int i = 1; i < argc; ++i) {
+    if (false) { }
+    else if (!strcmp("+a", argv[i])) bits |= DUMP_ALL;
+    else if (!strcmp("+l", argv[i])) bits |= DUMP_LOCKS;
+    else if (!strcmp("+p", argv[i])) bits |= DUMP_PACKETS;
+    else if (!strcmp("+k", argv[i])) bits |= DUMP_KITC;
+    else {
+      printf("'%s'? USETHESOURCE",argv[i]);
+      return 2;
+    }
+  }
+  return dumpevents((Dumps) bits);
 }
