@@ -429,7 +429,7 @@ static void itcExitGPIOInterrupts(void) {
 }
 
 static void addEventCurrentLockState(unsigned ofState) {
-  if (ofState <= 9) {
+  if (ofState <= 0xF) {
     unsigned long flags;
     local_irq_save(flags);
     if (kfifo_avail(&S.mLockEventState.mEvents) < 3*sizeof(ITCLockEvent))  

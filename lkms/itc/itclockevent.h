@@ -47,6 +47,12 @@ enum {
   XX(CLS7,"Current locks state 7")  \
   XX(CLS8,"Current locks state 8")  \
   XX(CLS9,"Current locks state 9")  \
+  XX(CLSA,"Current locks state 10")  \
+  XX(CLSB,"Current locks state 11")  \
+  XX(CLSC,"Current locks state 12")  \
+  XX(CLSD,"Current locks state 13")  \
+  XX(CLSE,"Current locks state 14")  \
+  XX(CLSF,"Current locks state 15")  \
 
 enum {
 #define XX(sym,str) LET_SPEC_##sym,
