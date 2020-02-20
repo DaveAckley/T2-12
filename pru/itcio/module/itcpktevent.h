@@ -2,6 +2,41 @@
 #define ITCPKTEVENT_H
 
 #include "linux/types.h"     /* for __u32 etc */
+#include "pin_info_maps.h"
+
+static inline __u32 mapDir6ToDir8(__u32 dir6) {
+  switch (dir6) {
+  default:      return DIR8_COUNT;
+  case DIR6_ET: return DIR_NAME_TO_DIR8(ET);
+  case DIR6_SE: return DIR_NAME_TO_DIR8(SE);
+  case DIR6_SW: return DIR_NAME_TO_DIR8(SW);
+  case DIR6_WT: return DIR_NAME_TO_DIR8(WT);
+  case DIR6_NW: return DIR_NAME_TO_DIR8(NW);
+  case DIR6_NE: return DIR_NAME_TO_DIR8(NE);
+  }
+}
+
+static inline __u32 mapDir8ToDir6(__u32 dir8) {
+  switch (dir8) {
+  default:      return DIR6_COUNT;
+  case DIR_NAME_TO_DIR8(ET): return DIR6_ET;
+  case DIR_NAME_TO_DIR8(SE): return DIR6_SE;
+  case DIR_NAME_TO_DIR8(SW): return DIR6_SW;
+  case DIR_NAME_TO_DIR8(WT): return DIR6_WT;
+  case DIR_NAME_TO_DIR8(NW): return DIR6_NW;
+  case DIR_NAME_TO_DIR8(NE): return DIR6_NE;
+  }
+}
+
+typedef enum {
+  /* Zero means unset */
+  DO_REENTER=1,
+  DO_RESTART,
+  DO_RETREAT,
+  DO_ADVANCE,
+  DO_CONTINUE,
+  LEVELACTION_COUNT
+} LevelAction;
 
 #define ITCPKTEVENT_TIME_SIZE 23
 #define ITCPKTEVENT_EVENT_SIZE 9

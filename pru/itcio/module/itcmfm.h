@@ -4,6 +4,8 @@
 #include "linux/types.h"     /* for __u32 etc */
 #include "itc_iterator.h"
 
+#include "itcpktevent.h"          /* Get pkt event struct */
+
 typedef struct itcmfmdevicestate ITCMFMDeviceState;    /* FORWARD */
 
 int itcLevelThreadRunner(void *arg) ;
@@ -46,16 +48,6 @@ typedef struct {
   MFMToken mToken;    
   MFZId    mMFZId;  
 } MFMTileState;
-
-typedef enum {
-  /* Zero means unset */
-  DO_REENTER=1,
-  DO_RESTART,
-  DO_RETREAT,
-  DO_ADVANCE,
-  DO_CONTINUE,
-  LEVELACTION_COUNT
-} LevelAction;
 
 /* Functions & pointers */
 typedef bool        LevelRequire_func (ITCMFMDeviceState* mds);

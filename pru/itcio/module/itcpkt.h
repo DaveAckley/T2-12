@@ -17,9 +17,7 @@
 #include <linux/ctype.h>           /* for isprint, tolower */
 
 #include "rpmsg_t2_local.h"       /* XXX HOW ARE YOU SUPPOSED TO GET struct rpmsg?? */
-#include "pin_info_maps.h"
 #include "itcmfm.h"               /* For ITCLevelState_ops & assoc */
-#include "itcpktevent.h"          /* Get pkt event struct */
 
 #include "dirdatamacro.h"         /* For DIR6_ET, DIR6_COUNT, etc */
 
@@ -69,30 +67,6 @@
 #define DIR6_NE 5
 #define DIR6_COUNT 6
 #endif
-
-static inline u32 mapDir6ToDir8(u32 dir6) {
-  switch (dir6) {
-  default:      return DIR8_COUNT;
-  case DIR6_ET: return DIR_NAME_TO_DIR8(ET);
-  case DIR6_SE: return DIR_NAME_TO_DIR8(SE);
-  case DIR6_SW: return DIR_NAME_TO_DIR8(SW);
-  case DIR6_WT: return DIR_NAME_TO_DIR8(WT);
-  case DIR6_NW: return DIR_NAME_TO_DIR8(NW);
-  case DIR6_NE: return DIR_NAME_TO_DIR8(NE);
-  }
-}
-
-static inline u32 mapDir8ToDir6(u32 dir8) {
-  switch (dir8) {
-  default:      return DIR6_COUNT;
-  case DIR_NAME_TO_DIR8(ET): return DIR6_ET;
-  case DIR_NAME_TO_DIR8(SE): return DIR6_SE;
-  case DIR_NAME_TO_DIR8(SW): return DIR6_SW;
-  case DIR_NAME_TO_DIR8(WT): return DIR6_WT;
-  case DIR_NAME_TO_DIR8(NW): return DIR6_NW;
-  case DIR_NAME_TO_DIR8(NE): return DIR6_NE;
-  }
-}
 
 const char * getDir8Name(u8 dir8) ;
 
