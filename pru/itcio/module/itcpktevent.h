@@ -134,7 +134,7 @@ enum {
 
 #define IEVDIRMACRO() \
   XX(ITCDN,"packet sync lost") \
-  XX(ITCSUP,"packet sync acquired") \
+  XX(ITCUP,"packet sync acquired") \
   XX(UPBEG,"update begin") \
   XX(UPEND,"update end") \
   XX(RSRV4,"reserved") \
