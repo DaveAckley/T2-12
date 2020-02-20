@@ -24,13 +24,13 @@
 #define ADD_PKT_EVENT(event)                                              \
   do {                                                                    \
    if (kfifo_avail(&(S.mEvtDeviceState[0]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) \
-     addPktEvent(&(S.mEvtDeviceState[0]->mPktEvents),(event));          \
+     addPktEvent(&(S.mEvtDeviceState[0]->mPktEvents),(event),makeSpecPktEvent(PKTEVT_SPEC_QGAP)); \
   } while(0)   
 
 #define ADD_ITC_EVENT(event)                                              \
   do {                                                                    \
    if (kfifo_avail(&(S.mEvtDeviceState[1]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) \
-     addPktEvent(&(S.mEvtDeviceState[1]->mPktEvents),(event));          \
+     addPktEvent(&(S.mEvtDeviceState[1]->mPktEvents),(event),makeItcSpecEvent(IEV_SPEC_QGAP)); \
   } while(0)   
 
 #define ADD_PKT_EVENT_IRQ(event)                                          \
@@ -38,7 +38,7 @@
     if (kfifo_avail(&(S.mEvtDeviceState[0]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) { \
       unsigned long flags;                                                 \
       local_irq_save(flags);                                               \
-      addPktEvent(&(S.mEvtDeviceState[0]->mPktEvents),(event));         \
+      addPktEvent(&(S.mEvtDeviceState[0]->mPktEvents),(event),makeSpecPktEvent(PKTEVT_SPEC_QGAP)); \
       local_irq_restore(flags);                                            \
     }                                                                      \
   } while(0)
@@ -48,7 +48,7 @@
     if (kfifo_avail(&(S.mEvtDeviceState[1]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) { \
       unsigned long flags;                                                 \
       local_irq_save(flags);                                               \
-      addPktEvent(&(S.mEvtDeviceState[1]->mPktEvents),(event));         \
+      addPktEvent(&(S.mEvtDeviceState[1]->mPktEvents),(event),makeItcSpecEvent(IEV_SPEC_QGAP)); \
       local_irq_restore(flags);                                            \
     }                                                                      \
   } while(0)
@@ -104,7 +104,7 @@ typedef struct itcpkteventstate {
 /*WARNING: IF INTERRUPT HANDLERS ARE IN USE (which they are evidently
   NOT in itcpkt), THEN THIS MUST BE CALLED ONLY AT INTERRUPT LEVEL OR
   WITH INTERRUPTS DISABLED */
-extern void addPktEvent(ITCPktEventState* pes, u32 event) ;
+extern void addPktEvent(ITCPktEventState* pes, u32 event, u32 gapevent) ;
 
 #define PRU_MINORS 2   /* low-level access to PRU0, PRU1*/
 #define PKT_MINORS 2   /* processed access to itc, mfm */

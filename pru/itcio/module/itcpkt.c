@@ -151,7 +151,7 @@ static int startPktEventTrace(ITCPktEventState* pes) {
 }
 
 /*MUST BE CALLED ONLY AT INTERRUPT LEVEL OR WITH INTERRUPTS DISABLED*/
-void addPktEvent(ITCPktEventState* pes, u32 event) {
+void addPktEvent(ITCPktEventState* pes, u32 event, u32 gapevent) {
   ITCPktEvent tmp;
   u64 now = ktime_get_raw_fast_ns() - pes->mStartTime;
   tmp.time = (u32) (now>>pes->mShiftDistance); // Cut down to u23
@@ -164,7 +164,7 @@ void addPktEvent(ITCPktEventState* pes, u32 event) {
          tmp.time);
   */
   if (kfifo_avail(&pes->mEvents) >= 2*sizeof(ITCPktEvent)) tmp.event = event;
-  else tmp.event = makeSpecPktEvent(PKTEVT_SPEC_QGAP);
+  else tmp.event = gapevent;
 
   kfifo_put(&pes->mEvents, tmp);
 

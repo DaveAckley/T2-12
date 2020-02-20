@@ -28,15 +28,34 @@ static inline __u32 mapDir8ToDir6(__u32 dir8) {
   }
 }
 
+#define LEVELACTIONMACRO()                               \
+  XX(DO_ILLEGAL,"illegal action")                        \
+  XX(DO_REENTER,"go to stage 0 of current level")        \
+  XX(DO_RESTART,"go to L00")                             \
+  XX(DO_RETREAT,"go to stage 0 of previous level")       \
+  XX(DO_ADVANCE,"go to next stage or level")             \
+  XX(DO_CONTINUE,"stay at current level and stage")      \
+
 typedef enum {
-  /* Zero means unset */
-  DO_REENTER=1,
-  DO_RESTART,
-  DO_RETREAT,
-  DO_ADVANCE,
-  DO_CONTINUE,
+
+#define XX(a,b) a,
+  LEVELACTIONMACRO()              
+#undef XX
   LEVELACTION_COUNT
 } LevelAction;
+
+typedef __u8 LevelStage;                     /*  + level:3 + stage:2 */
+
+inline static __u8 getLevelStageFromPacketByte(__u8 packetByte) { return packetByte&0x1f; /*bottom five bits*/ }
+inline static __u8 getLevelFromLevelStage(LevelStage ls) { return (ls>>2)&0x7; }
+inline static __u8 getStageFromLevelStage(LevelStage ls) { return (ls>>0)&0x3; }
+inline static __u8 getLevelStageAsByte(LevelStage ls) { return (getLevelFromLevelStage(ls)<<4) | getStageFromLevelStage(ls); }
+
+inline static __u8 makeLevelStage(__u32 level, __u32 stage) {
+  return ((level&0x7)<<2)|((stage&0x3)<<0);
+}
+
+
 
 #define ITCPKTEVENT_TIME_SIZE 23
 #define ITCPKTEVENT_EVENT_SIZE 9
@@ -113,20 +132,34 @@ enum {
   IEV_LSU = 1
 };
 
-enum {
-  IEV_DIR_ITCDN = 0,
-  IEV_DIR_ITCUP = 1,
-  IEV_DIR_UPBEG = 2,
-  IEV_DIR_UPEND = 3,
-  IEV_DIR_RSRV4 = 4,
-  IEV_DIR_RSRV5 = 5,
-  IEV_DIR_RSRV6 = 6,
-  IEV_DIR_RSRV7 = 7
-};
+#define IEVDIRMACRO() \
+  XX(ITCDN,"packet sync lost") \
+  XX(ITCSUP,"packet sync acquired") \
+  XX(UPBEG,"update begin") \
+  XX(UPEND,"update end") \
+  XX(RSRV4,"reserved") \
+  XX(RSRV5,"reserved") \
+  XX(RSRV6,"reserved") \
+  XX(RSRV7,"reserved") \
 
 enum {
-  IEV_SPEC_TIMEOUT = LEVELACTION_COUNT,
+#define XX(a,b) IEV_DIR_##a,
+IEVDIRMACRO()
+#undef XX
 };
+
+#define ITCEVTSPECMACRO() \
+  LEVELACTIONMACRO()      \
+  XX(QGAP,"event queue gap")  \
+  XX(TIMEOUT,"timeout")   \
+    
+enum {
+#define XX(sym,str) IEV_SPEC_##sym,
+  ITCEVTSPECMACRO()
+#undef XX  
+  COUNT_IEV_EVT_SPEC
+};
+
 static inline __u32 makeItcLSEvent(__u32 dir6, __u32 usNotThem, __u32 ls) {
   return ((dir6&0x7)<<6) | ((usNotThem&0x1)<<5) | ((ls&0x1f)<<0);
 }

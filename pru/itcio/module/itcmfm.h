@@ -17,7 +17,6 @@ void updateKITC(ITCMFMDeviceState * ds) ;
 #define MAX_MFZ_NAME_LENGTH 100
 typedef u8 MFZId[MAX_MFZ_NAME_LENGTH + 1]; /* null-delimited 0..MAX_MFZ_NAME_LENGTH id string*/
 typedef u8 MFMToken;                       /* random + incremented each id write, skipping 0 */
-typedef u8 LevelStage;                     /*  + level:3 + stage:2 */
 typedef u8 SeqNo;                          /* random + incremented each level packet, skipping 0 */
 
 #define RANDOM_IN_SIZE(VAR_OR_TYPE)         \
@@ -33,15 +32,6 @@ typedef u8 SeqNo;                          /* random + incremented each level pa
     BUG_ON(__size > 4);                       \
     1u+prandom_u32_max(__lim);                \
   })
-
-inline static u8 getLevelStageFromPacketByte(u8 packetByte) { return packetByte&0x1f; /*bottom five bits*/ }
-inline static u8 getLevelFromLevelStage(LevelStage ls) { return (ls>>2)&0x7; }
-inline static u8 getStageFromLevelStage(LevelStage ls) { return (ls>>0)&0x3; }
-inline static u8 getLevelStageAsByte(LevelStage ls) { return (getLevelFromLevelStage(ls)<<4) | getStageFromLevelStage(ls); }
-
-inline static u8 makeLevelStage(u32 level, u32 stage) {
-  return ((level&0x7)<<2)|((stage&0x3)<<0);
-}
 
 typedef struct {
   pid_t    mMFMPid;          /* pid that last wrote mToken */
