@@ -1,4 +1,4 @@
-{152}  -*- text -*-
+{154}  -*- text -*-
 [0:
 [3:
 [35:
@@ -1817,3 +1817,19 @@ could have been significant work lost.
 RISKY BITS OFF
 
 :151]
+[152:
+
+Thu Feb 20 05:31:20 2020 OK, well we've finally gotten t2trace working
+plausibly here on 4.19.79.  And now we can START modifying it to read
+/dev/itc/itcevents too.  It was a pretty big hack to force two event
+streams together and it will be an even bigger gross hack to force a
+third in the same way, so we'll need to smooth out the
+next-event-picking logic, I'd think, in this process.
+
+:152]
+[153:
+
+Thu Feb 20 16:08:07 2020 OK, time to make install and reboot and see
+how the events trace out.  Committing this stuff.
+
+:153]
