@@ -1,10 +1,11 @@
 PROG:=t2trace
-LOCK_DIR:=../../../lkms/itc/
+COMMON_DIR:=../../../lkms/include
+LOCK_DIR:=../../../lkms/itc
 PKT_DIR:=../../../pru/itcio/module/
 #MFM_DIR:=/home/t2/GITHUB/MFM/src/core/include
 CPPFLAGS:=-g2 -Wall -Werror
-CPPFLAGS+=-I $(LOCK_DIR) -I $(PKT_DIR) 
-$(PROG):	$(PROG).cpp $(LOCK_DIR)/*.h $(PKT_DIR)/*.h Makefile
+CPPFLAGS+=-I $(COMMON_DIR) -I $(LOCK_DIR) -I $(PKT_DIR) 
+$(PROG):	$(PROG).cpp $(COMMON_DIR)/*.h $(LOCK_DIR)/*.h $(PKT_DIR)/*.h Makefile
 	g++ $(CPPFLAGS) $< -o $@
 
 ECHO:=/bin/echo

@@ -29,6 +29,7 @@ namespace Dirs {
     static const Dir DIR_COUNT = 8;
 }
 
+#if 0  /*supplied by itcpkt.h*/
 static inline __u32 mapDir8ToDir6(__u32 dir8) {
   switch (dir8) {
   case Dirs::NORTH: 
@@ -43,14 +44,15 @@ static inline __u32 mapDir8ToDir6(__u32 dir8) {
   case Dirs::NORTHWEST: return DIR_NW;
   }
 }
+#endif
 
-const char *(dirnames[]) = {
+const char *dirnames[] = {
 #define XX(DC,fr,p1,p2,p3,p4) #DC,
   DIRDATAMACRO()
 #undef XX
 };
 
-const char *(statenames[]) = {
+const char *statenames[] = {
 #define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
 #define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
 #define RS(forstate,...) #forstate,
@@ -97,14 +99,14 @@ bool isInput(__u32 pin) {
 }
 
 //// LOCK SPECIALS
-const char *(specsymnames[]) = {
+const char *specsymnames[] = {
 #define XX(sym,str) #sym,
   LETSPECMACRO()
 #undef XX
   0
 };
 
-const char *(specsymdesc[]) = {
+const char *specsymdesc[] = {
 #define XX(sym,str) str,
   LETSPECMACRO()
 #undef XX
@@ -124,14 +126,14 @@ const char * getSpecSymDesc(__u32 spec) {
 }
 
 //// PKT SPECIALS
-const char *(pktspecsymnames[]) = {
+const char *pktspecsymnames[] = {
 #define XX(sym,str) #sym,
   PKTEVTSPECMACRO()
 #undef XX
   0
 };
 
-const char *(pktspecsymdesc[]) = {
+const char *pktspecsymdesc[] = {
 #define XX(sym,str) str,
   PKTEVTSPECMACRO()
 #undef XX
@@ -238,8 +240,9 @@ static int readOneDecimalNumber(const char* path,  __s64 * valret) {
 }
 
 struct EventSource {
-  EventSource(const char * evtPath,const char * timePath,const char * shiftPath)
-    : mEventPath(evtPath)
+  EventSource(const char * sourceName, const char * evtPath,const char * timePath,const char * shiftPath)
+    : mSourceName(sourceName)
+    , mEventPath(evtPath)
     , mStartTimePath(timePath)
     , mShiftPath(shiftPath)
     , mHaveLast(false)
@@ -291,6 +294,10 @@ struct EventSource {
   void init() {
     load();
     openEvt();
+    printf("%s: shift=%d, start=%llu\n",
+           mSourceName,
+           mShift,
+           mStart);
   }
 
   void deinit() {
@@ -320,6 +327,7 @@ struct EventSource {
     return mHaveLast = true;
   }
 
+  const char * mSourceName;
   const char * mEventPath;
   const char * mStartTimePath;
   const char * mShiftPath;
@@ -331,7 +339,7 @@ struct EventSource {
 
 struct EventSourceLock : public EventSource {
   EventSourceLock()
-    : EventSource(LOCK_EVENT_DEV,LOCK_TIME_PATH,LOCK_SHIFT_PATH)
+    : EventSource("Locks", LOCK_EVENT_DEV,LOCK_TIME_PATH,LOCK_SHIFT_PATH)
     , mPrevCode(-1)
   { }
 
@@ -431,7 +439,7 @@ struct EventSourceLock : public EventSource {
 };
 
 struct EventSourcePkt : public EventSource {
-  EventSourcePkt() : EventSource(PKT_EVENT_DEV,PKT_TIME_PATH,PKT_SHIFT_PATH) { }
+  EventSourcePkt() : EventSource("Packets", PKT_EVENT_DEV,PKT_TIME_PATH,PKT_SHIFT_PATH) { }
   ITCPktEvent mLast;
   __u32 getTimeField() const { return mLast.time; }
   __u32 getEventField() const { return mLast.event; }
@@ -491,7 +499,7 @@ struct Reporter {
   __u64 mLast;
   __u64 mCurNanos;
 
-  __u32 formatDelta(__u64 deltaNanos, char * buf, __u32 len) {
+  __u32 formatDelta(__u64 deltaNanos, bool negsign, char * buf, __u32 len) {
     const char * unit;
     if (deltaNanos == 0) return snprintf(buf,len,"  +0usec");
     do {
@@ -513,6 +521,8 @@ struct Reporter {
       // Screw you
       unit = "lies";
     } while (0);
+    if (negsign)
+      return snprintf(buf,len,"%+4d%s",-(__s32) deltaNanos, unit);
     return snprintf(buf,len,"%+4d%s",(__u32) deltaNanos, unit);
   }
 
@@ -526,18 +536,32 @@ struct Reporter {
     if (dump) {
       char eventbuf[100];
       char delta1[20];
+      bool negsec = false, negincr = false;
       //      char delta2[20];
       es.unpackEvent(eventbuf);
 
       if (mFirst == 0) mFirst = nanos;
-      sec = (nanos-mFirst)/(1000.0*1000.0*1000.0);
+      if (nanos >= mFirst)
+        sec = (nanos-mFirst)/(1000.0*1000.0*1000.0);
+      else {
+        negsec = true;
+        sec = (mFirst-nanos)/(1000.0*1000.0*1000.0);
+      }
       if (mLast == 0) mLast = nanos;
-      incrns = (nanos-mLast);
+      if (nanos >= mLast) {
+        incrns = (nanos-mLast);
+      } else {
+        negincr = true;
+        incrns = (mLast-nanos);
+      }
       mLast = nanos;
-      formatDelta(incrns, delta1, 20);
+      formatDelta(incrns, negincr, delta1, 20);
 
-      printf("%04d %8.6fsec %s %03x:%s\n",
-             ++mEventsDumped, sec, delta1, es.getEventValue(), eventbuf);
+      printf("%04d %s%8.6fsec%s%s %03x:%s\n",
+             ++mEventsDumped,
+             negsec ? "-" : " ", sec,
+             negincr ? " " : " ", delta1,
+             es.getEventValue(), eventbuf);
 
       mCurNanos = nanos;
     }
