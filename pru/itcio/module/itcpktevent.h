@@ -154,6 +154,7 @@ IEVDIRMACRO()
   XX(PTOU,"push timeout - us")   \
   XX(PTOT,"push timeout - them")   \
   XX(BITR,"begin iteration")   \
+  XX(RITR,"restart iteration")   \
   XX(EITR,"end iteration")   \
   XX(LATE,"going again")   \
   XX(SLP0,"sleep <5ms")   \
