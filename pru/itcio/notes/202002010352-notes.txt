@@ -1,4 +1,4 @@
-{154}  -*- text -*-
+{168}  -*- text -*-
 [0:
 [3:
 [35:
@@ -1833,3 +1833,324 @@ Thu Feb 20 16:08:07 2020 OK, time to make install and reboot and see
 how the events trace out.  Committing this stuff.
 
 :153]
+[154:
+
+Thu Feb 20 16:25:25 2020 OK so we're starting to get plausible KITC
+trace data, and it's tending to confirm a suspicion I had before.
+Check this out:
+
+    0134  8.639570sec   +0usec 19a:K (SW) UPEND: update end
+
+..Random unconnected itc (SW) updateKITC ends
+
+    0135  8.639570sec   +0usec 193:K (WT) UPBEG: update begin
+
+WT updateKITC begins.  WT and ET are on loopback.
+
+    0136  8.639570sec   +0usec 1c7:K     [TIMEOUT: timeout]
+
+Some kind of timeout happens..  Not a super useful report. :(
+
+    0137  8.639574sec   +4usec 0e1:K (WT) u->L01
+
+WT announces L01 (which just means it's got packet sync).
+
+    0138  8.644826sec   +5msec 0d6:P   <WT to PRU 2-4>
+
+And that packet gets pushed to the PRUs immediately (!?).  Note that
+the WT updateKITC is apparently still in progress.
+
+    0139  8.644956sec +130usec 001:K (ET)  t->L01
+
+And ET receives the packet, and updates its 'them' to L01
+
+    0140  8.644956sec   +0usec 1c7:K     [TIMEOUT: timeout]
+
+Another timeout.  I think this means (ET) just pushed its 't' timeout
+in response to receiving the WT level packet.
+
+    0141  8.644960sec   +4usec 190:K (ET) UPBEG: update begin
+
+Now ET begins an updateKITC, called from recvLevelPacket
+
+    0142  8.644960sec   +0usec 1c7:K     [TIMEOUT: timeout]
+    0143  8.644964sec   +4usec 021:K (ET) u->L01
+
+..and announces L01
+
+    0144  8.650093sec   +5msec 198:K (ET) UPEND: update end
+
+and its updateKITC ends.
+
+    0145  8.650278sec +185usec 0d2:P   <ET to PRU 2-4>
+
+and that packet ships..
+
+    0146  8.650318sec  +40usec 19b:K (WT) UPEND: update end
+
+and ONLY NOW the original? WT updateKITC FINALLY ends
+
+    0147  8.650387sec  +69usec 0c1:K (WT)  t->L01
+
+and the ET LP is received
+
+    0148  8.650387sec   +0usec 1c7:K     [TIMEOUT: timeout]
+
+and the WT t timeout is pushed.
+
+    0149  8.650392sec   +4usec 193:K (WT) UPBEG: update begin
+
+and WT begins another updateKITC..
+
+[155:
+
+Thu Feb 20 16:46:49 2020 So the surprising part of that for me is that
+we didn't get (WT) UPEND before 0138 or 0139 at the latest.
+
+:155]
+:154]
+[156:
+
+Fri Feb 21 01:06:29 2020 OK so we're trying to understand the timeout
+code we wrote in itcLevelThreadRunner, but we're not getting very far.
+Can we review our intentions here?
+
+ - We want to find the nearest future timeout over all the KITCs,
+
+ - Taking into consideration that when we updateKITC one, that may
+   change its timeout, and we want to consider its post-update
+   timeout.
+
+But waaaait.  Just back in :154: we were complaining about apparent
+recursive entries into updateKITC, and we changed code like this:
+
+      /* handle the packet */
+      recvLevelPacket(ds,packet,len);
+
+      /* then update their state machine*/
+      updateKITC(ds);
+
+to code like this:
+
+      /* handle the packet */
+      recvLevelPacket(ds,packet,len);
+
+      /* then update their state machine*/
+      wakeITCLevelRunner(); /*by waking the level runner?*/
+
+but that doesn't make much sense: The level runner is only calling
+updateKITC when the KITC timeout has expired.  Receiving a level
+packet desires consideration of an immediate response, but just waking
+the backstop timeout thread won't do that.
+
+We either want to accept recursive entry to updateKITC, or explicitly
+expire the timeout before calling wakeITCLevelRunner.
+
+But we don't really want to expire the timeout, because we have
+semantics associated with handling expired timeouts that we don't want
+to do.
+
+No, we kind of must want to call updateKITC directly when we have new
+information for a KITC to consider.
+
+We still don't understand how we ended up reentering updateKITC.  We
+have like:
+
+ updateKITC ->
+   sendLevelPacket ->
+     trySendUrgentRoutedKernelPacket ->
+       kfifo_in to buffer 
+       wakeOBPktShipper ->
+         wake_up_process                         
+       <-
+     <-
+   <-
+ <-
+
+but we really think that path should end there and we'd exit
+updateKITC before seeing any packets handled..  
+
+And we have:
+
+ itc_pkt_cb ->
+   handleKITCPacket ->
+     recvLevelPacket
+     updateKITC ->
+       (as above)
+
+Although.. rpmsg does interrupt us, doesn't it, when there's a buffer
+to deliver.  Is that somehow what's going on?  Does itc_pkt_cb really
+run at interrupt level?  I don't think so?  [157:
+
+Fri Feb 21 03:17:44 2020 Or yes?  There's some random user process,
+say, running when the PRU signals a packet incoming to linux.  That
+causes an interrupt, which traps to the kernel (which is mapped into
+all address spaces), and itc_pkt_cb runs?  But the interrupt has
+already been dismissed by that point?  If so, what process or thread
+or whatever got context-switched to to 'own' the callback processing?
+I really don't understand this stuff.
+
+:157]
+
+:156]
+[158:
+
+Fri Feb 21 06:45:22 2020 OK but we have to do SOMETHING about the
+timeout handling in the level runner; currently, we're instantly
+blowing out our KITC buffer with as many of these as needed:
+
+    2028  0.001372sec   +0usec 1cb:K             [LATE: going again]
+    2029  0.001374sec   +2usec 1c9:K             [BITR: begin iteration]
+    2030  0.001374sec   +0usec 1cb:K             [LATE: going again]
+    2031  0.001374sec   +0usec 1c9:K             [BITR: begin iteration]
+    2032  0.001376sec   +2usec 1cb:K             [LATE: going again]
+    2033  0.001376sec   +0usec 1c9:K             [BITR: begin iteration]
+
+:158]
+[159:
+
+Fri Feb 21 14:04:27 2020 Try again.  High-level timeout-related
+functions of updateKITC:
+
+ - ..
+
+What if we got more explicit about being like a priority queue?  That
+would mean we could simplify the loop to just 'sleep until nearest
+timeout, pull off soonest thing, update it, reinsert it'.  But mainly
+I'm thinking we probably really need to be thinking about locking
+access to the (however real) priority queue, so that callbacks at
+interrupt level can't step on in-progress pq ops.
+
+I guess that was part of the rationale to want to have receiving
+packets just kick the level runner rather than calling updateKITC
+directly.  If the idea is that we understand the 'them' state is ONLY
+modified at interrupt level by packet reception (modulo init and
+timeout), but the level runner is the only place that calls
+updateKITC..  And we have 'them' include a 'last modified' time, and
+the us include a 'last examined' time, and updateKITC begins by
+checking if the former is newer than the latter, and ends by setting
+the latter to 'now'.
+
+Then we can have the level runner call updateKITC on everybody at any
+time, and then go to sleep for a say fixed amount of time, counting on
+packet receptions and status changes to wake us early.
+
+[160:
+
+Fri Feb 21 14:41:00 2020 And this is a THIRD time-related field in the
+KITC structs??  Or it's somehow a reinterpretation of what we have?
+
+ mThem.mModTime  last time Them status was written
+ mThem.mTimeout  when we'll act for them being overdue
+
+   mUs.mModTime  last time Us status was checked
+   mUs.mTimeout  when we'll act for us being overdue
+ 
+and level runner iterates over the kitcs, and calls updateKITC on each
+one whose mThem.mModTime is newer than them mUs.mModTime, and sets the
+mUs.mModTime to now after each updateKITC is done.
+
+[161:
+
+Fri Feb 21 15:43:49 2020 But how does that deal with the timeouts?  It
+seems like it doesn't at all.  And maybe it's not supposed to,
+somehow?  After the level runner iterates over the KITCs, how long
+does it sleep?
+
+It does seem like it must be the level runner's job to ALSO deal with
+noticing the timeouts, since really nobody else can.  But it would be
+nice if we could at least pull that apart from the 'modtime'
+considerations.
+
+Could we 'just' also run the updateKITC if mModTime is older than
+mTimeout, for either mUs or mThem? [162: Well that doesn't make sense
+assuming the mTimeout is mostly supposed to be in the future and
+mModtime is always <= now..  :162]
+
+level runner:
+  PHASE 1: REACT
+  kitc iterator:
+    if mThem.mModTime > mUs.mModtime  // world changed
+       || mThem.mTimeout < now        // or world isn't going to change
+       || mUs.mTimeout < now          // time for us to try again 
+      updateKITC
+      mUs.mModtime = now
+
+  PHASE 2:
+  kitc iterator:
+    find nearest future mThem.mTimeout or mUs.mTimeout
+
+  PHASE 3:
+  if negative, warn and pick 100ms
+  if >1s pick 1s
+  schedule_timeout(forthattime);    
+  
+
+:161]
+
+:160]
+
+:159]
+[163:
+
+Fri Feb 21 16:53:31 2020 Looking around the web, this seems like a
+potentially explanatory factoid:
+
+    wake_up_sync and wake_up_interruptible_sync
+
+    wake_up_sync(&wq);
+
+    wake_up_interruptible_sync(&wq);
+
+    Normally, a wake_up call can cause an immediate reschedule to
+    happen, meaning that other processes might run before wake_up
+    returns. The “synchronous” variants instead make any awakened
+    processes runnable, but do not reschedule the CPU. This is used to
+    avoid rescheduling when the current process is known to be going
+    to sleep, thus forcing a reschedule anyway.
+
+Now, I can't find a wake_up_sync identifier in bootlin 4.19, though
+wake_up_interruptible_sync is there.. but I'm currently using
+wake_up_process and I don't understand the relationship there.
+
+:163]
+[164:
+
+Fri Feb 21 17:38:49 2020 But also, suppose we reinterpret mTimeout as
+an offset rather than an absolute time.  So the absolute timeout is
+mModTime+mTimeout.  But then when do we rerandomize the
+mTimeoutOffset?  If we do it whenever mModTime changes what have we
+gained?  If we only do it when it expires aren't we risking long-term
+dirt-at-the-edge-of-the-road bias for lucky long time outs?
+
+:164]
+[165:
+
+Sat Feb 22 03:55:28 2020 So ITCSideState already has:
+
+  unsigned long mLastAnnounce;  /* Time in jiffies (by local clock) */
+
+which is currently declared, initted, updated by
+'itcSideStateSetLastAnnounceToNow':
+
+    ./itcmfm.h 71:  unsigned long mLastAnnounce;  /* Time in jiffies (by local clock) */
+    ./itcmfm.c 497:  ss->mLastAnnounce = now - (prandom_u32_max(50)+(isUs ? 100 : 10));
+    ./itcmfm.c 69:  ss->mLastAnnounce = now;
+
+and never otherwise referenced.  Could we rename/use that as mModTime?
+
+:165]
+[166:
+
+Sat Feb 22 04:53:36 2020 Well, renamed mLastAnnounce to mModTime and
+did a cut at :161: above.
+
+RISKY BITS OFF
+
+:166]
+[167:
+
+Sat Feb 22 05:18:39 2020 Well have to travel today, so committing all
+this as a WIP.  Starting to get there..
+
+:167]
