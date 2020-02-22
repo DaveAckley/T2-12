@@ -543,29 +543,47 @@ int itcLevelThreadRunner(void *arg)
 
   set_current_state(TASK_RUNNING);
   while(!kthread_should_stop()) {    /* Returns true when kthread_stop() is called */
-    unsigned long now = jiffies;
     unsigned long early;
+    bool anyStale = true;
     bool first = true;
     s32 diffToNext;
     DBGPRINTK(DBG_MISC100,"====================\n");
     ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_BITR));
 
     /***PHASE 1***/
-    for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
-      ITCDir kitc = itcIteratorGetNext(itr);
-      ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
-      ITCLevelState * ils = &mds->mLevelState;
-      ITCSideState * us = &ils->mUs;
-      ITCSideState * them = &ils->mThem;
-      if (time_after(them->mModTime,us->mModTime) /* world has changed*/
-          || time_before(them->mModTime, now)     /* or world has timed out */
-          || time_before(us->mModTime, now)) {    /* or we have timed out */
+    while (anyStale) {
+      
+      for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
+        ITCDir kitc = itcIteratorGetNext(itr);
+        ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
+        ITCLevelState * ils = &mds->mLevelState;
+        ITCSideState * us = &ils->mUs;
+        ITCSideState * them = &ils->mThem;
+        if (time_after(them->mModTime,us->mModTime) /* world has changed*/
+            || time_before(them->mModTime, jiffies) /* or world has timed out */
+            || time_before(us->mModTime, jiffies)) {/* or we have timed out */
 
-        updateKITC(mds);        /* Then update us */
-        itcSideStateTouch(us);  /* and mark us fresh */
+          itcSideStateTouch(us);  /* Mark us fresh as of now */
+          updateKITC(mds);        /* Then update us.  (We might not be fresh after that's done.) */
+        }
+      }
+
+      /***PHASE 1a***/
+      anyStale = false;
+      for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
+        ITCDir kitc = itcIteratorGetNext(itr);
+        ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
+        ITCLevelState * ils = &mds->mLevelState;
+        ITCSideState * us = &ils->mUs;
+        ITCSideState * them = &ils->mThem;
+        if (time_after(them->mModTime,us->mModTime)) {
+          ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_RITR));
+          anyStale = true;
+          break;
+        }
       }
     }
-    
+            
     /***PHASE 2***/
     for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
       ITCDir kitc = itcIteratorGetNext(itr);
@@ -584,14 +602,14 @@ int itcLevelThreadRunner(void *arg)
 
     /***PHASE 3***/
 
-    if (time_before(early, now)) {
-      printk(KERN_WARNING "Timeout in past (%lu, now %lu)\n", early,now);
-      early = now+msToJiffies(100);
-    } else if (time_after(early, now+msToJiffies(1000))) {
-      early = now+msToJiffies(1000);
+    if (time_before(early, jiffies)) {
+      printk(KERN_WARNING "Timeout now in past (%lu, now %lu)\n", early, jiffies);
+      early = jiffies + msToJiffies(100);
+    } else if (time_after(early, jiffies + msToJiffies(1000))) {
+      early = jiffies + msToJiffies(1000);
     }
 
-    diffToNext = jiffiesFromAtoB(now, early);
+    diffToNext = jiffiesFromAtoB(jiffies, early);
     
     if (0) { /*COND*/ }
     else if (diffToNext < msToJiffies(5)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP0));
@@ -867,34 +885,3 @@ static LevelStage lsEvaluatorAdvance(ITCMFMDeviceState * mds, LevelStage prevLS)
   return advanceLS;
 }
 
-#if 0
-    else
-      advanceLS = curLS;
-    if (advanceLS != curLS) {
-      DBGPRINTK(DBG_LVL_LSC,"(%s) ADVANCING L%02x -> L%02x\n",
-                getDir8Name(mapDir6ToDir8(mds->mDir6)),
-                getLevelStageAsByte(curLS),
-                getLevelStageAsByte(advanceLS));
-        ss->mLevelStage = advanceLS;
-        sendLevelPacket(mds,false); /*pushes timeout if sent*/
-      }
-    }
-  }
-  {
-    /**** REANNOUNCE IF WE HAVE TIMED OUT */
-    unsigned long now = jiffies;
-    unsigned long uto = itcSideStateGetTimeout(ss);
-    if (time_after_eq(jiffies, uto)) {
-      sendLevelPacket(mds,true); /*pushes timeout for sure*/
-      DBGPRINTK(DBG_MISC200,"(%s) REANNOUNCED L%02x, now=%lu, uto=%lu, new=%lu\n",
-                getDir8Name(mapDir6ToDir8(mds->mDir6)),
-                getLevelStageAsByte(ss->mLevelStage),
-                now,
-                uto,
-                itcSideStateGetTimeout(ss));
-    }
-  }
-
-}
-
-#endif
