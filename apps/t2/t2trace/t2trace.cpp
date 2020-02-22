@@ -583,7 +583,7 @@ struct EventSourceKITC : public EventSource {
       if (!unpackItcSpecEvent(event,&code)) abort();
       const char * specname = getKitcSpecSymName(code);
       const char * specdesc = getKitcSpecSymDesc(code);
-      snprintf(eventbuf,100,"K [%s: %s]", specname, specdesc);
+      snprintf(eventbuf,100,"K             [%s: %s]", specname, specdesc);
       
     } else abort();
   }
