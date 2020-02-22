@@ -194,7 +194,7 @@ static const char * dirnames[DIR6_COUNT] = { DIRDATAMACRO() };
 
 static void initLockEventState(ITCLockEventState* lec) {
   lec->mStartTime = 0;
-  lec->mShiftDistance = 10; /* divide by 1024 -> ~usec resolution */
+  lec->mShiftDistance = 12; /* Default: Divide by 4096 -> ~4usec resolution */
   INIT_KFIFO(lec->mEvents);
   mutex_init(&lec->mLockEventReadMutex);
   printk(KERN_INFO "ILES kfifo_len(%d) kfifo_avail(%d)\n",
