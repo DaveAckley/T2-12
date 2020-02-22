@@ -51,14 +51,14 @@ static ITCLSOps * itcSideStateGetLevelOps(ITCSideState *ss)
   return theLevels[level];
 }
 
-static void wakeITCLevelRunner(void) {
+void wakeITCLevelRunner(void) {
   if (S.mKITCLevelThread.mThreadTask) 
     wake_up_process(S.mKITCLevelThread.mThreadTask);
   else
     printk(KERN_ERR "No S.mKITCLevelThread.mThreadTask?\n");
 }
 
-static unsigned long itcSideStateSetLastAnnounceToNow(ITCSideState *ss)
+static unsigned long itcSideStateTouch(ITCSideState *ss)
 {
   unsigned long now = jiffies;
   ITCLSOps * ops = itcSideStateGetLevelOps(ss);
@@ -66,9 +66,9 @@ static unsigned long itcSideStateSetLastAnnounceToNow(ITCSideState *ss)
   u32 fuzzedTimeoutVar;
   ss->mTimeoutAction = ops->timeout(0, ss->mIsUs, &timeoutVar);
   fuzzedTimeoutVar = plusOrMinus25pct(timeoutVar);
-  ss->mLastAnnounce = now;
+  ss->mModTime = now;
   ss->mNextTimeout = now + fuzzedTimeoutVar;
-  ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_TIMEOUT));
+  ADD_ITC_EVENT(makeItcSpecEvent(ss->mIsUs? IEV_SPEC_PTOU : IEV_SPEC_PTOT));
   DBGPRINTK(DBG_MISC200,"%s: %s=L%02x TO=%d[%d], now=%lu, nextTo=%lu\n",
             __FUNCTION__,
             ss->mIsUs ? "mUs" : "mThem",
@@ -242,7 +242,7 @@ static inline void recvLevelPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
             getLevelStageAsByte(packet[1]));
   DBGPRINT_HEX_DUMP(DBG_LVL_PIO,
                     KERN_INFO, getDir8Name(mapDir6ToDir8(ds->mDir6)),
-                    DUMP_PREFIX_OFFSET, 16, 1,
+                    DUMP_PREFIX_NONE, 16, 1,
                     packet, len, true);
   for (level = 0; level <= curLevel; ++level) {
     ITCLSOps *ops = theLevels[level];
@@ -251,8 +251,11 @@ static inline void recvLevelPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
     if (index == 0) break; /* recv aborted */
   }
   if (index) {
-
+    ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_INCOMPLETE_CODE));
   }
+
+  /* This should already have happened in packetio somewhere.. */
+  /*  itcSideStateTouch(&ils->mThem); */
 }
 
 static inline void sendLevelPacket(ITCMFMDeviceState *ds, bool forceTimeoutPush)
@@ -300,7 +303,7 @@ static inline void sendLevelPacket(ITCMFMDeviceState *ds, bool forceTimeoutPush)
     ret = trySendUrgentRoutedKernelPacket(buf,index);
 
   if (ret == 0 || forceTimeoutPush) {
-    itcSideStateSetLastAnnounceToNow(&ils->mUs);
+    itcSideStateTouch(&ils->mUs);
   }
   if (ret != 0) {
     printk(KERN_INFO "sendLevelPacket (pushto=%s) hdr=0x%02x got %d\n",
@@ -388,7 +391,7 @@ static u32 ilsPacketIO_CONTACT(ITCMFMDeviceState* ds,
     ss->mLevelStage = byte1 & 0x1f;
 
     ADD_ITC_EVENT(makeItcLSEvent(ds->mDir6,IEV_LST,ss->mLevelStage));
-    itcSideStateSetLastAnnounceToNow(ss);
+    itcSideStateTouch(ss);
 
   } else {
 
@@ -494,7 +497,7 @@ static void initITCSideState(ITCSideState * ss, bool isUs)
 {
   unsigned long now = jiffies;
   BUG_ON(!ss);
-  ss->mLastAnnounce = now - (prandom_u32_max(50)+(isUs ? 100 : 10));
+  ss->mModTime = now - (prandom_u32_max(50)+(isUs ? 100 : 10));
   ss->mNextTimeout = now + (prandom_u32_max(50)+(isUs ? 10 : 100));
   ss->mTimeoutAction = DO_CONTINUE;
   ss->mToken = 0;
@@ -541,54 +544,63 @@ int itcLevelThreadRunner(void *arg)
   set_current_state(TASK_RUNNING);
   while(!kthread_should_stop()) {    /* Returns true when kthread_stop() is called */
     unsigned long now = jiffies;
-    unsigned long nextEarliestTimeout;
-    s32 diffToNext = 0;
+    unsigned long early;
+    bool first = true;
+    s32 diffToNext;
     DBGPRINTK(DBG_MISC100,"====================\n");
+    ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_BITR));
+
+    /***PHASE 1***/
     for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
       ITCDir kitc = itcIteratorGetNext(itr);
       ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
-      unsigned long timeout;
-      s32 jiffiesTilTimeout;
-      BUG_ON(!mds);
-      timeout = itcLevelStateGetEarliestTimeout(&mds->mLevelState);
-      DBGPRINTK(DBG_MISC100,"(%s) TIME REMAINING=%d\n",
-                getDir8Name(mapDir6ToDir8(mds->mDir6)),
-                jiffiesFromAtoB(now,timeout));
-      if (time_after_eq(now, timeout)) {
-        updateKITC(mds);
-        /* XXX updateKITC has to handle this now: pushTimeout(mds,true); */
-        timeout = itcLevelStateGetEarliestTimeout(&mds->mLevelState);
-        if (time_after_eq(now,timeout)) {
-          printk(KERN_WARNING "(%s) Timeout still expired after updateKITC (%lu, now %lu)\n",
-                 getDir8Name(mapDir6ToDir8(mds->mDir6)),
-                 timeout,now);
-          timeout = now+1; /*can't be now or earlier*/
-        }
-      }
-      jiffiesTilTimeout = jiffiesFromAtoB(now,timeout);
-      DBGPRINTK(DBG_MISC100,"(%s) diffToNext=%d, jifTil=%d\n",
-                getDir8Name(mapDir6ToDir8(mds->mDir6)),
-                diffToNext,
-                jiffiesTilTimeout);
-      if (diffToNext == 0 || time_before(timeout, nextEarliestTimeout)) {
-        diffToNext = jiffiesTilTimeout;
-        nextEarliestTimeout = timeout;
+      ITCLevelState * ils = &mds->mLevelState;
+      ITCSideState * us = &ils->mUs;
+      ITCSideState * them = &ils->mThem;
+      if (time_after(them->mModTime,us->mModTime) /* world has changed*/
+          || time_before(them->mModTime, now)     /* or world has timed out */
+          || time_before(us->mModTime, now)) {    /* or we have timed out */
+
+        updateKITC(mds);        /* Then update us */
+        itcSideStateTouch(us);  /* and mark us fresh */
       }
     }
-    diffToNext = jiffiesFromAtoB(nextEarliestTimeout,jiffies);
-    if (diffToNext < 0)
-      DBGPRINTK(DBG_MISC100,"GOING AGAIN (diffToNext=%d)\n",diffToNext);
-    else {
-      DBGPRINTK(DBG_MISC100,"PREPARING TO SLEEP FOR %d\n",diffToNext);
-      if (diffToNext <= 0) diffToNext = HZ/2; /* Really?  Nothing coming up at all?  Go 500ms */
-      else if (diffToNext > msToJiffies(10000)) {
-        printk(KERN_WARNING "Excess diffToNext %d, changing to %d\n",
-               diffToNext, HZ);
-        diffToNext = HZ;
+    
+    /***PHASE 2***/
+    for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
+      ITCDir kitc = itcIteratorGetNext(itr);
+      ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
+      ITCLevelState * ils = &mds->mLevelState;
+      ITCSideState * us = &ils->mUs;
+      ITCSideState * them = &ils->mThem;
+
+      if (first) {
+        early = us->mNextTimeout;
+        first = false;
       }
-      set_current_state(TASK_INTERRUPTIBLE);
-      schedule_timeout(diffToNext);   /* in TASK_RUNNING again upon return */
+      if (time_before(us->mNextTimeout, early))  early = us->mNextTimeout;
+      if (time_before(them->mNextTimeout, early))  early = them->mNextTimeout;
     }
+
+    /***PHASE 3***/
+
+    if (time_before(early, now)) {
+      printk(KERN_WARNING "Timeout in past (%lu, now %lu)\n", early,now);
+      early = now+msToJiffies(100);
+    } else if (time_after(early, now+msToJiffies(1000))) {
+      early = now+msToJiffies(1000);
+    }
+
+    diffToNext = jiffiesFromAtoB(now, early);
+    
+    if (0) { /*COND*/ }
+    else if (diffToNext < msToJiffies(5)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP0));
+    else if (diffToNext < msToJiffies(50)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP1));
+    else if (diffToNext < msToJiffies(500)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP2));
+    else ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP3));
+    
+    set_current_state(TASK_INTERRUPTIBLE);
+    schedule_timeout(diffToNext);   /* in TASK_RUNNING again upon return */
   }
   printk(KERN_INFO "itcLevelThreadRunner: Stopping by request\n");
   return 0;
@@ -602,8 +614,9 @@ void handleKITCPacket(ITCMFMDeviceState * ds, u8 * packet, u32 len)
   /* handle the packet */
   recvLevelPacket(ds,packet,len);
   
-  /* then update their state machine*/
-  updateKITC(ds);      
+  /* then kick the level updater*/
+  wakeITCLevelRunner();
+  /* and DON'T update here.  updateKITC(ds); */
 }
 
 typedef LevelStage (*LSEvaluator)(ITCMFMDeviceState * mds, LevelStage prevls) ;
@@ -760,7 +773,7 @@ static LevelStage ssEvaluatorCheckTimeout(ITCSideState * ss, LevelStage prevLS)
   uto = itcSideStateGetTimeout(ss);
   if (time_after_eq(jiffies, uto)) {
     newLS = applyLevelActionToLevelStage(ss->mTimeoutAction,prevLS);
-    itcSideStateSetLastAnnounceToNow(ss);
+    itcSideStateTouch(ss);
   }
   return newLS;
 }

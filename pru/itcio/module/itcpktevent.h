@@ -151,7 +151,16 @@ IEVDIRMACRO()
 #define ITCEVTSPECMACRO() \
   LEVELACTIONMACRO()      \
   XX(QGAP,"event queue gap")  \
-  XX(TIMEOUT,"timeout")   \
+  XX(PTOU,"push timeout - us")   \
+  XX(PTOT,"push timeout - them")   \
+  XX(BITR,"begin iteration")   \
+  XX(EITR,"end iteration")   \
+  XX(LATE,"going again")   \
+  XX(SLP0,"sleep <5ms")   \
+  XX(SLP1,"sleep <50ms")   \
+  XX(SLP2,"sleep <500ms")   \
+  XX(SLP3,"sleep >=500ms")   \
+  XX(INCOMPLETE_CODE,"XXX WHY DON'T YOU WRITE ME?")   \
     
 enum {
 #define XX(sym,str) IEV_SPEC_##sym,

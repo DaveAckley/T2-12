@@ -130,7 +130,7 @@ static ITCTrafficStats * getITCTrafficStats(u8 pru, u8 prudir)
 static void initITCPktEventState(ITCPktEventState * pes) {
   BUG_ON(!pes);
   pes->mStartTime = 0;
-  pes->mShiftDistance = 10;  /* divide by 1024 -> ~usec resolution */
+  pes->mShiftDistance = 12;  /* Default: divide by 4096 -> ~4usec resolution */
   INIT_KFIFO(pes->mEvents);
   mutex_init(&pes->mPktEventReadMutex);
   printk(KERN_INFO "ZERGINI: initITCPktEventState(%p/%d), mutex(%p/%d), kfifo(%p/%d)\n",
@@ -1510,11 +1510,13 @@ static void setITCEnabledStatus(int pru, int prudir, int enabled) {
     printk(KERN_INFO "ITCCHANGE:UP:%s\n",
            getDir8Name(mapPruAndPrudirToDir8(pru,prudir)));
     ADD_ITC_EVENT(makeItcDirEvent(mapDir8ToDir6(dir8),IEV_DIR_ITCUP));
+    wakeITCLevelRunner();
   } else if (!enabled && existing) {
     S.mItcEnabledStatus &= ~bit;
     printk(KERN_INFO "ITCCHANGE:DOWN:%s\n",
            getDir8Name(mapPruAndPrudirToDir8(pru,prudir)));
     ADD_ITC_EVENT(makeItcDirEvent(mapDir8ToDir6(dir8),IEV_DIR_ITCDN));
+    wakeITCLevelRunner();
   }
 }
 

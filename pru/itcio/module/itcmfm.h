@@ -9,6 +9,7 @@
 typedef struct itcmfmdevicestate ITCMFMDeviceState;    /* FORWARD */
 
 int itcLevelThreadRunner(void *arg) ;
+void wakeITCLevelRunner(void) ;
 
 void handleKITCPacket(ITCMFMDeviceState * ds, u8 * packet, u32 len) ;
 
@@ -67,7 +68,7 @@ typedef struct {
 } ITCLSOps;
 
 typedef struct {
-  unsigned long mLastAnnounce;  /* Time in jiffies (by local clock) */
+  unsigned long mModTime;       /* Time in jiffies (by local clock) */
   unsigned long mNextTimeout;   /* Based on timeout when last announce was set */
   LevelAction mTimeoutAction;   /* What to do it mNextTimeout hits */
   MFMToken   mToken;            /* Physics ID from MFM */
