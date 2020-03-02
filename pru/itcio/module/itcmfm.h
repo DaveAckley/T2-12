@@ -138,18 +138,6 @@ typedef struct {
   ITCSideState mThem;
 } ITCLevelState;
 
-#if 0
-typedef struct {
-  unsigned long mUTimeout;  /* Timeout for us, jiffies */
-  unsigned long mTTimeout;  /* Timeout for them, jiffies */
-  MFMToken   mTToken;       /* Last physics ID we got */
-  LevelStage mTLastLS;      /* Last LevelStage from Them */
-  MFZId      mTMFZId;       /* (Last) MFZId from Them */
-  LevelStage mUCurrentLS;   /* Current LevelStage of Us */
-  bool       mCompat;       /* True if Them and Us are known compatible */
-} ITCLevelState;
-#endif
-
 void initITCLevelState(ITCLevelState * ils) ;
 unsigned long itcLevelStateGetEarliestTimeout(ITCLevelState * ils);
 

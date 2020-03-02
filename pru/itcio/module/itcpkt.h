@@ -297,10 +297,7 @@ typedef struct itcmodulestate {
 
   ITCKThreadState mOBPktThread;
   ITCKThreadState mKITCTimeoutThread;
-#if 0
-  struct task_struct * mShipOBPktTask;     /* kthread to push packets to PRUs */
-  wait_queue_head_t mOBWaitQueue;          /* wait queue for mShipOBPktTask */
-#endif
+
 } ITCModuleState;
 
 extern ITCModuleState S;
