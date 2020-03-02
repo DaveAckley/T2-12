@@ -1,4 +1,4 @@
-{168}  -*- text -*-
+{229}  -*- text -*-
 [0:
 [3:
 [35:
@@ -1724,9 +1724,9 @@ fmt6: 110:3 + op6:3 + dir6:3
      001 ITCUP
      010 UPBEG
      100 UPEND
-     101 
-     110 
-     111 
+     101
+     110
+     111
 
 fmt7: 111:3 + spec:6
     spec
@@ -1752,14 +1752,14 @@ but then all through itcpkt.c there are calls on ADD_PKT_EVENT, and no
 calls on ADD_PKT_EVENT_IRQ, but only the latter disables interrupts..
 
 itcpkt.c:304
-  if (ret == 0) 
+  if (ret == 0)
     ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_TO_PRU, ipb->mPriority, log2in3(pktlen), prudev->mTempPacketBuffer[0]&0x7));
 
 doesn't look to be at interrupt level -- it's (indirectly) called from
-itcOBPktThreadRunner. 
+itcOBPktThreadRunner.
 
 itcpkt.c:1678
-      if (ret == 0) 
+      if (ret == 0)
         ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_FROM_USR, minor != PKT_MINOR_BULK, log2in3(copied), tmp[0]&0x7));
 
 doesn't either -- it's (indirectly) called from itc_pkt_write.
@@ -1779,7 +1779,7 @@ ah but then I also see:
     Mon Sep  2 05:29:13 2019 So we really have no explanation for the
     original page fault we saw.  We don't actually think we even need to
     use ADD_PKT_EVENT_IRQ either, because we're not doing interrupt stuff
-    on the itc_pkt side.  
+    on the itc_pkt side.
 
 So I think it's the scary comment that's (currently) wrong.
 [148:
@@ -1959,16 +1959,16 @@ have like:
  updateKITC ->
    sendLevelPacket ->
      trySendUrgentRoutedKernelPacket ->
-       kfifo_in to buffer 
+       kfifo_in to buffer
        wakeOBPktShipper ->
-         wake_up_process                         
+         wake_up_process
        <-
      <-
    <-
  <-
 
 but we really think that path should end there and we'd exit
-updateKITC before seeing any packets handled..  
+updateKITC before seeing any packets handled..
 
 And we have:
 
@@ -2045,7 +2045,7 @@ KITC structs??  Or it's somehow a reinterpretation of what we have?
 
    mUs.mModTime  last time Us status was checked
    mUs.mTimeout  when we'll act for us being overdue
- 
+
 and level runner iterates over the kitcs, and calls updateKITC on each
 one whose mThem.mModTime is newer than them mUs.mModTime, and sets the
 mUs.mModTime to now after each updateKITC is done.
@@ -2072,7 +2072,7 @@ level runner:
   kitc iterator:
     if mThem.mModTime > mUs.mModtime  // world changed
        || mThem.mTimeout < now        // or world isn't going to change
-       || mUs.mTimeout < now          // time for us to try again 
+       || mUs.mTimeout < now          // time for us to try again
       updateKITC
       mUs.mModtime = now
 
@@ -2083,8 +2083,8 @@ level runner:
   PHASE 3:
   if negative, warn and pick 100ms
   if >1s pick 1s
-  schedule_timeout(forthattime);    
-  
+  schedule_timeout(forthattime);
+
 
 :161]
 
@@ -2154,3 +2154,1166 @@ Sat Feb 22 05:18:39 2020 Well have to travel today, so committing all
 this as a WIP.  Starting to get there..
 
 :167]
+[168:
+
+Mon Feb 24 14:58:22 2020 All right, so back from Denver trip and
+trying to figure out where we are.
+
+For example, we are recording an 'INCOMPLETE CODE' event at
+itcmfm.c:246, and we're really unsure what is supposed to go there.
+
+Let's recap.
+
+ - We are in recvLevelPacket <- handleKITCPacket <- itc_pkt_cb.
+
+ - We have just gone through the levels calling .packetio, letting
+   each applicable level have a(n incremental) crack at parsing the
+   packet.
+
+ - After recvLevelPacket returns we are going to wake the level runner
+   and then call the processing of that packet done.
+
+ - The level runner will always call updateKITC if 'them' have a more
+   recent mModtime than 'us', so if recvLevelPacket updated
+   mThem.mModtime, then we should get updated on the next level runner
+   opportunity.
+
+So, questions:
+
+ - Who guarantees that mThem.mModTime gets touched by that process?
+
+ - What if anything else needs to happen at packet reception time?
+
+We're increasingly leaning to thinking the answer to the latter
+question is: Nothing.  That the purpose of packet reception time is
+just to parse info from the packet into itcSideState mThem, update
+mThem.mModTime, and kick the level runner.
+
+So maybe there's nothing more to do there?
+
+Maybe.
+
+And who does guarantee mThem gets touched?[169:
+
+Mon Feb 24 15:17:00 2020 Right now that's happening in
+ilsPacketIO_CONTACT:
+
+itcmfm.c:389
+    /* Pick up their info*/
+    ss = &ds->mLevelState.mThem;
+    ss->mLevelStage = byte1 & 0x1f;
+
+    ADD_ITC_EVENT(makeItcLSEvent(ds->mDir6,IEV_LST,ss->mLevelStage));
+    itcSideStateTouch(ss);
+
+So from one point of view that's a pretty random place, but it kind of
+makes sense too.. and with the 'accumulating levels' approach to
+packet generation and parsing, we're pretty much guaranteed to pass
+through that sequence.
+
+So, way back in :59: we show the COMMUNICATION layer sending and
+receiving 'seqno's.  Are we still going to do that?  What was the
+intended semantics?[170:
+
+Mon Feb 24 16:10:19 2020 So from :57: it seems like seqno is the
+randomized MFZid write count, used to reduce the risk of missing a
+mfm restart of the same physics.  It seems we could maybe go ahead and
+give that a try..
+
+One thing about it, though, we were planning on send a 'confirm' level
+packet containing both our seqno and our belief about theirs.  How
+would that work with this recv-just-dumps-to-mThem strategy?  It would
+seem like the confirmation would have to happen at parse time rather
+than during updateKITC?  But at this point we're pretty scared of
+making any decisions outside of updateKITC, since we see the level
+runner getting suspended in the middle of one updateKITC pretty often.
+
+I guess we could just send u.seqno on both exchange and confirm.
+
+We also need to understand how the exchange vs confirm idea interacts
+with the 'accumulating packets' idea.  It seems like we'd send the
+exchange info for a level only when we're below .2 on that level..
+[171:
+
+Mon Feb 24 16:31:38 2020 So, wait, isn't the sender's level part of
+every level packet?  Where does that fact appear in :59:?  [172:
+
+Mon Feb 24 16:34:24 2020 Contrary to :59:, itcmfm.c is currently
+exchanging LS in ilsPacketIO_CONTACT..  Not quite sure how that
+interacts advancing on packet sync, though..[173:
+
+Mon Feb 24 16:41:03 2020 Maybe we should ditch the exchange/confirm
+thing, and use moving-on-to-next-level as a confirm.  The next level
+obviously has a different packet format, so that's all okay.
+
+Ah and the reason ilsPacketIO_CONTACT can send LS is because it gets
+called for EVERY level packet, not just when we are at level CONTACT.
+[174:
+
+Mon Feb 24 16:57:26 2020 So let's try a :59: redo with our 'more
+modrun' thinking and see what it looks like.
+[175:
+
+Mon Feb 24 16:58:04 2020
+
+ - KITCs are updated ONLY from the level runner.
+   = External triggers (ITCCHANGE, L rcvd) only store state in mThem
+     and wake the level runner.
+
+ - Level packet generation and parsing is cumulative, however, the
+   CONTENTS of the per-level data can change depending on the current
+   actual level at the time of packet generation.  .packetio parsers
+   must consider the LS supplied in the packet when determining how to
+   parse.[176: Mon Feb 24 22:19:58 2020 Call it the 'active' content
+   vs the 'residual' content.  [177: Tue Feb 25 06:44:43 2020
+
+ - Most recently received peer level info is stored in 't', and 't's
+   mModTime is then set to jiffies iff the peer level info ACTUALLY
+   CHANGED.  mModTime is NOT CHANGED IF packet 't' data is the same as
+   currently stored.  We're taking this as an invariant to get the
+   system to settle SO DON'T FOG THIS UP during debugging scrambles.
+
+ - 't' data is reset on restart or [MAYBE?] if T timeout expires.
+
+ - update phases are:
+   = Check REQUIREMENTS from 0 to current level.  If currently
+     supported level < previous level, enter at currently supported
+     level, stage 0.  Otherwise enter at previous level, previous
+     stage.
+   = If mThem.mModTime is newer than mUs.mModTime, REACT at current
+     level.  Reaction involves examining level-appropriate mThem data,
+     making computations and decisions based on that, and yielding a
+     new LS for mUs.
+   = Otherwise (mThem.mModTime is not newer than mUs.mModTime), check
+     timeouts.
+
+     - If mUs.mTimeout has expired, we think maybe there was a lost
+       packet, and we resend our current LS, and push our timeout
+
+     - If mThem.mTimeout has expired, we think they're dead and we
+       restart (drop to L00).
+
+       [178: Tue Feb 25 10:52:11 2020 Now it does kind of seem like if
+       we're saying that's the meaning of the two timeouts, we could
+       fold that down to like one timeout plus a count.  Which isn't
+       really less state so much as it is less flexible state, which
+       is of course good if it's enough.[179:
+
+       Tue Feb 25 16:02:01 2020 So this line is suggesting that
+       there's only two underlying causes of timeouts -- transient
+       packet loss and durable peer loss -- and we're trying to
+       distinguish those two cases and respond differentially.
+
+       Do we believe that framing of the issue?  What else could it
+       be?  [180: Tue Feb 25 16:09:03 2020 Well, not immediately
+       coming up with other possibilities...  Peer is temporarily
+       delayed?  But we'd handle that but setting these timeouts
+       fairly generously anyway?[184: Tue Feb 25 17:08:49 2020 What
+       about the case "Everything seems fine but (I believe,
+       apparently) I have the initiative so I should advance"?  If
+       that is NOT determined by a timeout, what IS it determined
+       by?[186:
+
+       Wed Feb 26 06:40:08 2020 I guess the point is, except for the
+       very beginning, in the error-free case it should all be
+       ping-pong, with nobody needing to decide to spontaneously 'do
+       something'.  So maybe it is the timeout error case..  Which
+       would mean we do need custom timeout code grrr? :186]
+
+       (Urgh time to cook.) :184]
+
+       I'm thinking we should go with mTimeout + mRetries as part of
+       this round's redo..  And could we please get rid of the
+       .timeout callback and make it two per-level constants -- a
+       timeout and a retry count? :180]
+
+       :179] :178]
+
+
+ mThem.mTimeout has expired, drop back
+     level packet after possibly changing LS.
+
+     jiffies is later than mUs.mTimeout, then resend current level
+     packet, and push our timeout.
+
+:177]  :176]
+
+:175]
+
+:174]
+
+:173]
+
+:172]
+
+:171]
+
+:170]
+
+:169]
+
+:168]
+[181:
+
+Tue Feb 25 16:40:08 2020 So let's take a run at the tables again.
+
+ALL_LEVELS_MACRO args:
+  name
+  timeoutms
+  retrycount
+  customreq
+  customactive   ? implies ilsActivePacketWrite_LEVEL and ilsActivePacketRead_LEVEL
+  customresidual ? implies ilsResidualPacketWrite_LEVEL and ilsResidualPacketRead_LEVEL
+  customreact    run when mThem is newer than mUs
+  customact      [183: hmm.  :183]
+
+[182: Tue Feb 25 16:50:34 2020 Or how about just
+
+  custompacket   implies ilsPacketWrite_LEVEL(bool act) and ilsPacketRead_LEVEL(bool act)
+
+for active and residual.
+
+:182]
+
+:181]
+[185: Wed Feb 26 06:38:06 2020 Go again.
+
+ALL_LEVELS_MACRO args:
+  name
+  timeoutms
+  retrycount
+  customreq
+  custompacket   implies ilsPacketWrite_LEVEL(bool active) and ilsPacketRead_LEVEL(bool active)
+  customreact    run when mThem.mod is newer than mUs.mod
+  customact      run when mUs.timeout*retrycount expires?
+
+:185]
+[187: Wed Feb 26 13:52:10 2020 Again.
+
+ALL_LEVELS_MACRO args:
+  name
+  customreq
+  customtalk     implies ilsPacketWrite_LEVEL(bool active) and ilsPacketRead_LEVEL(bool active)
+  customreact    run when mThem.mod is newer than mUs.mod
+  customact      run when mUs.timeout expires; may originate, retry, ...
+  timeoutms
+  retrycount
+
+ACTIONS:
+ ENTER:   S = 0
+ ENGAGE:  S = 1
+ EXIT:    S = 2
+ INIT:    LS = 0.0
+ CONTINUE: nothing
+ DEFAULT: call default processing
+
+DEFAULT LEVEL VALUES:
+  Requires:      t>=(L-1).1
+  Talk:          nothing
+  React:         (1) L++,S=0 if t>=L.1 && u==L.2; (2) S++ if u <= L.2 && t>=L.0; CONTINUE
+  Act:           ENTER if retries-- > 0, else INIT
+  TimeoutMS:     500ms
+  RetryCount:    3
+
+Level 0 CONTACT
+  Requires:      t>=0.0 (always true)
+  Talk:          write u.LS, read t.LS
+  React:         DEFAULT
+  Act:           ENGAGE if S==0 && PacketSync; START if !PacketSync
+  TimeoutMS:     1000ms
+  RetryCount:    1
+
+Level 1 COMMUNICATION
+  Requires:      PacketSync
+  Talk:          write u.seqno+u.oseqno, read t.seqno+t.oseqno
+  React:         INIT if u.oseqno != t.seqno || u.seqno != t.oseqno, else DEFAULT
+  Act:           DEFAULT
+
+Level 2 COMPATIBILITY
+  Requires:      DEFAULT
+  Talk:          if active, write u.MFZId, read t.MFZId, else write u.d, read t.d
+  React:         INIT if u.oseqno != t.seqno || u.seqno != t.oseqno, else DEFAULT
+  Act:           DEFAULT
+
+
+:187]
+[188:
+
+Fri Feb 28 04:46:02 2020 Results of fresh thinking yesterday
+afternoon: Instead of focusing on turn-taking, avoiding races, and
+using rare large timeouts, suppose we should focus on synchronization,
+CAUSING races, and using frequent small timeouts.
+
+Ideally you'd like to always have matching packets passing each other
+mid-flight; both sides would send and then receive the matching
+packet, in that order.
+
+Elaboration: Instead of having arbitrary timeouts with random
+variation to avoid races, have fixed timeouts with adaptive phase
+shifting to cause races.
+
+So, let's do a synchronization spike.
+
+s1: On PS, pick a random # and send it once a second.  Agree who got
+    the bigger number, and have the smaller sync to the larger.
+
+s2: Add a /sys/class/itc/syncstats or something to show recent sync
+    accuracy
+
+[189:
+
+Fri Feb 28 13:07:14 2020 So how would kitc sync work?  When we detect
+packet sync we pick a non-zero 8 bit random #, and store it in mUs
+ITCSideState.  We send a (level) packet containing that # plus a 0,
+indicating that we haven't learned the other side's # yet.
+
+When we get such a packet, we check if its number is different than
+ours.  If it happens to be the same we start over and repick ours.  If
+it's different we store it in mThem ITCSideState.
+
+Then we decide who wins based on wraparound distance between the
+numbers -- the one that's 'forward' from the other is the leader.  If
+we're the leader we send a 'leader announcement' packet and then set a
+timeout in the future by the full period for this interaction.  If
+we're the follower we wait to receive one.
+
+When we receive a leader announcement packet we note the time and
+schedule a timeout at half the fixed period for this interaction.  At
+that time we reply with the matching follower announcement packet of our
+own.  When the leader
+
+:189]
+
+:188]
+[190:
+
+Fri Feb 28 13:36:35 2020
+
+LRru         reset.  r=my reset generation; u=my rnd byte.  reset in reply
+LLrusv       I am leader given r=us resgen, u=us rnd byte; sv=them
+Lxrusv       I am x=L:leader|F:follower given rusv (== your svru)
+LIsmfz       I am on seqno s and running mfzid mfz
+LCsr
+
+:190][191:
+
+Fri Feb 28 14:07:30 2020 Ah, so one advantage of just setting a
+timeout and replying in tempo, rather than replying immediately, is
+that you get a chance to soak up repeated packets that may have ended
+up delayed in the channel somewhere.  If the other guy is repeatedly
+sending a reset then timing out and sending another, because we're
+still booting or something, then we might get a pile of those resets
+in a row, but we'll likely only reply to the last one, because the
+the previous ones will just keep pushing back our timeout.[192:
+
+Fri Feb 28 14:31:12 2020 So come on.  How could we set up to implement
+this real quick.  The point of it is to agree as quickly as possible
+on a half-period spread based on Leader/Follower, and then expect that
+for all subsequent interactions, the follower's reply to the leader's
+previous packet will have arrived before the leader runs again.
+
+So the level runner loop is:
+
+ - While stop not requested,
+
+   = Pick nearest timeout.
+
+   = If that's now or past, do it, then continue.
+
+   = Otherwise, sleep til the nearer of when it's due or for some max
+     sleep, then continue.
+
+and the packet receive handler is:
+
+ - Call packet-specific processing
+
+ - Packet-specific processing generally updates internal state, but it
+   does not send packets.  It may adjust the timeout (and it wakes the
+   level runner if it shortens any timeout).
+
+Packet-specific processing:
+
+ o On asynchronous reset condition:
+   (1) Clear urnd and trnd
+   (2) set state to RESET
+   (3) set timeout to random small
+
+ = timeout in state RESET
+   (1) (Tie do-over)
+       if urnd!=0 && trnd!=0 && urnd == trnd then
+         async reset, end
+   (2) (Election)
+       if urnd!=0 && trnd!=0 && urnd != trnd
+          && urnd == turnd then
+         LEADER = beats(urnd,trnd)
+         set state to CONFIG
+         clear tmfzid
+         push timeout a whole period, end
+   (3) (Vote)
+       if urnd==0 then
+         pick urnd
+   (4) send RESET urnd trnd
+   (5) push timeout a full period
+
+                                                 - recv RESET trnd turnd:
+                                                   (1) captures trnd and turnd
+                                                   (2) sets state to RESET
+                                                   (3) if turnd==0 then
+                                                         clear urnd
+                                                   (4) push timeout half-period
+
+
+                                                  = timeout in state RESET
+                                                       ..as above..
+
+
+ = timeout in state CONFIG
+   (1) (Compatibility)
+       if LEADER && tmfzid == mfzid
+   (2) ()
+
+   (3) send CONFIG mfzid
+
+ - recv CONFIG mfzid
+   (1) captures tmfzid = mfzid
+   (2)
+
+
+
+
+         if LEADER then
+           send CONFIG mfzid
+
+
+
+                      async reset->s==?
+                         urnd = trnd = 0
+                         s = RESET
+            +small                             0.0
+                      to RESET
+                         urnd=3
+                         send LR30
+                         wait whole     +small    LR30->s==?
+                                                    trnd=3, turnd=0
+                                                    s=RESET
+                                                    urnd=0
+                                                    wait half
+
+                                         +half  0.5
+                                                    to RESET
+                                                       urnd=4
+                                                       send LR43
+                                                       wait whole
+                                         +small
+
+                      LR43->
+                        trnd=4, turnd=3
+                        s=RESET
+                        wait half
+
+                                         +half  1.0
+                      to RESET
+                         LEADER=beats(3,4)=false
+                         s=CONFIG
+                         wait whole
+                                         +half  1.5 to RESET
+                                                       LEADER=beats(4,3)=true
+                                                       s=CONFIG
+                                         +small        wait whole
+                       LCdreg3->
+
+
+
+:192]
+
+:191]
+[193:
+
+Sat Feb 29 01:58:46 2020
+
+reset
+   go LEAD
+   randomwait
+
+to LEAD
+   send
+   go WLEAD                    rc LEAD
+   fullwait                       if in(WLEAD) and onein(2) then
+                                    reset
+to (WLEAD,WCONFIG)                go FOLLOW; halfwait
+   reset
+
+
+                               to FOLLOW
+                                  send
+                                  go WFOLLOW
+                                  fullwait
+
+rc FOLLOW                      to WFOLLOW
+   if !in(WLEAD) then             reset
+     reset
+   else
+     go CONFIG; halfwait
+
+to CONFIG
+   send config                 rc CONFIG config
+   go WCONFIG                     if !in(WFOLLOW) then
+   fullwait                         reset
+                                  tconfig = config
+                                  go CHECK
+                                  halfwait
+
+
+                                to CHECK
+to WCONFIG                         send uconfig
+   reset                           if uconfig == tconfig then
+                                     go COMPATIBLE
+                                   else
+                                     go INCOMPATIBLE
+                                   fullwait
+
+
+rc CHECK config
+   if !in(WCONFIG) then reset
+   tconfig = config
+   if uconfig == tconfig then
+     go COMPATIBLE
+   else
+     go INCOMPATIBLE
+   fullwait
+
+                        to (COMPATIBLE,INCOMPATIBLE)
+                          send
+                          longwait
+
+rc COMPATIBLE
+  if !in(COMPATIBLE) then reset
+
+rc INCOMPATIBLE
+  if !in(INCOMPATIBLE) then reset
+
+rc MFMTRAFFIC
+  if !in(COMPATIBLE) then drop
+  else forward
+
+[194:
+
+Sat Feb 29 03:28:03 2020 OK, well, could that trace actually imply a
+pretty heavily simplified but possibly actually workable complete
+scheme?  Key ideas are:
+
+ - Whoever resets first tries to be the leader.
+
+ - If a leader race is detected, half the time we accept the later one
+   and half the time we re-reset.  Hmm if we both accept the later one
+   couldn't we have a FOLLOW-FOLLOW stalemate and lose the reset?[195:
+   Sat Feb 29 03:33:38 2020  Well we'll still re-reset a little bit
+   later, when 'to FOLLOW' sends, leading to 'rc FOLLOW' when not in
+   WLEAD.  "So maybe it's okay?" [196: Sat Feb 29 03:37:25 2020
+
+ - Leader and follower have nearly disjoint sets of states, up until
+   COMPATIBLE and INCOMPATIBLE.  That seems a handy way to keep things
+   separate, and since the simplified path is so short, the state
+   duplication isn't so so much.
+
+ - There's several 'transient' states (at least WLEAD,WFOLLOW,WCONFIG)
+   that aren't expected to timeout, so they all just reset if timeout
+   does occur.  But they want to be different states to detect
+   sequence problems while receiving packets.
+
+:196]:195]
+
+
+:194]
+:193]
+[197:
+
+Sat Feb 29 04:15:32 2020 OK so let's try infrastructure to implement
+the :193: approach.
+
+ XX(NAME,DESC,CUSTO,CUSRC)
+
+enum StateNumber {
+  S_##NAME,
+};
+
+enum StateMask {
+  M_##NAME = 1<<S_##NAME,
+};
+
+const char * stateNames[] = {
+ #NAME,
+};
+
+const char * stateDesc[] = {
+ #DESC,
+};
+
+ YY0 void timeoutDefault_KITC(ITCMFMDeviceState * mds) ;
+ YY1 void timeout_##NAME##_KITC(ITCMFMDeviceState * mds) ;
+
+ YY##CUSTO(NAME)
+
+ YY0 void receiveDefault_KITC(ITCMFMDeviceState * mds, const u8 * packet, u32 len) ;
+ YY1 void receive_##NAME##_KITC(ITCMFMDeviceState * mds, const u8 * packet, u32 len) ;
+
+ YY##CUSRC(NAME)
+
+
+
+Default TO: reset
+Default TC: reset
+
+Packet format:
+ byte[0] 1010SDR  3 bit source/dest dir
+ byte[1] 110STNM  5 bit state number
+ byte[2]+ optarg
+
+Wait codes
+  WC_RANDOM    -> 10..1000ms
+  WC_HALF      -> 150ms
+  WC_FULL      -> 300ms
+  WC_LONG      -> 10000ms
+
+Helper functions:
+
+ void goToStateKITC(ITCMFMDeviceState * mds, StateNumber sn, WaitCode wc) ;
+ u32 initPacketKITC(ITCMFMDeviceState * mds, const char * pb) ;
+ void resetKITC(ITCMFMDeviceState *mds) ;
+ void pushTimeoutKITC(ITCMFMDeviceState * mds, u32 msFromNow) ;
+
+ bool passingMFMTrafficKITC(ITCMFMDeviceState * mds) ;
+
+:197]
+[198:
+
+Sun Mar  1 03:55:59 2020 OK, back after diverting to push the Michael
+Frank Computing Up.  I have MAYBE one more day I can spend on this.
+Based on :193: and :197: we should be able to get to passing MFM
+packets only when compatible.  Let's get foggen kraken:
+
+TODO
+
+[199: Sun Mar  1 04:53:38 2020
+DONE :199] - Redo XX macros based on :197:
+
+[200: Sun Mar  1 04:57:27 2020
+DONE :200] - Redo side struct
+
+[201: Sun Mar  1 04:57:40 2020 
+DONE :201] - Redo state ops struct
+
+[202: Sun Mar  1 05:34:20 2020
+DONE, first cut :202] - Redo level runner.
+
+[204: Sun Mar  1 16:06:11 2020
+DONE :204] - Implement default behaviors
+
+[205:
+DONE :205] - Implement custom behaviors
+
+ - Redo event tracing
+
+[226: Mon Mar  2 04:30:37 2020
+DONE :226] - See loopback events to compatibility
+
+:198]
+[203:
+
+Sun Mar  1 16:05:58 2020 Well, it built..[206: Sun Mar  1 16:06:32
+2020  Next up is pull bits off and trying it, but about it's time to
+cook so that'll be after the evening.  :206]
+
+:203]
+[207:
+
+Mon Mar  2 00:48:31 2020 'Real quick' let's add a state at the
+beginning that waits for PS.
+
+reset
+   go WAITPS
+   randomwait
+
+to WAITPS
+   if PS go LEAD   
+   longwait
+
+[208:
+
+Mon Mar  2 01:26:05 2020 OK well did that.
+
+Left it so the 'if PS go LEAD' doesn't actually push the timeout, so
+it'll (race to) retimeout and do 'to LEAD' immediately.  Seems
+inefficient but rare.
+
+Well, I think we're at
+
+RISKY BITS OFF
+
+:208]
+:207]
+[209:
+
+Mon Mar  2 01:31:37 2020 OK trying make install.[210:
+
+Mon Mar  2 01:34:24 2020 Well, modprobe itc_pkt blew up with 
+
+    Mar  2 01:33:49 beaglebone kernel: [582362.953671] kernel BUG at /home/t2/T2-12/pru/itcio/module/itcpkt.c:2126!
+
+I think because we still have issues with minor devices not getting
+cleaned up quite right, or something..
+
+..so rebooting.. we shall see.
+
+:210]
+
+:209]
+[211:
+
+Mon Mar  2 01:38:27 2020 Well we're alive..  Not sure what if anything
+we'll be able to see, here, before we redo the kitc event
+tracing.. but about to try plugging in the loopback..[212:
+
+Mon Mar  2 01:39:39 2020 Well that was a bit of an anticlimax:
+
+    Mar  2 01:39:22 beaglebone mfm.sh[1767]: ITCSPIKE-92103199200283: MSG: Tile Level 2: Accepting events
+    Mar  2 01:39:22 beaglebone kernel: [  190.884393] ITCCHANGE:UP:WT
+    Mar  2 01:39:22 beaglebone kernel: [  190.887379] ITCCHANGE:UP:ET
+    Mar  2 01:39:25 beaglebone mfm.sh[1767]: ITCSPIKE-92103199200284: MSG: Tile Level 0: Quitting
+    Mar  2 01:39:25 beaglebone mfm.sh[1767]: ITCSPIKE-92103199200285: MSG: Tile Level 1: Starting MFZ1
+    Mar  2 01:39:26 beaglebone mfm.sh[1767]: ITCSPIKE-92103199200286: MSG: Tile Level 2: Accepting events
+    Mar  2 01:39:28 beaglebone cdm.sh[1768]: WT is alive
+    Mar  2 01:39:31 beaglebone kernel: [  199.643244] ITCCHANGE:DOWN:ET
+    Mar  2 01:39:32 beaglebone kernel: [  200.065467] ITCCHANGE:DOWN:WT
+    Mar  2 01:39:42 beaglebone mfm.sh[1767]: ITCSPIKE-92103199200287: MSG: Tile Level 0: Quitting
+
+[213:
+
+Mon Mar  2 01:43:31 2020 OK!  This is more like it:
+
+    root@beaglebone:~# echo f00 > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug 
+    Mar  2 01:43:01 beaglebone kernel: [  409.703717] set debug f00
+    Mar  2 01:43:05 beaglebone kernel: [  413.731031] ITCCHANGE:UP:WT
+    Mar  2 01:43:05 beaglebone kernel: [  413.733950] recvLevelPacket us=WAITPS pkt=CHECK+3
+    Mar  2 01:43:05 beaglebone kernel: [  413.738857] ITCCHANGE:UP:ET
+    Mar  2 01:43:05 beaglebone kernel: [  413.741684] recvLevelPacket us=WAITPS pkt=LEAD+2
+    Mar  2 01:43:05 beaglebone kernel: [  413.746414] ====================
+    Mar  2 01:43:05 beaglebone kernel: [  413.898190] ====================
+    Mar  2 01:43:05 beaglebone kernel: [  413.901718] recvLevelPacket us=WAITPS pkt=FOLLOW+2
+    Mar  2 01:43:05 beaglebone kernel: [  413.916777] ====================
+    Mar  2 01:43:05 beaglebone kernel: [  413.962188] ====================
+    Mar  2 01:43:05 beaglebone kernel: [  413.965505] ====================
+    Mar  2 01:43:05 beaglebone kernel: [  413.979559] ====================
+    Mar  2 01:43:05 beaglebone kernel: [  413.983064] recvLevelPacket us=WFOLLOW pkt=LEAD+2
+    Mar  2 01:43:06 beaglebone kernel: [  414.138215] ====================
+    Mar  2 01:43:06 beaglebone kernel: [  414.141727] recvLevelPacket us=WLEAD pkt=FOLLOW+2
+    Mar  2 01:43:06 beaglebone kernel: [  414.155589] ====================
+    Mar  2 01:43:06 beaglebone cdm.sh[1768]: ET is alive
+    Mar  2 01:43:06 beaglebone kernel: [  414.298356] ====================
+    Mar  2 01:43:06 beaglebone kernel: [  414.301886] recvLevelPacket us=WFOLLOW pkt=CONFIG+3
+    Mar  2 01:43:06 beaglebone kernel: [  414.312771] ====================
+    Mar  2 01:43:06 beaglebone kernel: [  414.458326] ====================
+    Mar  2 01:43:06 beaglebone kernel: [  414.461871] recvLevelPacket us=WCONFIG pkt=CHECK+3
+    Mar  2 01:43:06 beaglebone kernel: [  414.470568] ====================
+    Mar  2 01:43:06 beaglebone kernel: [  414.618371] ====================
+    Mar  2 01:43:06 beaglebone kernel: [  414.621929] recvLevelPacket us=COMPATIBLE pkt=COMPATIBLE+2
+    Mar  2 01:43:06 beaglebone kernel: [  414.635653] ====================
+    Mar  2 01:43:07 beaglebone kernel: [  415.250604] ====================
+    Mar  2 01:43:07 beaglebone kernel: [  415.253913] ====================
+    Mar  2 01:43:07 beaglebone kernel: [  415.270779] ====================
+    Mar  2 01:43:07 beaglebone kernel: [  415.286664] ====================
+    Mar  2 01:43:07 beaglebone kernel: [  415.289939] ====================
+    Mar  2 01:43:09 beaglebone kernel: [  417.696325] recvLevelPacket us=COMPATIBLE pkt=INIT+2
+    Mar  2 01:43:09 beaglebone kernel: [  417.701777] ====================
+    Mar  2 01:43:09 beaglebone kernel: [  417.878615] ITCCHANGE:DOWN:ET
+    Mar  2 01:43:09 beaglebone kernel: [  417.881780] ====================
+    Mar  2 01:43:10 beaglebone kernel: [  418.227540] ====================
+    Mar  2 01:43:10 beaglebone kernel: [  418.230850] ====================
+    Mar  2 01:43:10 beaglebone kernel: [  418.304749] ITCCHANGE:DOWN:WT
+    Mar  2 01:43:10 beaglebone kernel: [  418.931750] ====================
+    Mar  2 01:43:11 beaglebone kernel: [  419.115792] ====================
+    Mar  2 01:43:11 beaglebone kernel: [  419.119101] ====================
+    root@beaglebone:~# Mar  2 01:43:11 beaglebone kernel: [  419.740930] set debug 0
+
+
+:213]
+:212]
+
+:211]
+[214:
+
+Mon Mar  2 02:16:13 2020 Buncha quick tweaks
+
+RISKY BITS OFF[215:
+
+Mon Mar  2 02:17:26 2020 No good, minor blow-up again..  Rebooting.
+
+:215]
+
+:214]
+[216:
+
+Mon Mar  2 02:23:13 2020 OK, this is more interesting:
+
+    root@beaglebone:~# echo f00 > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug 
+    Mar  2 02:20:59 beaglebone kernel: [  182.866584] set debug f00
+    Mar  2 02:21:02 beaglebone kernel: [  185.064507] ITCCHANGE:UP:WT
+    Mar  2 02:21:02 beaglebone kernel: [  185.067449] ITCCHANGE:DOWN:WT
+    Mar  2 02:21:02 beaglebone kernel: [  185.070445] ITCCHANGE:UP:WT
+    Mar  2 02:21:02 beaglebone kernel: [  185.073386] ITCCHANGE:UP:ET
+    Mar  2 02:21:02 beaglebone kernel: [  185.076247] ITCCHANGE:DOWN:ET
+
+I bobbled plugging the loopback connection creating some realistic
+chatter.. 
+
+    Mar  2 02:21:02 beaglebone kernel: [  185.079237] ITCCHANGE:UP:ET
+    Mar  2 02:21:02 beaglebone kernel: [  185.082116] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:02 beaglebone kernel: [  185.090002] ITC ET i11 -> i01
+
+..lock stuff is happening as well..
+
+    Mar  2 02:21:02 beaglebone kernel: [  185.167550] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:02 beaglebone kernel: [  185.173910] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:02 beaglebone kernel: [  185.187595] sendKITCPacket pkt=LEAD len=2 (to=WT)
+
+WT reached 'to LEAD' first.  (That should be '(src=WT)' rather than
+'to').
+
+    Mar  2 02:21:02 beaglebone kernel: [  185.199410] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:02 beaglebone kernel: [  185.511405] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:02 beaglebone kernel: [  185.517749] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:02 beaglebone kernel: [  185.548236] recvKITCPacket pkt=LEAD len=2 (us=[ET]WAITPS)
+
+Packet arrives via loopback.  It took (- 185.548236 185.187595) ==
+360ms, but hoping that's somehow got to do with 'WC_FULL_MS = 300,'...
+
+Note that ET is in the 'new, last minute' WAITPS state -- it hasn't
+even noticed the '[ 185.079237] ITCCHANGE:UP:ET' yet..
+
+    Mar  2 02:21:02 beaglebone kernel: [  185.553866] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:02 beaglebone kernel: [  185.619470] ITC ET i11 -> i01
+    Mar  2 02:21:02 beaglebone kernel: [  185.703457] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:02 beaglebone kernel: [  185.709836] sendKITCPacket pkt=FOLLOW len=2 (to=ET)
+
+ET agrees it's the follower.
+
+    Mar  2 02:21:02 beaglebone kernel: [  185.714890] recvKITCPacket pkt=FOLLOW len=2 (us=[WT]WAITPS)
+
+This packet arrives a bit faster:  (- 185.714890 185.709836) == 5ms.
+
+But why is WT in WAITPS?  It sent 'LEAD': We expect it to be in
+WLEAD.  Not sure what's going on there -- WAITPS is now entered
+asynchronously through resetKITC(), but what caused the reset?
+
+    Mar  2 02:21:02 beaglebone kernel: [  185.727470] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.055463] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.063535] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.179476] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.185812] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.203717] recvKITCPacket pkt=LEAD len=2 (us=[WT]WAITPS)
+
+That's confusing too.  ET now thinking it's the cheese?
+
+    Mar  2 02:21:03 beaglebone kernel: [  186.209285] sendKITCPacket pkt=LEAD len=2 (to=ET)
+
+And are we having a race or something?
+
+    Mar  2 02:21:03 beaglebone kernel: [  186.229741] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.359494] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.365897] sendKITCPacket pkt=FOLLOW len=2 (to=WT)
+    Mar  2 02:21:03 beaglebone kernel: [  186.370957] recvKITCPacket pkt=FOLLOW len=2 (us=[ET]WLEAD)
+
+ET was in WLEAD this time, seems like some sanity is coming.. 
+
+    Mar  2 02:21:03 beaglebone kernel: [  186.389138] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.527493] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.533878] sendKITCPacket pkt=CONFIG len=3 (to=ET)
+    Mar  2 02:21:03 beaglebone kernel: [  186.538932] recvKITCPacket pkt=CONFIG len=3 (us=[WT]WFOLLOW)
+
+We've gotten to CONFIG!  (Note the 'len=3' means userspace never
+actually wrote us a config, so we're just sending the null byte after
+the header.. so this really should fail, but..)
+    
+    Mar  2 02:21:03 beaglebone kernel: [  186.561834] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone mfm.sh[1770]: ITCSPIKE-92103199826940: MSG: Tile Level 0: Quitting
+    Mar  2 02:21:03 beaglebone kernel: [  186.695534] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.703682] sendKITCPacket pkt=CHECK len=3 (to=WT)
+
+WT has gotten to CHECK!  It's sending the empty config too!
+
+    Mar  2 02:21:03 beaglebone kernel: [  186.708670] recvKITCPacket pkt=CHECK len=3 (us=[ET]WCONFIG)
+    Mar  2 02:21:03 beaglebone kernel: [  186.730005] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.863525] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:03 beaglebone kernel: [  186.869654] sendKITCPacket pkt=COMPATIBLE len=2 (to=ET)
+
+ET has gotten to COMPATIBLE!  Neither of us has a config?  Let's rock!
+
+    Mar  2 02:21:03 beaglebone kernel: [  186.875116] recvKITCPacket pkt=COMPATIBLE len=2 (us=[WT]COMPATIBLE)
+    Mar  2 02:21:03 beaglebone kernel: [  186.890726] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:04 beaglebone kernel: [  187.209416] ITCCHANGE:DOWN:ET
+
+And I apparently yanked the cable before longwait had passed for west..
+
+    Mar  2 02:21:04 beaglebone kernel: [  187.212613] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:04 beaglebone mfm.sh[1770]: ITCSPIKE-92103199826941: MSG: Tile Level 1: Starting MFZ2
+    Mar  2 02:21:04 beaglebone mfm.sh[1770]: ITCSPIKE-92103199826942: MSG: Tile Level 2: Accepting events
+    Mar  2 02:21:04 beaglebone kernel: [  187.610711] ITCCHANGE:DOWN:WT
+    Mar  2 02:21:04 beaglebone kernel: [  187.613950] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:05 beaglebone kernel: [  188.327645] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:05 beaglebone kernel: [  188.333930] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:05 beaglebone kernel: [  188.839689] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:05 beaglebone kernel: [  188.845978] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:07 beaglebone kernel: [  190.247923] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:07 beaglebone kernel: [  190.254410] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:07 beaglebone kernel: [  190.271865] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:07 beaglebone kernel: [  190.287912] ===kitcTimeoutThreadRunner===
+    Mar  2 02:21:07 beaglebone kernel: [  190.299931] ===kitcTimeoutThreadRunner===
+    root@beaglebone:~# Mar  2 02:21:09 beaglebone kernel: [  192.901094] set debug 0
+    Mar  2 02:21:22 beaglebone mfm.sh[1770]: ITCSPIKE-92103199826943: MSG: Tile Level 0: Quitting
+
+[217:
+
+Mon Mar  2 02:47:34 2020 So this is all very promising.  Lots to fix
+up; first up we mostly need better state machine transition logging.
+
+But only a couple more scant hours on this before we have to switch to
+science for the next two weeks!
+
+:217]
+:216]
+[218:
+
+Mon Mar  2 02:59:12 2020 RISKY BITS OFF
+
+:218]
+[219:
+
+Mon Mar  2 03:04:50 2020 OK now this:
+
+    Mar  2 03:04:09 beaglebone mfm.sh[1751]: ITCSPIKE-92103197045749: MSG: Tile Level 2: Accepting events
+    Mar  2 03:04:13 beaglebone kernel: [  124.060426] ITCCHANGE:UP:WT
+    Mar  2 03:04:13 beaglebone kernel: [  124.063410] ITCCHANGE:UP:ET
+    Mar  2 03:04:13 beaglebone kernel: [  124.068769] ITC ET i11 -> i01
+    Mar  2 03:04:15 beaglebone kernel: [  125.209753] kitcTimeoutThreadRunner: [ET] to WAITPS
+
+ET gets timeout while in WAITPS.
+
+    Mar  2 03:04:15 beaglebone kernel: [  125.217975] setStateKITC: [ET] WAITPS->LEAD
+
+ET advances to LEAD (without pushing the timeout.)
+
+    Mar  2 03:04:15 beaglebone kernel: [  125.237827] kitcTimeoutThreadRunner: [ET] to LEAD
+
+So 'to LEAD' hits after 'only' (- 125.237827 125.217975) ~20ms..
+
+    Mar  2 03:04:15 beaglebone kernel: [  125.253980] sendKITCPacket pkt=LEAD len=2 (src=ET)
+
+ET ships LEAD.
+
+    Mar  2 03:04:15 beaglebone kernel: [  125.258990] recvKITCPacket rc LEAD len=2 (us=[WT]WAITPS)
+
+WT gets it 5ms later.
+
+    Mar  2 03:04:15 beaglebone kernel: [  125.264371] setStateKITC: [WT] WAITPS->FOLLOW
+
+And decides to follow.
+
+    Mar  2 03:04:15 beaglebone kernel: [  125.281238] setStateKITC: [ET] LEAD->WLEAD
+
+This is coming from the same 'to LEAD' that did the send!  The
+previous two [WT] events happened at 'interrupt level' via the packet
+callback?  
+
+Maybe we should updates states and timeouts first, and send packets
+last?  Could we do that?  Just for sanity?[220: Mon Mar  2 03:17:40
+2020 No, we can't cleanly, because we pack our current state in during
+the send.  Could we have a shipCurrentStateAndSwitchToNewState?  [221:
+
+Mon Mar  2 03:21:10 2020 No actually we can do it as is -- our state
+ON ENTRY TO THE TIMEOUT is what's in the PacketHandler.  It IS okay to 
+change our state and timeout and then ship the packet.[222:
+
+Mon Mar  2 03:24:27 2020 Although it will be kind of confusing, since
+we'll now see the state change to some new state, while broadcasting
+its previous state.  So be it, though, for a test anyway.
+
+:222]
+
+:221]:220]
+
+    Mar  2 03:04:15 beaglebone kernel: [  125.417800] kitcTimeoutThreadRunner: [WT] to FOLLOW
+    Mar  2 03:04:15 beaglebone kernel: [  125.426123] sendKITCPacket pkt=FOLLOW len=2 (src=WT)
+    Mar  2 03:04:15 beaglebone kernel: [  125.431301] recvKITCPacket rc FOLLOW len=2 (us=[ET]WLEAD)
+    Mar  2 03:04:15 beaglebone kernel: [  125.436772] setStateKITC: [ET] WLEAD->CONFIG
+    Mar  2 03:04:15 beaglebone kernel: [  125.453958] setStateKITC: [WT] FOLLOW->WFOLLOW
+    Mar  2 03:04:15 beaglebone kernel: [  125.589892] kitcTimeoutThreadRunner: [ET] to CONFIG
+    Mar  2 03:04:15 beaglebone kernel: [  125.597969] sendKITCPacket pkt=CONFIG len=3 (src=ET)
+    Mar  2 03:04:15 beaglebone kernel: [  125.603130] recvKITCPacket rc CONFIG len=3 (us=[WT]WFOLLOW)
+    Mar  2 03:04:15 beaglebone kernel: [  125.608773] setStateKITC: [WT] WFOLLOW->CHECK
+    Mar  2 03:04:15 beaglebone kernel: [  125.625987] setStateKITC: [ET] CONFIG->WCONFIG
+    Mar  2 03:04:15 beaglebone kernel: [  125.761876] kitcTimeoutThreadRunner: [WT] to CHECK
+    Mar  2 03:04:15 beaglebone kernel: [  125.769932] sendKITCPacket pkt=CHECK len=3 (src=WT)
+    Mar  2 03:04:15 beaglebone kernel: [  125.774996] recvKITCPacket rc CHECK len=3 (us=[ET]WCONFIG)
+    Mar  2 03:04:15 beaglebone kernel: [  125.780552] setStateKITC: [ET] WCONFIG->COMPATIBLE
+    Mar  2 03:04:15 beaglebone kernel: [  125.793901] setStateKITC: [WT] CHECK->COMPATIBLE
+    Mar  2 03:04:15 beaglebone kernel: [  125.933963] kitcTimeoutThreadRunner: [ET] to COMPATIBLE
+    Mar  2 03:04:15 beaglebone kernel: [  125.941985] sendKITCPacket pkt=COMPATIBLE len=2 (src=ET)
+    Mar  2 03:04:15 beaglebone kernel: [  125.947484] recvKITCPacket rc COMPATIBLE len=2 (us=[WT]COMPATIBLE)
+
+
+:219]
+[223:
+
+Mon Mar  2 03:43:59 2020 RISKY BITS OFF
+
+:223]
+[224:
+
+Mon Mar  2 03:49:02 2020 Now it looks like this:
+
+    echo f00 > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug 
+    Mar  2 03:48:26 beaglebone kernel: [  170.300188] set debug f00
+    Mar  2 03:48:29 beaglebone kernel: [  173.076623] ITCCHANGE:UP:WT
+    Mar  2 03:48:29 beaglebone kernel: [  173.079592] ITCCHANGE:UP:ET
+    Mar  2 03:48:29 beaglebone kernel: [  173.127075] ITC ET i11 -> i01
+    Mar  2 03:48:29 beaglebone kernel: [  173.283083] kitcTimeoutThreadRunner: [ET] to WAITPS
+    Mar  2 03:48:29 beaglebone kernel: [  173.291328] setStateKITC: [ET] WAITPS->LEAD
+
+ET times out and heads for LEAD.
+
+    Mar  2 03:48:29 beaglebone kernel: [  173.307756] kitcTimeoutThreadRunner: [ET] to LEAD
+    Mar  2 03:48:29 beaglebone kernel: [  173.327076] setStateKITC: [ET] LEAD->WLEAD
+    Mar  2 03:48:29 beaglebone kernel: [  173.341528] sendKITCPacket pkt=LEAD len=2 (src=ET)
+
+ET heads for WLEAD while sending LEAD.
+
+    Mar  2 03:48:29 beaglebone kernel: [  173.346599] recvKITCPacket rc LEAD len=2 (us=[WT]WAITPS)
+    Mar  2 03:48:29 beaglebone kernel: [  173.351996] setStateKITC: [WT] WAITPS->FOLLOW
+
+WT receives ET's LEAD, heads for follow.
+
+    Mar  2 03:48:29 beaglebone mfm.sh[1788]: ITCSPIKE-92103196894224: MSG: Tile Level 0: Quitting
+    Mar  2 03:48:29 beaglebone mfm.sh[1788]: ITCSPIKE-92103196894225: MSG: Tile Level 1: Starting MFZ1
+
+    Mar  2 03:48:29 beaglebone kernel: [  173.507069] kitcTimeoutThreadRunner: [WT] to FOLLOW
+    Mar  2 03:48:29 beaglebone kernel: [  173.519151] setStateKITC: [WT] FOLLOW->WFOLLOW
+    Mar  2 03:48:29 beaglebone kernel: [  173.535187] sendKITCPacket pkt=FOLLOW len=2 (src=WT)
+
+WT times out and heads for WFOLLOW, while sending FOLLOW
+
+    Mar  2 03:48:29 beaglebone kernel: [  173.540366] recvKITCPacket rc FOLLOW len=2 (us=[ET]WLEAD)
+    Mar  2 03:48:29 beaglebone kernel: [  173.545854] setStateKITC: [ET] WLEAD->CONFIG
+
+ET sees the follow and heads for CONFIG.
+
+    Mar  2 03:48:29 beaglebone mfm.sh[1788]: ITCSPIKE-92103196894226: MSG: Tile Level 2: Accepting events
+    Mar  2 03:48:29 beaglebone kernel: [  173.699093] kitcTimeoutThreadRunner: [ET] to CONFIG
+    Mar  2 03:48:29 beaglebone kernel: [  173.707174] setStateKITC: [ET] CONFIG->WCONFIG
+    Mar  2 03:48:29 beaglebone kernel: [  173.719198] sendKITCPacket pkt=CONFIG len=3 (src=ET)
+
+ET times out and heads for WCONFIG, while sending its (still
+non-existent) CONFIG.
+
+    Mar  2 03:48:29 beaglebone kernel: [  173.724385] recvKITCPacket rc CONFIG len=3 (us=[WT]WFOLLOW)
+    Mar  2 03:48:29 beaglebone kernel: [  173.730041] setStateKITC: [WT] WFOLLOW->CHECK
+
+WT sees the CONFIG and heads for CHECK.
+
+    Mar  2 03:48:29 beaglebone kernel: [  173.883075] kitcTimeoutThreadRunner: [WT] to CHECK
+    Mar  2 03:48:29 beaglebone kernel: [  173.891053] setStateKITC: [WT] CHECK->COMPATIBLE
+    Mar  2 03:48:29 beaglebone kernel: [  173.913417] sendKITCPacket pkt=CHECK len=3 (src=WT)
+
+WT times out and heads for COMPATIBLE, while sending its non-existent
+config in a CHECK packet.
+
+    Mar  2 03:48:29 beaglebone kernel: [  173.918517] recvKITCPacket rc CHECK len=3 (us=[ET]WCONFIG)
+    Mar  2 03:48:29 beaglebone kernel: [  173.924078] setStateKITC: [ET] WCONFIG->COMPATIBLE
+
+ET sees the CHECK and heads for COMPATIBLE.
+
+    Mar  2 03:48:30 beaglebone kernel: [  174.079151] kitcTimeoutThreadRunner: [ET] to COMPATIBLE
+    Mar  2 03:48:30 beaglebone kernel: [  174.087220] sendKITCPacket pkt=COMPATIBLE len=2 (src=ET)
+
+ET times out and sends COMPATIBLE, remaining in that state.
+
+    Mar  2 03:48:30 beaglebone kernel: [  174.092712] recvKITCPacket rc COMPATIBLE len=2 (us=[WT]COMPATIBLE)
+
+WT sees the COMPATIBLE, and remains in that state too.
+
+ ..
+    Mar  2 03:48:32 beaglebone mfm.sh[1788]: ITCSPIKE-92103196894241: MSG: Tile EVENT INPUT?
+    Mar  2 03:48:33 beaglebone kernel: [  177.271330] ITCCHANGE:DOWN:ET
+
+I pull the loopback and ET goes down..
+
+    Mar  2 03:48:33 beaglebone kernel: [  177.274375] setStateKITC: [ET] COMPATIBLE->WAITPS
+
+..and ET goes back to WAITPS
+
+    Mar  2 03:48:33 beaglebone kernel: [  177.595304] kitcTimeoutThreadRunner: [ET] to WAITPS
+
+ET times out in WAITPS, but just remains there.
+
+    Mar  2 03:48:33 beaglebone kernel: [  177.636014] ITCCHANGE:DOWN:WT
+    Mar  2 03:48:33 beaglebone kernel: [  177.639036] setStateKITC: [WT] COMPATIBLE->WAITPS
+
+WT goes down and heads for WAITPS
+
+    Mar  2 03:48:33 beaglebone kernel: [  177.687386] kitcTimeoutThreadRunner: [WT] to WAITPS
+
+WT times out, remains in WAITPS.
+
+    Mar  2 03:48:36 beaglebone kernel: [  180.219495] kitcTimeoutThreadRunner: [NW] to WAITPS
+    Mar  2 03:48:36 beaglebone kernel: [  180.227764] kitcTimeoutThreadRunner: [SW] to WAITPS
+    Mar  2 03:48:36 beaglebone kernel: [  180.249677] kitcTimeoutThreadRunner: [NE] to WAITPS
+    Mar  2 03:48:36 beaglebone kernel: [  180.265854] kitcTimeoutThreadRunner: [SE] to WAITPS
+
+Then, we see the other dirs timing out too -- making their first and
+only appearances since we turned on debug output.
+
+    root@beaglebone:~# Mar  2 03:48:36 beaglebone kernel: [  180.331808] set debug 0
+
+Which we then turned off, 10 seconds after we started..
+
+:224]
+[225:
+
+Mon Mar  2 04:03:22 2020 Well, so that's all pretty damn satisfying.
+I think we can leave it there for a while without undue shame.
+
+Cleaning up for commit.  Actually, committing dirty and then cleaning
+up. 
+
+:225]
+[227:
+
+Mon Mar  2 04:54:11 2020 Randomizing WC_LONG.. Seeing repeated
+patterns in the 'to WAITPS' that I don't like just on principle.
+
+:227]
+[228:
+
+Mon Mar  2 04:56:40 2020 OK, I have to let this go.  For when we get
+back, let's now do some
+
+TODO
+
+ - t2trace is rotted
+
+ - There's a design question about the whole sidestate mUs/mThem
+   thing.  We're using hardly any of it.  Do we really want to keep
+   it?  If so can we simplify it.
+
+ - There's a lot of 'level' nomenclature that mostly doesn't make
+   sense now that we've simplified the protocol.
+
+ - The MFMToken is not being used at all.  Should we exchange it in
+   CONFIG/CHECK or some other packet?
+
+ - Should we have a randomized-on-reset one byte nonce for all
+   packets, to help ensure we're on the same page regardless of huge
+   packet losses or whatever?
+
+Committing and switching to science.
+
+:228]
