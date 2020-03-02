@@ -157,10 +157,10 @@ IEVDIRMACRO()
   XX(RITR,"restart iteration")   \
   XX(EITR,"end iteration")   \
   XX(LATE,"going again")   \
-  XX(SLP0,"sleep <5ms")   \
-  XX(SLP1,"sleep <50ms")   \
-  XX(SLP2,"sleep <500ms")   \
-  XX(SLP3,"sleep >=500ms")   \
+  XX(SLP0,"sleep 0-4ms")   \
+  XX(SLP1,"sleep 5-49ms")   \
+  XX(SLP2,"sleep 50-499ms")   \
+  XX(SLP3,"sleep 500+ms")   \
   XX(INCOMPLETE_CODE,"XXX WHY DON'T YOU WRITE ME?")   \
     
 enum {

@@ -242,8 +242,8 @@ static void createITCThread(ITCKThreadState * ts,
 
 static void createITCThreads(ITCModuleState *s)
 {
-  createITCThread(&s->mOBPktThread,    itcOBPktThreadRunner,5000,"ITC_PktShipr");
-  createITCThread(&s->mKITCLevelThread,itcLevelThreadRunner,5000,"KITC_LvlRunr");
+  createITCThread(&s->mOBPktThread,      itcOBPktThreadRunner,   5000,"ITC_PktShipr");
+  createITCThread(&s->mKITCTimeoutThread,kitcTimeoutThreadRunner,5000,"KITC_TmoRunr");
 }
 
 static void destroyITCThread(ITCKThreadState *ts) {
@@ -253,7 +253,7 @@ static void destroyITCThread(ITCKThreadState *ts) {
 }
 
 static void destroyITCThreads(ITCModuleState *s) {
-  destroyITCThread(&s->mKITCLevelThread);
+  destroyITCThread(&s->mKITCTimeoutThread);
   destroyITCThread(&s->mOBPktThread);
 }
 
@@ -1502,21 +1502,20 @@ const char * getDir8Name(u8 dir8) {
 
 static void setITCEnabledStatus(int pru, int prudir, int enabled) {
   u32 dir8 = mapPruAndPrudirToDir8(pru,prudir); /*returns 8 on bad*/
+  u32 dir6 = mapDir8ToDir6(dir8);
   u32 dir8x4 = dir8<<2;
   int bit = (0x1<<dir8x4);
   bool existing = (S.mItcEnabledStatus & bit);
   if (enabled && !existing) {
     S.mItcEnabledStatus |= bit;
-    printk(KERN_INFO "ITCCHANGE:UP:%s\n",
-           getDir8Name(mapPruAndPrudirToDir8(pru,prudir)));
-    ADD_ITC_EVENT(makeItcDirEvent(mapDir8ToDir6(dir8),IEV_DIR_ITCUP));
-    wakeITCLevelRunner();
+    printk(KERN_INFO "ITCCHANGE:UP:%s\n", getDir8Name(dir8));
+    ADD_ITC_EVENT(makeItcDirEvent(dir6,IEV_DIR_ITCUP));
+    resetKITC(S.mMFMDeviceState[dir6]);
   } else if (!enabled && existing) {
     S.mItcEnabledStatus &= ~bit;
-    printk(KERN_INFO "ITCCHANGE:DOWN:%s\n",
-           getDir8Name(mapPruAndPrudirToDir8(pru,prudir)));
-    ADD_ITC_EVENT(makeItcDirEvent(mapDir8ToDir6(dir8),IEV_DIR_ITCDN));
-    wakeITCLevelRunner();
+    printk(KERN_INFO "ITCCHANGE:DOWN:%s\n", getDir8Name(dir8));
+    ADD_ITC_EVENT(makeItcDirEvent(dir6,IEV_DIR_ITCDN));
+    resetKITC(S.mMFMDeviceState[dir6]);
   }
 }
 

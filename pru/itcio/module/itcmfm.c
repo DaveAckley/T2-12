@@ -1,33 +1,220 @@
 #include "itcmfm.h"
 #include "itcpkt.h"
 
-/**** EARLY LEVEL HACKERY ****/
+const char * getStateName(StateNumber sn) ; /*FORWARD*/
 
-#define ALL_LEVELS_MACRO()                                    \
-/*         name   cust req tmo, pio, dcd, adv, state (NOT USED) */ \
-/* 0 */ XX(CONTACT,      1,  1,   1,   0,   1,            _)       \
-/* 1 */ XX(COMMUNICATE,  1,  0,   1,   0,   0,   _/*u16 ttoken*/)  \
-/* 2 */ XX(COMPATIBILITY,0,  0,   1,   1,   0, _/*MFZId tMFZId*/)  \
-/* 3 */ XX(COMPUTATION,  0,  1,   0,   0,   1,            _)       \
+static StateNumber getStateNumberFromPH(PacketHandler * ph) {
+  BUG_ON(!ph);
+  BUG_ON(ph->len < 2);
+  return ph->pktbuf[1]&0xf;
+}
 
-/****/
-/* Define level numbers */
+static u8 getDir8FromPH(PacketHandler * ph) {
+  BUG_ON(!ph);
+  BUG_ON(ph->len < 1);
+  return ph->pktbuf[0]&0x7;
+}
 
-#define XX(NAM,REQ,TMO,PIO,DCD,ADV,VAR)   \
-  LEVEL_NUMBER_##NAM,
-typedef enum levelnumber {
-  ALL_LEVELS_MACRO()
-  MAX_LEVEL_NUMBER
-} LevelNumber;
+static StateNumber getStateKITC(ITCMFMDeviceState *mds) {
+  BUG_ON(!mds);
+  return mds->mLevelState.mUs.mStateNumber;
+}
+
+static void setStateKITC(ITCMFMDeviceState * mds, StateNumber sn) {
+  BUG_ON(!mds);
+  BUG_ON(sn >= MAX_STATE_NUMBER);
+
+  if (mds->mLevelState.mUs.mStateNumber != sn) {
+    DBGPRINTK(DBG_MISC100,"%s: [%s] %s->%s\n",
+              __FUNCTION__,
+              getDir8Name(mapDir6ToDir8(mds->mDir6)),
+              getStateName(mds->mLevelState.mUs.mStateNumber),
+              getStateName(sn));
+  }
+
+  mds->mLevelState.mUs.mStateNumber = sn;
+}
+
+void setTimeoutKITC(ITCMFMDeviceState * mds, u32 jiffiesToWait) {
+  ITCLevelState * ils;
+  unsigned long oldTimeout, newTimeout;
+  BUG_ON(!mds);
+
+  ils = &mds->mLevelState;
+
+  oldTimeout = ils->mUs.mTimeout;
+  newTimeout = jiffies + jiffiesToWait;
+
+  ils->mUs.mTimeout = newTimeout;
+
+  if (time_before(newTimeout,oldTimeout)) /* If we moved a timeout earlier, the */
+    wakeITCTimeoutRunner();               /* timeout runner needs a fresh look */
+}
+
+static bool initReadPacketHandler(PacketHandler * pm, u8 * data, u32 len) {
+  BUG_ON(!pm);
+  BUG_ON(!data);
+  pm->pktbuf = data;
+  pm->len = len;
+  if (len < 2) return false;
+  
+  if ((pm->pktbuf[0]&~0x7) != 0xa0) return false;
+  if ((pm->pktbuf[1]&~0xf) != 0xc0) return false;
+  if ((pm->pktbuf[1]&0xf) >= MAX_STATE_NUMBER) return false;
+
+  pm->index = 2;
+  return true;
+}
+
+static s32 readByteFromPH(PacketHandler * ph)
+{
+  BUG_ON(!ph);
+  if (ph->index >= ph->len) return -1;
+  return (s32) ph->pktbuf[ph->index++];
+}
+
+static u32 readZstringFromPH(PacketHandler * ph, u8 * dest, u32 len)
+{
+  u32 i = 0;
+  s32 ch;
+  while ((ch = readByteFromPH(ph)) > 0) {
+    if (i < len) dest[i++] = (u8) ch;
+  }
+  return i;
+}
+
+static void initWritePacketHandler(PacketHandler * pm, ITCMFMDeviceState *ds)
+{
+  static u8 buf[ITC_MAX_PACKET_SIZE+1];
+  u8 dir6;
+  u8 dir8;
+  ITCLevelState * ils;
+  u32 oursn;
+
+  BUG_ON(!ds);
+  BUG_ON(!pm);
+  pm->index = 0;
+  pm->pktbuf = buf;
+  pm->len =ITC_MAX_PACKET_SIZE;
+
+  dir6 = ds->mDir6;
+  dir8 = mapDir6ToDir8(dir6);
+  ils = &ds->mLevelState;
+  oursn = ils->mUs.mStateNumber;
+  BUG_ON(oursn > 0xf);       /* Only 4 bits for sn */
+
+  pm->pktbuf[pm->index++] = 0xa0|dir8;  /*standard+urgent to dir8*/
+  pm->pktbuf[pm->index++] = 0xc0|oursn; /*mfm+itc+our statenumber*/
+}
+
+static void writeByteToPH(PacketHandler * ph, u8 byte)
+{
+  BUG_ON(!ph);
+  BUG_ON(ph->index >= ph->len);
+  ph->pktbuf[ph->index++] = byte;
+}
+
+static void writeZstringToPH(PacketHandler * ph, const u8 * zstr)
+{
+  u8 ch;
+  do {
+    ch = *zstr++;
+    writeByteToPH(ph, ch);   /* include trailing '\0' */
+  } while (ch);              
+}
+
+static bool compatibleMFZId(ITCMFMDeviceState *mds) {
+  BUG_ON(!mds);
+  return 0 == strncmp(mds->mLevelState.mUs.mMFZId,
+                      mds->mLevelState.mThem.mMFZId,
+                      MAX_MFZ_NAME_LENGTH);
+}
+
+/**** LATE STATES HACKERY ****/
+
+/*** STATE NAMES AS STRING **/
+const char * stateName[] = {
+#define XX(NAME,CUSTO,CUSRC,DESC) #NAME,
+  ALL_STATES_MACRO()
+#undef XX
+  "?ILLEGAL"
+};
+
+const char * getStateName(StateNumber sn) {
+  if (sn >= MAX_STATE_NUMBER) return "illegal";
+  return stateName[sn];
+}
+
+/*** STATE DESCRIPTIONS AS STRING **/
+const char * stateDesc[] = {
+#define XX(NAME,CUSTO,CUSRC,DESC) #DESC,
+  ALL_STATES_MACRO()
+#undef XX
+  "?ILLEGAL"
+};
+
+const char * getStateDescription(StateNumber sn) {
+  if (sn >= MAX_STATE_NUMBER) return "illegal";
+  return stateDesc[sn];
+}
+
+/*** DECLARE DEFAULT AND CUSTOM TIMEOUT HANDLERS **/
+#define YY0(NAME) void timeoutDefault_KITC(ITCMFMDeviceState * mds, PacketHandler * ph) ;
+#define YY1(NAME) void timeout_##NAME##_KITC(ITCMFMDeviceState * mds, PacketHandler * ph) ;
+#define XX(NAME,CUSTO,CUSRC,DESC) YY##CUSTO(NAME)
+  ALL_STATES_MACRO()
+#undef XX
+#undef YY1
+#undef YY0
+
+/*** DECLARE DEFAULT AND CUSTOM PACKET RECEIVE HANDLERS **/
+#define YY0(NAME) void receiveDefault_KITC(ITCMFMDeviceState * mds, PacketHandler * ph) ;
+#define YY1(NAME) void receive_##NAME##_KITC(ITCMFMDeviceState * mds, PacketHandler *ph) ;
+#define XX(NAME,CUSTO,CUSRC,DESC) YY##CUSRC(NAME)
+  ALL_STATES_MACRO()
+#undef XX
+#undef YY1
+#undef YY0
+
+
+/*** DECLARE OPS TABLES **/
+
+#define YY0(nm,type) type##Default_KITC
+#define YY1(nm,type) type##_##nm##_KITC
+#define XX(NAME,CUSTO,CUSRC,DESC)       \
+static ITCLSOps ils##NAME = {           \
+  .timeout = YY##CUSTO(NAME,timeout),   \
+  .receive = YY##CUSRC(NAME,receive),   \
+};
+
+ALL_STATES_MACRO()
+
+#undef YY0
+#undef YY1
 #undef XX
 
-ITCLSOps *(theLevels[MAX_LEVEL_NUMBER]);      /*FORWARD*/
+
+/*** DEFINE STATE DISPATCH ARRAY **/
+
+#define XX(NAME,CUSTO,CUSRC,DESC)       \
+  &ils##NAME,                           \
+
+static ITCLSOps *(theStates[MAX_STATE_NUMBER]) = {
+  ALL_STATES_MACRO()
+};
+
+#undef XX
+
+ITCLSOps * getOpsOrNull(StateNumber sn) {
+  if (sn >= MAX_STATE_NUMBER) return 0;
+  return theStates[sn];
+}
+
 
 
 /**** MISC HELPERS ****/
 
-static inline u32 msToJiffies(u32 ms) { return ms * HZ / 1000; }
-
+#if 0
 static unsigned long plusOrMinus25pct(u32 amt) {
   if (amt >= 8) {  /* don't randomize if too tiny */
     u32 delta = prandom_u32_max((amt>>1)+1); /*random in 0..amt/2 */
@@ -36,28 +223,30 @@ static unsigned long plusOrMinus25pct(u32 amt) {
   return amt;
 }
 
-static LevelStage itcGetOurLevelStage(ITCLevelState * ils)
+static StateNumber itcGetOurStateNumber(ITCLevelState * ils)
 {
   BUG_ON(!ils);
-  return ils->mUs.mLevelStage;
+  return ils->mUs.mStateNumber;
 }
 
 static ITCLSOps * itcSideStateGetLevelOps(ITCSideState *ss)
 {
-  u32 level;
+  u32 sn;
   BUG_ON(!ss);
-  level = getLevelFromLevelStage(ss->mLevelStage);
-  BUG_ON(level >= MAX_LEVEL_NUMBER);
-  return theLevels[level];
+  sn = ss->mStateNumber;
+  BUG_ON(sn >= MAX_STATE_NUMBER);
+  return theStates[sn];
 }
+#endif
 
-void wakeITCLevelRunner(void) {
-  if (S.mKITCLevelThread.mThreadTask) 
-    wake_up_process(S.mKITCLevelThread.mThreadTask);
+void wakeITCTimeoutRunner(void) {
+  if (S.mKITCTimeoutThread.mThreadTask) 
+    wake_up_process(S.mKITCTimeoutThread.mThreadTask);
   else
-    printk(KERN_ERR "No S.mKITCLevelThread.mThreadTask?\n");
+    printk(KERN_ERR "No S.mKITCTimeoutThread.mThreadTask?\n");
 }
 
+#if 0
 static unsigned long itcSideStateTouch(ITCSideState *ss)
 {
   unsigned long now = jiffies;
@@ -81,183 +270,33 @@ static unsigned long itcSideStateTouch(ITCSideState *ss)
   wakeITCLevelRunner();
   return ss->mNextTimeout;
 }
-
-/**** LEVEL DEFAULTS ****/
-
-
-
-static bool ilsRequireDefault(ITCMFMDeviceState* mds) {
-  /* Implementing: 
-     Requires:        t>=(L-1).1
-  */
-  ITCLevelState * ils;
-  LevelStage uLS, tLS;
-  u32 uL, tL, tS;
-  bool ret;
-  BUG_ON(!mds);
-  ils = &mds->mLevelState;
-  uLS = ils->mUs.mLevelStage;
-  tLS = ils->mThem.mLevelStage;
-  do {
-    uL = getLevelFromLevelStage(uLS);
-    if (uL == 0) { ret = true; break; } /*can't be less than us*/
-
-    tL = getLevelFromLevelStage(tLS);
-    if (tL < uL-1) { ret = false; break; } /*not >= L-1.anything*/
-
-    tS = getStageFromLevelStage(tLS);
-    if (tL == uL-1 && tS < 1) { ret = false; break; } /*(L-1).0 too low*/
-
-    ret = true;
-  } while (0);
-
-  DBGPRINTK(DBG_MISC200,"(%s) %s: u%02x t%02x ->%s\n"
-            ,getDir8Name(mapDir6ToDir8(mds->mDir6))
-            ,__FUNCTION__
-            ,getLevelStageAsByte(uLS)
-            ,getLevelStageAsByte(tLS)
-            ,ret ? "true" : "false"
-            );
-  return ret;
-}
-
-static LevelAction ilsTimeoutDefault(ITCMFMDeviceState* kitc, bool usNotThem, u32 *nextTimeoutPtr) {
-  if (nextTimeoutPtr) 
-    *nextTimeoutPtr = usNotThem ? msToJiffies(200) : msToJiffies(500);
-  return usNotThem ? DO_REENTER : DO_RETREAT;
-}
-
-static u32 ilsPacketIODefault(ITCMFMDeviceState* kitc,
-                              bool recvNotSend, u32 startIdx,
-                              u8 *pkt, u32 len) {
-  /* Exchange and Confirm Default: Nothing */
-  return startIdx;
-}
-
-static LevelAction ilsDecideDefault(ITCMFMDeviceState* kitc) {
-  /* Decide default: continue */
-  return DO_CONTINUE;
-}
-
-static bool ilsAdvanceDefault(ITCMFMDeviceState* mds) {
-  ITCLevelState * ils;
-  LevelStage usLS;
-  BUG_ON(!mds);
-  ils = &mds->mLevelState;
-  usLS = ils->mUs.mLevelStage;
-  return
-    ((ils->mThem.mLevelStage >= makeLevelStage(getLevelFromLevelStage(usLS),1)) &&
-     getStageFromLevelStage(usLS) == 2);
-}
-
-ITCLSOps ilsDEFAULTS = {
-  .require = ilsRequireDefault,
-  .timeout = ilsTimeoutDefault,
-  .packetio= ilsPacketIODefault,
-  .decide  = ilsDecideDefault,
-  .advance = ilsAdvanceDefault,
-};
-
-
-/**** LATE LEVEL HACKERY ****/
-
-/****/
-/* Declare custom functions */
-
-#define YY0(NM,TYPE) 
-#define YY1(NM,TYPE) static Level##TYPE##_func ils##TYPE##_##NM;
-
-#define XX(NAM,REQ,TMO,PIO,DCD,ADV,VAR)   \
-  YY##REQ(NAM,Require)                \
-  YY##TMO(NAM,Timeout)                \
-  YY##PIO(NAM,PacketIO)               \
-  YY##DCD(NAM,Decide)                 \
-  YY##ADV(NAM,Advance)                \
-
-ALL_LEVELS_MACRO();
-
-#undef YY0
-#undef YY1
-#undef XX
-
-/* End of declare custom functions */
-/****/
-
-
-/****/
-/* Declare ops tables */
-
-#define YY0(nm,type) ils##type##Default
-#define YY1(nm,type) ils##type##_##nm
-#define XX(NAM,REQ,TMO,PIO,DCD,ADV,VAR)         \
-ITCLSOps ils##NAM = {       \
-  .require = YY##REQ(NAM,Require),   \
-  .timeout = YY##TMO(NAM,Timeout),   \
-  .packetio= YY##PIO(NAM,PacketIO),  \
-  .decide  = YY##DCD(NAM,Decide),    \
-  .advance = YY##ADV(NAM,Advance),   \
-};
-
-ALL_LEVELS_MACRO();
-
-#undef YY0
-#undef YY1
-#undef XX
-
-/* End of declare ops tables */
-
-/****/
-/* Define level dispatch array */
-
-#define XX(NAM,REQ,TMO,PIO,DCD,ADV,VAR)         \
-  &ils##NAM,                                    \
-
-ITCLSOps *(theLevels[MAX_LEVEL_NUMBER]) = {
-  ALL_LEVELS_MACRO()
-};
-
-#undef XX
-
-/* End of define level dispatch array */
-
-
-#if 0
-static ITCLSOps * itcGetOurLevelOps(ITCLevelState * ils)
-{
-  BUG_ON(!ils);
-  return itcSideStateGetLevelOps(&ils->mUs);
-}
 #endif
 
-static inline void recvLevelPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
+static inline void recvKITCPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
 {
-  ITCLevelState * ils;
-  u32 level, curLevel, index = 0;
+  PacketHandler ph;
+  u32 psn;
+  ITCLSOps * ops;
   BUG_ON(!ds);
-  ils = &ds->mLevelState;
-  curLevel = getLevelFromLevelStage(ils->mUs.mLevelStage);
-  DBGPRINTK(DBG_LVL_PIO,"recvLevelPacket us=L%02x them=L%02x, pkt=L%02x\n",
-            getLevelStageAsByte(ils->mUs.mLevelStage),
-            getLevelStageAsByte(ils->mThem.mLevelStage),
-            getLevelStageAsByte(packet[1]));
-  DBGPRINT_HEX_DUMP(DBG_LVL_PIO,
-                    KERN_INFO, getDir8Name(mapDir6ToDir8(ds->mDir6)),
-                    DUMP_PREFIX_NONE, 16, 1,
-                    packet, len, true);
-  for (level = 0; level <= curLevel; ++level) {
-    ITCLSOps *ops = theLevels[level];
-    BUG_ON(!ops);
-    index = ops->packetio(ds, true, index, packet, len);
-    if (index == 0) break; /* recv aborted */
-  }
-  if (index) {
-    ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_INCOMPLETE_CODE));
-  }
+  if (!initReadPacketHandler(&ph, packet, len))
+    printk(KERN_ERR "%s illegal packet, len %d, ignored\n",
+           __FUNCTION__,
+           len);
+  psn = getStateNumberFromPH(&ph);
 
-  /* This should already have happened in packetio somewhere.. */
-  /*  itcSideStateTouch(&ils->mThem); */
+  DBGPRINTK(DBG_KITC_PIO,"%s rc %s len=%d (us=[%s]%s)\n",
+            __FUNCTION__,
+            getStateName(psn),
+            len,
+            getDir8Name(mapDir6ToDir8(ds->mDir6)),
+            getStateName(ds->mLevelState.mUs.mStateNumber));
+
+  ops = getOpsOrNull(psn); /* Dispatch on the packet type, not ds state! */
+  BUG_ON(!ops);
+  ops->receive(ds, &ph);
 }
 
+#if 0
 static inline void sendLevelPacket(ITCMFMDeviceState *ds, bool forceTimeoutPush)
 {
   u8 buf[ITC_MAX_PACKET_SIZE+1];
@@ -276,11 +315,6 @@ static inline void sendLevelPacket(ITCMFMDeviceState *ds, bool forceTimeoutPush)
   ourLS = itcGetOurLevelStage(ils);
 
   curLevel = getLevelFromLevelStage(ourLS);
-
-#if 0 /*done by ilsPacketIO_CONTACT now*/
-  buf[index++] = 0xa0|dir8;  /*standard+urgent to dir8*/
-  buf[index++] = 0xc0|ourLS; /*mfm+itc+our levelstage*/
-#endif
 
   for (level = 0; level <= curLevel; ++level) {
     ITCLSOps *ops = theLevels[level];
@@ -312,199 +346,18 @@ static inline void sendLevelPacket(ITCMFMDeviceState *ds, bool forceTimeoutPush)
   }
 
 }
-
-#if 0
-static inline void pushTimeout(ITCMFMDeviceState * ds, bool usNotThem)
-{
-  unsigned long now = jiffies;
-  u32 mswait = 0;
-  ITCLevelState * ils;
-  ITCLSOps * lops;
-
-  BUG_ON(!ds);
-  ils = &ds->mLevelState;
-  lops = itcGetLevelOps(ils);
-
-  BUG_ON(!lops);
-
-  lops->timeout(ds,usNotThem,&mswait); /*return value ignored*/
-  if (mswait == 0) {
-    printk(KERN_ERR "timeout returned 0 increment\n");
-    mswait = 100;
-  }
-
-  unsigned long newto = now + plusOrMinus25pct(mswait);
-  ITCSideState * ss = usNotThem ? &ils->mUs : &8ls->mThem;
-XXX DO WE HAVE TIMEOUT OR NOT?
-  ss->mUTimeout = newto;
-  else ils->mTTimeout = newto;
-
-  /* we can never make the earliest timeout earlier,
-     so we don't have to wake the timer thread. */
-}
 #endif
-
-
-/*** LEVEL CUSTOMIZATIONS ***/
-
-/****/
-/* CONTACT */
-
-static bool ilsRequire_CONTACT(ITCMFMDeviceState* kitc) {
-  /*Require Default: No requirements*/
-  return true;
-}
-
-static u32 ilsPacketIO_CONTACT(ITCMFMDeviceState* ds,
-                              bool recvNotSend, u32 startIdx,
-                              u8 *pkt, u32 len) {
-  BUG_ON(!ds);
-  BUG_ON(!pkt);
-  BUG_ON(startIdx!=0);
-  DBGPRINTK(DBG_LVL_PIO,"ilsPacketIO_CONTACT recv=%s startIdx=%d len=%d\n",
-            recvNotSend ? "true" : "false",
-            startIdx,
-            len);
-
-  if (recvNotSend) {
-    u8 byte0, byte1;
-    u8 dir8, dir6;
-    ITCSideState * ss;
-
-    if (startIdx + 2 > len) return 0; /* Can't read header?? */
-
-    byte0 = pkt[startIdx++];
-    byte1 = pkt[startIdx++];
-    dir8 = byte0&0x7;
-    dir6 = mapDir8ToDir6(dir8);
-    
-    if (((byte0 & 0xf0) != 0xa0) ||    /* standard+urgent */
-        (dir6 != ds->mDir6) ||        /* our dir */
-        ((byte1 & 0xc0) != 0xc0)) {   /* mfm+itc */
-      printk(KERN_ERR "0x%02x%02x packet not right (got %d/us %d)\n",
-             byte0,byte1,dir6,ds->mDir6);
-      return 0;
-    }
-    
-    /* Pick up their info*/
-    ss = &ds->mLevelState.mThem;
-    ss->mLevelStage = byte1 & 0x1f;
-
-    ADD_ITC_EVENT(makeItcLSEvent(ds->mDir6,IEV_LST,ss->mLevelStage));
-    itcSideStateTouch(ss);
-
-  } else {
-
-    u8 dir6 = ds->mDir6;
-    u8 dir8 = mapDir6ToDir8(dir6);
-    ITCLevelState * ils = &ds->mLevelState;
-    LevelStage ourLS = itcGetOurLevelStage(ils);
-    BUG_ON(startIdx + 2 > len);
-
-    if (!isITCEnabledStatusByDir8(dir8))  /* don't try without PS */
-      return 0;
-
-    pkt[startIdx++] = 0xa0|dir8;  /*standard+urgent to dir8*/
-    pkt[startIdx++] = 0xc0|ourLS; /*mfm+itc+our levelstage*/
-  }
-
-  return startIdx;
-}
-
-static LevelAction ilsTimeout_CONTACT(ITCMFMDeviceState* kitc, bool usNotThem, u32 *nextTimeoutPtr) {
-  if (nextTimeoutPtr) 
-    *nextTimeoutPtr = msToJiffies(2500);
-  return DO_RESTART;
-}
-
-static bool ilsAdvance_CONTACT(ITCMFMDeviceState* ds) {
-  /* Advance on PACKET SYNC */
-  u32 dir8;
-  bool ret;
-  BUG_ON(!ds);
-  dir8 = mapDir6ToDir8(ds->mDir6);
-  ret = isITCEnabledStatusByDir8(dir8);
-  DBGPRINTK(DBG_MISC200,"(%s) %s: ret=%d\n",
-            getDir8Name(dir8),
-            __FUNCTION__,
-            ret);
-  return ret;
-}
-
-/****/
-/* COMMUNICATE */
-
-static bool ilsRequire_COMMUNICATE(ITCMFMDeviceState* ds) {
-  /* Fail without PACKET SYNC */
-  u32 dir8;
-  bool ret;
-  BUG_ON(!ds);
-  dir8 = mapDir6ToDir8(ds->mDir6);
-  ret = isITCEnabledStatusByDir8(dir8);
-  return ret;
-}
-
-static u32 ilsPacketIO_COMMUNICATE(ITCMFMDeviceState* ds,
-                                   bool recvNotSend, u32 startIdx,
-                                   u8 *pkt, u32 len) {
-  BUG_ON(!ds);
-  BUG_ON(!pkt);
-  BUG_ON(startIdx==0);
-  DBGPRINTK(DBG_LVL_PIO,"%s recv=%s startIdx=%d len=%d\n",
-            __FUNCTION__,
-            recvNotSend ? "true" : "false",
-            startIdx,
-            len);
-  return startIdx;
-}
-
-
-/****/
-/* COMPATIBILITY */
-
-static u32 ilsPacketIO_COMPATIBILITY(ITCMFMDeviceState* kitc,
-                                     bool recvNotSend, u32 startIdx,
-                                     u8 *pkt, u32 len) {
-  printk(KERN_ERR "%s:%d WHY DON'T YOU WRITE ME\n",__FILE__,__LINE__);
-  return startIdx;
-}
-
-static LevelAction ilsDecide_COMPATIBILITY(ITCMFMDeviceState* kitc) {
-  printk(KERN_ERR "%s:%d WHY DON'T YOU WRITE ME\n",__FILE__,__LINE__);
-  return DO_CONTINUE;
-}
-
-
-/****/
-/* COMPUTATION */
-
-static LevelAction ilsTimeout_COMPUTATION(ITCMFMDeviceState* kitc, bool usNotThem, u32 *nextTimeoutPtr) {
-  if (nextTimeoutPtr) 
-    *nextTimeoutPtr = usNotThem ? msToJiffies(5000) : msToJiffies(15000);
-  return usNotThem ? DO_REENTER : DO_RETREAT;
-}
-
-static bool ilsAdvance_COMPUTATION(ITCMFMDeviceState* kitc) {
-  /*Last level, never advance */
-  return false;
-}
-
 
 /*****************************/
 /* PUBLIC FUNCTIONS */
 
 static void initITCSideState(ITCSideState * ss, bool isUs)
 {
-  unsigned long now = jiffies;
   BUG_ON(!ss);
-  ss->mModTime = now - (prandom_u32_max(50)+(isUs ? 100 : 10));
-  ss->mNextTimeout = now + (prandom_u32_max(50)+(isUs ? 10 : 100));
-  ss->mTimeoutAction = DO_CONTINUE;
+  ss->mTimeout = jiffies + (prandom_u32_max(50)+(isUs ? 10 : 100));
   ss->mToken = 0;
   ss->mMFZId[0] = '\0';
-  ss->mLevelStage = 0;
-  ss->mSeqno = 0;
-  ss->mCompat = false;
+  ss->mStateNumber = SN_INIT;
   ss->mIsUs = isUs;
 }
 
@@ -518,9 +371,10 @@ void initITCLevelState(ITCLevelState * ils)
 unsigned long itcSideStateGetTimeout(ITCSideState * ss)
 {
   BUG_ON(!ss);
-  return ss->mNextTimeout;
+  return ss->mTimeout;
 }
 
+#if 0
 unsigned long itcLevelStateGetEarliestTimeout(ITCLevelState * ils)
 {
   unsigned long uto, tto;
@@ -529,98 +383,78 @@ unsigned long itcLevelStateGetEarliestTimeout(ITCLevelState * ils)
   tto = itcSideStateGetTimeout(&ils->mThem);
   return time_before(uto, tto) ? uto : tto;
 }
+#endif
 
 #define jiffiesFromAtoB(au32,bu32) ((s32) ((bu32)-(au32)))
-int itcLevelThreadRunner(void *arg)
+int kitcTimeoutThreadRunner(void *arg)
 {
+  static PacketHandler ph;
   ITCKThreadState * ks = (ITCKThreadState*) arg;
   ITCModuleState * s = &S;
   ITCIterator * itr;
   BUG_ON(!ks);
   itr = &ks->mDir6Iterator;
   
-  printk(KERN_INFO "itcLevelThreadRunner for %p: Started\n", s);
+  printk(KERN_INFO "%s for %p: Started\n", __func__, s);
 
   set_current_state(TASK_RUNNING);
   while(!kthread_should_stop()) {    /* Returns true when kthread_stop() is called */
-    unsigned long early;
-    bool anyStale = true;
-    bool first = true;
+    unsigned long earliestTime;
+    ITCDir earliestDir;
+    u32 ties = 0;
     s32 diffToNext;
-    DBGPRINTK(DBG_MISC100,"====================\n");
+
     ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_BITR));
 
-    /***PHASE 1***/
-    while (anyStale) {
-      
-      for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
-        ITCDir kitc = itcIteratorGetNext(itr);
-        ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
-        ITCLevelState * ils = &mds->mLevelState;
-        ITCSideState * us = &ils->mUs;
-        ITCSideState * them = &ils->mThem;
-        if (time_after(them->mModTime,us->mModTime) /* world has changed*/
-            || time_before(them->mModTime, jiffies) /* or world has timed out */
-            || time_before(us->mModTime, jiffies)) {/* or we have timed out */
-
-          itcSideStateTouch(us);  /* Mark us fresh as of now */
-          updateKITC(mds);        /* Then update us.  (We might not be fresh after that's done.) */
-        }
-      }
-
-      /***PHASE 1a***/
-      anyStale = false;
-      for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
-        ITCDir kitc = itcIteratorGetNext(itr);
-        ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
-        ITCLevelState * ils = &mds->mLevelState;
-        ITCSideState * us = &ils->mUs;
-        ITCSideState * them = &ils->mThem;
-        if (time_after(them->mModTime,us->mModTime)) {
-          ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_RITR));
-          anyStale = true;
-          break;
-        }
-      }
-    }
-            
-    /***PHASE 2***/
+    /** Find earliest timeout **/
     for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
       ITCDir kitc = itcIteratorGetNext(itr);
       ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
       ITCLevelState * ils = &mds->mLevelState;
       ITCSideState * us = &ils->mUs;
-      ITCSideState * them = &ils->mThem;
-
-      if (first) {
-        early = us->mNextTimeout;
-        first = false;
+      if (ties==0 || time_before(us->mTimeout, earliestTime)) {
+        earliestDir = kitc;
+        earliestTime = us->mTimeout;
+        ties = 1;
+      } else if (us->mTimeout == earliestTime && prandom_u32_max(++ties) == 0) {
+        earliestDir = kitc;
       }
-      if (time_before(us->mNextTimeout, early))  early = us->mNextTimeout;
-      if (time_before(them->mNextTimeout, early))  early = them->mNextTimeout;
     }
 
-    /***PHASE 3***/
+    /** Do it or sleep **/
+    BUG_ON(ties==0);
 
-    if (time_before(early, jiffies)) {
-      printk(KERN_WARNING "Timeout now in past (%lu, now %lu)\n", early, jiffies);
-      early = jiffies + msToJiffies(100);
-    } else if (time_after(early, jiffies + msToJiffies(1000))) {
-      early = jiffies + msToJiffies(1000);
+    if (time_before(earliestTime, jiffies)) {
+
+      /* Do it */
+      ITCMFMDeviceState * mds = s->mMFMDeviceState[earliestDir];
+      ITCLevelState * ils = &mds->mLevelState;
+      ITCLSOps * ops = theStates[ils->mUs.mStateNumber];
+      BUG_ON(!ops);
+      DBGPRINTK(DBG_MISC100,"%s: [%s] to %s\n",
+                __FUNCTION__,
+                getDir8Name(mapDir6ToDir8(mds->mDir6)),
+                getStateName(mds->mLevelState.mUs.mStateNumber));
+
+      initWritePacketHandler(&ph, mds);
+      ops->timeout(mds,&ph);
+
+    } else {
+
+      /* Sleep */
+      diffToNext = jiffiesFromAtoB(jiffies, earliestTime);
+    
+      if (0) { /*COND*/ }
+      else if (diffToNext < msToJiffies(5)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP0));
+      else if (diffToNext < msToJiffies(50)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP1));
+      else if (diffToNext < msToJiffies(500)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP2));
+      else ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP3));
+      
+      set_current_state(TASK_INTERRUPTIBLE);
+      schedule_timeout(diffToNext);   /* in TASK_RUNNING again upon return */
     }
-
-    diffToNext = jiffiesFromAtoB(jiffies, early);
-    
-    if (0) { /*COND*/ }
-    else if (diffToNext < msToJiffies(5)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP0));
-    else if (diffToNext < msToJiffies(50)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP1));
-    else if (diffToNext < msToJiffies(500)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP2));
-    else ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP3));
-    
-    set_current_state(TASK_INTERRUPTIBLE);
-    schedule_timeout(diffToNext);   /* in TASK_RUNNING again upon return */
   }
-  printk(KERN_INFO "itcLevelThreadRunner: Stopping by request\n");
+  printk(KERN_INFO "%s: Stopping by request\n",__FUNCTION__);
   return 0;
 }
 
@@ -630,13 +464,11 @@ void handleKITCPacket(ITCMFMDeviceState * ds, u8 * packet, u32 len)
   BUG_ON(!packet || len < 2);
 
   /* handle the packet */
-  recvLevelPacket(ds,packet,len);
+  recvKITCPacket(ds,packet,len);
   
-  /* then kick the level updater*/
-  wakeITCLevelRunner();
-  /* and DON'T update here.  updateKITC(ds); */
 }
 
+#if 0
 typedef LevelStage (*LSEvaluator)(ITCMFMDeviceState * mds, LevelStage prevls) ;
 static LevelStage lsEvaluatorSupport(ITCMFMDeviceState * mds, LevelStage prevls) ;
 static LevelStage lsEvaluatorUTimeout(ITCMFMDeviceState * mds, LevelStage prevls) ;
@@ -884,4 +716,162 @@ static LevelStage lsEvaluatorAdvance(ITCMFMDeviceState * mds, LevelStage prevLS)
   }
   return advanceLS;
 }
+#endif
 
+static bool sendPacketHandler(PacketHandler * ph) {
+  bool ret;
+  BUG_ON(!ph);
+  ret = trySendUrgentRoutedKernelPacket(ph->pktbuf,ph->index) > 0;
+
+  DBGPRINTK(DBG_KITC_PIO,"sendKITCPacket pkt=%s len=%d (src=%s)\n",
+            getStateName(getStateNumberFromPH(ph)),
+            ph->index,
+            getDir8Name(getDir8FromPH(ph)));
+  return ret;
+}
+
+void resetKITC(ITCMFMDeviceState * mds) {
+  setStateKITC(mds,SN_WAITPS);  /* On reset, first (re)check for packet sync */
+  setTimeoutKITC(mds, jiffiesToWait(WC_RANDOM));
+}
+
+void receiveDefault_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{
+  resetKITC(mds); 
+}
+
+void timeoutDefault_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{
+  resetKITC(mds); 
+}
+
+/*** CUSTOM STATE HANDLERS ***/
+
+/**STATE WAITPS**/
+void timeout_WAITPS_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{
+  BUG_ON(!mds);
+  if (isITCEnabledStatusByDir8(mapDir6ToDir8(mds->mDir6)))
+    setStateKITC(mds, SN_LEAD); /*w/o pushing timeout, so goes immediately*/
+  else
+    setTimeoutKITC(mds, jiffiesToWait(WC_LONG));
+}
+
+
+/**STATE LEAD**/
+void timeout_LEAD_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{
+  setStateKITC(mds, SN_WLEAD);
+  setTimeoutKITC(mds, jiffiesToWait(WC_FULL));
+  sendPacketHandler(ph);
+}
+
+void receive_LEAD_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
+{
+  StateNumber sn = getStateKITC(mds);
+  if (sn == SN_WLEAD &&              /* race detected */
+      prandom_u32_max(2)) {          /* flip coin */
+    resetKITC(mds);
+  } else {
+    setStateKITC(mds, SN_FOLLOW);
+    setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
+  }
+}
+
+/**STATE FOLLOW**/
+void timeout_FOLLOW_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{
+  setStateKITC(mds, SN_WFOLLOW);
+  setTimeoutKITC(mds, jiffiesToWait(WC_FULL));
+  sendPacketHandler(ph);
+}
+
+void receive_FOLLOW_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
+{
+  StateNumber sn = getStateKITC(mds);
+  if (sn != SN_WLEAD) {          /* messed up unless we're WLEAD */
+    resetKITC(mds);
+  } else {
+    setStateKITC(mds, SN_CONFIG);
+    setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
+  }
+}
+
+/**STATE CONFIG**/
+void timeout_CONFIG_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{
+  MFMTileState * ts = &S.mMFMTileState;
+  writeZstringToPH(ph, ts->mMFZId);
+
+  setStateKITC(mds, SN_WCONFIG);
+  setTimeoutKITC(mds, jiffiesToWait(WC_FULL));
+  sendPacketHandler(ph);
+}
+
+void receive_CONFIG_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
+{
+  StateNumber sn = getStateKITC(mds);
+  if (sn != SN_WFOLLOW) {          /* messed up unless we're WFOLLOW */
+    resetKITC(mds);
+  } else {
+    u32 idx = readZstringFromPH(ph, mds->mLevelState.mThem.mMFZId, sizeof(MFZId));
+    if (idx < sizeof(MFZId)) mds->mLevelState.mThem.mMFZId[idx] = '\0';
+    setStateKITC(mds, SN_CHECK);
+    setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
+  }
+}
+
+/**STATE CHECK**/
+void timeout_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{
+  MFMTileState * ts = &S.mMFMTileState;
+  writeZstringToPH(ph, ts->mMFZId);
+  setStateKITC(mds, compatibleMFZId(mds) ? SN_COMPATIBLE : SN_INCOMPATIBLE);
+  setTimeoutKITC(mds, jiffiesToWait(WC_FULL));
+  sendPacketHandler(ph);
+}
+
+void receive_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
+{
+  StateNumber sn = getStateKITC(mds);
+  if (sn != SN_WCONFIG) {
+    resetKITC(mds);
+  } else {
+    u32 idx = readZstringFromPH(ph, mds->mLevelState.mThem.mMFZId, sizeof(MFZId));
+    if (idx < sizeof(MFZId)) mds->mLevelState.mThem.mMFZId[idx] = '\0';
+    setStateKITC(mds, compatibleMFZId(mds) ? SN_COMPATIBLE : SN_INCOMPATIBLE);
+    setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
+  }
+}
+
+/**helpers for (in)compatible**/
+void timeoutIn_or_Compatible_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{
+  BUG_ON(!mds || !ph);
+  setTimeoutKITC(mds, jiffiesToWait(WC_LONG));
+  sendPacketHandler(ph);
+}
+
+void receiveIn_or_Compatible_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
+{
+  StateNumber sn, psn;
+  BUG_ON(!mds || !ph);
+
+  sn = getStateKITC(mds);
+  psn = ph->pktbuf[1]&0xf;
+  if (sn != psn) resetKITC(mds);
+  setTimeoutKITC(mds, jiffiesToWait(WC_LONG));
+}
+
+/**STATE COMPATIBLE, INCOMPATIBLE**/
+void timeout_COMPATIBLE_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{  timeoutIn_or_Compatible_KITC(mds,ph);  }
+
+void receive_COMPATIBLE_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
+{  receiveIn_or_Compatible_KITC(mds, ph);  }
+
+void timeout_INCOMPATIBLE_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
+{  timeoutIn_or_Compatible_KITC(mds,ph);  }
+
+void receive_INCOMPATIBLE_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
+{  receiveIn_or_Compatible_KITC(mds, ph);  }

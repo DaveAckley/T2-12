@@ -2,18 +2,84 @@
 #define ITCMFM_H
 
 #include "linux/types.h"     /* for __u32 etc */
+#include "linux/jiffies.h"   /* for HZ? */
 #include "itc_iterator.h"
 
 #include "itcpktevent.h"          /* Get pkt event struct */
 
+/**** EARLY STATES HACKERY ****/
+
+#define ALL_STATES_MACRO()                                    \
+/*   name         custo cusrc desc) */                        \
+  XX(INIT,        0,    0,    "initialized state")            \
+  XX(WAITPS,      1,    0,    "wait for packet sync")         \
+  XX(LEAD,        1,    1,    "declare I am leader")          \
+  XX(WLEAD,       0,    0,    "wait for follower ack")        \
+  XX(FOLLOW,      1,    1,    "declare I am follower")        \
+  XX(WFOLLOW,     0,    0,    "wait for config")              \
+  XX(CONFIG,      1,    1,    "send leader config")           \
+  XX(WCONFIG,     0,    0,    "wait for follower config")     \
+  XX(CHECK,       1,    1,    "send follower config")         \
+  XX(COMPATIBLE,  1,    1,    "pass MFM traffic")             \
+  XX(INCOMPATIBLE,1,    1,    "block MFM traffic")            \
+
+/*** STATE NUMBERS **/
+typedef enum statenumber {
+#define XX(NAME,CUSTO,CUSRC,DESC) SN_##NAME,
+  ALL_STATES_MACRO()
+#undef XX
+  MAX_STATE_NUMBER
+} StateNumber;
+
+/*** STATE NUMBER BITMASKS **/
+#define MASK_OF(sn) (1<<sn);
+
+typedef enum statenumbermask {
+#define XX(NAME,CUSTO,CUSRC,DESC) SN_##NAME##_MASK = 1<<SN_##NAME,
+  ALL_STATES_MACRO()
+#undef XX
+  MASK_ALL_STATES = -1
+} StateNumberMask;
+
+static inline u32 msToJiffies(u32 ms) { return ms * HZ / 1000; }
+
+typedef enum waitcode {
+  WC_HALF,   
+  WC_FULL,   
+  WC_LONG,   
+  WC_RANDOM, 
+  MAX_WAIT_CODE
+} WaitCode;
+
+typedef enum waitms {
+  WC_HALF_MS = 150,
+  WC_FULL_MS = 300,
+  WC_LONG_MS = 10000,
+  WC_RANDOM_MIN_MS = 30,
+  WC_RANDOM_MAX_MS = 1500,
+
+  WC_RANDOM_WIDTH = WC_RANDOM_MAX_MS - WC_RANDOM_MIN_MS+1
+} WaitMs;
+
+static inline u32 jiffiesToWait(WaitCode wc) {
+  switch (wc) {
+  case WC_HALF:   return msToJiffies(WC_HALF_MS);
+  case WC_FULL:   return msToJiffies(WC_FULL_MS);
+  case WC_LONG:   return msToJiffies(WC_LONG_MS);
+  case WC_RANDOM:
+    return msToJiffies(prandom_u32_max(WC_RANDOM_WIDTH)+WC_RANDOM_MIN_MS);
+  default: BUG_ON(1);
+  }
+}
+
 typedef struct itcmfmdevicestate ITCMFMDeviceState;    /* FORWARD */
 
-int itcLevelThreadRunner(void *arg) ;
-void wakeITCLevelRunner(void) ;
+int kitcTimeoutThreadRunner(void *arg) ;
+void wakeITCTimeoutRunner(void) ;
 
 void handleKITCPacket(ITCMFMDeviceState * ds, u8 * packet, u32 len) ;
 
-void updateKITC(ITCMFMDeviceState * ds) ;
+void resetKITC(ITCMFMDeviceState * mds) ;
 
 #define MAX_MFZ_NAME_LENGTH 100
 typedef u8 MFZId[MAX_MFZ_NAME_LENGTH + 1]; /* null-delimited 0..MAX_MFZ_NAME_LENGTH id string*/
@@ -41,41 +107,28 @@ typedef struct {
 } MFMTileState;
 
 /* Functions & pointers */
-typedef bool        LevelRequire_func (ITCMFMDeviceState* mds);
-typedef LevelAction LevelTimeout_func (ITCMFMDeviceState* mds,
-                                       bool usNotThem,
-                                       u32* ptrToNextTimeoutVarOrNull);
-typedef u32         LevelPacketIO_func(ITCMFMDeviceState* mds,
-                                       bool recvNotSend,
-                                       u32 startIdx,
-                                       u8* packetBuf,
-                                       u32 buflen);
-typedef LevelAction LevelDecide_func  (ITCMFMDeviceState* mds);
-typedef bool        LevelAdvance_func (ITCMFMDeviceState* mds);
+typedef struct packethandler {
+  u8 * pktbuf;
+  u32 index;
+  u32 len;
+} PacketHandler;
 
-typedef LevelRequire_func *LevelRequire_ptr;
-typedef LevelTimeout_func *LevelTimeout_ptr;
-typedef LevelPacketIO_func *LevelPacketIO_ptr;
-typedef LevelDecide_func *LevelDecide_ptr;
-typedef LevelAdvance_func *LevelAdvance_ptr;
+typedef void StateTimeout_func (ITCMFMDeviceState* mds, PacketHandler * ph) ;
+typedef void PacketReceive_func (ITCMFMDeviceState* mds, PacketHandler * ph) ;
+
+typedef StateTimeout_func *StateTimeout_ptr;
+typedef PacketReceive_func *PacketReceive_ptr;
 
 typedef struct {
-  LevelRequire_ptr  require;
-  LevelTimeout_ptr  timeout;
-  LevelPacketIO_ptr packetio;
-  LevelDecide_ptr   decide;
-  LevelAdvance_ptr  advance;
+  StateTimeout_ptr  timeout;
+  PacketReceive_ptr receive;
 } ITCLSOps;
 
 typedef struct {
-  unsigned long mModTime;       /* Time in jiffies (by local clock) */
-  unsigned long mNextTimeout;   /* Based on timeout when last announce was set */
-  LevelAction mTimeoutAction;   /* What to do it mNextTimeout hits */
+  unsigned long mTimeout;       /* jiffies when we timeout */
   MFMToken   mToken;            /* Physics ID from MFM */
   MFZId      mMFZId;            /* MFZId from MFM */
-  LevelStage mLevelStage;       /* This side's LevelStage */
-  SeqNo      mSeqno;            /* Announcement sequence number */
-  bool       mCompat;           /* True if Them and Us are known compatible */
+  StateNumber mStateNumber;     /* Our state number */
   bool       mIsUs;             /* True if this is all about us */
 } ITCSideState;
 

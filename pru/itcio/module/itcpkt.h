@@ -154,8 +154,8 @@ typedef enum {
   //0x020..0x80 rsrvd
   DBG_MISC100       = 0x00000100,
   DBG_MISC200       = 0x00000200,
-  DBG_LVL_PIO       = 0x00000400,   /*level packet IO*/
-  DBG_LVL_LSC       = 0x00000800,   /*level stage change*/
+  DBG_KITC_PIO      = 0x00000400,   /*kitc packet IO*/
+  DBG_KITC_SNC      = 0x00000800,   /*kitc state num change*/
   //0x0400..0x800 rsrvd
   DBG_TRACE_PARSE   = 0x00001000,
   DBG_TRACE_EXEC    = 0x00002000,
@@ -296,7 +296,7 @@ typedef struct itcmodulestate {
   ITCMFMDeviceState * (mMFMDeviceState[MFM_MINORS]); /* per-ITCMFM-device state for minor 6..11 */
 
   ITCKThreadState mOBPktThread;
-  ITCKThreadState mKITCLevelThread;
+  ITCKThreadState mKITCTimeoutThread;
 #if 0
   struct task_struct * mShipOBPktTask;     /* kthread to push packets to PRUs */
   wait_queue_head_t mOBWaitQueue;          /* wait queue for mShipOBPktTask */
