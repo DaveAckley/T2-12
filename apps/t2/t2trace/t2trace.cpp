@@ -305,6 +305,7 @@ struct EventSource {
     , mShift(-1)
     , mStart(0)
     , mDumpBit(bit)
+    , mLoops(0)
   {
     init();
   }
@@ -351,7 +352,7 @@ struct EventSource {
   void init() {
     load();
     openEvt();
-    printf("%s: shift=%d, start=%llu\n",
+    printf("%10s: shift=%d, start=%llu\n",
            mSourceName,
            mShift,
            mStart);
@@ -365,10 +366,18 @@ struct EventSource {
     return mStart;
   }
 
+  __u64 getRangeInNanos() const {
+    // We have an underlying nanosecond timer, right shifted by mShift
+    // bits, and packed into an Unsigned(23).  So the range is
+    // (1<<mShift) nanos per count * (1<<23) counts total, for
+    // 1<<(mShift+23) nanos total.
+    return ((__u64) 1)<<(mShift+23);
+  }
+
   bool getEventTime(__u64 & when) {
     if (!mHaveLast && !tryRead()) return false;
     if (!mHaveLast) return false;
-    when = (((__u64) getTimeField())<<mShift) + mStart;
+    when = (mLoops*getRangeInNanos())+(((__u64) getTimeField())<<mShift) + mStart;
     return true;
   }
 
@@ -379,8 +388,13 @@ struct EventSource {
   }
 
   bool tryRead() {
+    bool hadLast = mHaveLast;
+    __u32 lastTimeField;
     mHaveLast = false;
+    if (hadLast) lastTimeField = getTimeField();
     if (!readNext()) return false;
+    if (hadLast && (getTimeField() < lastTimeField))
+      ++mLoops;
     return mHaveLast = true;
   }
 
@@ -393,6 +407,8 @@ struct EventSource {
   int mShift;
   __u64 mStart;
   Dumps mDumpBit;
+  __u32 mLoops; // How many times the count turned over.
+
 };
 
 struct EventSourceLock : public EventSource {
@@ -564,11 +580,13 @@ struct EventSourceKITC : public EventSource {
       const char * dirname;
       if (!unpackItcLSEvent(event,&dir6,&usNotThem,&ls)) abort();
       dirname = getDir6Name(dir6);
+      const char open = usNotThem ? '(' : '{';
+      const char close= usNotThem ? ')' : '}';
       const char * spacer = "";
       if (usNotThem) spacer = " u->";
       else spacer = "  t->";
       
-      snprintf(eventbuf,100,"K (%s)%sL%02x",dirname,spacer,getLevelStageAsByte(ls));
+      snprintf(eventbuf,100,"K %c%s%c%sL%02x",open,dirname,close,spacer,getLevelStageAsByte(ls));
       
     } else if (isItcDirEvent(event)) {
       __u32 dir6, op;
@@ -645,30 +663,25 @@ struct Reporter {
     if (dump) {
       char eventbuf[100];
       char delta1[20];
-      bool negsec = false, negincr = false;
       //      char delta2[20];
       es.unpackEvent(eventbuf);
 
       if (mFirst == 0) mFirst = nanos;
-      if (nanos >= mFirst)
-        sec = (nanos-mFirst)/(1000.0*1000.0*1000.0);
-      else {
-        negsec = true;
-        sec = (mFirst-nanos)/(1000.0*1000.0*1000.0);
-      }
+      sec = (nanos-mFirst)/(1000.0*1000.0*1000.0);
+
       if (mLast == 0) mLast = nanos;
       if (nanos >= mLast) {
         incrns = (nanos-mLast);
       } else {
-        negincr = true;
-        incrns = (mLast-nanos);
+        printf("WARNING nanos %llu < %llu mLast, treating as equal\n",nanos, mLast);
+        incrns = 0;
       }
       mLast = nanos;
-      formatDelta(incrns, negincr, delta1, 20);
+      formatDelta(incrns, false, delta1, 20);
 
-      printf("%04d %s%8.6fsec %s %03x:%s\n",
+      printf("%04d %8.6fsec %s %03x:%s\n",
              ++mEventsDumped,
-             negsec ? "-" : " ", sec,
+             sec,
              delta1,
              es.getEventValue(), eventbuf);
 
