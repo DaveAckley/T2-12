@@ -54,7 +54,11 @@ typedef enum waitcode {
 typedef enum waitms {
   WC_HALF_MS = 150,
   WC_FULL_MS = 300,
-  WC_LONG_MS = 10000,
+
+  WC_LONG_MIN_MS = 10000,
+  WC_LONG_MAX_MS = 15000,
+  WC_LONG_WIDTH = WC_LONG_MAX_MS - WC_LONG_MIN_MS+1,
+
   WC_RANDOM_MIN_MS = 30,
   WC_RANDOM_MAX_MS = 1500,
 
@@ -65,9 +69,8 @@ static inline u32 jiffiesToWait(WaitCode wc) {
   switch (wc) {
   case WC_HALF:   return msToJiffies(WC_HALF_MS);
   case WC_FULL:   return msToJiffies(WC_FULL_MS);
-  case WC_LONG:   return msToJiffies(WC_LONG_MS);
-  case WC_RANDOM:
-    return msToJiffies(prandom_u32_max(WC_RANDOM_WIDTH)+WC_RANDOM_MIN_MS);
+  case WC_LONG:   return msToJiffies(prandom_u32_max(WC_LONG_WIDTH)+WC_LONG_MIN_MS);
+  case WC_RANDOM: return msToJiffies(prandom_u32_max(WC_RANDOM_WIDTH)+WC_RANDOM_MIN_MS);
   default: BUG_ON(1);
   }
 }
