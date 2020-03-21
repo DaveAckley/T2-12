@@ -1,4 +1,4 @@
-{229}  -*- text -*-
+{238}  -*- text -*-
 [0:
 [3:
 [35:
@@ -3317,3 +3317,62 @@ TODO
 Committing and switching to science.
 
 :228]
+[229:
+
+Sat Mar 21 04:18:10 2020 OK, well, now it's 19 days later.  It's
+COVID-19 days later, and we're in a different world.  The ALIFE2020
+conference has become an online-only 'virtual' conference, and the
+paper deadline has been pushed back to May 1, so we're back on
+intertile events here for the next few days anyway.
+
+Right now I'd like to see a clean up in itc_pkt and then a userspace
+spike that demonstrates event locking.  And in particular I'd like to
+see userspace design heading towards having multiple events in
+progress with fine-grained locks.
+
+Rule is once itc_pkt opens the gate, we can no longer touch any
+visible sites without having an event window lock covering that site.
+We can try to grab non-overlapping event window locks--even intertile
+ones perhaps involving other tiles with which we already have active
+locks.
+[230:
+
+Sat Mar 21 09:59:51 2020 OK, mini-
+
+TODO
+
+[231: Sat Mar 21 10:08:05 2020
+DONE :231] - Merge ITCSideState into ITCLevelState, ditching unused fields
+
+[232: Sat Mar 21 10:11:13 2020
+DONE :232] - Get that building
+
+[233: Sat Mar 21 10:18:43 2020
+DONE :233] - Rename ITCLevelState to (just) ITCState?
+
+[237: Sat Mar 21 10:44:00 2020
+DONE :237] - Get that working
+
+ - Commit
+
+ - Make more to-do
+
+:230]
+:229]
+[234:
+
+Sat Mar 21 10:23:15 2020 OK so I guess we need to test this, so it's
+time once again to set up for our checklist-mandated procedure:
+
+RISKY BITS OFF
+[235:
+
+Sat Mar 21 10:26:39 2020 Installing..
+
+:235]
+:234]
+[236:
+
+Sat Mar 21 10:43:18 2020 Seems okay after rebooting.  
+
+:236]
