@@ -17,7 +17,7 @@
 #include <linux/ctype.h>           /* for isprint, tolower */
 
 #include "rpmsg_t2_local.h"       /* XXX HOW ARE YOU SUPPOSED TO GET struct rpmsg?? */
-#include "itcmfm.h"               /* For ITCLevelState_ops & assoc */
+#include "itcmfm.h"               /* For ITCState_ops & assoc */
 
 #include "dirdatamacro.h"         /* For DIR6_ET, DIR6_COUNT, etc */
 
@@ -247,7 +247,7 @@ typedef struct itcmfmdevicestate {
   ITCPktDeviceState mPktDevState;/* pkt device state must be first! */
   bool mStale;                   /* set on write to mfzid, cleared on open */
   u8 mDir6;                      /* implied by minor but for convenience */
-  ITCLevelState mLevelState;
+  ITCState mITCState;
 } ITCMFMDeviceState;
 
 typedef struct itctrafficcounts {

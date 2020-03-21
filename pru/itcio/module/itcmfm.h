@@ -125,25 +125,19 @@ typedef PacketReceive_func *PacketReceive_ptr;
 typedef struct {
   StateTimeout_ptr  timeout;
   PacketReceive_ptr receive;
-} ITCLSOps;
+} ITCSOps;
 
 typedef struct {
   unsigned long mTimeout;       /* jiffies when we timeout */
   MFMToken   mToken;            /* Physics ID from MFM */
-  MFZId      mMFZId;            /* MFZId from MFM */
+  MFZId      mMFZIdUs;          /* MFZId from MFM */
+  MFZId      mMFZIdThem;        /* MFZId from MFM */
   StateNumber mStateNumber;     /* Our state number */
-  bool       mIsUs;             /* True if this is all about us */
-} ITCSideState;
+} ITCState;
 
+void initITCState(ITCState * is) ;
+unsigned long itcStateGetEarliestTimeout(ITCState * is);
 
-typedef struct {
-  ITCSideState mUs;
-  ITCSideState mThem;
-} ITCLevelState;
-
-void initITCLevelState(ITCLevelState * ils) ;
-unsigned long itcLevelStateGetEarliestTimeout(ITCLevelState * ils);
-
-extern ITCLSOps ilsDEFAULTS;
+extern ITCSOps ilsDEFAULTS;
 
 #endif /*ITCMFM_H*/

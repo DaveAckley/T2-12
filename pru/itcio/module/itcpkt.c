@@ -2332,7 +2332,7 @@ static ITCMFMDeviceState * makeITCMFMDeviceState(struct device * dev,
   mfmdev->mStale = false;
   BUG_ON(minor_to_create < PKT_MINOR_MFM_ET || minor_to_create > PKT_MINOR_MFM_NE);
   mfmdev->mDir6 = minor_to_create - PKT_MINOR_MFM_ET;
-  initITCLevelState(&mfmdev->mLevelState);
+  initITCState(&mfmdev->mITCState);
   return mfmdev;
 }
 

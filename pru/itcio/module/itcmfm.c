@@ -17,35 +17,35 @@ static u8 getDir8FromPH(PacketHandler * ph) {
 
 static StateNumber getStateKITC(ITCMFMDeviceState *mds) {
   BUG_ON(!mds);
-  return mds->mLevelState.mUs.mStateNumber;
+  return mds->mITCState.mStateNumber;
 }
 
 static void setStateKITC(ITCMFMDeviceState * mds, StateNumber sn) {
   BUG_ON(!mds);
   BUG_ON(sn >= MAX_STATE_NUMBER);
 
-  if (mds->mLevelState.mUs.mStateNumber != sn) {
+  if (mds->mITCState.mStateNumber != sn) {
     DBGPRINTK(DBG_MISC100,"%s: [%s] %s->%s\n",
               __FUNCTION__,
               getDir8Name(mapDir6ToDir8(mds->mDir6)),
-              getStateName(mds->mLevelState.mUs.mStateNumber),
+              getStateName(mds->mITCState.mStateNumber),
               getStateName(sn));
   }
 
-  mds->mLevelState.mUs.mStateNumber = sn;
+  mds->mITCState.mStateNumber = sn;
 }
 
 void setTimeoutKITC(ITCMFMDeviceState * mds, u32 jiffiesToWait) {
-  ITCLevelState * ils;
+  ITCState * is;
   unsigned long oldTimeout, newTimeout;
   BUG_ON(!mds);
 
-  ils = &mds->mLevelState;
+  is = &mds->mITCState;
 
-  oldTimeout = ils->mUs.mTimeout;
+  oldTimeout = is->mTimeout;
   newTimeout = jiffies + jiffiesToWait;
 
-  ils->mUs.mTimeout = newTimeout;
+  is->mTimeout = newTimeout;
 
   if (time_before(newTimeout,oldTimeout)) /* If we moved a timeout earlier, the */
     wakeITCTimeoutRunner();               /* timeout runner needs a fresh look */
@@ -88,7 +88,7 @@ static void initWritePacketHandler(PacketHandler * pm, ITCMFMDeviceState *ds)
   static u8 buf[ITC_MAX_PACKET_SIZE+1];
   u8 dir6;
   u8 dir8;
-  ITCLevelState * ils;
+  ITCState * is;
   u32 oursn;
 
   BUG_ON(!ds);
@@ -99,8 +99,8 @@ static void initWritePacketHandler(PacketHandler * pm, ITCMFMDeviceState *ds)
 
   dir6 = ds->mDir6;
   dir8 = mapDir6ToDir8(dir6);
-  ils = &ds->mLevelState;
-  oursn = ils->mUs.mStateNumber;
+  is = &ds->mITCState;
+  oursn = is->mStateNumber;
   BUG_ON(oursn > 0xf);       /* Only 4 bits for sn */
 
   pm->pktbuf[pm->index++] = 0xa0|dir8;  /*standard+urgent to dir8*/
@@ -125,8 +125,8 @@ static void writeZstringToPH(PacketHandler * ph, const u8 * zstr)
 
 static bool compatibleMFZId(ITCMFMDeviceState *mds) {
   BUG_ON(!mds);
-  return 0 == strncmp(mds->mLevelState.mUs.mMFZId,
-                      mds->mLevelState.mThem.mMFZId,
+  return 0 == strncmp(mds->mITCState.mMFZIdUs,
+                      mds->mITCState.mMFZIdThem,
                       MAX_MFZ_NAME_LENGTH);
 }
 
@@ -182,7 +182,7 @@ const char * getStateDescription(StateNumber sn) {
 #define YY0(nm,type) type##Default_KITC
 #define YY1(nm,type) type##_##nm##_KITC
 #define XX(NAME,CUSTO,CUSRC,DESC)       \
-static ITCLSOps ils##NAME = {           \
+static ITCSOps is##NAME = {             \
   .timeout = YY##CUSTO(NAME,timeout),   \
   .receive = YY##CUSRC(NAME,receive),   \
 };
@@ -197,15 +197,15 @@ ALL_STATES_MACRO()
 /*** DEFINE STATE DISPATCH ARRAY **/
 
 #define XX(NAME,CUSTO,CUSRC,DESC)       \
-  &ils##NAME,                           \
+  &is##NAME,                            \
 
-static ITCLSOps *(theStates[MAX_STATE_NUMBER]) = {
+static ITCSOps *(theStates[MAX_STATE_NUMBER]) = {
   ALL_STATES_MACRO()
 };
 
 #undef XX
 
-ITCLSOps * getOpsOrNull(StateNumber sn) {
+ITCSOps * getOpsOrNull(StateNumber sn) {
   if (sn >= MAX_STATE_NUMBER) return 0;
   return theStates[sn];
 }
@@ -223,7 +223,7 @@ static inline void recvKITCPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
 {
   PacketHandler ph;
   u32 psn;
-  ITCLSOps * ops;
+  ITCSOps * ops;
   BUG_ON(!ds);
   if (!initReadPacketHandler(&ph, packet, len))
     printk(KERN_ERR "%s illegal packet, len %d, ignored\n",
@@ -236,7 +236,7 @@ static inline void recvKITCPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
             getStateName(psn),
             len,
             getDir8Name(mapDir6ToDir8(ds->mDir6)),
-            getStateName(ds->mLevelState.mUs.mStateNumber));
+            getStateName(ds->mITCState.mStateNumber));
 
   ops = getOpsOrNull(psn); /* Dispatch on the packet type, not ds state! */
   BUG_ON(!ops);
@@ -246,27 +246,14 @@ static inline void recvKITCPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
 /*****************************/
 /* PUBLIC FUNCTIONS */
 
-static void initITCSideState(ITCSideState * ss, bool isUs)
+void initITCState(ITCState * is)
 {
-  BUG_ON(!ss);
-  ss->mTimeout = jiffies + (prandom_u32_max(50)+(isUs ? 10 : 100));
-  ss->mToken = 0;
-  ss->mMFZId[0] = '\0';
-  ss->mStateNumber = SN_INIT;
-  ss->mIsUs = isUs;
-}
-
-void initITCLevelState(ITCLevelState * ils)
-{
-  BUG_ON(!ils);
-  initITCSideState(&ils->mUs, true);
-  initITCSideState(&ils->mThem, false);
-}
-
-unsigned long itcSideStateGetTimeout(ITCSideState * ss)
-{
-  BUG_ON(!ss);
-  return ss->mTimeout;
+  BUG_ON(!is);
+  is->mTimeout = jiffies + (prandom_u32_max(50)+10);
+  is->mToken = 0;
+  is->mMFZIdUs[0] = '\0';
+  is->mMFZIdThem[0] = '\0';
+  is->mStateNumber = SN_INIT;
 }
 
 #define jiffiesFromAtoB(au32,bu32) ((s32) ((bu32)-(au32)))
@@ -294,13 +281,12 @@ int kitcTimeoutThreadRunner(void *arg)
     for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
       ITCDir kitc = itcIteratorGetNext(itr);
       ITCMFMDeviceState * mds = s->mMFMDeviceState[kitc];
-      ITCLevelState * ils = &mds->mLevelState;
-      ITCSideState * us = &ils->mUs;
-      if (ties==0 || time_before(us->mTimeout, earliestTime)) {
+      ITCState * is = &mds->mITCState;
+      if (ties==0 || time_before(is->mTimeout, earliestTime)) {
         earliestDir = kitc;
-        earliestTime = us->mTimeout;
+        earliestTime = is->mTimeout;
         ties = 1;
-      } else if (us->mTimeout == earliestTime && prandom_u32_max(++ties) == 0) {
+      } else if (is->mTimeout == earliestTime && prandom_u32_max(++ties) == 0) {
         earliestDir = kitc;
       }
     }
@@ -312,13 +298,13 @@ int kitcTimeoutThreadRunner(void *arg)
 
       /* Do it */
       ITCMFMDeviceState * mds = s->mMFMDeviceState[earliestDir];
-      ITCLevelState * ils = &mds->mLevelState;
-      ITCLSOps * ops = theStates[ils->mUs.mStateNumber];
+      ITCState * is = &mds->mITCState;
+      ITCSOps * ops = theStates[is->mStateNumber];
       BUG_ON(!ops);
       DBGPRINTK(DBG_MISC100,"%s: [%s] to %s\n",
                 __FUNCTION__,
                 getDir8Name(mapDir6ToDir8(mds->mDir6)),
-                getStateName(mds->mLevelState.mUs.mStateNumber));
+                getStateName(mds->mITCState.mStateNumber));
 
       initWritePacketHandler(&ph, mds);
       ops->timeout(mds,&ph);
@@ -448,8 +434,8 @@ void receive_CONFIG_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
   if (sn != SN_WFOLLOW) {          /* messed up unless we're WFOLLOW */
     resetKITC(mds);
   } else {
-    u32 idx = readZstringFromPH(ph, mds->mLevelState.mThem.mMFZId, sizeof(MFZId));
-    if (idx < sizeof(MFZId)) mds->mLevelState.mThem.mMFZId[idx] = '\0';
+    u32 idx = readZstringFromPH(ph, mds->mITCState.mMFZIdThem, sizeof(MFZId));
+    if (idx < sizeof(MFZId)) mds->mITCState.mMFZIdThem[idx] = '\0';
     setStateKITC(mds, SN_CHECK);
     setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
   }
@@ -471,8 +457,8 @@ void receive_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
   if (sn != SN_WCONFIG) {
     resetKITC(mds);
   } else {
-    u32 idx = readZstringFromPH(ph, mds->mLevelState.mThem.mMFZId, sizeof(MFZId));
-    if (idx < sizeof(MFZId)) mds->mLevelState.mThem.mMFZId[idx] = '\0';
+    u32 idx = readZstringFromPH(ph, mds->mITCState.mMFZIdThem, sizeof(MFZId));
+    if (idx < sizeof(MFZId)) mds->mITCState.mMFZIdThem[idx] = '\0';
     setStateKITC(mds, compatibleMFZId(mds) ? SN_COMPATIBLE : SN_INCOMPATIBLE);
     setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
   }
