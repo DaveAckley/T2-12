@@ -28,35 +28,6 @@ static inline __u32 mapDir8ToDir6(__u32 dir8) {
   }
 }
 
-#define LEVELACTIONMACRO()                               \
-  XX(DO_ILLEGAL,"illegal action")                        \
-  XX(DO_REENTER,"go to stage 0 of current level")        \
-  XX(DO_RESTART,"go to L00")                             \
-  XX(DO_RETREAT,"go to stage 0 of previous level")       \
-  XX(DO_ADVANCE,"go to next stage or level")             \
-  XX(DO_CONTINUE,"stay at current level and stage")      \
-
-typedef enum {
-
-#define XX(a,b) a,
-  LEVELACTIONMACRO()              
-#undef XX
-  LEVELACTION_COUNT
-} LevelAction;
-
-typedef __u8 LevelStage;                     /*  + level:3 + stage:2 */
-
-inline static __u8 getLevelStageFromPacketByte(__u8 packetByte) { return packetByte&0x1f; /*bottom five bits*/ }
-inline static __u8 getLevelFromLevelStage(LevelStage ls) { return (ls>>2)&0x7; }
-inline static __u8 getStageFromLevelStage(LevelStage ls) { return (ls>>0)&0x3; }
-inline static __u8 getLevelStageAsByte(LevelStage ls) { return (getLevelFromLevelStage(ls)<<4) | getStageFromLevelStage(ls); }
-
-inline static __u8 makeLevelStage(__u32 level, __u32 stage) {
-  return ((level&0x7)<<2)|((stage&0x3)<<0);
-}
-
-
-
 #define ITCPKTEVENT_TIME_SIZE 23
 #define ITCPKTEVENT_EVENT_SIZE 9
 typedef struct ITCPktEvent {
@@ -149,7 +120,6 @@ IEVDIRMACRO()
 };
 
 #define ITCEVTSPECMACRO() \
-  LEVELACTIONMACRO()      \
   XX(QGAP,"event queue gap")  \
   XX(PTOU,"push timeout - us")   \
   XX(PTOT,"push timeout - them")   \
@@ -170,8 +140,37 @@ enum {
   COUNT_IEV_EVT_SPEC
 };
 
-static inline __u32 makeItcLSEvent(__u32 dir6, __u32 usNotThem, __u32 ls) {
-  return ((dir6&0x7)<<6) | ((usNotThem&0x1)<<5) | ((ls&0x1f)<<0);
+#define ITC_STATE_OPS_MACRO() \
+  XX(ENTER)                   \
+  XX(TIMEOUT)                 \
+  XX(RECEIVE)                 \
+  XX(SEND)                    \
+
+typedef enum {
+#define XX(sym) ITC_STATE_OP_##sym,
+  ITC_STATE_OPS_MACRO()
+#undef XX  
+  COUNT_ITC_STATE_OPS
+} ITCStateOp;
+
+static inline __u32 makeItcStateEvent(__u32 dir6, __u32 stateNum, __u32 opNum) {
+  return ((dir6&0x7)<<6) | ((opNum&0x3)<<4) | ((stateNum&0xf)<<0);
+}
+
+static inline __u32 makeItcStateEnterEvent(__u32 dir6, __u32 stateNum) {
+  return makeItcStateEvent(dir6,stateNum,ITC_STATE_OP_ENTER);
+}
+
+static inline __u32 makeItcStateTimeoutEvent(__u32 dir6, __u32 stateNum) {
+  return makeItcStateEvent(dir6,stateNum,ITC_STATE_OP_TIMEOUT);
+}
+
+static inline __u32 makeItcStateReceiveEvent(__u32 dir6, __u32 stateNum) {
+  return makeItcStateEvent(dir6,stateNum,ITC_STATE_OP_RECEIVE);
+}
+
+static inline __u32 makeItcStateSendEvent(__u32 dir6, __u32 stateNum) {
+  return makeItcStateEvent(dir6,stateNum,ITC_STATE_OP_SEND);
 }
 
 static inline __u32 makeItcDirEvent(__u32 dir6, __u32 op) {
@@ -182,17 +181,17 @@ static inline __u32 makeItcSpecEvent(__u32 spec) {
   return ((7&0x7)<<6) | ((spec&0x3f)<<0);
 }
 
-static inline bool isItcLSEvent(__u32 event) { return (((event)>>6)&0x7) < 6; }
+static inline bool isItcStateEvent(__u32 event) { return (((event)>>6)&0x7) < 6; }
 
 static inline bool isItcDirEvent(__u32 event) { return (((event)>>6)&0x7) == 6; }
 
 static inline bool isItcSpecEvent(__u32 event) { return (((event)>>6)&0x7) == 7; }
 
-static inline bool unpackItcLSEvent(__u32 event,__u32 * dir6,__u32 * usNotThem,__u32 * ls) {
-  if (!isItcLSEvent(event)) return false;
+static inline bool unpackItcStateEvent(__u32 event,__u32 * dir6,__u32 * state,__u32 * op) {
+  if (!isItcStateEvent(event)) return false;
   if (dir6) *dir6 = (event>>6)&0x7;
-  if (usNotThem) *usNotThem = (event>>5)&0x1;
-  if (ls) *ls = (event>>0)&0x1f;
+  if (state) *state = (event>>0)&0xf;
+  if (op) *op = (event>>4)&0x3;
   return true;
 }
 

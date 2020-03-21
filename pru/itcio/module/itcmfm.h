@@ -6,40 +6,7 @@
 #include "itc_iterator.h"
 
 #include "itcpktevent.h"          /* Get pkt event struct */
-
-/**** EARLY STATES HACKERY ****/
-
-#define ALL_STATES_MACRO()                                    \
-/*   name         custo cusrc desc) */                        \
-  XX(INIT,        0,    0,    "initialized state")            \
-  XX(WAITPS,      1,    0,    "wait for packet sync")         \
-  XX(LEAD,        1,    1,    "declare I am leader")          \
-  XX(WLEAD,       0,    0,    "wait for follower ack")        \
-  XX(FOLLOW,      1,    1,    "declare I am follower")        \
-  XX(WFOLLOW,     0,    0,    "wait for config")              \
-  XX(CONFIG,      1,    1,    "send leader config")           \
-  XX(WCONFIG,     0,    0,    "wait for follower config")     \
-  XX(CHECK,       1,    1,    "send follower config")         \
-  XX(COMPATIBLE,  1,    1,    "pass MFM traffic")             \
-  XX(INCOMPATIBLE,1,    1,    "block MFM traffic")            \
-
-/*** STATE NUMBERS **/
-typedef enum statenumber {
-#define XX(NAME,CUSTO,CUSRC,DESC) SN_##NAME,
-  ALL_STATES_MACRO()
-#undef XX
-  MAX_STATE_NUMBER
-} StateNumber;
-
-/*** STATE NUMBER BITMASKS **/
-#define MASK_OF(sn) (1<<sn);
-
-typedef enum statenumbermask {
-#define XX(NAME,CUSTO,CUSRC,DESC) SN_##NAME##_MASK = 1<<SN_##NAME,
-  ALL_STATES_MACRO()
-#undef XX
-  MASK_ALL_STATES = -1
-} StateNumberMask;
+#include "itcmfmevent.h"          /* Get state macro defs */
 
 static inline u32 msToJiffies(u32 ms) { return ms * HZ / 1000; }
 
@@ -87,7 +54,6 @@ void resetKITC(ITCMFMDeviceState * mds) ;
 #define MAX_MFZ_NAME_LENGTH 100
 typedef u8 MFZId[MAX_MFZ_NAME_LENGTH + 1]; /* null-delimited 0..MAX_MFZ_NAME_LENGTH id string*/
 typedef u8 MFMToken;                       /* random + incremented each id write, skipping 0 */
-typedef u8 SeqNo;                          /* random + incremented each level packet, skipping 0 */
 
 #define RANDOM_IN_SIZE(VAR_OR_TYPE)         \
   ({                                        \

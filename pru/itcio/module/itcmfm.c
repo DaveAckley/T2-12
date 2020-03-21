@@ -25,6 +25,7 @@ static void setStateKITC(ITCMFMDeviceState * mds, StateNumber sn) {
   BUG_ON(sn >= MAX_STATE_NUMBER);
 
   if (mds->mITCState.mStateNumber != sn) {
+    ADD_ITC_EVENT(makeItcStateEnterEvent(mds->mDir6,sn));
     DBGPRINTK(DBG_MISC100,"%s: [%s] %s->%s\n",
               __FUNCTION__,
               getDir8Name(mapDir6ToDir8(mds->mDir6)),
@@ -230,7 +231,7 @@ static inline void recvKITCPacket(ITCMFMDeviceState *ds, u8 * packet, u32 len)
            __FUNCTION__,
            len);
   psn = getStateNumberFromPH(&ph);
-
+  ADD_ITC_EVENT(makeItcStateReceiveEvent(ds->mDir6,ds->mITCState.mStateNumber));
   DBGPRINTK(DBG_KITC_PIO,"%s rc %s len=%d (us=[%s]%s)\n",
             __FUNCTION__,
             getStateName(psn),
@@ -275,7 +276,7 @@ int kitcTimeoutThreadRunner(void *arg)
     u32 ties = 0;
     s32 diffToNext;
 
-    ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_BITR));
+    /*XXX    ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_BITR)); */
 
     /** Find earliest timeout **/
     for (itcIteratorStart(itr); itcIteratorHasNext(itr); ) {
@@ -304,8 +305,8 @@ int kitcTimeoutThreadRunner(void *arg)
       DBGPRINTK(DBG_MISC100,"%s: [%s] to %s\n",
                 __FUNCTION__,
                 getDir8Name(mapDir6ToDir8(mds->mDir6)),
-                getStateName(mds->mITCState.mStateNumber));
-
+                getStateName(is->mStateNumber));
+      ADD_ITC_EVENT(makeItcStateTimeoutEvent(earliestDir,is->mStateNumber));
       initWritePacketHandler(&ph, mds);
       ops->timeout(mds,&ph);
 
@@ -314,12 +315,13 @@ int kitcTimeoutThreadRunner(void *arg)
       /* Sleep */
       diffToNext = jiffiesFromAtoB(jiffies, earliestTime);
     
+#if 0 /*XXX*/
       if (0) { /*COND*/ }
       else if (diffToNext < msToJiffies(5)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP0));
       else if (diffToNext < msToJiffies(50)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP1));
       else if (diffToNext < msToJiffies(500)) ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP2));
       else ADD_ITC_EVENT(makeItcSpecEvent(IEV_SPEC_SLP3));
-      
+#endif      
       set_current_state(TASK_INTERRUPTIBLE);
       schedule_timeout(diffToNext);   /* in TASK_RUNNING again upon return */
     }
@@ -343,6 +345,8 @@ static bool sendPacketHandler(PacketHandler * ph) {
   BUG_ON(!ph);
   ret = trySendUrgentRoutedKernelPacket(ph->pktbuf,ph->index) > 0;
 
+  ADD_ITC_EVENT(makeItcStateSendEvent(mapDir8ToDir6(getDir8FromPH(ph)),
+                                       getStateNumberFromPH(ph)));
   DBGPRINTK(DBG_KITC_PIO,"sendKITCPacket pkt=%s len=%d (src=%s)\n",
             getStateName(getStateNumberFromPH(ph)),
             ph->index,

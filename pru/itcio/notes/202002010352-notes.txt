@@ -1,4 +1,4 @@
-{238}  -*- text -*-
+{254}  -*- text -*-
 [0:
 [3:
 [35:
@@ -3300,11 +3300,13 @@ TODO
 
  - t2trace is rotted
 
- - There's a design question about the whole sidestate mUs/mThem
+[240: Sat Mar 21 10:48:59 2020
+DONE, simplified :240] - There's a design question about the whole sidestate mUs/mThem
    thing.  We're using hardly any of it.  Do we really want to keep
    it?  If so can we simplify it.
 
- - There's a lot of 'level' nomenclature that mostly doesn't make
+[241: Sat Mar 21 10:49:12 2020
+DONE, ditched :241] - There's a lot of 'level' nomenclature that mostly doesn't make
    sense now that we've simplified the protocol.
 
  - The MFMToken is not being used at all.  Should we exchange it in
@@ -3353,9 +3355,11 @@ DONE :233] - Rename ITCLevelState to (just) ITCState?
 [237: Sat Mar 21 10:44:00 2020
 DONE :237] - Get that working
 
- - Commit
+[238: Sat Mar 21 10:46:55 2020
+DONE :238] - Commit
 
- - Make more to-do
+[242: Sat Mar 21 11:00:02 2020 
+DONE :242] - Make more to-do
 
 :230]
 :229]
@@ -3376,3 +3380,226 @@ Sat Mar 21 10:26:39 2020 Installing..
 Sat Mar 21 10:43:18 2020 Seems okay after rebooting.  
 
 :236]
+[239:
+
+Sat Mar 21 10:47:05 2020 OK, so after that palate cleanser, more
+
+TODO
+
+[251: Sat Mar 21 14:20:07 2020
+DONE :251] - Unrot t2trace
+
+[252: Sat Mar 21 14:20:11 2020
+DONE :252] - Observe successful ITC negotiation with it
+
+ - Observe failed ITC negotiation with it
+
+ - Refresh brain on state of userspace spike
+
+ - Commit
+
+ - Make more todo
+
+:239]
+[243:
+
+Sat Mar 21 11:04:05 2020 OK digging into t2trace.  Looks like the
+events for KITC are pretty limited and incomplete, so a first task
+here might be to list what sort of stuff we want, exactly.
+
+But first, blunch.
+[244:
+
+Sat Mar 21 11:40:27 2020 OK, so we want timeout-in-state and
+type-of-packet-received events at the least.  Let's just get that
+going and see what else if anything we might want.[245:
+
+Sat Mar 21 11:52:18 2020 OK, at the moment so we have
+
+    static inline __u32 makeItcLSEvent(__u32 dir6, __u32 usNotThem, __u32 ls) {
+      return ((dir6&0x7)<<6) | ((usNotThem&0x1)<<5) | ((ls&0x1f)<<0);
+    }
+
+    static inline __u32 makeItcDirEvent(__u32 dir6, __u32 op) {
+      return ((6&0x7)<<6) | ((op&0x7)<<3) | ((dir6&0x7)<<0);
+    }
+
+    static inline __u32 makeItcSpecEvent(__u32 spec) {
+      return ((7&0x7)<<6) | ((spec&0x3f)<<0);
+    }
+
+but since level-stage has gone away we get to repurpose those states.
+So I guess it's really a full 6 bits (==64) of KITC-specific events,
+plus 2 * 6 bits (==128) of non-spatial 'special' events.
+
+Seems like super-overkill sitting here now.  We'll see.  
+[246:
+
+Sat Mar 21 12:13:53 2020 Given that we've got 11 states, let's go with
+4 bits for state and have 2 bits for op-within-state -- although
+beyond just 'ENTER' I'm not sure what we'll have for 'op'.
+
+:246]
+:245]
+
+:244]
+:243]
+[247:
+
+Sat Mar 21 13:10:29 2020 Well, now perhaps generating some new-style
+KITC state events for ENTER, TIMEOUT, and RECEIVE...  Let's push on
+t2trace.cpp some.[248:
+
+Sat Mar 21 13:29:38 2020 OK, going for a try.
+
+RISKY BITS OFF
+
+:248]
+
+:247]
+[249:
+
+Sat Mar 21 14:00:54 2020 Tweaking events.  Getting there.
+
+RISKY BITS OFF
+
+:249]
+[250:
+
+So okay, getting plausible traces:
+
+    0009 5.691466sec   +3msec 18b:K (WT) ITCUP: packet sync acquired
+    0010 5.694419sec   +2msec 188:K (ET) ITCUP: packet sync acquired
+
+Plugged in the loopback..
+
+    0011 5.717148sec  +22msec 037:L     [WT sSYNC01]
+    0012 5.717148sec   +0usec 0b8:L         WT_ORQLK-
+    0013 5.717152sec   +4usec 18e:L LALST: all locks settled
+    0014 5.717176sec  +24usec 080:L -ET_IRQLK
+    0015 5.717176sec   +0usec 007:L     [ET sSYNC01]
+    0016 5.717176sec   +0usec 088:L         ET_ORQLK-
+    0017 5.717176sec   +0usec 18e:L LALST: all locks settled
+    0018 5.717185sec   +8usec 0b0:L -WT_IRQLK
+    0019 5.717189sec   +4usec 033:L     [WT sIDLE]
+    0020 5.717189sec   +0usec 0bc:L         WT_OGRLK-
+    0021 5.717189sec   +0usec 18e:L LALST: all locks settled
+    0022 5.717197sec   +8usec 084:L -ET_IGRLK
+    0023 5.717197sec   +0usec 003:L     [ET sIDLE]
+    0024 5.717197sec   +0usec 08c:L         ET_OGRLK-
+    0025 5.717197sec   +0usec 18e:L LALST: all locks settled
+    0026 5.717209sec  +12usec 0b4:L -WT_IGRLK
+
+Lock negotiation happened next..
+
+    0027 6.977343sec   +1secs 0d1:K [WT:WAITPS] TIMEOUT
+
+A whole second later West KITC finally timed out..
+
+    0028 6.977348sec   +4usec 0c2:K [WT:LEAD] ENTER
+    0029 6.977348sec   +0usec 0d2:K [WT:LEAD] TIMEOUT
+
+..entered LEAD and timed out again immediately..
+
+    0030 6.977352sec   +4usec 0c3:K [WT:WLEAD] ENTER
+
+..and entered WLEAD (waiting after lead)..
+
+    0031 6.977368sec  +16usec 0f2:K [WT:LEAD] SEND
+
+..after (?) announcing its LEAD state.
+
+    0032 6.977421sec  +53usec 0d6:P   <WT to PRU 2-4>
+
+..that packet ships..
+
+    0033 6.977581sec +159usec 021:K [ET:WAITPS] RECEIVE
+
+..East KITC gets notified..
+
+    0034 6.977585sec   +4usec 004:K [ET:FOLLOW] ENTER
+    0035 7.129379sec +151msec 014:K [ET:FOLLOW] TIMEOUT
+
+..enters FOLLOW and times out again..
+
+    0036 7.129383sec   +4usec 005:K [ET:WFOLLOW] ENTER
+    0037 7.129399sec  +16usec 034:K [ET:FOLLOW] SEND
+
+..and enters waiting after follow while announcing follow.
+
+    0038 7.129457sec  +57usec 0d2:P   <ET to PRU 2-4>
+
+..the packet ships..
+
+    0039 7.129616sec +159usec 0e3:K [WT:WLEAD] RECEIVE
+
+Same deal.  West, waiting after lead, receives it
+
+    0040 7.129620sec   +4usec 0c6:K [WT:CONFIG] ENTER
+    0041 7.281406sec +151msec 0d6:K [WT:CONFIG] TIMEOUT
+    0042 7.281410sec   +4usec 0c7:K [WT:WCONFIG] ENTER
+    0043 7.281426sec  +16usec 0f6:K [WT:CONFIG] SEND
+    0044 7.281480sec  +53usec 0d6:P   <WT to PRU 2-4>
+
+..and enters waiting after config while announcing config.
+
+    0045 7.281619sec +139usec 025:K [ET:WFOLLOW] RECEIVE
+    0046 7.281623sec   +4usec 008:K [ET:CHECK] ENTER
+    0047 7.433462sec +151msec 018:K [ET:CHECK] TIMEOUT
+    0048 7.433466sec   +4usec 009:K [ET:COMPATIBLE] ENTER
+    0049 7.433474sec   +8usec 038:K [ET:CHECK] SEND
+    0050 7.433507sec  +32usec 0d2:P   <ET to PRU 2-4>
+
+..receiving the config, East determines we have compatibility, while
+announcing CHECK.
+
+    0051 7.433613sec +106usec 0e7:K [WT:WCONFIG] RECEIVE
+    0052 7.433617sec   +4usec 0c9:K [WT:COMPATIBLE] ENTER
+    0053 7.585563sec +151msec 0d9:K [WT:COMPATIBLE] TIMEOUT
+    0054 7.585579sec  +16usec 0f9:K [WT:COMPATIBLE] SEND
+    0055 7.585649sec  +69usec 0d6:P   <WT to PRU 2-4>
+
+..West receives check, determines we have compatibility, and announces
+compatibility.. 
+
+    0056 7.585780sec +131usec 029:K [ET:COMPATIBLE] RECEIVE
+
+..East notices West noticed we have compatibility.
+
+    0057 8.194359sec +608msec 111:K [NW:WAITPS] TIMEOUT
+    0058 8.599642sec +405msec 086:L +ET_IGRLK
+    0059 8.599654sec  +12usec 082:L +ET_IRQLK
+    0060 8.599654sec   +0usec 00b:L     [ET sFAILED]
+    0061 8.599658sec   +4usec 08a:L         ET_ORQLK+
+    0062 8.599658sec   +0usec 08e:L         ET_OGRLK+
+    0063 8.599658sec   +0usec 18e:L LALST: all locks settled
+    0064 8.629645sec  +29msec 000:L     [ET sRESET]
+    0065 8.629649sec   +4usec 18e:L LALST: all locks settled
+    0066 8.664035sec  +34msec 180:K (ET) ITCDN: packet sync lost
+
+Oh no, packet sync has failed (I pulled the loopback cable.)
+
+    0067 8.664035sec   +0usec 001:K [ET:WAITPS] ENTER
+
+..and East resets
+
+    0068 9.245925sec +581msec 183:K (WT) ITCDN: packet sync lost
+    0069 9.245929sec   +4usec 0c1:K [WT:WAITPS] ENTER
+
+..so does West
+
+    0070 9.465790sec +219msec 011:K [ET:WAITPS] TIMEOUT
+    0071 10.369974sec +904msec 0d1:K [WT:WAITPS] TIMEOUT
+
+..and so the story ends, we're told.
+
+:250]
+[253:
+
+Sat Mar 21 14:20:54 2020 OK, to observe a satisfyingly failed
+negotiation, we really ought to jump ahead to a/the userspace spike,
+so that there'd be a natural way for things to fail.
+
+So committing this now, then switching to userspace.
+
+:253]
