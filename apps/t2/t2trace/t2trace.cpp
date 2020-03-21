@@ -13,7 +13,8 @@
 #include "stdbool.h" /* for bool grr? */
 
 #include "itclockevent.h"          /* Get lock event struct */
-#include "itcpktevent.h"          /* Get pkt event struct */
+#include "itcpktevent.h"           /* Get pkt event struct */
+#include "itcmfmevent.h"           /* Get mfm/kitc state defs */
 #include "RULES.h"
 
 namespace Dirs {
@@ -44,6 +45,18 @@ const char *statenames[] = {
 #undef RSE
 #undef RSN
 };
+
+const char * kitcStateNames[] = {
+#define XX(NAME,CUSTO,CUSRC,DESC) #NAME,
+  ALL_STATES_MACRO()
+#undef XX
+  "?ILLEGAL"
+};
+
+const char * getKitcStateName(__u32 sn) {
+  if (sn >= MAX_STATE_NUMBER) return "illegal";
+  return kitcStateNames[sn];
+}
 
 #define LOCK_EVENT_DEV "/dev/itc/lockevents"
 #define LOCK_TIME_PATH "/sys/class/itc/trace_start_time"
@@ -192,6 +205,20 @@ const char * getKitcDirSpecSymDesc(__u32 spec) {
   return "kitcdirspecsymdesc?";
 }
 
+/*** STATE OP NAMES AS STRING **/
+
+static const char * kitcstateopnames[] = {
+#define XX(NAME) #NAME,
+  ITC_STATE_OPS_MACRO()
+#undef XX
+  "?ILLEGAL"
+};
+
+const char * getKitcStateOpName(__u32 op) {
+  if (op < sizeof(kitcstateopnames)/sizeof(kitcstateopnames[0]))
+    return kitcstateopnames[op];
+  return "kitcstateopname?";
+}
 
 typedef unsigned char u8;
 
@@ -575,18 +602,16 @@ struct EventSourceKITC : public EventSource {
 
   virtual void unpackEvent(char eventbuf[100]) {
     __u32 event = getEventField();
-    if (isItcLSEvent(event)) {
-      __u32 dir6, usNotThem, ls;
+    if (isItcStateEvent(event)) {
+      __u32 dir6, state, op;
       const char * dirname;
-      if (!unpackItcLSEvent(event,&dir6,&usNotThem,&ls)) abort();
+      if (!unpackItcStateEvent(event,&dir6,&state,&op)) abort();
       dirname = getDir6Name(dir6);
-      const char open = usNotThem ? '(' : '{';
-      const char close= usNotThem ? ')' : '}';
-      const char * spacer = "";
-      if (usNotThem) spacer = " u->";
-      else spacer = "  t->";
       
-      snprintf(eventbuf,100,"K %c%s%c%sL%02x",open,dirname,close,spacer,getLevelStageAsByte(ls));
+      snprintf(eventbuf,100,"K [%s:%s] %s",
+               dirname,
+               getKitcStateName(state),
+               getKitcStateOpName(op));
       
     } else if (isItcDirEvent(event)) {
       __u32 dir6, op;
