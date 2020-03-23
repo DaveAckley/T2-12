@@ -102,7 +102,8 @@ typedef struct {
 } ITCState;
 
 void initITCState(ITCState * is) ;
-unsigned long itcStateGetEarliestTimeout(ITCState * is);
+unsigned long itcStateGetEarliestTimeout(ITCState * is) ;
+bool isKITCCompatible(ITCMFMDeviceState * mds) ;
 
 extern ITCSOps ilsDEFAULTS;
 

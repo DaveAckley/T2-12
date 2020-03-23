@@ -3,6 +3,7 @@
 
 #include "linux/types.h"     /* for __u32 etc */
 #include "pin_info_maps.h"
+#include "dirdatamacro.h"         /* For DIR6_ET, DIR6_COUNT, etc */
 
 static inline __u32 mapDir6ToDir8(__u32 dir6) {
   switch (dir6) {

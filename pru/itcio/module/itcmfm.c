@@ -499,3 +499,8 @@ void timeout_INCOMPATIBLE_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
 
 void receive_INCOMPATIBLE_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
 {  receiveIn_or_Compatible_KITC(mds, ph);  }
+
+bool isKITCCompatible(ITCMFMDeviceState * mds)
+{
+  return getStateKITC(mds) == SN_COMPATIBLE;
+}
