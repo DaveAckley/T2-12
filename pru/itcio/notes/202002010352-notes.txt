@@ -1,4 +1,4 @@
-{254}  -*- text -*-
+{285}  -*- text -*-
 [0:
 [3:
 [35:
@@ -2800,7 +2800,7 @@ DONE :199] - Redo XX macros based on :197:
 [200: Sun Mar  1 04:57:27 2020
 DONE :200] - Redo side struct
 
-[201: Sun Mar  1 04:57:40 2020 
+[201: Sun Mar  1 04:57:40 2020
 DONE :201] - Redo state ops struct
 
 [202: Sun Mar  1 05:34:20 2020
@@ -2835,7 +2835,7 @@ reset
    randomwait
 
 to WAITPS
-   if PS go LEAD   
+   if PS go LEAD
    longwait
 
 [208:
@@ -2856,7 +2856,7 @@ RISKY BITS OFF
 
 Mon Mar  2 01:31:37 2020 OK trying make install.[210:
 
-Mon Mar  2 01:34:24 2020 Well, modprobe itc_pkt blew up with 
+Mon Mar  2 01:34:24 2020 Well, modprobe itc_pkt blew up with
 
     Mar  2 01:33:49 beaglebone kernel: [582362.953671] kernel BUG at /home/t2/T2-12/pru/itcio/module/itcpkt.c:2126!
 
@@ -2891,7 +2891,7 @@ Mon Mar  2 01:39:39 2020 Well that was a bit of an anticlimax:
 
 Mon Mar  2 01:43:31 2020 OK!  This is more like it:
 
-    root@beaglebone:~# echo f00 > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug 
+    root@beaglebone:~# echo f00 > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug
     Mar  2 01:43:01 beaglebone kernel: [  409.703717] set debug f00
     Mar  2 01:43:05 beaglebone kernel: [  413.731031] ITCCHANGE:UP:WT
     Mar  2 01:43:05 beaglebone kernel: [  413.733950] recvLevelPacket us=WAITPS pkt=CHECK+3
@@ -2955,7 +2955,7 @@ Mon Mar  2 02:17:26 2020 No good, minor blow-up again..  Rebooting.
 
 Mon Mar  2 02:23:13 2020 OK, this is more interesting:
 
-    root@beaglebone:~# echo f00 > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug 
+    root@beaglebone:~# echo f00 > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug
     Mar  2 02:20:59 beaglebone kernel: [  182.866584] set debug f00
     Mar  2 02:21:02 beaglebone kernel: [  185.064507] ITCCHANGE:UP:WT
     Mar  2 02:21:02 beaglebone kernel: [  185.067449] ITCCHANGE:DOWN:WT
@@ -2964,7 +2964,7 @@ Mon Mar  2 02:23:13 2020 OK, this is more interesting:
     Mar  2 02:21:02 beaglebone kernel: [  185.076247] ITCCHANGE:DOWN:ET
 
 I bobbled plugging the loopback connection creating some realistic
-chatter.. 
+chatter..
 
     Mar  2 02:21:02 beaglebone kernel: [  185.079237] ITCCHANGE:UP:ET
     Mar  2 02:21:02 beaglebone kernel: [  185.082116] ===kitcTimeoutThreadRunner===
@@ -3023,7 +3023,7 @@ And are we having a race or something?
     Mar  2 02:21:03 beaglebone kernel: [  186.365897] sendKITCPacket pkt=FOLLOW len=2 (to=WT)
     Mar  2 02:21:03 beaglebone kernel: [  186.370957] recvKITCPacket pkt=FOLLOW len=2 (us=[ET]WLEAD)
 
-ET was in WLEAD this time, seems like some sanity is coming.. 
+ET was in WLEAD this time, seems like some sanity is coming..
 
     Mar  2 02:21:03 beaglebone kernel: [  186.389138] ===kitcTimeoutThreadRunner===
     Mar  2 02:21:03 beaglebone kernel: [  186.527493] ===kitcTimeoutThreadRunner===
@@ -3033,7 +3033,7 @@ ET was in WLEAD this time, seems like some sanity is coming..
 We've gotten to CONFIG!  (Note the 'len=3' means userspace never
 actually wrote us a config, so we're just sending the null byte after
 the header.. so this really should fail, but..)
-    
+
     Mar  2 02:21:03 beaglebone kernel: [  186.561834] ===kitcTimeoutThreadRunner===
     Mar  2 02:21:03 beaglebone mfm.sh[1770]: ITCSPIKE-92103199826940: MSG: Tile Level 0: Quitting
     Mar  2 02:21:03 beaglebone kernel: [  186.695534] ===kitcTimeoutThreadRunner===
@@ -3122,7 +3122,7 @@ And decides to follow.
 
 This is coming from the same 'to LEAD' that did the send!  The
 previous two [WT] events happened at 'interrupt level' via the packet
-callback?  
+callback?
 
 Maybe we should updates states and timeouts first, and send packets
 last?  Could we do that?  Just for sanity?[220: Mon Mar  2 03:17:40
@@ -3130,7 +3130,7 @@ last?  Could we do that?  Just for sanity?[220: Mon Mar  2 03:17:40
 the send.  Could we have a shipCurrentStateAndSwitchToNewState?  [221:
 
 Mon Mar  2 03:21:10 2020 No actually we can do it as is -- our state
-ON ENTRY TO THE TIMEOUT is what's in the PacketHandler.  It IS okay to 
+ON ENTRY TO THE TIMEOUT is what's in the PacketHandler.  It IS okay to
 change our state and timeout and then ship the packet.[222:
 
 Mon Mar  2 03:24:27 2020 Although it will be kind of confusing, since
@@ -3171,7 +3171,7 @@ Mon Mar  2 03:43:59 2020 RISKY BITS OFF
 
 Mon Mar  2 03:49:02 2020 Now it looks like this:
 
-    echo f00 > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug 
+    echo f00 > /sys/class/itc_pkt/debug ; sleep 10; echo 0 > /sys/class/itc_pkt/debug
     Mar  2 03:48:26 beaglebone kernel: [  170.300188] set debug f00
     Mar  2 03:48:29 beaglebone kernel: [  173.076623] ITCCHANGE:UP:WT
     Mar  2 03:48:29 beaglebone kernel: [  173.079592] ITCCHANGE:UP:ET
@@ -3282,7 +3282,7 @@ Mon Mar  2 04:03:22 2020 Well, so that's all pretty damn satisfying.
 I think we can leave it there for a while without undue shame.
 
 Cleaning up for commit.  Actually, committing dirty and then cleaning
-up. 
+up.
 
 :225]
 [227:
@@ -3358,7 +3358,7 @@ DONE :237] - Get that working
 [238: Sat Mar 21 10:46:55 2020
 DONE :238] - Commit
 
-[242: Sat Mar 21 11:00:02 2020 
+[242: Sat Mar 21 11:00:02 2020
 DONE :242] - Make more to-do
 
 :230]
@@ -3377,7 +3377,7 @@ Sat Mar 21 10:26:39 2020 Installing..
 :234]
 [236:
 
-Sat Mar 21 10:43:18 2020 Seems okay after rebooting.  
+Sat Mar 21 10:43:18 2020 Seems okay after rebooting.
 
 :236]
 [239:
@@ -3432,7 +3432,7 @@ but since level-stage has gone away we get to repurpose those states.
 So I guess it's really a full 6 bits (==64) of KITC-specific events,
 plus 2 * 6 bits (==128) of non-spatial 'special' events.
 
-Seems like super-overkill sitting here now.  We'll see.  
+Seems like super-overkill sitting here now.  We'll see.
 [246:
 
 Sat Mar 21 12:13:53 2020 Given that we've got 11 states, let's go with
@@ -3560,7 +3560,7 @@ announcing CHECK.
     0055 7.585649sec  +69usec 0d6:P   <WT to PRU 2-4>
 
 ..West receives check, determines we have compatibility, and announces
-compatibility.. 
+compatibility..
 
     0056 7.585780sec +131usec 029:K [ET:COMPATIBLE] RECEIVE
 
@@ -3603,3 +3603,457 @@ so that there'd be a natural way for things to fail.
 So committing this now, then switching to userspace.
 
 :253]
+[254:
+
+Sat Mar 21 14:37:08 2020 OK, so at the moment, mfm.sh is launching
+MFM/bin/itcSpike11.  So that's where we should look first..
+
+:254]
+[255:
+
+Sat Mar 21 15:07:50 2020 So I think the plan should be to start
+itcSpike12 rather than hack on itcSpike11, which has a whole UI
+section and stuff already.  I want to focus just on intertile stuff
+and design for having multiple event windows in flight.
+
+So,
+
+TODO
+
+ - Create empty itcSpike12
+
+ - Take command line arg for MFZId
+
+ - Define some kind of gate-open/gate-closed messages to send to
+   userspace
+
+ - Have userspace do a select on /dev/itc/mfm/*?
+
+Tell me again why we wanted to demux the dirs in LKM?  We were going
+to poll the dirs and they wanted to ask for just their own packets?
+
+[256:
+
+Sat Mar 21 15:43:29 2020 I guess so.  In the new revised view, though,
+it seems like the important state machine should be in the
+EventWindow, not in the ITC, which could be dishing off packets to a
+variety of EWs interleaved.
+
+[257:
+
+Sat Mar 21 16:36:49 2020 Maybe let's explicitly work on an EW state
+machine, aiming at demoing it in spike12?
+
+:257]
+
+:256]
+
+:255]
+[258:
+
+Sun Mar 22 07:56:50 2020 Oops looks like we never actually exposed
+/sys/class/itc_pkt/mfzid? [259:
+
+Sun Mar 22 07:59:42 2020 Going again
+
+RISKY BITS OFF
+
+:259]
+
+:258]
+[260:
+
+Sun Mar 22 08:02:56 2020 That's more like it:
+
+    root@beaglebone:~# ls -l /sys/class/itc_pkt/mfzid
+    -rw-r--r-- 1 root root 4096 Mar 22 08:01 /sys/class/itc_pkt/mfzid
+    root@beaglebone:~#
+
+and
+
+    root@beaglebone:~# echo foo > /sys/class/itc_pkt/mfzid
+
+gets
+
+    [  163.809782] mfzid set; len=4, token=182, written by 2252
+and
+    root@beaglebone:~# cat /sys/class/itc_pkt/mfzid
+    2252 182 foo
+
+    root@beaglebone:~#
+
+(with an extra \n in there; should've done 'echo -n')
+
+and
+
+    root@beaglebone:~# ps
+      PID TTY          TIME CMD
+     2249 pts/1    00:00:00 sudo
+     2252 pts/1    00:00:00 bash
+     2434 pts/1    00:00:00 ps
+    root@beaglebone:~#
+
+    root@beaglebone:~# echo -n bar > /sys/class/itc_pkt/mfzid
+    root@beaglebone:~# cat /sys/class/itc_pkt/mfzid
+    2252 183 bar
+    root@beaglebone:~#
+
+[261:
+
+Sun Mar 22 08:08:34 2020 Is there any way to discard an mfzid without
+establishing a new one?[262:
+
+Sun Mar 22 08:11:48 2020 Apparently there isn't, currently, because
+apparently (and I do think I knew this) writing 0 bytes to sysfs never
+actually invokes the _store handler..  Would have to add an extra
+write-only target /sys/class/itc_pkt/mfzid_reset or mfzidctl or
+something.
+
+But I do think we should ship this MFMTileState.mToken along with the
+mfzid and with the in/compatibility packets.  We accept it
+unconditionally whenver compatibility is established, and check it
+from then on.  userspace should capture it after setting the mfzid,
+..and check it every so often?  I thought we had some scheme were the
+ITC fd was going to fail on read, forcing userspace to reopen it, did
+we do that?  That's the 'stale' thing, right?[263:
+
+Sun Mar 22 08:32:26 2020 It appears all ITCs are marked stale when
+/sys/class/itc_pkt/mfzid is written.  And when they are stale, an
+attempt to open /dev/itc/mfm/DIR will fail with ESTALE?  What good
+does that do if we already had them open?  Shouldn't we be making
+reads and writes fail too?
+[264:
+
+Sun Mar 22 08:50:20 2020 OK we think we've reorged so read and write
+fail after the itcs go stale, but a successful itc open clears it, but
+only the pid that wrote the mfzid is allowed to open it.
+
+So the userspace startup sequence should morally amount to:
+
+  first write MFZID to /sys/class/itc_pkt/mfzid
+  then the same process opens /dev/itc/mfm/*
+
+:264]
+:263]
+
+:262]
+
+:261]
+
+:260]
+[265:
+
+Sun Mar 22 09:05:20 2020 OK need to try this reorg, so
+
+RISKY BITS OFF
+
+:265]
+[266:
+
+Sun Mar 22 09:15:15 2020 OK that seems okay.  We're getting to be
+needing itcmfm to start passing packets; is that already done?  Then
+very soon we're going to be needing some packets to pass..[267:
+
+Sun Mar 22 09:18:28 2020 So the point is KITC-internal packets never
+get put onto the UserIB kfifo, so we don't have to worry about
+userspace ever seeing them.  That happens at the call to
+handleKITCPacket at itcpkt.c:2189.
+
+But we also think we should not pass non-KITC packets unless we are at
+COMPATIBLE, and the code isn't doing that..  How do we know we're good
+to go, in itcpkt-land?[268:
+
+Sun Mar 22 09:31:40 2020 OK, make isKITCCompatible(mds*) and are now
+claiming to not deliver (aka 'silently drop') mfm traffic unless it's
+true. [269:
+
+Sun Mar 22 09:34:40 2020 That builds.
+
+RISKY BITS OFF
+
+:269]
+
+:268]
+
+:267]
+
+:266]
+[270:
+
+Sun Mar 22 09:37:22 2020 Back up.[271:
+
+Sun Mar 22 09:39:30 2020 OK, so I think we're really about up to
+designing event-level packet format.
+
+Though I'd like a synthetic 'gate open' packet that LKM just locally
+stuffs in the mUserIB when we enter SN_COMPATIBLE.
+
+[272:
+
+Sun Mar 22 09:41:08 2020 EVENT PACKET LEVEL: DESIGN DISCUSSION
+
+So, according to T2-Packet-Header-Formats-12.pdf, MFM event packets
+have a minimum size of two bytes, with byte[0] in the range
+
+  0xa0..0xa7
+
+depending on dir8, and byte[1] being 10xxxxxx, so there's six bits
+available in byte[1].  Suppose we take the top bit as 'synthetic',
+meaning it's from (or possibly to) the itcmfm LKM, rather than
+an actual neighbor.  Suppose we reserve the next two bits on general
+principles, and take the bottom three bits for event-level use:
+
+byte[1]
+
+   MFM ITC SYN
+  +---+---+---+---+---+---+---+---+
+  | 1 | 0 | 1 |RV1|RV2|RV3|RV4|SC0|
+  +---+---+---+---+---+---+---+---+
+
+SC 0..1
+SC == 0 GATE CLOSED
+SC == 1 GATE OPEN
+
+   MFM ITC SYN
+  +---+---+---+---+---+---+---+---+
+  | 1 | 0 | 0 |EC1|EC0|RV1|RD1|RD0|
+  +---+---+---+---+---+---+---+---+
+
+EC 0..3  RD 0..3
+EC == 0 Non-EventWindow command (RV1,RD1,RD0 unused)
+EC == 1 EventWindow lock req + RD radius-1 + u8:YLSeqno + u8:myewslotno + s8:atx + s8:aty
+EC == 2 EventWindow lock ack + RD radius-1 + u8:YLSeqno + u8:yourewslotno
+EC == 3 EventWindow lock rej + RD radius-1 + u8:YLSeqno + u8:yourewslotno
+
+   MFM ITC SYN
+  +---+---+---+---+---+---+---+---+
+  | 1 | 0 | 0 | 0 | 0 |CM2|CM1|CM0|
+  +---+---+---+---+---+---+---+---+
+
+CM 0..7
+CM == 0 UPDATES + u8:YLSeqno + u8:myewslotno + updates*
+CM == 1 UPDACK  + u8:YLSeqno + u8:yourewslotno
+CM == 2 UPDEND  + u8:YLSeqno + u8:myewslotno
+CM == 3 ENDACK  + u8:YLSeqno + u8:yourewslotno
+CM == 4 RSV1
+CM == 5 RSV2
+CM == 6 RSV3
+CM == 7 RSV4
+
+CACHE UPDATE FORMAT
+
+  +---+---+---+---+---+---+---+---+
+  |CHG|EMP|SN5|SN4|SN3|SN2|SN1|SN0|
+  +---+---+---+---+---+---+---+---+
+
+CHG 0..1
+CHG == 0 Site value is being checked (not changing)
+CHG == 1 Site value is changing
+
+EMP 0..1
+EMP == 0 Site contains atom + 12*u8
+EMP == 1 Site is empty
+
+[273:
+
+Sun Mar 22 12:06:24 2020 OK so some or most of that might be
+plausible.  Let's talk about the state machine for an EventWindow.
+
+Suppose we have a max of like 31 EventWindows, 1..31.  We could have a
+u8 siteLockStatus[SITE_WIDTH][SITE_HEIGHT] indicating that site's
+current lock status:
+
+  +---+---+---+---+---+---+---+---+
+  |IT2|IT1|IT0|EW4|EW3|EW2|EW1|EW0|
+  +---+---+---+---+---+---+---+---+
+
+IT 0..7 Modified Dir8 of lock holder
+
+IT == 0  site is unlocked (and EW == 0)
+IT == 1  DIR8_NE
+IT == 2  DIR8_ET
+IT == 3  DIR8_SE
+IT == 4  We hold the lock
+IT == 5  DIR8_SW
+IT == 6  DIR8_WT
+IT == 7  DIR8_NW
+
+EW 1..31 EventWindow slot number in lock holder's space.
+
+Now, there are some subtleties to 'holding the lock' -- in particular,
+there's the state where we're requesting locks but have not yet
+acquired them.  During that time we have to mark the sites 'locked' so
+nobody else tries to use them, even though they're not really
+'lock-locked' yet.  But that level of locking detail goes with the
+EventWindow slot, not with the individual site, so we deal with all
+that there.
+
+I wonder if we could track seqnos or something of the last ew -- by
+anybody -- that modified a given site.  So we could do some kind of
+max operation or whatever to come up with a claim about 'THIS is the
+state of the event window I wish to lock'.
+
+So far we've been imagining that we're going to send the receiver's
+last seqno with us as a marker in the timeline of changes specifying
+what we're asking to lock against.  But we don't have much confidence
+in that.[274:
+
+Sun Mar 22 14:46:08 2020 We could include a nonce in the ew lock req
+packet, so that if a race occurs, the recipient could choose to
+abandon their own attempt and accept the other, rather than
+necessarily rejecting it and forcing both sides to try again.
+
+Like we apparently have working in itcmfm?
+
+No actually we just flip a coin there.  Could that be good enough?
+The other side needs to wait to hear from us no matter what.
+
+Maybe.
+
+[275:
+
+Sun Mar 22 14:53:20 2020 So, some EW states:
+
+  IDLE
+  LOCKREQ
+  WLOCKREQ
+ ..
+  LOCKED
+  BEHAVE
+  CACHESEND
+  WCACHEACK
+  COMMIT
+
+and we note that we are NOT talking about EW to EW interactions.  The
+far side entity is an ITC (or two), that handles applying cache
+updates and acking packets.
+
+[276:
+
+Sun Mar 22 16:19:08 2020 We'll keep a free list and an active list of
+EWs at the Tile level, and doubly-link the EWs so they can switch
+lists, or at least retire themselves, on their own.
+
+We are NOT going to multithread userspace -- right?? -- except perhaps
+for opportunistic display purposes.
+
+[277:
+
+Sun Mar 22 16:27:33 2020 So the main loop is a select on the ITCs with
+a zero timeout, followed by ..  advancing any 'ready' EWs, followed
+..[278:
+
+Sun Mar 22 16:38:18 2020 So, yes.  'select' is a completely separate
+file_operations function pointer that we would have to implement if we
+want to provide it.  And we're not actually sure how we would provide
+it, on the write side, since the outbound-to-PRU buffers are shared in
+fairly non-trivial ways.
+
+So I guess we just poll all the entities over and over, beating the
+cache to death in the process?  Who exactly do we poll?  We need to
+poll the ITCs to read and respond to inbound cache traffic.  If a read
+packet is active side, the ITCs apply it directly; if it's passive
+side, the ITCs dispatch it to the relevant EW.
+
+Ah, so wait: How does the passive side know where the event window
+center is?  That has to be stored when passive side decides to ack an
+ew lock request.  So we do need to allocate a passive side EW and the
+dynamic really is more like EW to EW.  (I guess a potential passive
+side could reject a lock request if it had no free EWs?)
+
+Do we want to use a 'full' EW on the passive side?  From one point of
+view all we need is the event center + radius, plus the
+siteLockStatus[][] array, right?
+
+Is there any reason to apply EW cache upds TO AN EW, instead of to
+actual tile memory?  That would let us commit or dump an update
+late..  We could opportunistically be sending stuff to one guy before
+we even knew if we got the lock from the other guy?  That seems likely
+to be pretty wasteful of bandwidth if not CPU also..[279:
+
+Sun Mar 22 16:59:57 2020 Seems like it would be good if the passive
+side could commit and unlock the sites as soon as the cache upd end is
+received and the ack sent, without waiting for the active side to
+receive that ack.  That gives an advantage to the passive side to have
+a better chance at grabbing a window using those sites, so the (old)
+active side might well see a new ew lock request hard on the heels of
+the old upd end ack.
+
+:279]
+
+:278]
+
+:277]
+
+:276]
+
+
+:275]
+
+:274]
+
+
+:273]
+:272]
+
+:271]
+
+:270]
+[280:
+
+Sun Mar 22 17:06:20 2020 Well, so say an EW might be IDLE, ACTIVE, or
+PASSIVE.  When we get a lock req, we try to allocate an EW to
+represent it on the passive side.  If the allocation succeeds, we load
+it up out to the requested radius, and mark the involved sites as
+controlled by the allocated EW.  Everything else then proceeds EW<->EW
+until we commit on our respective sides.
+
+And so I guess this means we don't need to remember the ITC/dir8 of
+the lock holder, because the ITC won't be involved.  We just stick in
+one of our own EW slotnums, whether it's active or passive.  Something
+more like:
+
+  typedef u8 EWSlotNum;
+  EWSlotNum lockedSites[SITE_WIDTH][SITE_HEIGHT]; // 0 means unlocked
+
+[281:
+
+Sun Mar 22 17:51:58 2020 Time to cook dinner.[282:
+
+Sun Mar 22 18:17:09 2020 OK so sauce in the oven and we have a little
+more time to think.
+
+Let's just whack up some EW allocation and manipulation stuff, without
+even knowing or worrying what-all's in them.
+
+:282]
+
+:281]
+
+:280]
+[283:
+
+Mon Mar 23 10:38:55 2020 OK, getting to be time to move the flag again
+-- who knows how long that will be possible? -- but we've made some
+progress.  We have multiple (currently 32) EWs getting made and put on
+lists where they can be allocated and freed and so forth.  And the
+lists are given ownership of the EWs they contain and clean them up,
+so valgrind tells us:
+
+    ==6042== HEAP SUMMARY:
+    ==6042==     in use at exit: 0 bytes in 0 blocks
+    ==6042==   total heap usage: 35 allocs, 35 frees, 22,536 bytes allocated
+    ==6042== 
+    ==6042== All heap blocks were freed -- no leaks are possible
+
+I don't like that I'm using heap memory at all, but statically
+constructing arrays of non-POD objects in C++ is still pretty much a
+pain if you want to compute ctor parms on the fly..
+
+[284:
+
+Mon Mar 23 11:02:27 2020 So anyway, I think we should checkpoint
+commit all this stuff and get going.
+
+:284]
+:283]
