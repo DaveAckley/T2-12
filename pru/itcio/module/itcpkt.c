@@ -1172,7 +1172,7 @@ static ssize_t mfzid_store(struct class *c,
     S.mMFMDeviceState[i]->mStale = true;
   }
 
-  printk(KERN_INFO "mfzid set; len=%d, token=%d, written by %d\n",
+  printk(KERN_INFO "mfzid set; len=%d, token=%d, MFM pid is %d\n",
          count,
          ts->mToken,
          ts->mMFMPid);
@@ -1301,7 +1301,7 @@ static struct attribute * class_itc_pkt_attrs[] = {
   &class_attr_pru_bufs.attr,
   &class_attr_pkt_bufs.attr,
   &class_attr_trace.attr,
-  &class_attr_debug.attr,
+  &class_attr_mfzid.attr,
   NULL,
 };
 ATTRIBUTE_GROUPS(class_itc_pkt);
@@ -1384,6 +1384,7 @@ static int itc_itcevt_open(struct inode *inode, struct file *filp)
 
 static int itc_mfmitc_open(struct inode *inode, struct file *filp)
 {
+  MFMTileState * ts = &S.mMFMTileState;
 
   ITCMFMDeviceState * mfmdevstate = (ITCMFMDeviceState *) inode->i_cdev;
 
@@ -1400,7 +1401,10 @@ static int itc_mfmitc_open(struct inode *inode, struct file *filp)
 #endif
 
   if (cdevstate->mDeviceOpenedFlag) return -EBUSY;  /* Already in use */
-  if (mfmdevstate->mStale) return -ESTALE;          /* mfzid was written, we need to be closed */
+
+  if (ts->mMFMPid != task_pid_nr(current)) return -ESRCH; /* No such process */
+
+  mfmdevstate->mStale = false; /* OK we're not stale as of now */
 
   cdevstate->mDeviceOpenedFlag = true;
   filp->private_data = mfmdevstate;
@@ -1480,7 +1484,6 @@ static int itc_mfmitc_release(struct inode *inode, struct file *filp)
 #endif
 
   cdevstate->mDeviceOpenedFlag = false; /* OK, we're not open */
-  mfmdevstate->mStale = false;          /* OK, we're not stale if reopened now */
 
   return 0;
 }
@@ -1935,7 +1938,7 @@ static ssize_t itc_mfmitc_read(struct file *file, char __user *buf,
   /* ITCMFMDeviceState structs begin with an ITCPktDeviceState! */
   ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mfmdevstate;
 
-  /* Which in turn begin with an ITCPktDeviceState! */
+  /* Which in turn begin with an ITCCharDeviceState! */
   ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) pktdevstate;
 
   ITCPacketBuffer * ipb;
@@ -1948,6 +1951,8 @@ static ssize_t itc_mfmitc_read(struct file *file, char __user *buf,
   DBGPRINTK(DBG_PKT_RCVD, KERN_INFO "itc_mfmitc_read(%d) enter %s\n",minor, cdevstate->mName);
 
   BUG_ON(minor < PKT_MINOR_MFM_ET || minor > PKT_MINOR_MFM_NE);
+
+  if (mfmdevstate->mStale) return -ESTALE; /* we need to be reopened */
 
   ipb = &(pktdevstate->mUserIB);
   fifo = &(ipb->mFIFO);
@@ -1998,6 +2003,8 @@ static ssize_t itc_mfmitc_write(struct file *file,
 
   /* Which in turn begin with an ITCPktDeviceState! */
   ITCCharDeviceState * cdevstate = (ITCCharDeviceState *) pktdevstate;
+
+  if (mfmdevstate->mStale) return -ESTALE; /* we need to be reopened */
 
   return writePacketHelper(file,buf,count,offset,cdevstate);
 }
@@ -2177,7 +2184,10 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
           else if (!(byte1&PKT_HDR_BYTE1_BITMASK_MFM)) /* urgent non-mfm is flash traffic */
             pktdev = S.mPktDeviceState[1]; /* 1==/dev/itc/flash */
           else if (!(byte1&PKT_HDR_BYTE1_BITMASK_KITC)) { /* mfm non-kitc is event traffic */
-            pktdev = &S.mMFMDeviceState[dir6]->mPktDevState;
+            /* which we only deliver if we're known compatible */
+            if (isKITCCompatible(S.mMFMDeviceState[dir6]))
+              pktdev = &S.mMFMDeviceState[dir6]->mPktDevState;
+            /* else pktdev remains 0 */
           } else /* URG & MFM & ITC are all 1 */{
             handleKITCPacket(S.mMFMDeviceState[dir6], bytes, len);
             /*pktdev remains 0*/
