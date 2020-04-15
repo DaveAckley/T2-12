@@ -1351,18 +1351,21 @@ sub readButtonState {
 }
     
 sub checkUserButton {
-    my $buttonPressed = readButtonState();
-    # Require three matching readings for debounce
-    return 0 
-        if $buttonPressed != readButtonState() 
-        or $buttonPressed != readButtonState();
+#202004100817 NO LONGER CHECKING USER BUTTON FROM CDM
+    return 0;
+    
+    # my $buttonPressed = readButtonState();
+    # # Require three matching readings for debounce
+    # return 0 
+    #     if $buttonPressed != readButtonState() 
+    #     or $buttonPressed != readButtonState();
 
-    my $userButtonPressDetected = 0;
-    if (defined($userButtonLastKnownState) && !$userButtonLastKnownState && $buttonPressed) {
-        $userButtonPressDetected = 1;
-    }
-    $userButtonLastKnownState = $buttonPressed;
-    return $userButtonPressDetected;
+    # my $userButtonPressDetected = 0;
+    # if (defined($userButtonLastKnownState) && !$userButtonLastKnownState && $buttonPressed) {
+    #     $userButtonPressDetected = 1;
+    # }
+    # $userButtonLastKnownState = $buttonPressed;
+    # return $userButtonPressDetected;
 }
 
 my $statPID;
