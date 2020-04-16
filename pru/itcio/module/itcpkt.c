@@ -1302,6 +1302,7 @@ static struct attribute * class_itc_pkt_attrs[] = {
   &class_attr_pkt_bufs.attr,
   &class_attr_trace.attr,
   &class_attr_mfzid.attr,
+  &class_attr_debug.attr,
   NULL,
 };
 ATTRIBUTE_GROUPS(class_itc_pkt);
