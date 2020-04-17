@@ -111,11 +111,13 @@
                                 pinctrl-names = "default";
 			        pinctrl-0 = <&waveshare35a_pins &lcd_ctrl_pins>;
 
-				spi-max-frequency = <32320000>;
-				txbuflen = <32768>;
+/* how fast can we go?		spi-max-frequency = <32320000>; */
+/* 202004090610  */		spi-max-frequency = <36000000>; 
+/*                                spi-max-frequency = <48000000>;  */
+				txbuflen = <-1>;
 				rotate = <270>;
 				bgr = <0>;
-				fps = <15>;
+				fps = <25>; /* 202004090552 T2-12/pru/itcio/notes/202002010352-notes.txt :374: */
 				buswidth = <8>;
 				regwidth = <16>;
 				reset-gpios = <&gpio0 30 1>; /* Using custom reset code to drive DSP_PWRON */
