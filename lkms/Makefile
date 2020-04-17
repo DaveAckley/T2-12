@@ -1,4 +1,4 @@
-APPS:=$(shell find . -type d -a ! -name ".*" -a ! -path "*/*/*")
+APPS:=$(shell find . -type d -a ! -name ".*" -a ! -name "include" -a ! -path "*/*/*")
 
 CMDS:=build install clean realclean touch
 
