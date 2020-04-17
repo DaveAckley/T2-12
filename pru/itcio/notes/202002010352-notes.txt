@@ -1,4 +1,4 @@
-{285}  -*- text -*-
+{446}  -*- text -*-
 [0:
 [3:
 [35:
@@ -3394,11 +3394,14 @@ DONE :252] - Observe successful ITC negotiation with it
 
  - Observe failed ITC negotiation with it
 
- - Refresh brain on state of userspace spike
+[291: Mon Mar 23 16:38:02 2020
+DONE :291] - Refresh brain on state of userspace spike
 
- - Commit
+[292:
+DONE :292] - Commit
 
- - Make more todo
+[293:
+DONE :293] - Make more todo
 
 :239]
 [243:
@@ -3620,14 +3623,18 @@ So,
 
 TODO
 
- - Create empty itcSpike12
+[287: Mon Mar 23 16:36:28 2020
+DONE :287] - Create empty itcSpike12
 
- - Take command line arg for MFZId
+[288:
+DONE :288] - Take command line arg for MFZId
 
- - Define some kind of gate-open/gate-closed messages to send to
+[289: Mon Mar 23 16:37:21 2020
+DONE made 'SYN'thetic packets:289] - Define some kind of gate-open/gate-closed messages to send to
    userspace
 
- - Have userspace do a select on /dev/itc/mfm/*?
+[290: Mon Mar 23 16:37:43 2020
+NOT GOING TO IMPLEMENT SELECT, POLL INSTEAD :290] - Have userspace do a select on /dev/itc/mfm/*?
 
 Tell me again why we wanted to demux the dirs in LKM?  We were going
 to poll the dirs and they wanted to ask for just their own packets?
@@ -4043,7 +4050,7 @@ so valgrind tells us:
     ==6042== HEAP SUMMARY:
     ==6042==     in use at exit: 0 bytes in 0 blocks
     ==6042==   total heap usage: 35 allocs, 35 frees, 22,536 bytes allocated
-    ==6042== 
+    ==6042==
     ==6042== All heap blocks were freed -- no leaks are possible
 
 I don't like that I'm using heap memory at all, but statically
@@ -4057,3 +4064,2162 @@ commit all this stuff and get going.
 
 :284]
 :283]
+[285:
+
+Mon Mar 23 14:27:22 2020 OK, back in the city.  Gotsta say,
+Albuquerque, you didn't look very shut down..
+[286:
+
+Mon Mar 23 16:35:16 2020 Do you think we could try to grab a(n
+all-packet) lock?  Probably need too much code, right?  Yeah no we're
+not even reading packets yet.
+
+:286]
+:285]
+[294:
+
+Mon Mar 23 16:43:43 2020 Well in any case we need more
+
+TODO
+
+[299: Wed Mar 25 15:26:40 2020
+DONE :299] - Add the siteLockStatus[][] array to Tile
+
+[300: Wed Mar 25 16:48:58 2020
+DONE :300] - Add functions to test if loc+radius is allocatable and return an
+   initialized EW* if so
+
+[302: Wed Mar 25 16:49:22 2020
+DONE, not used yet though :302] - Make an EW state machine state enum
+
+[303: Wed Mar 25 16:49:32 2020
+DONE :303] - Add state machine state to EW
+
+[301: Wed Mar 25 16:49:10 2020
+DONE, first cut anyway :301] - Create a Tile::tryEvent() interface that considers a random spot,
+   determines if its radius seems available, and tries to launch an EW
+   if so
+
+:294]
+[295:
+
+Wed Mar 25 08:11:26 2020 OK T2sup #272 is out and I got a little
+sleep.  Have to sleep more and do some emails and what-not today, but
+I really want to push through to fake events with real intertile
+behavior!
+
+:295]
+[296:
+
+Wed Mar 25 12:19:28 2020 Well, I'm changing the names of key
+structures (starting with 'Tile') to be like 'T2Tile', so that
+potentially at least they could interact with e.g., Tile<EC> code down
+the road.  Seems very unlikely to work in the end but seeing these
+naked 'Tile' references creeps me out.[297:
+
+Wed Mar 25 12:49:33 2020 OK well did that.
+
+:297]
+
+:296]
+[298:
+
+Wed Mar 25 13:23:06 2020 So, the siteLockStatus array is really an
+ownedByEventWindow array, now, isn't it?
+
+:298]
+[304:
+
+Wed Mar 25 16:49:43 2020 OK, so current status is we have first cuts
+at 'acquiring' and 'releasing' an EventWindow.  main.cpp is currently
+screwing up because it calls 'tile.releaseEW(ew)' while ew is still on
+the 'active' list.  We need to get more squeaky about the event window
+life cycle.
+
+:304]
+[305:
+
+Thu Mar 26 05:12:30 2020 So I'm worrying ahead about the EW state
+machine, in particular how it's going to resolve potentially three-way
+races.
+
+Let's suppose for sake of discussion that we're going to do the kind
+of slot-time-windows we did in itcmfm to tame the synchronization
+beast.  Suppose we had a somewhat slower fundamental period at user
+level, which we're plannning on masking by having lots of EWs in
+progress at once.
+
+So a tile allocates an EW, and happens to get #8.  It initializes EW#8
+for location (20,2) with a radius of 3.  EW#8 realizes it needs locks,
+enters state EWLEAD(20,2,3,#8), and sends that state via both his NW
+and NE ITCs.  EW#8 then goes into state WEWLEAD -- waiting after an
+EWLEAD -- and gives itself a FULL timeout.
+
+NW receives the EWLEAD(#8) and tries to allocate a passive EW for it,
+which happens to work fine, getting its EW#3.  So EW#3 enters state
+EWFOLLOW (SE,#8) and gives itself a HALF timeout, without sending
+anything.
+
+At about the same time, NE also receives the EWLEAD #8.  But unlike
+NW, it fails trying to allocate a passive EW for it, because it just
+recently allocated its an active EW#22 which overlaps with the given
+window.  In fact just a moment ago it had sent an EWLEAD(1,0,4,#22) to
+its SW, but it hasn't yet heard back.  And its EW#22, in state
+WEWLEAD, turns up when trying to allocate the passive for SW#8.
+
+Now if we follow the itcmfm style, at this point NE would flip a coin
+to decide between accepting SW#8 vs pushing on with its own #22.
+Let's say it decides to go with its own #22.  In itcmfm terms, it
+needs to reset SW#8.  And
+
+[306:
+
+Thu Mar 26 05:54:01 2020 It seems like we need a construct prior to
+the EW, something to manage a given attempted EW interaction even
+before (and perhaps after?) the actual EW exists.  Like a 'virtual
+circuit' or something, that could be reset when an EW can't be
+allocated.  Or retired for a fallow period after an interaction has
+completed for any reason, to let its 'circuit number' wash out of the
+system.
+
+:306]
+
+:305]
+[307:
+
+Thu Mar 26 06:12:58 2020 OK so an intertile event is like a phone
+call, now?  Or a conference call really, I guess.  There's setting up
+the circuit, ringing the line, making the call, ending the call, and
+tearing down the circuit.
+
+If we view sites as phones, it's really like a conference call of
+conference calls or something -- a bunch of sites here interacting
+with a bunch of sites on up to two other tiles..  Site-as-phone isn't
+a bad model if we're imagining it back in the day before multiple
+lines and 'please hold'..  So a given passive site on some tile can be
+listening to only one active site on some other tile.  But multiple
+passive sites can be listening to the same active site.
+
+So it's like we're sending back a 'busy signal' when we can't allocate
+the EW.  And we want to do that pretty much until the caller hangs up,
+which I guess either means some kind of ack, or some kind of timeout?
+
+[308:
+
+Thu Mar 26 07:10:56 2020 So, when the ITC receives an EWREQ, that's a
+request to set up a circuit.  It should allocate some 'circuit state'
+that will persist for the duration of the call.  That allocation
+should mostly not fail, although I guess an 'all circuits busy'
+response has to be designed in.
+
+Then somebody, the ITC I guess, tries to allocate a passive EW to
+match up with this EWREQ.  If that succeeds the ITC 'completes the
+circuit' and gets out of the way, and the EWs talk to each other,
+until both sides 'hang up'.  I guess we could do the 'half-closed'
+channel like unix does; when we get a cache-upd-end from the active
+side, that could imply closing the inbound side of the circuit; then
+when we ship the cache-upd-end-ack, that would imply closing the
+outbound side of the circuit, and the circuit would then be torn
+down.
+
+So there'd be some variety of ways to end a call, unless we did
+explicit call-init/call-end packets to bracket the cache-upd traffic.
+
+[309:
+
+Thu Mar 26 07:58:46 2020 Well, it's not like we have an event-level
+packet format yet.  And we have I guess six bits still available in an
+event packet byte[1].  Could that perhaps be like two bits of call
+status and four bits of circuit number, for a max of sixteen circuits
+per ITC pair?  Or maybe one bit for a 'control' flag plus five bits of
+circuit number?  With some scheme like control==0 means this is
+continuing traffic on established channel NUM, and control==1 means
+this is starting or ending a call on channel NUM -- with like some
+other way of distinguishing which that is.  Packet length or something
+perhaps.
+
+Nooooow, we also have the possibility, I guess, of using the two
+reserved bits in the 'ITC' packet format, which currently looks like
+this, according to T2-Packet-Header-Formats-12.pdf:
+
+                                         ITC
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+  | 1 | 0 | 1 |OVR|ERR|SD2|SD1|SD0| | 1 | 1 |RS1|RS0|SN3|SN2|SN1|SN0|
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+
+We could, for example go to something like this:
+
+                                         ITC RNG
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+  | 1 | 0 | 1 |OVR|ERR|SD2|SD1|SD0| | 1 | 1 | 0 |RS0|SN3|SN2|SN1|SN0|
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+
+vs
+                                         ITC RNG
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+  | 1 | 0 | 1 |OVR|ERR|SD2|SD1|SD0| | 1 | 1 | 1 |CT4|CT3|CT2|CT1|CT0|
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+
+where RNG==0 means do the existing LKM protocol, while RNG==1 means
+'ring' on a new circuit CT.  Then with:
+
+                                         ITC HNG
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+  | 1 | 0 | 1 |OVR|ERR|SD2|SD1|SD0| | 1 | 0 | 1 |CT4|CT3|CT2|CT1|CT0|
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+
+vs
+                                         ITC HNG
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+  | 1 | 0 | 1 |OVR|ERR|SD2|SD1|SD0| | 1 | 0 | 0 |CT4|CT3|CT2|CT1|CT0|
+  +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+
+where HNG==1 means 'hang up' an established circuit CT, and HNG==0
+means continuing traffic on CT.
+
+Now I suppose in addition one could say that byte[2]+ could contain
+cache traffic on top of any of these cases, with the 'ringing'
+implicitly coming before processing any such, and 'hanging up'
+implicitly coming afterwards.[310:
+
+Thu Mar 26 08:36:37 2020 Now, a couple questions about this: Do we
+really need to allocate and deallocate circuits locally?  Are we
+saying NE circuit #3 might connect to our circuit #22?  And we need to
+do that mapping for every packet?
+
+I guess the point is that each side may try to take the initiative, so
+each side needs to pick an available circuit without knowing what the
+other side is doing?  But except for racing on the ringing, each ITC
+really does know what circuits its mate has allocated, because it's
+the counterparty to all of them.
+
+So if we detected and handled the races during ringing and circuit
+setup, it seems we could then have a 1-1 mapping between circuits
+across an ITC pair.
+[311:
+
+Thu Mar 26 08:45:20 2020 Could we move the ringing into itcmfm also,
+and deal with the racing there?  Does that help, much or at all?
+
+I guess maybe it narrows the race window a bit, but doesn't change
+much fundamentally.  KITC could notice RNG and allocate the channel,
+if it's available, or somehow reject it as a race if it isn't.  Once
+it's done that, it could errno EBUSY any userspace write that attempts
+to ring the same channel.  But if two RNGs cross in the fabric, both
+sides will see the channel as already in use, and they'll flip their
+coins or whatever, same as they're doing now for the config state
+machine.
+
+[312:
+
+Thu Mar 26 08:56:46 2020 Getting to be nap time, but again why
+couldn't a nonce help there?  We generate and store it when we send
+out a RNG, and when we receive a racing RNG we have both nonces
+available to compare.  Modulo nonce ties, both sides will make the
+same decision about who wins the race, and 'things can proceed' with
+fewer double-blowups or re-races.
+
+In fact, we could avoid ties by having the gingers always use nonce
+LSB 1 and the freds always use nonce LSB 0.  With the rest of the bits
+random there's no way for either side to game the choice without
+seeing the other side's nonce, in which case they are surely cheating,
+since in fact there really was no race at all.
+
+Actually actually, doesn't a one-bit nonce work equally well, then?
+If the nonces match, ginger wins, otherwise fred wins..[313:
+
+Thu Mar 26 12:22:29 2020 Unfortunately we don't have even one bit, if
+we're trying to be tight while supporting 32 channels.
+
+But since we're not assuming any direct mapping from ew center to itc
+circuit, this one bit nonce can't really go with the circuit; it has
+to be EW level, right?  So we could have six bits of circuit#, taking
+the whole rest of byte[1], right?[315:
+
+Thu Mar 26 15:21:24 2020 So then in byte[2] we'd start with the EW
+info, and the EWREQ could include a 1 bit nonce.
+
+So then how do the circuits work?  We separated circuit number from EW
+number so we could have mapped communications before EW was assigned
+on the passive side, and after it was released on the passive side as
+well.. [316:
+
+Fri Mar 27 01:06:32 2020 Would it help to say instead of 32 circuits
+we have 16 active fred and 16 active ginger channels?  And then it
+would be a direct mapping?  Each side would have assignment control
+over half the numbers, and the non-controlling side would just use the
+corresponding slot.[317:
+
+Fri Mar 27 01:15:32 2020 It wouldn't even have to be fred and ginger?
+It could be a 'sender' vs 'receiver' bit -- saying in effect 'My#3' vs
+'Your#3' with ownership==active side.  Since cache traffic is all
+point to point you just complement the 'sender' bit to get the
+receiver's index for it.
+
+Both sides could have 0x00..0xf for inbound calls and 0x10..0x1f for
+outbound calls, with a ^0x10 to switch between them..  So then bit
+0x10 of byte[1] is the 'active' bit, with 1 meaning sender initiated
+and 0 meaning receiver initiated.[318:
+
+Fri Mar 27 01:23:13 2020 Umm am I crazy or do we have six bits
+currenly available in byte[1]?  That's 64 values.  Yeah but then you
+have no 'control' bits, okay.  32 divided 16+16 includes room for one
+control bit..  Could 'control' mean 'ring' on sender-owned circuits
+and 'hang up' on receiver-owned?[319:
+
+Fri Mar 27 02:15:21 2020 That could be in keeping with the 'receiver
+finishes first' theory of race fairness.  Or rather than control + 5
+bits of circuit, I guess it's equivalent to control + active + 4 bits
+of circuit, with control+active == 11 meaning 'ring' and
+control+active == 10 meaning 'hang up'.
+
+Now does that means we lose the 'half-closed channel' option?  There's
+no way for the active side to indicate that it's done after
+cache-upd-end.. but I thought we're saying it's not done until it sees
+cache-upd-end-ack...  But half-closed just means it's not going to
+send anymore on this circuit, which is true even as it waits for the
+ack.
+
+If we have net two bits to play with:
+
+  00   Passive, ongoing
+  01   Passive, final
+  10   Active, ongoing
+  11   Active, initial
+
+..right so there's no 'Active, final'..
+
+So do we care about half-closed channels?  What does that do for us?
+In the bad old CS351 Java days it got us cleaner channel tear-down in
+our client-server game communications.
+[320:
+
+Fri Mar 27 02:32:44 2020 On a slightly different topic, what if we did
+try to use our H/W lock bits, so that you can't send an EWREQ unless
+you're holding all the locks you'll need?  And the idea is the lock is
+released as soon as the receiver replies yes or no to the EWREQ.  So
+all the 'heavy lifting' of actually shipping and receiving the event
+happens after the locks are released.
+
+Now, why would a receiver need to say no to an EWREQ, especially if we
+say we're circuit-limited rather than EW limited?  Because even with
+ITC-pair locks we could still be racing against another ITC-pair lock
+whose EW overlaps with ours.  Right?
+
+Right??
+[321:
+
+Fri Mar 27 04:10:11 2020 I don't know.  [322:
+
+Fri Mar 27 05:24:41 2020 Working back and forth here between hask and
+this..
+
+Restate premises.
+
+ o Many EWs in progress, even between the same ITC pair.
+
+ o Cache traffic must identify the EW session involved
+
+ o Cache traffic both precedes and follows the assignment of the (at
+   least passive) EW:
+
+   . The EWREQ initiation packet arrives when no EW is yet assigned.
+
+   . The passive EW can be freed as soon as the upd-end-ack is sent,
+     since no further acknowledgment is coming from the active side.
+
+ o So rather than exposing EW numbers on the wire, we expose 'circuit
+   numbers', and associate circuits with EWs only locally.  That way,
+   circuits can be assigned and used before an EW is allocated, or
+   after the EW is freed.
+
+ o But that means the circuit level needs to know when a new circuit
+   is being initiated, and when a circuit can be torn down.  Which is
+   referring to the acquisition and disposition of the local EW.  And
+   also to the circuit-circuit mapping?  But not if that's 1-1.
+
+[323:
+
+Fri Mar 27 13:48:02 2020 So perhaps there's no need to break
+circuit-circuit mapping even if the EWs come and go.  If that was the
+case maybe we could indeed get away with just a single 'control' bit,
+which is really mostly a synchronization check, and means 'there
+should be no existing EW on this channel, and now I want you to try to
+allocate one here.'  Whereas an existing passive EW on a channel would
+disconnect itself somehow after sending cache-upd-end-ack, and the
+active EW would do so after it receives cache-upd-end-ack (from the
+last paired EW).
+
+If traffic without the control bit -- the 'RING' bit -- arrives on a
+circuit without an associated EW, that's an inconsistency that should
+trigger whatever appropriate level of scram.
+
+:323]
+
+
+:322]
+
+:321]
+:320]
+
+:319]
+
+:318]
+
+:317]
+
+:316]
+
+:315][314:
+
+Thu Mar 26 15:20:31 2020 OK did the 2020 census so that's a check
+mark.
+
+:314]
+
+:313]
+
+:312]
+
+:311]
+:310]
+
+:309]
+
+:308]
+
+:307]
+[324:
+
+Fri Mar 27 15:27:28 2020 OK, so let's try to implement circuits.  One
+bit control, one bit active, four bits circuit number.  Active bit is
+automatically toggled on ITC receipt to find the packet recipient
+(assuming consistency).  Active+control => ring (allocate EW if
+possible); !active+control => hangup (free existing EW after
+processing.)
+[325:
+
+Sun Mar 29 09:25:17 2020 Jeez hask ate up a day and a half.
+
+[326:
+
+Sun Mar 29 09:25:42 2020 So circuits belong to T2ITC.  How does it go?
+circuit struct has its own number, an EW pointer or s32index, anything
+else?
+
+:326]
+
+:325]
+:324]
+[327:
+
+Mon Mar 30 01:30:36 2020 OK well I made the data structures for
+circuits, and reorged EWSet so that the T2Tile owns all the EWs,
+instead of any particular EWSet.  So how exactly do we USE these
+circuits?  Let's try to gin up some
+
+TODO
+
+[328: Mon Mar 30 04:54:21 2020
+DONE :328] - Routine to allocate any available active side, for use when setting
+   up an active-side EW.  Probably prefer FIFO if we have an
+   allocation order choice?
+
+[329: Mon Mar 30 04:54:26 2020
+DONE, probably.. :329] - Routine to free
+
+:327]
+[330:
+
+Mon Mar 30 04:54:55 2020 So let's have an event cycle
+
+main loop
+ - just cycles over a master list of state machines, updating them
+
+ - There is a common base class for all such machines
+   = Handling stuff like setting and clearing timeouts on machines,
+     and interacting with the master list / priority queue of
+     the state machines.
+
+One of those state machines is the EVENT INITIATOR.  It picks a random
+location and tries to initiate an event there.  Initiation fails if:
+
+ - No free EW is available
+ - Anything in the chosen neighborhood is already in use by another
+   EW.
+ - No free active circuit is available on any necessary ITC.
+
+:330]
+[331:
+
+Mon Mar 30 14:57:21 2020 OK well we're working our way down from the
+top and now generating code at great velocity here, and we have
+arrived at T2EventWindow::update().  I want to follow the basic
+pattern of the KITC state machine, so we need to get our XX states in
+some kind of better order here.
+
+Did we already start XX for eventwindows somewhere?  Kind of think we
+did.
+[332:
+
+Mon Mar 30 15:00:05 2020 Not seeing it in itcSpike12 anyway..
+Starting fresh.[333:
+
+Mon Mar 30 15:40:01 2020 OK we're at:
+
+    INITIATING ew 0x457268 at (7,18)+4
+    update: 0x457268 IDLE: idle active or passive
+    src/T2EventWindow.cpp:38: (update) XXX IMPLEMENT ME
+
+Now what?  Well, we have to find out if we need locks or not.  How
+shall we do that in our brave new world.
+
+:333]
+
+:332]
+
+:331]
+[334:
+
+Wed Apr  1 14:15:16 2020 OK, so we got past T2sday and now we have to
+sort out wtf we actually are in this redesign.  In particular, are we
+going to try for a VO-ish like base class for all objects that want to
+get turns on the main loop?  We've started building
+ActiveObjects.h/cpp but so far we're not using it anywhere.
+
+Q1: What would be our categories/subclasses of AO?
+
+ - EventWindows wanting to time out
+
+ - ITCs wanting to time out..  I guess 'wanting to time out' is
+   redundant?  That's what 'being an AO' fundamentally means?
+
+ - An EventInitiator
+
+ - A Display driver
+
+ - Possible stats collectors and log generators
+
+ - A touch screen driver
+
+ - Other UI elements
+
+[335:
+
+Wed Apr  1 14:20:12 2020 Well okay that's a good smattering of cases.
+
+Q2: How much emphasis on EW/ITC performance do we want in the design?
+
+ - Could have separate loops for different speeds of updates?  So we
+   could beat on the EW/ITC/EWINIT guys as fast as we can, while we
+   wouldn't even dereference the pointer to logging generator more
+   than once a minute or whatever?
+
+ - Could pull the timeouts forward into a single array for better
+   cache performance.
+
+(BTW:
+
+    TI AM3352, AM3354, AM3356, AM3357, AM3358, AM3359 (15x15 mm, 0.8-mm ball pitch, ZCZ package)
+ .. - 32KB/32KB of L1 Instruction/Data Cache with Single-Error Detection (parity)
+    - 256KB of L2 Cache with Error Correcting Code (ECC)
+
+so that L1 is ta-EYE-knee.  I wonder what the structure of L2 is
+like?[336: Wed Apr  1 14:39:50 2020 Well, for the Cortex A8,
+https://developer.arm.com/docs/ddi0344/b/level-2-memory-system/cache-organization
+says:
+
+  The L2 cache is 8-way set associative of configurable size. The
+  cache is physically addressed. The cache sizes are configurable with
+  sizes in the range of 0KB, 64KB, 128KB, 256KB, 512KB, 1MB, and 2MB.
+
+so that's not too terrible.
+[337:
+
+Wed Apr  1 15:00:12 2020 Additional details from the Cortex A8 ARM
+manual:
+
+    fixed line length of 64 bytes
+
+    physically indexed and tagged
+
+    8-way set associative cache structure
+
+    support for lockdown format C
+
+    configurable 64-bit or 128-bit wide AXI system bus interface with support for multiple outstanding requests
+
+    random replacement policy
+
+(*random* replacement?  How do we think that's really implemented?)
+
+not to mention:
+
+    The L2 memory system does not support hardware cache coherency,
+    therefore software intervention is required to maintain coherency
+    in the system.
+
+So Anyway.
+[338:
+
+Wed Apr  1 15:13:35 2020 64 byte cache lines; that's only four u32s
+per line, if we're imagining a u32 for a timeout.  But at some level
+we'd like to focus on the 32KB L1 cache..[339:
+
+Wed Apr  1 15:28:06 2020 And by the way, for the story on the Cortex
+A8 L1 I+D caches:
+
+    Each cache is 4-way set associative of configurable size. They are
+    virtually indexed and physically tagged. The cache sizes are
+    configurable with sizes of 16KB or 32KB. Both the instruction
+    cache and the data cache are capable of providing two words per
+    cycle for all requesting sources. Data cache can provide four
+    words per cycle for NEON or VFP-Lite memory accesses.
+
+:339]
+
+How many entries are we really imagining?  32 EWs, six ITCs..  Are we
+including the circuits as separate AOs, or are they active only via
+their ITC?
+
+Perhaps like a hundred max?
+
+:338]
+:337]
+:336]
+)
+
+:335]
+
+:334]
+[340:
+
+Wed Apr  1 15:39:46 2020 Also, there's the issue that came up at the
+last minute while crushing for T2sday: How do we do the random
+iteration without replacement?  We ended up double buffering the
+active EWSet so we could move the active EWLinks between sets, but
+that doubles the cache pressure right there.  It would be better if we
+had like a 'drain pointer' or something, so we could move things to
+the end of the array as we pulled them out of the front of the array,
+until the last thing was pulled out of the front:
+
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | c | d | e | f | g | h |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 8    waitingCount = 0
+
+Pull random (got 4/e), step 1 (empty selected active):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | c | d | - | f | g | h |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 7    waitingCount = 0
+
+Pull random (got 4/e), step 2 (move down last active):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | c | d | h | f | g | - |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 7    waitingCount = 0
+
+Pull random (got 4/e), step 3 (move down last waiting):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | c | d | h | f | g |   |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 7    waitingCount = 0
+
+Reinsert e:
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | c | d | h | f | g | E |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 7    waitingCount = 1
+
+Pull random (got 2/c), step 1 (empty selected active):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | - | d | h | f | g | E |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 6    waitingCount = 1
+
+Pull random (got 2/c), step 2 (move down last active):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | g | d | h | f | - | E |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 6    waitingCount = 1
+
+Pull random (got 2/c), step 3 (move down last waiting):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | g | d | h | f | E |   |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 6    waitingCount = 1
+
+Reinsert c
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | g | d | h | f | E | C |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 6    waitingCount = 2
+
+Pull random (got 5/f), step 1 (empty selected active):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | g | d | h | - | E | C |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 5    waitingCount = 2
+
+Pull random (got 5/f), step 2 (move down last active):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | g | d | h | - | E | C |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 5    waitingCount = 2
+
+Pull random (got 5/f), step 3 (move down last waiting):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | g | d | h | C | E |   |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 5    waitingCount = 2
+
+Insert new AO (named 'i'):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | g | d | h | C | E | I |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 5    waitingCount = 3
+
+Reinsert f
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | a | b | g | d | h | C | E | I | F |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 5    waitingCount = 4
+
+Pull random (got 0/a):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | h | b | g | d | F | C | E | I |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 4    waitingCount = 4
+
+Pull random (got 0/h):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | d | b | g | I | F | C | E |   |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 3    waitingCount = 4
+
+Reinsert h
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | d | b | g | I | F | C | E | H |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 3    waitingCount = 5
+
+Reinsert a
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | d | b | g | I | F | C | E | H | A |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 3    waitingCount = 6
+
+Pull random (got 1/b):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | d | g | A | I | F | C | E | H |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 2    waitingCount = 6
+
+Reinsert b:
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | d | g | A | I | F | C | E | H | B |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 2    waitingCount = 7
+
+Pull random (got 1/g):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | d | B | A | I | F | C | E | H |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 1    waitingCount = 7
+
+Reinsert g:
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | d | B | A | I | F | C | E | H | G |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 1    waitingCount = 8
+
+Pull random (got 0/d):
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | G | B | A | I | F | C | E | H |   |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 0    waitingCount = 8
+
+Reinsert d:
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | G | B | A | I | F | C | E | H | D |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 0    waitingCount = 9
+
+Random queue is empty.
+
+Flip queue:
+    0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  | g | b | a | i | f | c | e | h | d |   |   |   |   |   |   |   |
+  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+  activeCount = 9    waitingCount = 0
+
+[341:
+
+Wed Apr  1 16:31:03 2020 Well, that seems reasonably nifty but are we
+sure we have a real place and need for it?  And do we really believe
+we can call for random numbers (from Mersenne twister, if we use
+Random.h) without enough I+D cache pressure to render all this
+niftyness moot?
+
+:341]
+:340]
+[342:
+
+Thu Apr  2 01:00:24 2020 OK have a few hours here.  I want some ROUGH
+CONSENSUS AND RUNNING CODE.
+
+ - So I think a general AO framework is probably NOT indicated here.
+   Why?  Because a main purpose of it is to increase flexibility and
+   ease extension later.  We don't REALLY need either.
+
+ - But :334: already listed six types PLUS a catch-all for possible
+   future GUI elements!  And having extensibility could also,
+   possibly, conceivably, open the way to exposing some kind of
+   low-frequency, tile-scale, API to ulam and beyond in the future.
+
+ - Well if we did it, is our innermost loop really going to just beat
+   a list of all AOs, no matter that most of them will be sleeping?
+
+ - Aand do we need to allocate each concrete instance of an AO as a
+   full-fledged object, so it can be deleted?  The whole VO/AO idea is
+   VERY Java-esque, since it depends on everything being glued
+   together with pointers.  It doesn't really play well with C++,
+   where we want to do HAS-A via direct embedding of objects inside
+   other objects.  An entry on the 'master AO list' might be pointing
+   at a data member of some other object?
+
+ - Well, that's kind of a compelling argument there.  Perhaps we
+   should just take the seven :334: types, boil them down a bit, and
+   implement them as special cases?
+
+ - Related point: Basically we're talking about the event loop, here.
+   And eventually we're going to need to play along with SDL's event
+   loop, right?  And when we get there we'd like that to be
+   considerably snappier than it currently is.[343:
+
+Thu Apr  2 02:39:18 2020 I guess the approach there is the 'Display
+driver' of :334: would actually have two parts (1) updating the
+display, and (2) processing the SDL event queue.  Draining it?  Or
+processing up to some number of events?  But let's pretend we can
+control the event loop and deal with SDL events when we want to, and
+we'll just try to want to often enough that input events don't lag too
+horribly.
+[344:
+
+Thu Apr  2 02:46:08 2020 So, we could still implement the random
+iterator, but we wouldn't apply it to all-active-objects-at-once.  We
+could have one for all-active-event-windows, all-ITCs (or
+circuits?)..  But where's our lovely cache behavior then?  The one
+true array is shattered into pieces.
+
+Review event types.
+
+ - Event window updates.  As currently envisioned, local event windows
+   complete over a minimum of two updates: After the event initiator
+   creates them they have to wait for their own proper update before
+   they can even realize they don't need any locks.  So, such an event
+   window wants an 'effectively immediate' timeout.
+
+   = We could rejigger that so that event initiator transfers control
+     to the newly-created EW, and it runs as far as it can, possibly
+     to completion, unless it discovers it needs to block.
+
+   = But then we're basically implementing threads by hand?
+
+ - ITCs need to poll for packets, since we're not like interrupting on
+   input ready or something.  And packets, in turn are what trigger
+   EW updates without a timeout.
+
+ - Well screw it.  Suppose we did a real priority queue based on u32
+   time and time_before in the wrap-around style.  We assert that
+   anything we insert into the pq has a timeout soon enough that
+   wrapping won't be a problem.  We randomize update order by
+   randomizing timeouts.
+
+ - Innermost loop:
+         while (!done) {
+           pollForITCPackets();
+           callEventInitiator();
+           checkTimeouts();
+         }
+
+    where checkTimeouts() runs everything that's expired on the main
+    pq, and includes input event polling at perhaps 10Hz, redisplay at
+    perhaps 3-7Hz, and error timeouts for EWs, ITCs/circuits, and
+    whatever.
+
+ - We make a TimeoutAble base class, that has a u32 timeoutMs (or
+   whatever the half-decent C++ time unit is), plus a perhaps u8
+   nonce, set at random at insert time to break ties.
+
+ - The pq comparator will compare the timeoutMS, then compare the
+   nonce if tied, then finally compare the 'this' if still tied.
+
+ - We use a Set<TimeoutAble*> with that custom comparator, which
+   guarantees keys are unique so we can erase ourselves from the
+   middle of the set precisely.
+
+[345:
+
+Thu Apr  2 07:02:37 2020 OK post e-chat.  Push a little more before
+nap.
+
+TODO
+
+[346: Thu Apr  2 10:57:15 2020
+DONE :346] - Make TimeoutAble.h/cpp
+   = Has u32 ms + u8 nonce + TimeQueue* ptr
+   = Implements whatever C++ calls Comparable
+   = Implements insert(TimeQueue & ontq, u32 atTimefromNow)
+   = Implements remove()
+   = Declares pure virtual onTimeout();
+
+[347: Thu Apr  2 10:57:19 2020
+DONE :347] - Make TimeQueue.h/cpp
+   = Has a Set<TimeoutAble*>
+   = Implements insertRaw(TimeoutAble& ta)
+   = Implements TimeoutAble * getEarliestExpired()
+
+[348:
+Done :348] - Make a demo main in TimeQueue
+
+:345]
+:344]
+
+:343]
+
+:342]
+[349:
+
+Thu Apr  2 10:57:32 2020 OK, nap time.
+
+:349]
+[350:
+
+Thu Apr  2 16:19:34 2020 Well that was a good nap.  Now we need more
+
+TODO
+
+[351: Thu Apr  2 21:22:03 2020
+DONE :351] - Make an SDL framework for the spike
+
+[421: Wed Apr 15 02:37:16 2020
+DONE :421] - Get simple animations and touch inputs working using TimeoutAbles
+   plus existing Panel stuff, following t2viz
+
+[422: Wed Apr 15 04:32:11 2020
+DONE :422] - Make a TimeQueue status display in a panel, to demo the tech.
+
+ - Come back and make more to-do
+
+:350]
+[352:
+
+Thu Apr  2 23:38:52 2020 OK, well, I'm apparently now (re)building the
+SDL interface for this (rapidly less tiny) 'spike'.  And I'm intending
+to fold t2viz functionality into this, and get rid of the horrible
+signalling that mfmt2 and t2viz were doing to each other -- so we need
+a scheme for supporting multiple major views in the interface, and be
+able to switch between them, and hopefully even post pop-up menus that
+go away appropriately when switching views and so forth.
+
+So I REALLY think we want some kind of little textual config file to
+direct setting up the window hierarchy -- something like a .oio file
+from VIDEX2018, except much simpler -- so that we can diddle with this
+crap A LOT without always recompiling the world.
+
+'Keep It Super Simple'.  A panel name, a panel type name, a parent
+panel name, and x y w h.  One line per entry.  Scanf with "%s %s %s %d
+%d %d %d\n"
+
+:352]
+[353:
+
+Fri Apr  3 12:07:32 2020 OK I'm completely confusing myself with all
+these broad container classes at the top.  We need to sort it all out
+before going further.
+
+ - main.cpp: MainDispatch declares
+   = T2Tile as the top container for all tile operations
+   = SDLI as the interface to SDL
+
+ - But in addition we have
+   = T2Viz, which currently holds panels and general what-not for
+     t2viz operations, and
+   = Engine, an abstract base of T2Viz
+
+So how about something like this:
+
+ - Let's tie displays and 'engine' together, so t2viz-ish panels and
+   t2viz-ish implementations would go together.. really?
+
+Q: Do we put t2viz timeouts in the same TimeQueue as EW stuff?
+
+Seems like we mostly should, I think.  Everything ever active goes in
+the TimeQueue.  And everything that might ever display goes under some
+master root panel thing.  Question is: Should(n't) we use the existing
+save/load stuff to get panels configured?  Instead of starting a whole
+new thing?  I guess we should check.
+
+And we really do need to maintain as much compatibility in .mfz files
+between mfms and mfmt2/itcSpike12..  That doesn't necessarily mean we
+have to support .mfs though.  Worrying that the panel deserialization
+stuff is going to be waay-too-tightly coupled into the whole existing
+mfms template-madness codebase.[354:
+
+Fri Apr  3 16:03:26 2020 It really is.  We have to get our fledgling
+spike up on its own feet first, even though it means signficant redo.
+[355:
+
+Fri Apr  3 16:22:39 2020 So.  Even if we put 'everything' in T2Tile,
+we need to have some structure within that.  Separating the event
+system from the t2viz system, for example.[356:
+
+Fri Apr  3 16:56:22 2020 Well, have to move the flag again.
+
+:356]
+
+:355]
+:354]
+
+:353]
+[357:
+
+Sat Apr  4 12:32:17 2020 So like a genius I left behind the tile that
+all this was on, and somehow sshd had died on the workstation so I
+couldn't get into that to get the backup files.  So I drove back and
+got the missed tiles grrr.  So where TF are we here?
+
+:357]
+[358:
+
+Sun Apr  5 04:55:31 2020 OK so we've just been working from the front
+here.  Did a bit of command line arguments stuff; just XX'd it up to
+implement '-h'..  Now how do we go forward?  Back to window config.
+
+:358]
+[359:
+
+Sun Apr  5 08:53:45 2020 Well we have a first cut at a window config
+file and we want to see the windows getting drawn.  But right now
+we're dying unimplemented in trying to initiate an EW.
+
+So that kind of forces us back to the whole event pacing / time queue
+business and so on.  Where did we leave ourselves on that?[360:
+
+Sun Apr  5 09:00:52 2020 Well, :353: was saying everything goes in the
+same TQ.  If so, then the current notion of:
+
+  void T2Tile::main() {
+    initEverything();
+    while (!isDone()) onePass();
+    shutdownEverything();
+  }
+
+  void T2Tile::onePass() {
+    maybeInitiateEW();
+    updateActiveEWs();
+    advanceITCs();
+    maybeDisplay();
+  }
+
+doesn't seem to follow.  Seems like it should be more like:
+
+  void T2Tile::main() {
+    initEverything();
+    while (!isDone()) {
+      TimeoutAble * ta = mTimeQueue.getEarliestExpired();
+      if (!ta) msleep(1); // Or ??
+      else ta->onTimeout(mTimeQueue);
+    }
+    shutdownEverything();
+  }
+
+and everything else happens down under onTimeout.  After getting
+stuffed into the TQ during initEverything().[361:
+
+Sun Apr  5 09:14:22 2020 Well let's give that a shot.
+
+:361]
+
+:360]
+
+:359]
+[362:
+
+Mon Apr  6 13:48:13 2020 OK, well, we have a bunch of windows up, and
+we're using a wconfig.pl perl script to generate the wconfig.txt file
+so we can do arithmetic to derive window positions, and we really
+should've just bit the bullet and hardcoded the window setup instead
+of parsing it at runtime.  But we'll see.
+
+In any case, we have (to become) ITC panels at plausible locations on
+the screen, and a log panel that updates when the log does, and some
+scattered test windows.  And we can detect mouse hits, and dispatch
+them into the Panel tree plausibly, but we are currently not doing
+much with them.
+
+And it's like a deep deep rat hole to go down trying to figure out how
+to remap 'mfms-like' UI behaviors without a keyboard.
+
+[363:
+
+Mon Apr  6 14:09:11 2020 Could we make a tracker for the user button?
+Is CDM or somebody currently watching that?
+
+..yeah, it's currently launching t2viz.  Well, let's try to import the
+semantic guts of t2vis into itcSpike12 so we could ditch t2viz and
+free up the user button..
+
+:363]
+
+:362]
+[364:
+
+Mon Apr  6 15:56:10 2020 Well, generated a lot of code here; taking a
+break.  The corner lights are rotating again, and we're basically at
+the 'porting T2viz update guts to itcSpike12' stage.
+
+Pick up in T2InfoPanel::onTimeout.
+
+:364]
+[365:
+
+Tue Apr  7 04:56:02 2020 So, relaxed for a while.
+
+TODO
+
+[416: Wed Apr 15 02:34:44 2020 SCRAPPED FOR MANUAL CONFIG
+NOT DONE :416] - Build a popup menu that autoconfigures from an underlying Panel
+   that inherits from PopupMenuAble or whatever.  Make it 3x3 with
+   center always 'Cancel'.  If necessary make the lower right always
+   'More..' more than eight total menu items are encountered.
+
+[417:
+NOT DONE :417] - Have super classes able to contribute menu items?  And they fill
+   the menu in most-abstract-first order so they will appear in the
+   same positions across (potentially) many menus
+
+ - Make a 'ViewChooser' window that supports having just one of its
+   children visible at any given time.  Have ViewChooser contribute a
+   'View..' menu item.
+
+[418: Wed Apr 15 02:36:12 2020 Manually, but
+DONE :418] - Have a Chooser be the first child of Root.  Have Grid and T2Viz be
+   children of the Chooser
+
+[419:
+NOT DONE, DITCHED :419] - PopupMenuable supplies methods
+   = Say how many entries it contributes
+   = Configure a given MenuButton (subtype of Label?) for its entry #n
+   = Respond to a hit on its entry #n
+
+[420:
+DONE MANUALLY :420] - One possible response to a hit should be to post a different popup
+   menu.   And how would such a submenu be populated?
+
+:365]
+[366:
+
+Wed Apr  8 17:18:16 2020 So we've been trying to run down an erratic
+framerate for an hour or so here, and the suspicion is increasingly
+falling on the interaction between itcSpike12's desired fps and the
+fbtft configured 'fps'.[367:
+
+Thu Apr  9 02:05:54 2020 Well so the long and the short of that was
+that fbtft is currently set to 15FPS -- but that doesn't actually set
+the display rate, it just sets how long the fbtft LKM waits, after the
+first write to display memory, before it locks the pages and starts
+squirting them off to the display (via SPI in our case).
+
+That delay wants to be long enough that userspace can finish writing
+its changes to display memory before fbtft comes in and locks the
+pages.  But that delay also wants to be short enough that, after the
+delay expires, fbtft will finish writing the SPI transactions and free
+up the pages before userspace calls SDL_Flip again.
+
+So with fbtft set to 15FPS, if I try to do more that about 6.5FPS in
+userspace, I start getting uneven timing across SDL_Flip calls.  If I
+set userspace to 10FPS, I end up observing like 8.5FPS and seeing half
+the frames missed.
+
+I don't have any really good sense how long a full-screen-dirty
+SDL_Flip takes, but it might be we could push to 16 or 18 or 25FPS or
+whatever, and still reliably finish the SDL_Flip before fbtft times
+out.  The fantasy is we could then up our userspace FPS a bit will
+maintaining a smooth tempo, because fbtft would start and thus finish
+the SPI transaction earlier, before our next SDL_Flip hits.
+
+I am tempted to try setting fbtft to 20FPS, since that appears to be
+the default that I decided to modify somewhere along the way.[368:
+
+Thu Apr  9 03:21:30 2020 Well, trying 20.  Did RISKY BITS OFF.  Rebooting.
+
+[374:
+
+Thu Apr  9 05:49:06 2020 Not liking 20 so much.  Seems like I miss
+frames every so often anyway?  Perhaps it's a 'front end' failure,
+where SDL_Flip is still going when the pages get locked?  We had been
+at fbtft fps=15 which means (/ 100 15) -> 6 jiffies delay; let's go
+back to that and see if our apparent vanished frames all reappear.
+
+Or we could go to (/ 100 14) for 7 jiffies and see if that slows us
+down as far as getting 6 or 6.5HZ userspace..  Let's try 14.
+
+:374]
+
+:368]
+
+:367]
+
+:366]
+[369:
+
+Thu Apr  9 03:25:46 2020 OK, so:
+
+    root@beaglebone:/home/t2/MFM/src/drivers/itcSpike12# grep fbtft /var/log/syslog
+    Apr  9 03:22:26 beaglebone kernel: [   48.095839] fbtft: module is from the staging directory, the quality is unknown, you have been warned.
+    Apr  9 03:22:27 beaglebone kernel: [   48.941817] fbtft_of_value: regwidth = 16
+    Apr  9 03:22:27 beaglebone kernel: [   49.082551] fbtft_of_value: buswidth = 8
+    Apr  9 03:22:27 beaglebone kernel: [   49.173713] fbtft_of_value: debug = 2
+    Apr  9 03:22:27 beaglebone kernel: [   49.287892] fbtft_of_value: rotate = 270
+    Apr  9 03:22:27 beaglebone kernel: [   49.388062] fbtft_of_value: fps = 20
+    Apr  9 03:22:27 beaglebone kernel: [   49.473773] fbtft_of_value: txbuflen = 32768
+    Apr  9 03:22:27 beaglebone kernel: [   49.616957] fb_ili9486 spi0.0: fbtft_request_one_gpio: 'reset-gpios' = GPIO30
+    Apr  9 03:22:27 beaglebone kernel: [   49.762539] fb_ili9486 spi0.0: fbtft_request_one_gpio: 'dc-gpios' = GPIO48
+    root@beaglebone:/home/t2/MFM/src/drivers/itcSpike12#
+
+Let's see if it makes any difference..[370:
+
+Thu Apr  9 03:27:16 2020 Well now it looks like userspace 10HZ gets us
+about 9.25HZ -- which is definitely more -- but I'm still losing half
+the frames.  Let's try 8HZ..[371:
+
+Thu Apr  9 03:31:38 2020 Looks like 8HZ requested is getting us about
+7.6HZ actual, with definitely fewer dropped frames.  7.5HZ might be
+pretty solid?[372:
+
+Thu Apr  9 03:34:15 2020 Nope, still losing some frames at 7.5HZ;
+getting like 6.9HZ, hmm.  Trying 7HZ?[373:
+
+Thu Apr  9 03:37:07 2020 Looks pretty solid.  Seems to be getting like
+6.930HZ-6.955HZ with no signs of dropped frames.
+
+Note also we are currently compiled at -g2.  But we're also running at
+our toasty 1GHZ:
+
+      current CPU frequency is 1000 MHz (asserted by call to hardware).
+
+With this combo so far, we seem to be eating under 20% of the machine:
+
+      PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+     2476 root      20   0   63176  47696   4016 D  16.5   9.6   0:48.50 itcSpike12
+     2480 root      20   0       0      0      0 D   2.0   0.0   0:01.45 kworker/0+
+ ..
+
+for userspace plus the kernel SPI writer (we believe), 'leaving 80% of
+the machine' to use for events.
+
+Yah.
+
+Once we can do events.
+
+:373]
+
+:372]
+
+:371]
+
+:370]
+
+:369]
+[375:
+
+Thu Apr  9 07:41:15 2020 Well, it starts to seem like the 32MHz SPI
+setting was a limitation of the display rather than the AM335X McSPI
+hardware.  It appears the OMAP2 McSPI will go up to 48MHz.
+
+And we've cranked it up that high and things mostly work but it seems
+like the colors are a bit off.  Which seems quite odd for a digital
+device, unless it's due to the display initialization -- setting up
+its gamma and who knows what else -- is getting messed up at 48MHz.
+
+But reading the internet and using the force makes me think we might
+be able to leave the device tree speed at 32MHz, but then use an ioctl
+in a C program to crank it up to 48MHz long after the display has been
+initialized.
+
+:375]
+[376:
+
+Fri Apr 10 00:44:04 2020 Well not sure if that Hz and MHz sideshow
+really bought me much of anything, but targeting 6Hz userspace updates
+for now in any case.
+
+And WE HAVE TO GET SOME KIND OF MENU WORKING.  SO MAKE SOME FOGGEN
+
+TODO
+
+[378: Fri Apr 10 01:02:47 2020
+DONE :378] - Figure out how to activate the Menu / MenuItem / MenuMaker code
+   that's currently written but untested.
+
+[414: Wed Apr 15 02:34:25 2020
+DONE, I think :414] - Activate it for the parent of T2InfoPanel, whatever that is.
+
+[415: Wed Apr 15 02:34:34 2020
+DONE :415] - Watch it explode, then fix it as minimally and expeditously as
+   possible.
+
+:376]
+[377:
+
+Fri Apr 10 01:02:18 2020 OK our menu code doesn't even build once we
+actually try to use it.  Get to work.
+:377]
+[379:
+
+Fri Apr 10 01:29:29 2020 OK so we're tracing through touch (mouse)
+event dispatching.  To recap:
+
+We go down via
+
+  Panel::Dispatch(MouseButtonEvent&)
+
+until we find the panel that contains the hit, at which point we
+switch to Event::Handle(Panel&), which (in the current case) dishes
+back
+
+  Panel::Handle(MouseButtonEvent&)
+
+In this particular case we hit a TextPanel (SimLog), and its
+Handle(MBE&) does some random stuff like adjust its elevators and so
+on.  Where is the 'activate pop up menu' function supposed to come in?
+
+[380:
+
+Fri Apr 10 02:25:21 2020 What if we used the user button to trigger
+(and cancel) the top-level pop-up menu, and then fold into normal
+event handling once the menu is onscreen?  How do we gin up a
+synthetic SDL_Event for that button?  (Not that we really need to be
+that systematic, since we control the top-level anyway.  But let's
+freshen up our user button brain.)
+
+[381:
+
+Fri Apr 10 02:31:28 2020 The TNV code which we imported (or at least
+started to) for the t2viz view includes the user button.[382:
+
+Fri Apr 10 02:33:48 2020 But that code (in T2InfoPanel.cpp) is only
+getting run once a second.  And That Certainly Won't Do for the User
+Button.  We want to poll the user button every redisplay, I'd think,
+so like 6Hz.[383:
+
+Fri Apr 10 02:39:05 2020 Right now all the ADCs are updated by
+T2ADCs::update() which is getting called no-where, in itcSpike12, as
+far as I can tell.  (T2ADCs::update -- which lives in
+/home/t2/T2-12/apps/tnv, by the way -- is getting called by tnv.cpp in
+that same directory.)
+
+So there's no significant performance advantage to doing them all at
+once, since they've reading independent FILE*s, so we could break out
+like updateChannel(ADCChannel) and have update() just loop through
+them.  Then on the itcSpike12 side we could wrap each individually and
+launch them into the TimeQueue.  Voltages and temperatures could be
+updated every second or even less, the light sensor at maybe 2Hz or
+so, and the user button at 6Hz or even more.  We could even flow its
+readings into synthetic SDL_Events and let them percolate up that
+way.  [384:
+
+Fri Apr 10 02:45:57 2020 Now, at the moment, checkInput gets called
+only during redisplay, so going much faster than that doesn't seem
+critical?  Well, it is if we want to pick up a quick click, I guess.
+
+Kind of a drag though, to eat any noticeable chunk of the machine for
+something that will happen so rarely across spacetime.  I think we
+should say you need 'a firm press' on the user button, not just a
+minimal click, and then 6Hz polling should be plenty reliable enough.
+
+:384]
+
+:383]
+
+:382]
+
+:381]
+
+:380]
+
+:379]
+[385:
+
+Fri Apr 10 14:55:45 2020 So, current issue is I'm generating an
+SDLK_MENU KeyboardEvent and injecting it into the SDL event queue, and
+it's getting pulled off and propagated.. but that propagation still
+depends on having a 'last known mouse position', which is (0,0) by
+default and therefore (it seems) doesn't much the ChooserPanel which
+is inset by its border.
+
+:385]
+[386:
+
+Fri Apr 10 23:32:01 2020 Well so now we're having the root panel be a
+MenuMakerPanel, and it does catch the KEYDOWN events we're generating
+on the user button.  Reacting on DOWN rather than UP makes it feel
+quite a lot snappier.  It's possible to miss a very short click, but
+most satsifying clicks get noticed and reasonably promptly.
+
+So now though, what next?  How do we check if the (toplevel, or any?)
+popup menu is posted?  We want to post top-level if no popup menu is
+posted by anybody, and otherwise we want to popdown (via its cancel)
+whatever popup menu is up.
+
+How do we know if a popup menu is posted?[387:
+
+Fri Apr 10 23:47:14 2020 Make a global singleton -- like stashed in
+SDLI -- and keep the popup menu state there.  We'll reconfigure the
+same menu on the fly as we 'enter submenus', and there'll be no nested
+'Back' functionality unless we keep a menu stack in the singleton
+somehow.  I guess that could be like just a stack of MenuMakerPanel*'s
+as one possibility... Or could it?  Couldn't the grid display, say,
+want several submenus all its own?  How would that be handled?
+
+We're gradually moving toward a centralized menu system, here, so do
+we really need to associate menus strictly with panels?  Vs what
+exactly?  [388:
+
+Sat Apr 11 00:10:29 2020 I'd sort of like to have the central menu
+system able to handle 'boring ordinary menu items' directly, plus have
+a way for MenuMakerPanels to contribute custom panels to a menu as
+desired.
+
+So the central menu system would keep around say nine 'default'
+buttons, which would be used in each of the 3x3 spots that didn't have
+a custom Panel* supplied.  Each of those default buttons could be
+configured on a per menu basis, in a light-weight declarative way, to
+be 'empty' or 'cancel' or whatever other basic functions we end up
+with.
+
+So, what is the outcome of a popup menu navigation interaction?  An
+event should be generated, I guess.  But we don't want the event to
+propagate, or else we'll need to have a screen location for it.  So we
+need to know who to deliver the message to.
+
+Could we just say each button contains an event + a panel, and
+clicking the button means send the former to the latter?  And fold all
+of submenu navigation and so forth into that?
+
+Could we further just say each pop-up menu design has a name, so we
+can refer between menus by name?  So we can say 'POST SUB6', as a
+configuration string somewhere perhaps, and have that mean deliver a
+POST event to the menu named SUB6?
+
+So then we could configure menus in wconfig?  If we had some little
+action language like that.
+
+That could at least get us fogging going here.
+
+[389:
+
+Sat Apr 11 00:57:49 2020 So let's try to summarize.. we've got some
+conflicting notions right there..  Latest thoughts:
+
+ - Popup menu is just a kind of panel
+
+ - It gets configured in wconfig, with some little custom language to
+   describe button text and whatever.
+
+ - That language can say things like 'pop up FOO menu' and 'dismiss
+   this menu',
+
+ - And things like 'pop-down the entire menu system', and ..?
+
+ - Some special menu is recognized as to be popped up by the user
+   button.
+
+ - The popup menu state is tile-wide and stored in SDLI unless there's
+   some better place.
+
+[390:
+
+Sat Apr 11 01:07:05 2020 Of course as I write that I start swinging
+back towards less-centralized approaches.  If we're laying this stuff
+out via wconfig, we could be using it for the element palettes and so
+forth.. Where a 'menu' might not cover the entire screen, and
+interactions with other windows could take place while a menu is
+posted.  And there could be multiple simple menus posted in various
+windows at the same time.
+
+The actual 'centralization' really doesn't need to be any more
+invasive then having one privileged menu name that gets raised or
+lowered when the user button is hit.
+
+[391:
+
+Sat Apr 11 01:33:58 2020 So maybe let's make some wconfig/.pl assist
+to help make and layout buttons for menus (and etc)?
+
+MENU ACTIONS:
+
+ - ENTER MENUNAME: Raise MENUNAME to top of its container and make it
+   visible
+
+ - LEAVE MENUNAME: Lower MENUNAME to bottom of its container and make
+   it invisible
+
+ - PUSH MENUNAME: Do ENTER MENUNAME and push MENUNAME on top of
+   mPostedStack
+
+ - POP: If mPostedStack is non-empty, pop top MENUNAME and do LEAVE
+   MENUNAME
+
+ - DISMISS: While mPostedStack is non-empty do POP
+
+
+
+[ModeMenu Menu Modes GEOM]
+   layout=3x3
+   button3="Grid":ENTER Grid
+   button4="Tile":ENTER T2Viz
+   button5="Data":ENTER Stats
+   button7="X":DISMISS
+
+[392:
+
+Sat Apr 11 01:56:36 2020 Might be nice if we could define buttons by
+name at top level, and then just invoke them, rather than trying to
+fold all the properties into a one-liner.
+
+How committed is the wconfig code to having top-level entities all be
+Panels?[393:
+
+Sat Apr 11 01:58:15 2020 Well,
+
+(1) If we see a '[' we go to parsePanelDecl, and
+(2) we attach subsequent properties to 'Panel * prevPanel'.
+
+So that's non-trivially committed to Panels, I'd say..
+
+Well and why again do we want buttons NOT to be panels?  It just seems
+too heavyweight to type it all in?
+
+FOG IT LET'S JUST TYPE IT ALL IN.
+
+We still need to have a menu stack somewhere, if we're going to
+distinguish 'back' from 'dismiss'.
+
+:393]
+
+:392]
+
+:391]
+
+:390]
+
+:389]
+
+:388]
+
+:387]
+
+:386]
+[394:
+
+Sat Apr 11 11:23:49 2020 OK once again, moving the flag.
+
+RISKY BITS OFF.
+
+:394]
+[395:
+
+Sat Apr 11 13:44:48 2020 OK we're set up again, and we've gotten the
+latest wconfig-based partial whack at menu stuff kind of running.  Now
+we need to hook the user button's SDLK_MENU KEYDOWN to the GlobalMenu
+somehow, and we need a place for the menu stack to exist, if indeed
+it's going to.
+
+:395]
+[396:
+
+Sat Apr 11 15:52:53 2020 OK so the user button is posting and
+unposting the 'GlobalMenu', and we can touch a menu button and get
+
+    17: ERR: include/Menu.h:40: (OnClick) XXX IMPLEMENT ME
+
+so that's progress.
+
+But now we have to implement the oh-so-vaguely implemented 'action
+language'..
+
+:396]
+[397:
+
+Sun Apr 12 07:16:16 2020 OK screw it.  On the 'What Am I Actually
+Saving It Up For?' principle, I'm making T2Tile a singleton.
+
+And May The Lord Have Mercy On My Soul.
+
+:397]
+[398:
+
+Sun Apr 12 17:43:53 2020 Well, progress but still struggling to get
+the menu button plumbing actually working.  Have to go cook now.
+
+Status
+
+ - Confused about who to deliver menu actions to.  How do we get it so
+   raising one 'view' or 'mode' window automatically sets its other
+   siblings to not visible?  (So we don't waste time updating them
+   just to be overwritten.)
+
+ - Seems like we want some explicit 'full-screen single child view'
+   kind of panel, and we ask that thing to raise and dismiss its
+   kids.  We had moves towards 'ChooserPanel' to be such a thing, but
+   aren't sure what state that's currently in.
+
+ -
+
+
+:398]
+[399:
+
+Mon Apr 13 00:29:43 2020 Let's make a single foggen MenuManager thing,
+and let it execute all the menu actions.  Do the stuff we have, but at
+the bottom dish to the MenuManager with the 'hit window' that we're
+in, plus the MenuAction that is to be done.  Put the MenuManager in
+SDLI probably.  Just do it.  Go go go go go.[400:
+
+Mon Apr 13 00:41:04 2020 Maybe even move the parsing of wconfig action
+properties from strings to MenuActions into the MenuManager?  Then it
+can represent them any foggen way it likes, since it's going to be the
+ones executing them.[401:
+
+Mon Apr 13 00:47:21 2020 Nah leave it.  It's being handled by
+MenuItem, which dishes to MenuAction, which is all pretty reasonable
+as far as the crazy mess we currently have.
+
+(Jeez we're into the :400s:.  Maybe time for a new notes file soon?)
+[402:
+
+Mon Apr 13 00:56:25 2020 Note the current MenuAction is using an
+SDLKey to represent the 'action', which seems flexible, kind of, but
+also pretty indirect and arbitrary.  The main advantage of doing so is
+that it uses the SDL event queue to decouple the call stack that
+generates the MenuAction from the call stack that executes it.
+
+If MenuActions are limited to causing immediate panel property changes
+and restacking, it feels natural to execute them immediately, and
+talking to ourselves through SDLKeys seems silly.  But if MenuActions
+are supposed to be able to simulate general clicks on buttons, we
+really want end the call stack ASAP and have the click happen as a
+result of standard event processing later.
+
+:402]
+:401]
+
+:400]
+
+:399]
+[403:
+
+Mon Apr 13 02:23:44 2020 OK, we're down to implementing
+MenuManager::execute(MenuAction&, Panel *).  Review our intended
+semantics.  From Menu.h:148
+
+    // Commands understood:
+    // CALL PANEL -- SDLK_RIGHT -- Deactivate/push current and raise/activate PANEL
+    // RETURN     -- SDLK_LEFT  -- Pop stack and raise/activate previous.
+    // GO PANEL   -- SDLK_DOWN  -- Clear stack and raise/activate PANEL
+    // DISMISS    -- SDLK_UP    -- Do POP until stack empty
+
+Points:
+
+ - GlobalMenu posting should put the global menu at the bottom of the
+   stack -- make it equivalent to DISMISS + CALL GlobalMenu[404: Mon
+   Apr 13 03:19:44 2020 No, better would be to put whatever 'single
+   visible' is visible on the bottom of the stack, so that DISMISS
+   will automatically take us back to that.  So it's more like DISMISS
+   + CALL <current> + CALL GlobalMenu :404]
+
+ - GlobalMenu unposting should be equivalent to a DISMISS
+
+ - We should have a semantics wherein some particular type of panel
+   can say that only its uppermost kid should be visible at any given
+   time, so we don't even try to draw the others.  Are we intending
+   'Root' to be that?  Let's say so for now -- but we should abstract
+   this part of the RootPanel behavior into a SingleVisibleChildPanel
+   or something.
+
+What is our initial intended window layout for all this?
+
+Root [Root]
+|-> GlobalMenu [ChooserPanel]
+|   |-> GlobalMenu_Button_PhysicsViz [MenuItem] {GO PhysicsViz}
+|   |-> GlobalMenu_Button_T2Viz [MenuItem]      {GO T2Viz}
+|   |-> GlobalMenu_Button_Control [MenuItem]    {GO Control}
+|   |-> GlobalMenu_Button_X [MenuItem]          {DISMISS}
+|
+|-> PhysicsViz
+|
+|-> Control
+|   |-> CPU speed, flash traffic, etc
+|   |-> T2Viz_Button_X       [MenuItem]        {GO PhysicsViz}
+|
+|-> T2Viz
+    |-> T2Info [T2Info]
+    |-> StaticInfo [StaticPanel] // tag#s, mfzid
+    |-> StatusInfo [StatusPanel] // ADCs etc
+    |-> SimLog [SimLog]
+    |-> ITC_NE,_ET,_SE,_SW,_WT,_NW [ITC]
+    |-> Corner_NW, _NE, _SE, _SW [Panel]
+    |-> T2Viz_Button_Control [MenuItem]        {GO Control}
+    |-> T2Viz_Button_X       [MenuItem]        {GO PhysicsViz}
+
+:403]
+[405:
+
+Mon Apr 13 11:32:02 2020 OK, so the menu stacking is finally starting
+to seem plausible; moving on to a few more issues before we totally
+start running out of time ahead of the T2sup.
+
+ - T2InfoPanel is currently doing
+
+  void T2InfoPanel::onTimeout(TimeQueue& srcTQ) {
+    if (!IsVisibleFrom(0)) {
+      sleepOn(srcTQ);           // Long timeout if not visible
+      return;
+    }
+
+with the result that after posting and dismissing the global menu, the
+corner lights have apparently died (because T2InfoPanel is now
+sleeping for an hour.)
+
+We'd prefer to let this happen, but have the 'makeSingleVisible'
+functionality somehow jump the panel's timeout forward.. if the panel
+has a timeout..[406:
+
+Mon Apr 13 11:42:47 2020 Well, that LOOKED easy, like just this:
+
+ ..
+        if (kid==panel) {
+          kid->SetVisible(true);
+          TimeoutAble * ta = dynamic_cast<TimeoutAble*>(kid);
+          if (ta != 0) ta->bump(); // wake dis mofo
+ ..
+
+but of course it's NOT THAT EASY.. Because kid, there is T2Viz, but
+the panel that went to sleep is T2Info, which is a kid of T2Viz.
+
+Not that T2Info, up there, is using
+ ..
+    if (!IsVisibleFrom(0)) {
+ ..
+
+which searches up to the root -- and figures out that since T2Viz is
+invisible, then T2Info should sleep for an hour.
+
+That means, if we're going to preserve this nice behavior, that
+makeSingleVisible() -- and any similar visibility-changing routines --
+is going to have to recursively bump() all the TimeoutAble's among the
+children of the Panel becoming visible.
+
+And that could be a problem if some TimeoutAble's down in there were
+trying to use their timeout for some kind of, you know, ACTUAL TIMING.
+
+Perhaps we should make 'sleeping' be a distinguishable state from
+'having a long timeout'.  Then we could recursively wake sleepers
+while leaving everybody else alone regardless of their timeouts.
+
+How hard would that be?
+[407:
+
+Mon Apr 13 12:01:13 2020 Well, we could add a bool mSleeping to
+TimeoutAble, but that would push it from 12 to 16 bytes and we'd kind
+of wanted to keep TimeoutAble small..  It would also increase the
+complexity of its operator<, which is a relatively inner-loop
+operation in this area.
+
+Or we could extend TimeQueue to have a different place to stash
+sleeping TimeoutAbles.  But they'd still just have a single onTQ ptr
+-- so we'd have to search two places to find them?
+
+[408:
+
+Mon Apr 13 12:05:22 2020 Given the limited time here, maybe we
+shouldn't go down this road?  Maybe we should have T2InfoPanel still
+be updating in the background, even though it's not visible?  Or have
+it slow its updates only a little bit, like a few seconds rather than
+an hour?
+
+You could claim that we should keep updating it visible or no, since
+other things could care about the information that it's gathering?
+And it could be backwards averaging crap across time and who knows
+what?  Now, I think none of that is currently true, buuuuut.[409:
+
+Mon Apr 13 12:12:24 2020 Screw it, say T2Info will maintain its
+update cadence and so be it.[410:
+
+Mon Apr 13 12:31:20 2020 OK that's done.  Time to start spiffing up
+these windows a bit..
+
+:410]
+
+:409]
+
+:408]
+
+:407]
+:406]
+
+:405]
+[411:
+
+Mon Apr 13 12:44:53 2020 OK so we have T2GridPanel now.  It's not
+doing anything special but there it is.[412:
+
+Mon Apr 13 12:56:06 2020 Let's try to get a bit more of T2Info's info
+actually displaying..
+
+:412]
+
+:411]
+[413:
+
+Wed Apr 15 02:24:12 2020 OK so we shipped t2sup#274.  There are still
+problems with the menu stack getting confused so that 'X' in the
+global menu does nothing, so that's embarrassing anyway, but at least
+Here Comes The External User Button To Save The Day, so for now,
+whatever.
+
+LET'S GET TO SITE DISPLAY AND EVENT WINDOWS!
+
+:413]
+[423:
+
+Wed Apr 15 04:32:36 2020 OK so we can display the TQ.  Now I'm looking
+back to :330:.
+
+TODO
+
+ - Make an EventWindowInitiator.
+
+ - See it initiate some windows.
+
+ - See it initiate EventWindows
+
+ - Frame out the EW state structure.
+
+ - Support multiple state advances in a single update.  I guess that
+   means having states explicitly request blocking.  Well if we go
+   with the 'kind of timeout' code, we can have NONE in addition to
+   HALF, STANDARD, LONG, whatever..
+
+:423]
+[424:
+
+Wed Apr 15 06:57:36 2020 So we want to have a checkbox for running
+events or not.  How do we do that in wconfig land?  (Note that our
+apparent checkbox in the Tile display is fake -- it's just a Label
+with a checkbox checked icon.)[425:
+
+Wed Apr 15 07:05:10 2020 Well, we subclass AbstractCheckbox, it looks
+like.  A different subclass for each checkbox.  And we register its
+type with SDLI.  And we can have multiple instances of that checkbox
+scattered around the interface, and they'll all stay in sync, if the
+class properly punches through to some shared state for SetChecked and
+IsChecked..
+
+[426:
+
+Wed Apr 15 07:13:26 2020 Maybe, after nap, we should think about
+checking in all this crab??
+
+:426]
+
+:425]
+
+:424]
+[427:
+
+Wed Apr 15 14:25:04 2020 So we're initiating EWs now, but we're never
+updating them, because we have this conflict between the old 'EWSet'
+idea and the new 'TimeQueue' idea.  Right now the initiated EWs are
+put onto the mActive EWSet and then then never considered again.
+updateActiveEWs() is never called.
+
+updateActiveEWs will flail all the actives in a random order, but
+that's really a highly related take to what TimeQueue is doing also.
+
+The difference is that updateActiveEWs is built on the premise that
+EWs need to have multiple 'goes' with no external state changes,
+whereas TimeQueue expects TimeoutAbles to do everything they need to
+and then sleep for a while.  If they reschedule themselves to go
+immediately, they shouldn't care what order they go with respect to
+other timed-out entities.
+
+updateActiveEWs is definitely an older way of 'cellular automata
+thinking', and TimeQueue is a newer 'Movable Feast thinking' or
+something.
+
+So perhaps we could split the difference, and just use EWSet mFree to
+allocate from, but then have the allocated EWs run to completion or
+until they need to block on the tile master TimeQueue, and then get
+returned to mFree whenever they're done.
+
+So T2Tile::mActive[2] goes away, which I'm fine with.  What about
+T2Tile::mPassive and T2Tile::mActiveBuffer?  Ditch them too?
+
+[428:
+
+Wed Apr 15 14:53:45 2020 Well, let's finally finally checkpoint all
+this and then tear out that stuff.
+
+:428]
+
+:427]
+[429:
+
+Thu Apr 16 00:39:21 2020 OK so we need an update/advance/transition
+function for T2EventWindow.  The thing that will actually examine the
+state table.  I think we want it to be something like:
+
+  do { ew.transition(); } while (!ew.blocked());
+  if (ew.isDone()) ew.release();
+  else ew.insert(srcTq, ew.timeout());
+
+Let's do call the state machine update 'transition' -- that's
+relatively unused in the code base so far.
+
+:429]
+[430:
+
+Thu Apr 16 01:06:40 2020 So,
+
+TODO:
+
+ - Figure out where we are in the T2EventWindow state machine
+
+ - Make a state transition framework to call
+
+ - Make a advanceUntilBlocked access point, as above.
+
+ - Call it from maybeInitiateEW
+
+ - Also call it from T2EventWindow::onTimeout
+
+ - Make more to-do.
+
+:430]
+[431:
+
+Thu Apr 16 01:12:36 2020 Hey here's a thing: It seems like in the
+current scheme, what's to stop us from allocating all our (active) EWs
+to in-progress intertile events, and thereby have NO EWs left to run
+any local events?
+
+What happens then?  Is that a way to implement 'warp factors' to limit
+how much more heavily the hidden sites get sampled?  But that'd really
+warped, wouldn't it?  Hidden sites in edge and corner tiles would
+really run away with everything, and central tiles would slog.
+
+It kind of seems like we should have a single separate or reserved
+T2EventWindow to use for hidden sites, and we'll do hidden site events
+atomically?
+
+:431]
+[432:
+
+Thu Apr 16 03:03:51 2020 Argh got pulled off task.  Refocus.
+
+I think we should think about doing hidden events atomically, so they
+don't even directly use allocated EWs.
+
+T2Tile::maybeInitiateEW()
+
+  (0) Change this signature to bool so we can call on return
+  (1) Pick random candidate center
+  (2) Examine center atom.  (Clear it if insane, once we get back to that.)
+  (3) If radius 0 (only for empty?), return false
+  (4) If anything in neighborhood isn't available, return false
+  (5) Compute if hidden based on center and radius
+  (6) If hidden, return tryHiddenEvent(ctr, rad), which runs event atomically
+  (7) Otherwise, return tryVisibleEvent()
+
+
+T2Tile::tryHiddenEvent(UPoint ctr, u32 radius)
+
+  (1) Init a stack-local EW via ctr
+  (2) Call ew.advanceUntilBlocked();
+  (3) If !ew.isDone(), fail somehow.
+  (4) Return true
+
+T2Tile::tryVisibleEvent(UPint ctr, u32 radius)
+
+  (1) Try to allocate a persistent ew
+  (2) If none, return false
+  (3) Init ew via ctr
+  (4) Do insertOnMasterTimeQueue(ew,0)
+  (5) Return true
+
+T2EventWindow::onTimeout
+  (1) Deliver timeout to state machine, however that works (but it
+      involves advanceUntilBlocked or something like it)
+  (2) If isDone, mTile.releaseEW(this)
+  (3) Otherwise, reschedule based on timeout
+
+T2EventWindow state machine notes
+  Load the neighborhood.  Note we do not ourselves as siteOwner
+  (4) Run the event
+  (4) Write back the (changed portion of the) neighborhood
+
+:432]
+[433:
+
+Thu Apr 16 05:00:23 2020 Well there's a lot of good stuff in :432: but
+all fingers point to getting more serious about the ew state machine.
+Let's review where we are:
+
+ - ALL_EW_STATES_MACRO() at the top of T2EventWindow.h has the goods
+
+ - ATM we're saying custom timeout and custom packet receive, like the
+   ITC state machines, but we don't really yet know.
+
+ - What's the active/passive deal finally anyway?  Are we saying a
+   neighbor might ask for a lock that we could grant them but we say
+   no because we have no passive ews to match up with it?  If not
+   where do all the passive EWs come from?
+
+ - It's a tangent but I guess do we want an ITCPacketAdvancer on the
+   master TQ, kind of analogous to the EWInitiator?  Or do we just
+   want the ITCs themselves on the master queue, and they each poll
+   just their own channel on timeout.
+
+:433]
+[434:
+
+Thu Apr 16 05:51:16 2020 ..we've put the individual ITCs onto the
+master TQ..
+
+:434]
+[435:
+
+Thu Apr 16 07:10:24 2020 After morning walk.
+
+:435]
+[436:
+
+Thu Apr 16 07:10:42 2020 So, I can connect a loopback cable but nobody
+speaks, as yet, so nobody hears..  I had sort of thought that maybe
+itcmfm sent up some kind pseudopacket when the connection opened but I
+guess I never implemented that.
+
+So how does userspace know a compatible-physics connection is
+  open?[437:
+
+Fri Apr 17 00:38:04 2020 Yikes, lost a lot of time Thursday.
+
+:437]
+
+:436]
+[438:
+
+Fri Apr 17 00:58:46 2020 So what should a 'synthetic HELO pkt' look
+like?  I guess the obvious idea is to send a packet with the ITC bit
+set in byte[1], since those are normally filtered out at LKM level.
+
+So, make the packet something like this maybe:
+
+ byte[0]: 0xa0|
+
+[439: Fri Apr 17 01:11:56 2020 ..so wait a second.  Now that we've
+split the traffic -- bulk vs flash vs mfm -- into separate devices,
+and also split up the mfm traffic across the ITCs, is there any reason
+to include packet byte[0] in what we deliver to user space?[440:
+
+Fri Apr 17 01:27:09 2020 Maybe for flash traffic to know its source,
+to avoid sending it back that way?  But flash traffic has some kind of
+wrapcounter index or something anyway to limit repropagation.
+
+[441:
+
+Fri Apr 17 01:46:06 2020 But we've gone down this road before and I
+think once again even if it's true it's not worth doing right now.
+Just ignore byte[0] in userspace if it doesn't matter
+
+:441]
+
+:440]
+
+:439]
+
+:438]
+[442:
+
+Fri Apr 17 01:47:18 2020 So again damnit again.  How about sending a
+STD+LOC packet up to userspace?  STD+LOC from the PRUs is all handled
+by LKM; none of them currently get to userspace.  How about like:
+
+byte[0]: 0xc01
+
+understood in userspace as like:
+
+   STD LCL RSV TP4 TP3 TP2 TP1 TP0
+  +---+---+---+---+---+---+---+---+
+  | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
+  +---+---+---+---+---+---+---+---+
+
+with TP4..0 meaning "Userspace local packet type 1", meaning
+"Compatible ITC open".
+
+Who knows.  But call it good enough to go for now.[443:
+
+Fri Apr 17 02:50:48 2020 Fog it let's also say type 2 means
+"Incompatible ITC blocked", and send it to userspace on itcmfm
+entering SN_INCOMPATIBLE.[444:
+
+Fri Apr 17 07:36:05 2020 Well, it seems to be time to try this
+modified itcmfm.  For which we need to reboot after
+
+    root@beaglebone:~# uptime
+     07:37:32 up 5 days, 18:07,  2 users,  load average: 2.04, 2.12, 2.11
+    root@beaglebone:~#
+
+yow.
+
+So maybe we should checkpoint commit some stuff here, first?[445:
+
+Fri Apr 17 07:50:45 2020 Yeah, doing that.
+
+:445]
+
+:444]
+
+:443]
+
+:442]
