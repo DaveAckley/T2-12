@@ -3,6 +3,8 @@ SRCS:=$(APP_NAME).cpp t2adc.cpp
 OBJS:=$(patsubst %.cpp,%.o,$(SRCS))
 HDRS:=$(patsubst %.cpp,%.h,$(SRCS))
 
+LIB:=libt2adc.so
+
 CFLAGS += -Wall -Werror -pedantic -ansi
 LIBS += 
 
@@ -14,8 +16,11 @@ run:	build
 
 build:	$(APP_NAME)
 
-$(APP_NAME):	$(OBJS)
-	g++ $^ -o $@  $(LIBS) 
+$(APP_NAME):	tnv.o $(LIB)
+	g++ $< -L . -l t2adc -o $@
+
+$(LIB):	t2adc.o
+	ar rc $@ $^
 
 %.o:	%.cpp $(HDRS) Makefile
 	g++ $(CFLAGS) $< -c

@@ -1,36 +1,6 @@
 #include "tnv.h"
+#include "T2ADCs.h"
 #include <stdlib.h> /* for exit() */
-
-/** Circuit for this count is:
- *
- *               200K 0.1%    V0     10K 0.1%
- *     Vgrid o----/\/\/--------o----/\/\/---o GNDA
- *                             |
- *                             |
- *                             o
- *                       AIN0 (chnl 0)
- *                 with count 0->V0=0, count 4095->V0=1.8V
- *
- *
- *   V0 = Vgrid * 10K / ( 200K + 10K )
- *
- *   V0/Vgrid = 10K / 210K
- *
- *   Vgrid/V0 = 210K / 10K        given V0 != 0
- *
- *   Vgrid = V0 * 210K / 10K
- *
- *   Vgrid = (1.8 * count / 4095) * 210K / 10K
- *
- *   Vgrid = (1.8 * 210K ) / (10K * 4095) * count
- *
- *   Vgrid = 378000 / 40950000 * count
- *
- */
-float gridVoltage(unsigned count) {
-  const float scale = 378000.0 / 40950000.0;
-  return count * scale;
-}
 
 int readChannel(unsigned chn) {
   const int BUF_SIZE = 256;
@@ -105,9 +75,12 @@ static struct channelHandler {
 
 int main(int argc, char **argv) {
   bool machine = argc > 1;
-  for (int i = 0; i < 7; ++i) {
+  MFM::T2ADCs adcs;
+  adcs.update();
+  for (unsigned i = 0; i < 7; ++i) {
+    MFM::T2ADCs::ADCChannel chnl = (MFM::T2ADCs::ADCChannel) i;
     struct channelHandler & ch = adcHandlers[i];
-    int raw = ch.takeReading();
+    int raw = adcs.getChannelRawData(chnl);
     if (!machine) {
       printf("%d %s = %4d raw ", i, ch.adcname, raw);
     }

@@ -92,8 +92,46 @@ sub computeRTfrom4K {
 
 sub generate4KtoTCTable {
     print <<EOM;
+/** GENERATED CODE DO NOT EDIT **/
+        
 #include <stdint.h>
 
+EOM
+    
+    print <<EOM;
+/** Circuit for this count is:
+ *
+ *               200K 0.1%    V0     10K 0.1%
+ *     Vgrid o----/\/\/--------o----/\/\/---o GNDA
+ *                             |
+ *                             |
+ *                             o
+ *                       AIN0 (chnl 0)
+ *                 with count 0->V0=0, count 4095->V0=1.8V
+ *
+ *
+ *   V0 = Vgrid * 10K / ( 200K + 10K )
+ *
+ *   V0/Vgrid = 10K / 210K
+ *
+ *   Vgrid/V0 = 210K / 10K        given V0 != 0
+ *
+ *   Vgrid = V0 * 210K / 10K
+ *
+ *   Vgrid = (1.8 * count / 4095) * 210K / 10K
+ *
+ *   Vgrid = (1.8 * 210K ) / (10K * 4095) * count
+ *
+ *   Vgrid = 378000 / 40950000 * count
+ *
+ */
+float gridVoltage(unsigned count) {
+  const float scale = 378000.0 / 40950000.0;
+  return count * scale;
+}
+EOM
+
+    print <<EOM;
 /* map from 12 bit ADC count -> 1024 * centigrade.
    adcToTc1K[0] and adcToTc1K[4095] are illegal values
    producing INT32_MAX.
@@ -145,6 +183,8 @@ if ($arg eq "header" ) {
     print <<EOM;
 #ifndef T2_ADC_NTC_CVT_H
 #define T2_ADC_NTC_CVT_H
+
+float gridVoltage(unsigned count) ;
 
 int getCentigradeFromCount(unsigned count) ;
 
