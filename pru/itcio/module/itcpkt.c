@@ -1504,6 +1504,15 @@ const char * getDir8Name(u8 dir8) {
   return "??";
 }
 
+const char * getDir6Name(u8 dir6) {
+  switch (dir6) {
+  default: return "??";
+#define XX(DC,fr,p1,p2,p3,p4) case DIR6_##DC: return #DC;
+    DIRDATAMACRO()
+#undef XX
+  }
+}
+
 static void setITCEnabledStatus(int pru, int prudir, int enabled) {
   u32 dir8 = mapPruAndPrudirToDir8(pru,prudir); /*returns 8 on bad*/
   u32 dir6 = mapDir8ToDir6(dir8);

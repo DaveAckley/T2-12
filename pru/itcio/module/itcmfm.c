@@ -463,8 +463,23 @@ void receive_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
   } else {
     u32 idx = readZstringFromPH(ph, mds->mITCState.mMFZIdThem, sizeof(MFZId));
     if (idx < sizeof(MFZId)) mds->mITCState.mMFZIdThem[idx] = '\0';
-    setStateKITC(mds, compatibleMFZId(mds) ? SN_COMPATIBLE : SN_INCOMPATIBLE);
-    setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
+    {
+      ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mds;
+      ITCPacketBuffer * ipb = &(pktdevstate->mUserIB);
+      bool compatible = compatibleMFZId(mds);
+      if (kfifo_avail(&ipb->mFIFO) < 2) {
+        DBGPRINTK(DBG_PKT_DROPS,
+                  KERN_INFO "No room to deliver KITC %s to %s; resetting \n",
+                  compatible ? "COMPATIBLE" : "incompatible",
+                  getDir8Name(getDir8FromPH(ph)));
+        resetKITC(mds);
+      } else {
+        u8 byte = 0xc0 | (compatible ? 1 : 2);
+        kfifo_in(&ipb->mFIFO, &byte, 1);
+        setStateKITC(mds, compatible ? SN_COMPATIBLE : SN_INCOMPATIBLE);
+        setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
+      } 
+    } 
   }
 }
 

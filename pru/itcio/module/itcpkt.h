@@ -69,6 +69,7 @@
 #endif
 
 const char * getDir8Name(u8 dir8) ;
+const char * getDir6Name(u8 dir6) ;
 
 typedef enum packet_header_bits {
   PKT_HDR_BITMASK_STANDARD  = 0x80,
