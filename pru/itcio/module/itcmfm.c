@@ -126,7 +126,7 @@ static void writeZstringToPH(PacketHandler * ph, const u8 * zstr)
 
 static bool compatibleMFZId(ITCMFMDeviceState *mds) {
   BUG_ON(!mds);
-  return 0 == strncmp(mds->mITCState.mMFZIdUs,
+  return 0 == strncmp(S.mMFMTileState.mMFZId,
                       mds->mITCState.mMFZIdThem,
                       MAX_MFZ_NAME_LENGTH);
 }
@@ -252,7 +252,6 @@ void initITCState(ITCState * is)
   BUG_ON(!is);
   is->mTimeout = jiffies + (prandom_u32_max(50)+10);
   is->mToken = 0;
-  is->mMFZIdUs[0] = '\0';
   is->mMFZIdThem[0] = '\0';
   is->mStateNumber = SN_INIT;
 }
@@ -425,6 +424,7 @@ void receive_FOLLOW_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
 void timeout_CONFIG_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
 {
   MFMTileState * ts = &S.mMFMTileState;
+  writeByteToPH(ph, ts->mToken);
   writeZstringToPH(ph, ts->mMFZId);
 
   setStateKITC(mds, SN_WCONFIG);
@@ -438,10 +438,15 @@ void receive_CONFIG_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
   if (sn != SN_WFOLLOW) {          /* messed up unless we're WFOLLOW */
     resetKITC(mds);
   } else {
+    s32 ch = readByteFromPH(ph);
     u32 idx = readZstringFromPH(ph, mds->mITCState.mMFZIdThem, sizeof(MFZId));
     if (idx < sizeof(MFZId)) mds->mITCState.mMFZIdThem[idx] = '\0';
-    setStateKITC(mds, SN_CHECK);
-    setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
+    if (ch < 0) resetKITC(mds); /*wtf?*/
+    else {
+      mds->mITCState.mToken = (u8) ch;
+      setStateKITC(mds, SN_CHECK);
+      setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
+    }
   }
 }
 
@@ -449,6 +454,7 @@ void receive_CONFIG_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
 void timeout_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
 {
   MFMTileState * ts = &S.mMFMTileState;
+  writeByteToPH(ph, ts->mToken);
   writeZstringToPH(ph, ts->mMFZId);
   setStateKITC(mds, compatibleMFZId(mds) ? SN_COMPATIBLE : SN_INCOMPATIBLE);
   setTimeoutKITC(mds, jiffiesToWait(WC_FULL));
@@ -461,12 +467,16 @@ void receive_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
   if (sn != SN_WCONFIG) {
     resetKITC(mds);
   } else {
-    u32 idx = readZstringFromPH(ph, mds->mITCState.mMFZIdThem, sizeof(MFZId));
-    if (idx < sizeof(MFZId)) mds->mITCState.mMFZIdThem[idx] = '\0';
-    {
-      ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mds;
-      ITCPacketBuffer * ipb = &(pktdevstate->mUserIB);
-      bool compatible = compatibleMFZId(mds);
+    ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mds;
+    ITCPacketBuffer * ipb = &(pktdevstate->mUserIB);
+    bool compatible;
+    s32 ch = readByteFromPH(ph);
+    if (ch < 0) resetKITC(mds); /*wtf?*/
+    else {
+      u32 idx = readZstringFromPH(ph, mds->mITCState.mMFZIdThem, sizeof(MFZId));
+      mds->mITCState.mToken = (u8) ch;
+      if (idx < sizeof(MFZId)) mds->mITCState.mMFZIdThem[idx] = '\0';
+      compatible = compatibleMFZId(mds);
       if (kfifo_avail(&ipb->mFIFO) < 2) {
         DBGPRINTK(DBG_PKT_DROPS,
                   KERN_INFO "No room to deliver KITC %s to %s; resetting \n",
@@ -486,7 +496,9 @@ void receive_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
 /**helpers for (in)compatible**/
 void timeoutIn_or_Compatible_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
 {
+  MFMTileState * ts = &S.mMFMTileState;
   BUG_ON(!mds || !ph);
+  writeByteToPH(ph, ts->mToken);
   setTimeoutKITC(mds, jiffiesToWait(WC_LONG));
   sendPacketHandler(ph);
 }
@@ -494,12 +506,12 @@ void timeoutIn_or_Compatible_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
 void receiveIn_or_Compatible_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
 {
   StateNumber sn, psn;
+  u8 token = readByteFromPH(ph);
   BUG_ON(!mds || !ph);
-
   sn = getStateKITC(mds);
   psn = ph->pktbuf[1]&0xf;
-  if (sn != psn) resetKITC(mds);
-  setTimeoutKITC(mds, jiffiesToWait(WC_LONG));
+  if (sn != psn || token != mds->mITCState.mToken) resetKITC(mds);
+  else setTimeoutKITC(mds, jiffiesToWait(WC_LONG));
 }
 
 /**STATE COMPATIBLE, INCOMPATIBLE**/

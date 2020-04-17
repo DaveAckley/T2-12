@@ -1170,6 +1170,7 @@ static ssize_t mfzid_store(struct class *c,
   for (i = 0; i < MFM_MINORS; ++i) {
     BUG_ON(!S.mMFMDeviceState[i]);
     S.mMFMDeviceState[i]->mStale = true;
+    resetKITC(S.mMFMDeviceState[i]);
   }
 
   printk(KERN_INFO "mfzid set; len=%d, token=%d, MFM pid is %d\n",

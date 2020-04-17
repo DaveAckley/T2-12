@@ -72,7 +72,7 @@ typedef u8 MFMToken;                       /* random + incremented each id write
 typedef struct {
   pid_t    mMFMPid;          /* pid that last wrote mToken */
   MFMToken mToken;    
-  MFZId    mMFZId;  
+  MFZId    mMFZId;           /* our MFZId as written to /sys/class/itc_pkt/mfzid */
 } MFMTileState;
 
 /* Functions & pointers */
@@ -96,8 +96,7 @@ typedef struct {
 typedef struct {
   unsigned long mTimeout;       /* jiffies when we timeout */
   MFMToken   mToken;            /* Physics ID from MFM */
-  MFZId      mMFZIdUs;          /* MFZId from MFM */
-  MFZId      mMFZIdThem;        /* MFZId from MFM */
+  MFZId      mMFZIdThem;        /* MFZId from their MFM (ours is in S.mMFMTileState) */
   StateNumber mStateNumber;     /* Our state number */
 } ITCState;
 
