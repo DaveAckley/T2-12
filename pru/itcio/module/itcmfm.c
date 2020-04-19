@@ -450,46 +450,48 @@ void receive_CONFIG_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
   }
 }
 
+static bool trySendCompatibilityToUserSpace(ITCMFMDeviceState * mds, bool compatible) {
+  ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mds;
+  ITCPacketBuffer * ipb = &(pktdevstate->mUserIB);
+  u8 byte;
+  if (kfifo_avail(&ipb->mFIFO) < 2) {
+    DBGPRINTK(DBG_PKT_DROPS,
+              KERN_INFO "No room to deliver KITC %s to %s; resetting \n",
+              compatible ? "COMPATIBLE" : "incompatible",
+              getDir6Name(mds->mDir6));
+    return false;
+  }
+
+  byte = 0xc0 | (compatible ? 1 : 2);
+  kfifo_in(&ipb->mFIFO, &byte, 1);
+  setStateKITC(mds, compatible ? SN_COMPATIBLE : SN_INCOMPATIBLE);
+  return true;
+}
+
 /**STATE CHECK**/
 void timeout_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
 {
   MFMTileState * ts = &S.mMFMTileState;
   writeByteToPH(ph, ts->mToken);
   writeZstringToPH(ph, ts->mMFZId);
-  setStateKITC(mds, compatibleMFZId(mds) ? SN_COMPATIBLE : SN_INCOMPATIBLE);
-  setTimeoutKITC(mds, jiffiesToWait(WC_FULL));
-  sendPacketHandler(ph);
+  if (!trySendCompatibilityToUserSpace(mds, compatibleMFZId(mds))) resetKITC(mds);
+  else {
+    setTimeoutKITC(mds, jiffiesToWait(WC_FULL));
+    sendPacketHandler(ph);
+  }
 }
 
 void receive_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
 {
   StateNumber sn = getStateKITC(mds);
-  if (sn != SN_WCONFIG) {
-    resetKITC(mds);
-  } else {
-    ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mds;
-    ITCPacketBuffer * ipb = &(pktdevstate->mUserIB);
-    bool compatible;
-    s32 ch = readByteFromPH(ph);
-    if (ch < 0) resetKITC(mds); /*wtf?*/
-    else {
-      u32 idx = readZstringFromPH(ph, mds->mITCState.mMFZIdThem, sizeof(MFZId));
-      mds->mITCState.mToken = (u8) ch;
-      if (idx < sizeof(MFZId)) mds->mITCState.mMFZIdThem[idx] = '\0';
-      compatible = compatibleMFZId(mds);
-      if (kfifo_avail(&ipb->mFIFO) < 2) {
-        DBGPRINTK(DBG_PKT_DROPS,
-                  KERN_INFO "No room to deliver KITC %s to %s; resetting \n",
-                  compatible ? "COMPATIBLE" : "incompatible",
-                  getDir8Name(getDir8FromPH(ph)));
-        resetKITC(mds);
-      } else {
-        u8 byte = 0xc0 | (compatible ? 1 : 2);
-        kfifo_in(&ipb->mFIFO, &byte, 1);
-        setStateKITC(mds, compatible ? SN_COMPATIBLE : SN_INCOMPATIBLE);
-        setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
-      } 
-    } 
+  s32 ch;
+  if (sn != SN_WCONFIG || ((ch = readByteFromPH(ph)) < 0)) resetKITC(mds);
+  else {
+    u32 idx = readZstringFromPH(ph, mds->mITCState.mMFZIdThem, sizeof(MFZId));
+    mds->mITCState.mToken = (u8) ch;
+    if (idx < sizeof(MFZId)) mds->mITCState.mMFZIdThem[idx] = '\0';
+    if (!trySendCompatibilityToUserSpace(mds,compatibleMFZId(mds))) resetKITC(mds);
+    else setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
   }
 }
 
