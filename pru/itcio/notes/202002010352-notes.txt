@@ -1,4 +1,4 @@
-{446}  -*- text -*-
+{490}  -*- text -*-
 [0:
 [3:
 [35:
@@ -6223,3 +6223,499 @@ Fri Apr 17 07:50:45 2020 Yeah, doing that.
 :443]
 
 :442]
+[446:
+
+Fri Apr 17 08:51:53 2020 Well, everything seems to be committed and
+pushed.
+
+RISKY BITS OFF.
+
+:446]
+[447:
+
+Fri Apr 17 08:59:01 2020 Well we seem to be back up.  Let's get gdb
+back up and see what happens when we make a loopback connection.
+
+:447]
+[448:
+
+Fri Apr 17 09:24:00 2020 Hmm, with a loopback cable between our ET and
+our WT, our first 'synthetic HELO' packet reached userspace.. and it
+claimed INCOMPATIBLE!  And with this:
+
+    root@beaglebone:~# echo ff0 > /sys/class/itc_pkt/debug 
+
+we see this:
+
+    Apr 17 09:23:49 beaglebone kernel: [ 1615.702706] kitcTimeoutThreadRunner: [SW] to WAITPS
+    Apr 17 09:23:51 beaglebone kernel: [ 1617.590897] kitcTimeoutThreadRunner: [ET] to INCOMPATIBLE
+    Apr 17 09:23:51 beaglebone kernel: [ 1617.596616] sendKITCPacket pkt=INCOMPATIBLE len=2 (src=ET)
+    Apr 17 09:23:51 beaglebone kernel: [ 1617.602284] recvKITCPacket rc INCOMPATIBLE len=2 (us=[WT]INCOMPATIBLE)
+    Apr 17 09:23:53 beaglebone kernel: [ 1619.287052] kitcTimeoutThreadRunner: [NW] to WAITPS
+    Apr 17 09:23:55 beaglebone kernel: [ 1621.303102] kitcTimeoutThreadRunner: [NE] to WAITPS
+    Apr 17 09:23:59 beaglebone kernel: [ 1625.431314] kitcTimeoutThreadRunner: [SE] to WAITPS
+    Apr 17 09:24:00 beaglebone kernel: [ 1625.879568] kitcTimeoutThreadRunner: [SW] to WAITPS
+    Apr 17 09:24:02 beaglebone kernel: [ 1628.503549] kitcTimeoutThreadRunner: [ET] to INCOMPATIBLE
+    Apr 17 09:24:02 beaglebone kernel: [ 1628.514136] sendKITCPacket pkt=INCOMPATIBLE len=2 (src=ET)
+    Apr 17 09:24:02 beaglebone kernel: [ 1628.519825] recvKITCPacket rc INCOMPATIBLE len=2 (us=[WT]INCOMPATIBLE)
+
+so perhaps we should understand why we seem to be incompatible with
+ourselves.  So we're back to kernel debugging here for a bit.[449:
+
+Fri Apr 17 09:57:37 2020 Well, not sure what's going on yet, but from
+this:
+
+    Apr 17 09:57:00 beaglebone kernel: [ 3606.619954] recvKITCPacket rc INCOMPATIBLE len=2 (us=[WT]INCOMPATIBLE)
+    Apr 17 09:57:00 beaglebone kernel: [ 3606.629217] sendKITCPacket pkt=INCOMPATIBLE len=2 (src=ET)
+
+OK we were incompatible for whatever reason.
+
+    Apr 17 09:57:00 beaglebone kernel: [ 3606.636299] >pru: a2 ca                                            ..
+    Apr 17 09:57:01 beaglebone kernel: [ 3607.290155] mfzid set; len=5, token=158, MFM pid is 2653
+
+But then userspace set a new mfzid.  That should trigger a KITC reset.
+
+    Apr 17 09:57:07 beaglebone kernel: [ 3613.152766] kitcTimeoutThreadRunner: [SE] to WAITPS
+    Apr 17 09:57:09 beaglebone kernel: [ 3615.104735] kitcTimeoutThreadRunner: [NE] to WAITPS
+    Apr 17 09:57:11 beaglebone kernel: [ 3617.249030] kitcTimeoutThreadRunner: [WT] to INCOMPATIBLE
+    Apr 17 09:57:11 beaglebone kernel: [ 3617.254607] Routing priority 0xa6/2 packet to itc!pru!1
+    Apr 17 09:57:11 beaglebone kernel: [ 3617.266403] 0 from trysend 0xa6/2 pkt (kfln 3) via prudev itc!pru!1 mPriorityOB
+    Apr 17 09:57:11 beaglebone kernel: [ 3617.273989] recvKITCPacket rc INCOMPATIBLE len=2 (us=[ET]INCOMPATIBLE)
+    Apr 17 09:57:11 beaglebone kernel: [ 3617.283766] sendKITCPacket pkt=INCOMPATIBLE len=2 (src=WT)
+
+but it doesn't appear to.
+
+Let's look into that.[450:
+
+Fri Apr 17 09:59:58 2020 OK, in mfzid_store, we see:
+
+      /* Invalidate the KITCs */
+      for (i = 0; i < MFM_MINORS; ++i) {
+        BUG_ON(!S.mMFMDeviceState[i]);
+        S.mMFMDeviceState[i]->mStale = true;
+      }
+
+      printk(KERN_INFO "mfzid set; len=%d, token=%d, MFM pid is %d\n",
+             count,
+             ts->mToken,
+             ts->mMFMPid);
+
+so the question is: Are the KITCs even really interrogating mStale at
+all??  [451: Hmm NO HITS for mStale anywhere in itcmfm.c..  :451]
+
+:450]
+
+:449]
+
+:448]
+[452:
+
+Fri Apr 17 10:01:57 2020 Review:
+
+ - mStale is a bool in ITCMFMDeviceState.  It is false on creation.
+
+ - The code above sets it true for all ITCs, when the mfzid is set.
+
+ - It is set false for an ITC device (/dev/itc/mfm/ET etc) when opened
+
+ - It is checked when each such device is read from or written to.
+
+ - It is used nowhere else.
+
+[453:
+
+Fri Apr 17 10:38:50 2020 So it seems clear that setting the mfzid
+should explicitly reset all the KITCs, and then we'd be past this
+initial issue.[454:
+
+Fri Apr 17 10:48:52 2020 Rebooting again for that.
+
+RISKY BITS OFF
+
+:454]
+
+:453]
+
+:452]
+[455:
+
+Fri Apr 17 11:05:54 2020 OK so geez a lot of stuff in itcmfm.c is
+pretty seriously incomplete.  Thanks, Dave-from-the-past.  You're the
+best.
+
+The current issue is twofold -- first, the KITC mMFZIdUs data member
+was never getting set at all: The MFZ ID gets written to tile state
+only, not KITC state.  So we're ditching the mMFZIdUs data member
+entirely and just fetching it out of S.mMFMTileState.mMFZId when we
+need it.
+
+And second: The mToken field, which is supposed to be used to uniquify
+MFZids, isn't being sent on the wire at all.  Did we EVER document
+what the KITC packet formats were really supposed to be?[456:
+
+Fri Apr 17 11:25:05 2020 Doesn't look like we did, at least not here.
+By :216: we're sending and receiving (empty) MFZIds and seemingly
+feeling like the packets are complete..[457:
+
+Fri Apr 17 11:37:40 2020 So, if we were to try to inject some
+mToken-awareness, what would we need
+
+TODO
+
+[458: Fri Apr 17 15:01:08 2020
+DONE :458] - timeout_CONFIG_KITC puts mMFZId on the wire.  Needs to put mToken
+   there too.
+
+[459:
+DONE :459] - So does timeout_CHECK_KITC.  Ditto.
+
+[460: Fri Apr 17 15:04:38 2020
+DONE :460] - receive_CONFIG_KITC pulls mMFZIdThem off the wire.  Needs to pull an
+   mITCState.mToken too
+
+[461: Fri Apr 17 15:21:31 2020
+DONE :461] - So does receive_CHECK_KITC.
+
+[462: Fri Apr 17 15:26:49 2020 Added token write to
+   timeoutIn_or_Compatible_KITC and token check to
+   receiveIn_or_Compatible_KITC, so let's try calling this
+DONE :462] - But what is compatibleMFZId() supposed to do with that?  We can't
+   compare their token to ours, only theirs to theirs.  So I guess the
+   point (such as it is) is that we'd be supposed to inject the token
+   into (all) subsequent KITC packets, and we'd match that to
+   mITCState.mToken as an extra check.
+
+:457]
+
+:456]
+
+
+:455]
+[463:
+
+Fri Apr 17 15:32:50 2020 OK I guess time to try again.
+
+RISKY BITS OFF.
+
+:463]
+[464:
+
+Fri Apr 17 15:57:56 2020 Well, we're getting to SN_COMPATIBLE now, and
+userspace appears to be getting the 'synthetic HELO packets'..  So it
+must be time to commit and then try to move forward a bit more?[465:
+
+Fri Apr 17 16:23:02 2020 Committed and pushed T2-12..
+
+So.  How do we handle the compatible/incompatible packet at the T2ITC
+level?  We should capture it as indicating that direction is/isn't
+open for business and locking.  Where is that fact recorded?
+
+:465]
+
+:464]
+[466:
+
+Fri Apr 17 17:16:46 2020 OK now we're seeing this:
+
+    214: MSG: MenuAction o424 '' to panel ''
+    215: WRN: Big MSPAST 3599
+    216: MSG: ITC/WT status COMPATIBLE
+    217: WRN: resetAllCircuits XXX IMPLEMENT ME
+
+on startup, which seems all as expected.  Except.. we don't see ITC/ET
+reporting anything.
+
+[467:
+
+Fri Apr 17 18:00:28 2020 Which appears to be the obvious thing: We
+were only sending to userspace from the one side of the protocol.
+Ready to try again.
+
+RISKY BITS OFF.
+
+:467]
+:466]
+[468:
+
+Sat Apr 18 01:15:19 2020 OK, now getting:
+
+    215: WRN: Big MSPAST 3354
+    216: MSG: ITC/ET status COMPATIBLE
+    217: WRN: resetAllCircuits XXX IMPLEMENT ME
+    218: MSG: ITC/WT status COMPATIBLE
+    219: WRN: resetAllCircuits XXX IMPLEMENT ME
+    220: MSG: Pushing fake isDown 0 pressed 1 val 1.000000
+
+Can we clear any old to-do?
+
+[469:
+
+Sat Apr 18 01:16:54 2020 Well, everything back to :430: is already
+checked off, so..
+
+Q: Where are we in the T2EventWindow state machine?
+A: We have ALL_EW_STATES_MACRO() in T2EventWindow.h, currently full of
+   all unused states.
+
+Q: Is there a state machine framework to update those states?
+A: T2Tile::maybeInitiateEW() allocates them and puts them on the
+   master timequeue.  Then T2EventWindow::onTimeout gets called, and
+   it should update the state.  But it does randomly releases or
+   requeues itself instead, and the state remains IDLE forever.
+
+Q: What should onTimeout do instead?
+A: It should do something analogous to what itcmfm.c does with its
+   state machine, down in itc_pkt LKM.
+
+Q: And what, pray tell, does itcmfm.c do with ITS state machine?
+A: Well, each state offers two functions:
+   - timeout(), called when we time out in that state, and
+   - receive(), called when we get a packet while in that state
+   - Before calling timeout(), the framework sets up a PacketHandler
+     for the state to write to, on the assumption that's (part of)
+     what the timeout handler will want to do.
+   - (And on receive(), naturally, the framework sets up a
+     PacketHandler for the state to read from.)
+
+[470: Sat Apr 18 02:15:41 2020 This Q&A style is helpful!  Keep it
+going!
+
+Q: And do we just want to do the same thing here for T2EventWindow?
+A: Well, it's a little more complicated.
+
+Q: What makes it more complicated?
+A: Well, for one thing, because we also have this 'ITC Circuits'
+   concept that's supposed to mediate T2EventWindow packet routing.
+
+Q: But hasn't any necessary 'routing' already been done, by the time a
+   packet arrives at a T2EventWindow?
+A: Yes.. But.. the setup of a T2EventWindow.. and how to send a packet 
+   from a state..
+
+Q: You sound confused.  Perhaps you could work out an example?  Say,
+   just starting with an EW getting initiated on the active side?
+A: Well, I'm still really not sure how to code that up.
+
+Q: Could you maybe write a fantasy take on it right here right now?
+A: Maaaaaaybe.  I'll try
+
+[471:
+
+Sat Apr 18 02:36:09 2020
+
+The fantasy scene opens in T2Tile::maybeInitiateEW(), which was called
+by the 'EWInitiator' -- which already exists.  maybeInitiateEW() goes
+to tryAcquireEW, which already exists too, and, we shall assume,
+succeeds.
+
+Now, when tryAcquireEW returns, all the involved T2Tile::mSiteOwners
+have been set to point to the acquired EW, and the EW itself has been
+initialized via T2EventWindow::assignCenter, which sets up the EW's
+mCenter and mRadius.[475: And sets its state to AINIT.  And then puts
+it on the master TQ with a timeout of 0.  And the AINIT timeout()
+routine should take things from there.  In particular, it will know
+that AINIT timeout is not a failure but a beginning.
+
+So now, AINIT->timeout needs to determine if the event is hidden or
+visible.  It does its geometry work and comes up with a possibly empty
+set of ITCs that must coordinate for this event to happen
+consistently.  That must involve, I guess, allocating circuits in the
+ITCs that are in COMPATIBLE state.
+
+
+:475]
+
+[Q: Who sets up the T2EventWindow::mStateNum, that tells us what state
+    we're in?
+ A: Umm, it gets set up by the T2EventWindow ctor.
+ Q: But aren't these constructed EWs used over and over?
+ A: Umm, yeah.  Somebody needs to reset that statenum on acquisition.
+    Good catch, Q.[472: Sat Apr 18 02:57:01 2020 And perhaps that's
+    where the active/passive EW distinction should be
+    established.[473:
+
+Sat Apr 18 05:08:26 2020 OK so now T2Tile::tryAcquireEW takes a 'bool
+forActive' argument, and all the phony EWs on the TQ are now in state
+AINIT instead of IDLE.[474:
+
+Sat Apr 18 05:37:14 2020 So, back to the fantasy story.
+
+:474]
+
+:473]  :472]]
+   
+
+:471]
+
+:470]
+
+:469]
+:468]
+[476:
+
+Sat Apr 18 06:39:26 2020 OK, so we need to make a struct T2EW_OPS and
+XX-generate instances for each state.  I don't think we're doing that
+yet? [477:
+
+Sat Apr 18 06:42:31 2020 OK but we are in C++ here so it would be a
+base class with default implementations, plus XX-generated per-state
+subclasses.. [478:
+
+Sat Apr 18 06:46:55 2020 Wait. Then we have a singleton for each
+subclass?  And we have an array of ptrs to those singletons to map
+from statenumber to handlers?
+
+I guess so.  Then the timeout() and receive() methods need to get
+passed a T2EW as well as the PacketHandler, pretty exactly analogous
+to itcmfm.[479:
+
+Sat Apr 18 08:29:08 2020 OK, so we've beaten the major bugs out of the
+XX-ing for the T2EW state machine framework, and now we need to start
+defining timeout()s and receive()s..  ..at least to DIE_UNIMPLEMENTED.
+[480:
+
+Sat Apr 18 09:03:53 2020 Maybe we should include a 'stub out' arg that
+would do that for us.  It would make things easier if we're expecting
+to be changing state names and counts and rearranging things for a
+while.. 
+
+:480]
+
+:479]
+     
+ :478]
+
+:477]
+
+:476]
+[481:
+
+Sat Apr 18 15:53:08 2020 OK so dinner's in the oven, and our
+AINIT::timeout method is legitimately getting called.  So I think
+there's several things
+
+TODO
+
+[485: Sun Apr 19 03:29:04 2020 Coverted it to PacketBuffer
+DONE :485] - Flesh out our userspace PacketHandler
+
+ - Flesh out some initial packet formats
+
+:481][482:
+
+Sun Apr 19 02:15:38 2020 Is there any reason NOT to use
+src/core/include/Packet.h?  ..We'll find out..[483:
+
+Sun Apr 19 02:20:57 2020 And the first bit of friction we find is
+there's no obvious way to call ::read(fd,buf,len) on a PacketBuffer?
+There has to be.  ..Doh of course there's Read(fd,maxlen), okay..
+[484:
+
+Sun Apr 19 02:25:55 2020 Can we just hand around a PacketBuffer and
+ditch PacketHandler entirely?  Now's the time to give it a try. 
+
+:484]
+
+:483]
+
+:482]
+[486:
+
+Sun Apr 19 03:32:23 2020 OK it's all PacketBuffer now.  I note that
+src/core/include/Packet.h has PacketType definitions like UPDATE_BEGIN
+= 'b' and so forth -- do we want to just use them?
+
+Let's take a couple minutes here and reconsider.  For starters, that
+calls for s16 X and Y coords; can't we really get away with s8's?  If
+we're solid on the max EW radius being 4, there's really no way a...
+whups oh yeah I remember.  Even though intertile events can't be more
+than a few EW radii from the tile edge, we don't have some magic
+per-ITC-pair origin to reference things to.  We send event centers in
+tile coordinates, and with variable-sized tiles in mfms, you could
+easily have a tile coordinate that exceeds s8.
+
+[487:
+
+Sun Apr 19 03:52:28 2020 But what if we did establish per-ITC-pair
+origins?  Like:
+
+ ET: ITC origin is at (W-1,H/2)
+ SE: ITC origin is at (3W/4,H-1)
+ SW: ITC origin is at (1W/4,H-1)
+ WT: ITC origin is at (0,H/2)
+ NW: ITC origin is at (1W/4,0)
+ NE: ITC origin is at (3W/4,0)
+
+That's probably yet another over-optimization-of-the-wrong-thing --
+saving a few bytes on the wire -- when by far most of the time is lost
+in per-packet overheads not per-byte.
+
+But it does make we wonder about a userspace response to HELO COMPAT.
+Shouldn't we send some establishing hello packet of our own?  Giving
+our grid origin and dir8, for example?  Allowing each side to develop
+the SPoint offset for mapping coords moving through the ITC?
+
+And the real anxiety point is about establishing sequence numbers at
+the userspace ITC pair level.  The rule needs to be that once an ITC
+opens, nothing visible to the far end can be changed without an
+in-sequence packet notification going out about it.
+
+Now, in mfms we ended up not sending a giant synchronizing blast when
+a channel opened, right?  Yeah.. because.. the 'channel' never really
+opened.  It was always open.
+
+Maybe we should send a big fart full visible-sites dump when a channel
+opens?  Maybe that could be something the ITCs do on their own,
+independent of an EW?  Independent of, and before, any EWs are allowed
+to initiate in the area?
+
+But that's a pretty lot of data, way more than one packet's worth.
+
+:487]
+
+:486]
+[488:
+
+Sun Apr 19 05:07:32 2020 OK, so here's the thing right now:
+
+ - We have a whole 'circuit' level in T2ITC that's currently totally
+   unused.
+
+ - We need to understand that better.  For example, an initial cache
+   synchronization would be naturally a T2ITC function, not an T2EW
+   one.
+
+ - But that's going to take a bunch of thinking and a bunch of new
+   design.
+
+ - And it's April 19th.  I can't tear into that now.
+
+ - Checkpoint committing all this and switching to wall of science.
+
+ - When we come back, think about stuff like:
+   = T2ITC should have the power to put a 'hold' on all the sites
+     visible through it
+   = A 'hold' means that any in-progress events involving those sites
+     can continue, but no new events involving them can be initiated.
+     Those sites are 'held by the ITC'.
+   = The ITC gets awoken when sites it holds are released by an EW.
+   = Actually perhaps an ITC should hold an EWSet of all the EWs that
+     own sites the ITC cares about.  Then the ITC-with-a-hold could be
+     awoken only when that set is empty.
+   = In any case, when the holding ITC's sites are quiescent, the
+     holding ITC ships the whole damn visible subspace, using however
+     many packets-full it takes.
+   = When the visible subspace dump has been received, the receiving
+     ITC switches to state 'sync' or something, and sequence numbers
+     are then required to make any changes to visible space.
+
+[489:
+
+Sun Apr 19 06:48:10 2020 Well, not clear that that's really the
+answer, vs the incremental approach used in mfms, but we'll see.
+
+Committing.
+
+:489]
+
+:488]
