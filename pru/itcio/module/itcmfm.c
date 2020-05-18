@@ -60,7 +60,8 @@ static bool initReadPacketHandler(PacketHandler * pm, u8 * data, u32 len) {
   if (len < 2) return false;
   
   if ((pm->pktbuf[0]&~0x7) != 0xa0) return false;
-  if ((pm->pktbuf[1]&~0xf) != 0xc0) return false;
+  if ((pm->pktbuf[1]&PKT_HDR_BYTE1_BITMASK_XITC) !=
+      PKT_HDR_BYTE1_XITC_VALUE_KITC) return false;
   if ((pm->pktbuf[1]&0xf) >= MAX_STATE_NUMBER) return false;
 
   pm->index = 2;
@@ -105,7 +106,10 @@ static void initWritePacketHandler(PacketHandler * pm, ITCMFMDeviceState *ds)
   BUG_ON(oursn > 0xf);       /* Only 4 bits for sn */
 
   pm->pktbuf[pm->index++] = 0xa0|dir8;  /*standard+urgent to dir8*/
-  pm->pktbuf[pm->index++] = 0xc0|oursn; /*mfm+itc+our statenumber*/
+  pm->pktbuf[pm->index++] =
+    PKT_HDR_BYTE1_BITMASK_MFM |         /* mfm + */
+    PKT_HDR_BYTE1_XITC_VALUE_KITC |     /* xitc==kitc + */
+    oursn;                              /* our statenumber*/
 }
 
 static void writeByteToPH(PacketHandler * ph, u8 byte)
@@ -450,22 +454,12 @@ void receive_CONFIG_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
   }
 }
 
-static bool trySendCompatibilityToUserSpace(ITCMFMDeviceState * mds, bool compatible) {
-  ITCPktDeviceState * pktdevstate = (ITCPktDeviceState *) mds;
-  ITCPacketBuffer * ipb = &(pktdevstate->mUserIB);
-  u8 byte;
-  if (kfifo_avail(&ipb->mFIFO) < 2) {
-    DBGPRINTK(DBG_PKT_DROPS,
-              KERN_INFO "No room to deliver KITC %s to %s; resetting \n",
-              compatible ? "COMPATIBLE" : "incompatible",
-              getDir6Name(mds->mDir6));
-    return false;
-  }
+// Now redoing this to mean 'setEnabledStatus to 1 or 2'
+static void setEnabledStatusAndKITCCompatibility(ITCMFMDeviceState * mds) {
+  bool compatible = compatibleMFZId(mds);
 
-  byte = 0xc0 | (compatible ? 1 : 2);
-  kfifo_in(&ipb->mFIFO, &byte, 1);
+  setITCEnabledStatusDir8(mapDir6ToDir8(mds->mDir6), compatible ? 2 : 1);
   setStateKITC(mds, compatible ? SN_COMPATIBLE : SN_INCOMPATIBLE);
-  return true;
 }
 
 /**STATE CHECK**/
@@ -474,11 +468,9 @@ void timeout_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler * ph)
   MFMTileState * ts = &S.mMFMTileState;
   writeByteToPH(ph, ts->mToken);
   writeZstringToPH(ph, ts->mMFZId);
-  if (!trySendCompatibilityToUserSpace(mds, compatibleMFZId(mds))) resetKITC(mds);
-  else {
-    setTimeoutKITC(mds, jiffiesToWait(WC_FULL));
-    sendPacketHandler(ph);
-  }
+  setEnabledStatusAndKITCCompatibility(mds);
+  setTimeoutKITC(mds, jiffiesToWait(WC_FULL));
+  sendPacketHandler(ph);
 }
 
 void receive_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
@@ -490,8 +482,8 @@ void receive_CHECK_KITC(ITCMFMDeviceState * mds, PacketHandler *ph)
     u32 idx = readZstringFromPH(ph, mds->mITCState.mMFZIdThem, sizeof(MFZId));
     mds->mITCState.mToken = (u8) ch;
     if (idx < sizeof(MFZId)) mds->mITCState.mMFZIdThem[idx] = '\0';
-    if (!trySendCompatibilityToUserSpace(mds,compatibleMFZId(mds))) resetKITC(mds);
-    else setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
+    setEnabledStatusAndKITCCompatibility(mds);
+    setTimeoutKITC(mds, jiffiesToWait(WC_HALF));
   }
 }
 

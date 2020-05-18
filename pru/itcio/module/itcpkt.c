@@ -1516,26 +1516,47 @@ const char * getDir6Name(u8 dir6) {
 
 static void setITCEnabledStatus(int pru, int prudir, int enabled) {
   u32 dir8 = mapPruAndPrudirToDir8(pru,prudir); /*returns 8 on bad*/
+  if (dir8 < 8)
+    setITCEnabledStatusDir8(dir8, enabled);
+}
+
+// enabled 0: no, 1: yes but no mfz compat known, 2: mfz compat known
+void setITCEnabledStatusDir8(u32 dir8, int enabled) {
   u32 dir6 = mapDir8ToDir6(dir8);
   u32 dir8x4 = dir8<<2;
-  int bit = (0x1<<dir8x4);
-  bool existing = (S.mItcEnabledStatus & bit);
-  if (enabled && !existing) {
-    S.mItcEnabledStatus |= bit;
-    printk(KERN_INFO "ITCCHANGE:UP:%s\n", getDir8Name(dir8));
-    ADD_ITC_EVENT(makeItcDirEvent(dir6,IEV_DIR_ITCUP));
-    resetKITC(S.mMFMDeviceState[dir6]);
-  } else if (!enabled && existing) {
-    S.mItcEnabledStatus &= ~bit;
+  int byte = (0xf<<dir8x4);
+  bool existing = (S.mItcEnabledStatus & byte);
+  if (enabled > 0 && existing == 0) {
+    S.mItcEnabledStatus |= (enabled<<dir8x4);
+    printk(KERN_INFO "ITCCHANGE:%s:%s\n", enabled > 1 ? "COMPAT" : "UP", getDir8Name(dir8));
+    if (enabled == 1) {
+      ADD_ITC_EVENT(makeItcDirEvent(dir6,IEV_DIR_ITCUP));
+      resetKITC(S.mMFMDeviceState[dir6]);
+    }
+  } else if (enabled == 0 && existing > 0) {
+    S.mItcEnabledStatus &= ~byte;
     printk(KERN_INFO "ITCCHANGE:DOWN:%s\n", getDir8Name(dir8));
     ADD_ITC_EVENT(makeItcDirEvent(dir6,IEV_DIR_ITCDN));
     resetKITC(S.mMFMDeviceState[dir6]);
+  } else if (enabled > 0 && existing > 0) {
+    // Monitor packets from the PRUs generate enabled == 1 calls here
+    // even if we're already at 2 with known compatibility.  So, ugh,
+    // we say we can only go from 1->2 here; ignore 2->1 transitions.
+    // If the link truly drops we'll get a 0 and can then reset to 1
+    if (existing == 1 && enabled == 2) {
+      S.mItcEnabledStatus &= ~byte;
+      S.mItcEnabledStatus |= (enabled<<dir8x4);
+    }
   }
 }
 
 bool isITCEnabledStatusByDir8(int dir8) {
+  return getITCEnabledStatusByDir8(dir8) > 0;
+}
+
+u32 getITCEnabledStatusByDir8(int dir8) {
   int dir8x4 = dir8<<2;
-  return (S.mItcEnabledStatus>>dir8x4)&0x1;
+  return (S.mItcEnabledStatus>>dir8x4) & 0xf;
 }
 
 static int routeOutboundStandardPacket(const unsigned char pktHdr, size_t pktLen)
@@ -1617,6 +1638,13 @@ static ssize_t writePacketHelper(struct file *file,
   }
 
   DBGPRINTK(DBG_PKT_SENT, KERN_INFO "writePacketHelper(%d) read pkt type %s from user\n",minor, strPktHdr(pktHdr));
+
+#if 0 // locl stnd betwee MFM<->KITC now considered harmful
+  // HANDLE USR->LKM LOCLSTND PACKETS
+  if ((pktHdr & 0xc0) == 0x80) {
+    return handleUsrToLKMLoclStnd(minor,pktHdr,cdevstate);
+  }
+#endif
 
   if (minor == PKT_MINOR_BULK || minor == PKT_MINOR_FLASH ||
       (minor >= PKT_MINOR_MFM_ET && minor <= PKT_MINOR_MFM_NE)) {
@@ -2194,12 +2222,13 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
             pktdev = S.mPktDeviceState[0]; /* 0==/dev/itc/bulk */
           else if (!(byte1&PKT_HDR_BYTE1_BITMASK_MFM)) /* urgent non-mfm is flash traffic */
             pktdev = S.mPktDeviceState[1]; /* 1==/dev/itc/flash */
-          else if (!(byte1&PKT_HDR_BYTE1_BITMASK_KITC)) { /* mfm non-kitc is event traffic */
+          else if ((byte1&PKT_HDR_BYTE1_BITMASK_XITC) !=
+                   PKT_HDR_BYTE1_XITC_VALUE_KITC) { /* mfm non-kitc is ITC traffic */
             /* which we only deliver if we're known compatible */
             if (isKITCCompatible(S.mMFMDeviceState[dir6]))
               pktdev = &S.mMFMDeviceState[dir6]->mPktDevState;
             /* else pktdev remains 0 */
-          } else /* URG & MFM & ITC are all 1 */{
+          } else /* URG & MFM, and XITC==0 */{
             handleKITCPacket(S.mMFMDeviceState[dir6], bytes, len);
             /*pktdev remains 0*/
           }

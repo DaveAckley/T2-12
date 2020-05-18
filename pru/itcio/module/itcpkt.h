@@ -87,8 +87,19 @@ typedef enum packet_header_bits {
 
 typedef enum packet_header_byte1_bits {
   PKT_HDR_BYTE1_BITMASK_MFM  = 0x80,      /* MFM traffic (rather than flash) */
-  PKT_HDR_BYTE1_BITMASK_KITC = 0x40,      /* Kernel ITC traffic (rather than userspace) */
+  PKT_HDR_BYTE1_BITMASK_XITC = 0x70,      /* Types of ITC traffic */
 } PacketHeaderByte1Bits;
+
+typedef enum packet_header_byte1_xitc_values {
+  PKT_HDR_BYTE1_XITC_VALUE_KITC =   0x0<<4, /* KITC (rather than userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_RING =   0x1<<4, /* Circuit ring (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_HANGUP = 0x2<<4, /* Circuit hangup (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CUPD =   0x3<<4, /* Cache updates (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CUPDAK = 0x4<<4, /* Cache update ack (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_RSVACT = 0x5<<4, /* Reserved active (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_RSVPSV = 0x6<<4, /* Reserved passive (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_ITCCMD = 0x7<<4, /* ITC command (userspace) */
+} PacketHeaderByte1XITCValues;
 
 /////////TRACING SUPPORT
 
@@ -307,6 +318,11 @@ extern ITCModuleState S;
 
 bool isITCEnabledStatusByDir8(int dir8) ;
 
+u32 getITCEnabledStatusByDir8(int dir8) ;
+
+void setITCEnabledStatusDir8(u32 dir8, int enabled) ;
+
 ssize_t trySendUrgentRoutedKernelPacket(const u8 *pkt, size_t count) ;
+
 
 #endif /* ITC_PKT_H */
