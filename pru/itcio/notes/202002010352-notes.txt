@@ -1,4 +1,4 @@
-{642}  -*- text -*-
+{680}  -*- text -*-
 [0:
 [3:
 [35:
@@ -8821,6 +8821,12 @@ EWINTRA -> EWPAUSE -> CACHEXG* -> EWINTER
     locks must be taken using the EW state machine + the allocated
     circuit.
 
+    In TO EWINTER we ship our state just to be neighborly and do a
+    random long timeout;
+
+    (4a) In RP EWINTER, if our state < CACHEXG, we reset, else we do
+         nothing.
+
 [640:
 
 Sun May 17 17:41:35 2020 What's wrong with that, I axe you.  Time to
@@ -8834,5 +8840,613 @@ Mon May 18 00:39:56 2020 Well, going to try the 'simplified' scheme of
 :639:.  Committing all this WIP first..
 
 :641]
+[642:
+
+Mon May 18 01:40:57 2020 Committed..  Tearing up the T2ITC state
+machine.  
+
+:642]
+[643:
+
+Mon May 18 04:11:25 2020 Ohhhhhhhhhhhh man.  The brand new simplified
+just written no yoink T2ITC protocol kind of seems to be working first
+try:
+
+    wconfig.txt:171:57: debug: Name:PhysicsCtl_Button_Seed, Type:MenuItem, Parent:PhysicsCtl, 300x94@(158,4)
+    wconfig.txt:177:55: debug: Name:PhysicsCtl_Button_X, Type:MenuItem, Parent:PhysicsCtl, 300x94@(81,209)
+
+End of window config during start up.
+
+    14: WRN: Big MSPAST 2756
+    15: ERR: void MFM::T2ITC::abortAllEWs(): WRITE ME XXX
+
+That will come in the next phase, as we actually start dealing with
+EWs..  
+
+    16: MSG: ->ITC/ET:EWINTRA
+    17: ERR: void MFM::T2ITC::abortAllEWs(): WRITE ME XXX
+    18: MSG: ->ITC/SE:EWINTRA
+    19: ERR: void MFM::T2ITC::abortAllEWs(): WRITE ME XXX
+    210: MSG: ->ITC/SW:EWINTRA
+    211: ERR: void MFM::T2ITC::abortAllEWs(): WRITE ME XXX
+    212: MSG: ->ITC/WT:EWINTRA
+    213: ERR: void MFM::T2ITC::abortAllEWs(): WRITE ME XXX
+    214: MSG: ->ITC/NW:EWINTRA
+    215: ERR: void MFM::T2ITC::abortAllEWs(): WRITE ME XXX
+    216: MSG: ->ITC/NE:EWINTRA
+    217: MSG:   ITC/WT:EWINTRA wrote 2 == 2
+    218: MSG: ->ITC/WT:EWPAUSE
+
+WT detects compatibility and begins the opening sequence.
+
+    219: MSG:   ITC/ET:EWINTRA wrote 2 == 2
+    220: MSG: ->ITC/ET:EWPAUSE
+
+ET does too.
+
+    221: ERR: MFM::u32 MFM::T2ITC::registeredEWCount() const: WRITE ME XXX
+
+Also to come in next phase.  Current returns 0 meaning no EWs to be
+waiting on.
+
+    222: MSG: ->ITC/WT:CACHEXG
+
+So it's on to cache exchange.
+
+    223: ERR: MFM::u32 MFM::T2ITC::registeredEWCount() const: WRITE ME XXX
+    224: MSG: ->ITC/ET:CACHEXG
+
+ET ditto
+
+    225: MSG:   ITC/WT:CACHEXG wrote 254 == 254
+    226: MSG:   ITC/ET:CACHEXG wrote 254 == 254
+    227: MSG:   ITC/WT:CACHEXG wrote 254 == 254
+    228: MSG:   ITC/ET:CACHEXG wrote 254 == 254
+    229: MSG:   ITC/WT:CACHEXG wrote 254 == 254
+    230: MSG:   ITC/ET:CACHEXG wrote 254 == 254
+    231: MSG:   ITC/WT:CACHEXG wrote 254 == 254
+    232: MSG:   ITC/ET:CACHEXG wrote 254 == 254
+    233: MSG:   ITC/WT:CACHEXG wrote 254 == 254
+    234: MSG:   ITC/ET:CACHEXG wrote 254 == 254
+    235: MSG:   ITC/WT:CACHEXG wrote 254 == 254
+    236: MSG:   ITC/WT:CACHEXG wrote 254 == 254
+    237: MSG:   ITC/ET:CACHEXG wrote 254 == 254
+    238: MSG:   ITC/WT:CACHEXG wrote 254 == 254
+    239: MSG:   ITC/ET:CACHEXG wrote 254 == 254
+    240: MSG:   ITC/WT:CACHEXG wrote 212 == 212
+
+WT sends the last of its visibles.
+
+    241: MSG:   ITC/ET:CACHEXG wrote 254 == 254
+
+ET is still going
+
+    242: MSG:   ITC/WT:CACHEXG wrote 2 == 2
+
+WT sends the empty "I'm done" packet.
+
+    243: MSG:   ITC/ET:CACHEXG wrote 212 == 212
+
+ET sends the last of its stuff.
+
+    244: MSG:   ITC/WT:CACHEXG wrote 2 == 2
+
+WT sends another "I'm done" packet, which is not really what I
+intended, but is what I coded.  If we wanted to avoid this, we'd need
+to have some additional state or flag to record the fact that we
+already announced we're done sending.  But it doesn't really hurt much
+as it is; recvCacheAtoms gets called an extra time and has to discover
+there's no atoms in this packet either.
+
+    245: MSG:   ITC/ET:CACHEXG wrote 2 == 2
+
+ET says "I'm done sending".  
+
+    246: MSG: ->ITC/ET:EWINTER
+
+And since ET already knows WT is done sending, it's on to EWINTER.
 
 
+    247: MSG:   ITC/WT:CACHEXG wrote 2 == 2
+
+WT announces it's done one more time.
+
+    248: MSG: ->ITC/WT:EWINTER
+
+But now it knows ET is done too, so it's on to EWINTER!
+
+    249: MSG:   ITC/WT:EWINTER wrote 2 == 2
+    250: MSG:   ITC/ET:EWINTER wrote 2 == 2
+
+Every ten seconds or so, they just say a friendly hello -- even though
+normally they'll be pounding circuit traffic to each other non-stop
+while in EWINTER: It's not like they won't know the other side is there.
+
+    251: MSG: Pushing fake isDown 0 pressed 1 val 1.000000
+    252: MSG: Pushing fake isDown 1 pressed 0 val 0.000000
+
+I switched to the TQ just to see what's what.  Everything looked as
+expected. 
+
+    253: MSG:   ITC/WT:EWINTER wrote 2 == 2
+    254: MSG:   ITC/ET:EWINTER wrote 2 == 2
+
+:643]
+[644:
+
+Mon May 18 05:03:09 2020 Well!  So that's some progress!  I guess I'm
+a little unhappy that the names EWINTER vs EWINTRA are so visually
+similar; they're hard to tell apart on the TW display.  EWCLOSED vs
+EWOPEN?  LOCAL/REMOTE?  IN/OUT?  CLOSED/OPEN?  ISOLATED/LINKED?
+EDGE/BRIDGE?  (Grr, that pair's cool, but lots of letter overlap.)
+
+EDGE/LINK?  INTERNAL/EXTERNAL? INT/EXT?
+
+Maybe just CLOSED/OPEN.  It's pretty obvious.
+
+:644]
+[645:
+
+Mon May 18 06:13:14 2020 Going with SHUT/OPEN. 
+
+:645]
+[646:
+
+Mon May 18 06:14:05 2020 So now it's time for the EW state machine.
+Shall we just talk about that informally first for a little?
+
+It starts with EWInitiator::onTimeout.
+
+Which goes to T2Tile::maybeInitiateEW.
+
+Which picks random centers and goes to T2Tile::considerSiteForEW
+
+Which examines the site and determines its radius.  If the radius is
+0, the event is done.
+
+If the radius is non-zero, maybeInitiateEW then goes to
+T2Tile::tryAcquireEW.
+
+Which goes to T2Tile::allocEW()
+
+Which consults T2Tile::mFree to see if any EWs are available.  If not,
+tryAcquireEW returns false, so maybeInitiateEW returns false, so
+EWInitiator::onTimeout reschedules for about 5ms in the future.
+
+Otherwise an EW was allocated.  And tryAcquireEW goes to
+T2EventWindow::tryInitiateActiveCenter with the given center and
+radius.
+
+Which initializes the EW and records the center and radius in it.
+
+Then it goes to checkSiteAvailability.
+
+Which scans the whole neighborhood checking to see if all the sites
+are unowned.  If any are owned, that's an overlap so this event can't
+happen.
+
+If checkSiteAvailability returns false for any reason,
+tryInitiateActiveEvent returns false as well.  When that happens,
+T2Tile::tryAcquireEW calls freeEW to get rid of it.  Note that sooner
+or later, T2ITCs will need to be in that process of freeing an EW
+somehow.
+
+If sites ARE available, checkSiteAvailability then checks if the site
+is hidden.  If so, it marks that site as live and continues.
+
+For peripheral (non-hidden) sites, checkSiteAvailability then checks
+all the ITCs to see if one or more contain the site.  For each T2ITC
+that is, goes to addITCIfNeeded, which adds that itc to
+T2EventWindow::mCircuits if it's not already there.  It seems that
+mCircuits[].mITC != 0 is (part of) how we couple T2EventWindows and
+T2ITCs, so we'll need to focus on that when aborting EWs or generally
+cleaning up.
+
+If the site under consideration is in cache, checkSiteAvailability
+asks the itc if isCacheUsable, and T2ITC::isCacheUsable gets that
+information from the state machine tables.  Specifically, if XX CCH
+arg in ALL_ITC_STATES_MACRO is non-zero, then the cache is usable.  In
+the current code, that is true only of state ITCSN_OPEN.  Otherwise
+cache sites are not live.
+
+For visible sites, checkSiteAvailability goes to the itc asking if it
+isVisibleUsable, which accesses the XX VIZ arg in
+ALL_ITC_STATES_MACRO.  isVisibleUsable is true in ITCSN_SHUT and
+ITCSN_OPEN, and false everywhere else.
+
+Note well: If isVisibleUsable says no, checkSiteAvailability
+immediately returns false WITHOUT ZEROING OUT any mCircuits[].mITCs
+that it may have set up.
+
+Finally, if checkSiteAvailability returns true, then all sites are
+available and usable, and the EW's mSitesLive[] array has been set up
+indicating the live sites for this event.
+[647:
+
+Mon May 18 07:59:09 2020 Have to nap.  But that was useful for heading
+into this T2EW<->T2ITC interaction phase.  (Maybe we could say you
+need mCircuits[].mITC != 0 AND mCircuits[].mCircuitNum != MAX_VAL or
+something, for the EW to be considered 'registered' with the ITC, from
+the EW side.
+
+Sleep now.[648:
+
+Mon May 18 13:05:21 2020 OK where were we.
+
+If checkSiteAvailability returns false, tryInitiateActiveEvent returns
+false, and T2Tile::tryAcquireEW releases the (unused) EW via freeEW,
+which currently does nothing except put the EW back into
+T2Tile::mFree.
+
+Otherwise checkSiteAvailability returns true, and
+tryInitiateActiveEvent then goes to checkCircuitAvailability.  Which
+is currently unimplemented, and always returns false, thus blowing
+every event right there.
+
+So that's the frontier.
+
+:648]
+
+:647]
+
+:646]
+[649:
+
+Mon May 18 13:11:59 2020 So that's where we are.  A couple other
+notes/thoughts:
+
+ - When EWs are in T2Tile::mFree, they are not scheduled.
+
+ - Are we thinking (I think) that even hidden EWs are NOT going to
+   complete atomically?  The way tryInitiateActiveEvent is written, if
+   we get all the way through everything, we schedule the EW either
+   way.
+
+ - If we had a shortcut path for hidden events it could be notably
+   shorter -- wouldn't have to hog and unhog mSiteOwners, for
+   example..  But ah, come on, all that's going to be down in the
+   noise; this is not a 'tight loop' we're talking here.  Let's
+   continue to assume non-atomic for all EWs.
+
+[650:
+
+Mon May 18 13:19:17 2020 So.  EW overview:
+
+Random center + allocate EW + init EW + checkSiteAvailability
+
+that's what exists now.  Then I'd think
+
+ + registerWithITCs + schedule
+
+and then we're into the EW state machine.
+
+Right now we're doing
+
+ checkCircuitAvailability + hog region + registerWithITCs 
+
+but I think easier cleanup might want us to do circuit allocation the
+same time as we register with the ITCs.
+
+Let's look at the resource lifetimes of an EW.[651:
+
+Mon May 18 13:29:37 2020 An EW has up to two CircuitInfos.  Each
+CircuitInfo has a T2ITC * and a CircuitNum.
+
+Suppose we 'register with the ITC' as part of checking site
+availability.  Like in addITCIfNeeded.  Change that to return bool --
+addITCIfNeededAndAvailable.  And at that point the EW will be
+responsible for deregistering from the ITC as during its lifetime.
+
+bool tryRegisterWithITC(T2ITC & itc)
+
+Rule for EW is you have to register with itc if any of your sites are
+contained by the itc's visible or cache.  (Hmm checkSiteAvailability
+is currently check its sites against just the visible rect.  That's
+probably wrong, right? [652: Mon May 18 13:52:29 2020 Changed it to
+tile.getVisibleAndCacheRect(dir6).  We shall see. :652])
+
+[653:
+
+Mon May 18 13:52:55 2020 So the invariant is going to be that
+EW->mCircuits[].mITC == ITCPTR implies that ITCPTR->mSOMETHING == EW,
+and that will be INDEPENDENT of whether a circuit is currently
+allocated for the EW or not.
+
+So, an instance of that invariant will be created by
+T2EventWindow::tryRegisterWithITC(T2ITC&), which will go to
+T2ITC::registerEventWindow(T2EventWindow &), which will.. put it in an
+EWSet?  ..But EWSet doesn't have fast find.  Does each EW have a
+number, so we could index off that?[654:
+
+Mon May 18 14:25:58 2020 Yes, each EW has a const mSlotNum, assigned at
+ctor time in the range 1..MAX_EWSLOT.  (We're contorting ourselves to
+avoid using slotnum==0 for some reason.)
+
+And we can map from slotnum back to EW* via T2Tile::getEW(slotnum).
+
+So. What is the T2ITC::mSOMETHING going to be?[655:
+
+Mon May 18 14:56:53 2020 Trying
+
+      T2EventWindow *(T2ITC::mRegisteredEWs[MAX_EWSLOT+1]);
+
+[656:
+
+Mon May 18 15:43:00 2020 Saying T2EW::finalizeEW() is where we
+unregister from ITCs.
+
+:656]
+:655]
+
+:654]
+
+:653]
+  
+
+:651]
+
+:650]
+
+:649]
+[657:
+
+Mon May 18 15:52:53 2020 Hmm we're building clean at the moment.  But
+lots of stuff doesn't exist.  Maybe see what blows up, try to get a
+little concrete behavior here?[658:
+
+Mon May 18 15:54:35 2020 Well, so, concrete:
+
+ - abortAllEWs still doesn't exist
+
+ - registeredEWCount doesn't exist (but that's easy now, right?)
+
+ - After getting to open, still no events seem to be happening.
+
+Let's work on those![659:
+
+Mon May 18 16:11:43 2020 OK, first two knocked off.  Now let's watch
+EWInitiator again and see what's what.
+
+:659]
+
+:658]
+
+:657]
+[660:
+
+Mon May 18 16:15:50 2020 OK working through from EWInitiator.  We only
+have the one non-zero site so that's the one we're focusing on.
+
+We've gotten as far as:
+
+    #0  MFM::T2EventWindow::assignCenter (this=0x506548, tileSite=..., radius=4, activeNotPassive=true)
+        at include/T2EventWindow.h:124
+    #1  0x00459dc6 in MFM::T2EventWindow::tryInitiateActiveEvent (this=0x506548, center=..., radius=4)
+        at src/T2EventWindow.cpp:106
+    #2  0x0045136a in MFM::T2Tile::tryAcquireEW (this=0x4b9008 <MFM::T2Tile::get()::THE_INSTANCE>, center=..., radius=4, 
+        forActive=true) at src/T2Tile.cpp:364
+    #3  0x00451a00 in MFM::T2Tile::maybeInitiateEW (this=0x4b9008 <MFM::T2Tile::get()::THE_INSTANCE>) at src/T2Tile.cpp:444
+    #4  0x00450148 in MFM::EWInitiator::onTimeout (this=0x4ec970 <MFM::T2Tile::get()::THE_INSTANCE+211304>, srctq=...)
+        at src/T2Tile.cpp:18
+
+and just nothing that assignCenter is currently setting the EWSN to
+EWSN_AINIT or EWSN_PINIT.. which seems maybe a little out of
+assignCenter's lane but we'll see.[661:
+
+Mon May 18 16:19:05 2020 Got through getSiteAvailability OK.  And now
+to checkCircuitAvailability which still doesn't exist and returns
+false.
+
+So that's where we are.
+
+And how should checkCircuitAvailability work?[665:
+
+Mon May 18 23:33:05 2020 Considering the EW's ITCs..  :665]
+
+ - If we're in ITCSN_SHUT, we don't need a circuit
+
+ - Otherwise, if we're NOT in ITCSN_OPEN, we shouldn't be asking,
+   because we already checked isVisibleUsable in
+   checkSiteAvailability. 
+
+ - If we are in ITCSN_OPEN, we go to T2ITC::tryAllocateActiveCircuit.
+   If we get ALL_CIRCUITS_BUSY, we return false from
+   checkCircuitAvailability, as we are doing now.  Otherwise, we store
+   the resulting circuitnum in mCircuits[].mCircuitNum associated with
+   the itcs.
+
+ - That means we now also need to release that circuit when we
+   finalize the EW.  And what, really, are we using to mean 'no
+   circuitnum allocated', there?[662:
+
+Mon May 18 16:35:24 2020 It seems like although we're using
+1..MAX_EWSLOTS for event window numbering, we're using
+0..CIRCUIT_COUNT-1 for circuit numbering.  So let's use
+CircuitNum.maxof (==0xff) to mean unallocated.
+
+:662]
+
+:661]
+
+:660]
+[663:
+
+Mon May 18 17:09:24 2020 Getting to be time to break for the evening.
+Leaving it busted with T2ITC::freeActiveCircuit needing work, and
+finalizeEW, and still still checkCircuitAvailability.
+
+:663]
+[664:
+
+Mon May 18 23:31:16 2020 OK, we're now back to
+checkCircuitAvailability.
+[666:
+
+Mon May 18 23:42:53 2020 And now at long long last we have a cut at it..
+
+:666]
+:664]
+[667:
+
+Mon May 18 23:46:10 2020 OK!  Finally on to a DIFFERENT incomplete
+code!  Now it's time to hog the region!
+
+[668:
+
+Mon May 18 23:54:01 2020 And just like that we're finally into the
+actual T2EventWindow state machine code:
+
+    216: ERR: src/T2EventWindow.cpp:243: (timeout) XXX IMPLEMENT ME
+ ..
+    241	  //// DEFAULT HANDLERS FOR T2EWStateOps
+    242	  void T2EWStateOps::timeout(T2EventWindow & ew, T2PacketBuffer & pb, TimeQueue& tq) {
+    243	    DIE_UNIMPLEMENTED();
+    244	  }
+    245	
+    246	  void T2EWStateOps::receive(T2EventWindow & ew, T2PacketBuffer & pb, TimeQueue& tq) {
+
+[669:
+
+Mon May 18 23:59:08 2020 Aand our first state blowout is:
+
+    219: ERR: ABEHAVE on EW32/ABEHAVE: no timeout handler
+    220: ERR: src/T2EventWindow.cpp:244: (timeout) XXX IMPLEMENT ME
+
+because, indeed, our only possible event is the DReg-in-the-middle,
+and it's hidden, so we skip past locks and go straight to behave.
+
+What say we move our DReg into the NW corner, though?  Hidden events
+aren't so interesting since most of that code will need to be torn out
+when ulam comes back in anyway..  DReg-in-the-corner can get both SHUT
+and OPEN events, and getting that working is big poop.
+
+:669]
+:668]
+
+:667]
+[670:
+
+Tue May 19 00:24:38 2020 Ah now we're blowing an actual assertion for
+a change; what's going on?
+
+    #1  0x0045d58e in MFM::T2ITC::registerEWRaw (this=0x4b9d94 <MFM::T2Tile::get()::THE_INSTANCE+3468>, ew=...)
+        at src/T2ITC.cpp:371
+    371	    MFM_API_ASSERT_STATE(isVisibleUsable());
+
+[671:
+
+Tue May 19 00:28:24 2020 So, we're in ITC/WT, and we just saw:
+
+    232: MSG:   ITC/WT:CACHEXG wrote 254 == 254
+
+and so indeed, isVisibleUsable is returning false, which is what's
+blowing the assertion.  So, this is a good case.  We should have
+detected the problem and blown up this particular event before trying
+to register the EW.  Why didn't that happen?[672:
+
+Tue May 19 00:33:13 2020 Looks like because checkSiteAvailability was
+trying to be tricky and ended up doing things in the wrong order.  
+Really, we should be going to isVisibleUsable as soon as we find a
+site in the visible region.  Problem is our opening check combines
+both visible and cache.  Let's just hack it, here.[673:
+
+Tue May 19 00:38:26 2020 Now wait a second, here.  If visible isn't
+usable due to ITC not being either SHUT or OPEN, the same is going to
+be true of cache, too, right?  isCacheUsable ought to presume
+isVisibleUsable..  Which means we don't have to distinguish cache from
+visible for usability purposes in checkSiteAvailability.
+
+:673]
+
+:672]
+
+:671]
+
+:670]
+[674:
+
+Tue May 19 00:55:39 2020 Well, we got through
+checkCircuitAvailability, and correctly differentiated between ITC/WT,
+which did need a circuit because it was OPEN, and ITC/NW, which didn't
+because it was SHUT.
+
+Now it appears we've successfully hogged the whole region...[675:
+
+Tue May 19 00:57:48 2020 And we're on to (the unimplemented) lock code:
+
+    135	    if (isRegisteredWithAnyITCs()) {
+    Value returned is $203 = true
+    (gdb) s
+    136	      setEWSN(EWSN_AWLOCKS);
+    (gdb) n
+    140	    schedule(tq,0);   // NOW
+    (gdb) n
+    (gdb) c
+    Continuing.
+    247: WRN: Big MSPAST 48811
+    248: WRN: Big deltams 616242 on update 6
+    249: MSG:   ITC/WT:OPEN wrote 2 == 2
+    250: MSG:   ITC/ET:OPEN wrote 2 == 2
+    251: ERR: src/T2EventWindow.cpp:188: (timeout) XXX IMPLEMENT ME
+
+:675]
+
+:674]
+[676:
+
+Tue May 19 01:43:41 2020 OK now we're blowing up in AWLOCKS::timeout,
+and we need an AWLOCKS packet to send.  And indeed here's where we
+will need the yoink protocol.  I'm already thinking it's better to
+minimize official state machine states even if that means adding more
+miscellaneous state, so we'll remember our yoink-bit on the side
+rather than thinking about AWLOCKS0 and AWLOCKS1 or whatever.
+
+So, AWLOCKS::timeout.  How do we know this is the first time we've
+gotten here?  Do we want to do locks-related inits before we set
+AWLOCKS?
+
+Also, AWLOCKS (and all EW -- as opposed to T2ITC -- intertile traffic)
+is supposed to travel via channels, and all that code is unwritten.
+
+Well, so what does a lock request carry?
+
+  - ew center + radius
+  - yoink bit
+
+[677:
+
+Tue May 19 01:53:25 2020 Referring to T2-PHF-15, it seems that AWLOCKS
+would be equivalent/shipping as a 'Ring' packet.. ?  Now, all the
+T2TIC packets go into the 'ITC state' XITC, so maybe all the active
+EW stuff could go into one... no.. we need a channel number AND a
+state number..
+
+But we can still think of 'ring' as for an active lock request,
+recognizing that we'll have to deal with mapping between circuit
+packets and EWStateOps receive handlers.
+
+[678:
+
+Tue May 19 02:12:06 2020 So, ring.  We're on to byte[2] now.  Suppose
+we just take the whole thing for ew state
+
+byte[0]     byte[1]    byte[2]
+0xc0|dir8   0x90|cn    0xf0|ewsn
+
+where we're leading with an 0xf0 to limit the state number size and
+reserve codes for the future.  Then we'll be on the byte[3] and beyond
+for ewsn args.
+
+Let's just set this much up.  We'll need a second level of handler in
+T2ITC::tryHandlePacket to detect XITC==1.  Actually, let's detect
+XITC==1..4 and dish for all of them.[679:
+
+Tue May 19 02:18:20 2020 Actually let's commit first.
+
+:679]
+
+:678]
+
+:677]
+
+:676]
