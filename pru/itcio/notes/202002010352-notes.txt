@@ -1,4 +1,4 @@
-{680}  -*- text -*-
+{742}  -*- text -*-
 [0:
 [3:
 [35:
@@ -8843,7 +8843,7 @@ Mon May 18 00:39:56 2020 Well, going to try the 'simplified' scheme of
 [642:
 
 Mon May 18 01:40:57 2020 Committed..  Tearing up the T2ITC state
-machine.  
+machine.
 
 :642]
 [643:
@@ -8861,7 +8861,7 @@ End of window config during start up.
     15: ERR: void MFM::T2ITC::abortAllEWs(): WRITE ME XXX
 
 That will come in the next phase, as we actually start dealing with
-EWs..  
+EWs..
 
     16: MSG: ->ITC/ET:EWINTRA
     17: ERR: void MFM::T2ITC::abortAllEWs(): WRITE ME XXX
@@ -8940,7 +8940,7 @@ there's no atoms in this packet either.
 
     245: MSG:   ITC/ET:CACHEXG wrote 2 == 2
 
-ET says "I'm done sending".  
+ET says "I'm done sending".
 
     246: MSG: ->ITC/ET:EWINTER
 
@@ -8966,7 +8966,7 @@ while in EWINTER: It's not like they won't know the other side is there.
     252: MSG: Pushing fake isDown 1 pressed 0 val 0.000000
 
 I switched to the TQ just to see what's what.  Everything looked as
-expected. 
+expected.
 
     253: MSG:   ITC/WT:EWINTER wrote 2 == 2
     254: MSG:   ITC/ET:EWINTER wrote 2 == 2
@@ -8987,7 +8987,7 @@ Maybe just CLOSED/OPEN.  It's pretty obvious.
 :644]
 [645:
 
-Mon May 18 06:13:14 2020 Going with SHUT/OPEN. 
+Mon May 18 06:13:14 2020 Going with SHUT/OPEN.
 
 :645]
 [646:
@@ -9122,7 +9122,7 @@ and then we're into the EW state machine.
 
 Right now we're doing
 
- checkCircuitAvailability + hog region + registerWithITCs 
+ checkCircuitAvailability + hog region + registerWithITCs
 
 but I think easier cleanup might want us to do circuit allocation the
 same time as we register with the ITCs.
@@ -9181,7 +9181,7 @@ unregister from ITCs.
 :654]
 
 :653]
-  
+
 
 :651]
 
@@ -9223,7 +9223,7 @@ We've gotten as far as:
         at include/T2EventWindow.h:124
     #1  0x00459dc6 in MFM::T2EventWindow::tryInitiateActiveEvent (this=0x506548, center=..., radius=4)
         at src/T2EventWindow.cpp:106
-    #2  0x0045136a in MFM::T2Tile::tryAcquireEW (this=0x4b9008 <MFM::T2Tile::get()::THE_INSTANCE>, center=..., radius=4, 
+    #2  0x0045136a in MFM::T2Tile::tryAcquireEW (this=0x4b9008 <MFM::T2Tile::get()::THE_INSTANCE>, center=..., radius=4,
         forActive=true) at src/T2Tile.cpp:364
     #3  0x00451a00 in MFM::T2Tile::maybeInitiateEW (this=0x4b9008 <MFM::T2Tile::get()::THE_INSTANCE>) at src/T2Tile.cpp:444
     #4  0x00450148 in MFM::EWInitiator::onTimeout (this=0x4ec970 <MFM::T2Tile::get()::THE_INSTANCE+211304>, srctq=...)
@@ -9247,7 +9247,7 @@ Mon May 18 23:33:05 2020 Considering the EW's ITCs..  :665]
 
  - Otherwise, if we're NOT in ITCSN_OPEN, we shouldn't be asking,
    because we already checked isVisibleUsable in
-   checkSiteAvailability. 
+   checkSiteAvailability.
 
  - If we are in ITCSN_OPEN, we go to T2ITC::tryAllocateActiveCircuit.
    If we get ALL_CIRCUITS_BUSY, we return false from
@@ -9302,7 +9302,7 @@ actual T2EventWindow state machine code:
     242	  void T2EWStateOps::timeout(T2EventWindow & ew, T2PacketBuffer & pb, TimeQueue& tq) {
     243	    DIE_UNIMPLEMENTED();
     244	  }
-    245	
+    245
     246	  void T2EWStateOps::receive(T2EventWindow & ew, T2PacketBuffer & pb, TimeQueue& tq) {
 
 [669:
@@ -9345,7 +9345,7 @@ detected the problem and blown up this particular event before trying
 to register the EW.  Why didn't that happen?[672:
 
 Tue May 19 00:33:13 2020 Looks like because checkSiteAvailability was
-trying to be tricky and ended up doing things in the wrong order.  
+trying to be tricky and ended up doing things in the wrong order.
 Really, we should be going to isVisibleUsable as soon as we find a
 site in the visible region.  Problem is our opening check combines
 both visible and cache.  Let's just hack it, here.[673:
@@ -9441,7 +9441,11 @@ Let's just set this much up.  We'll need a second level of handler in
 T2ITC::tryHandlePacket to detect XITC==1.  Actually, let's detect
 XITC==1..4 and dish for all of them.[679:
 
-Tue May 19 02:18:20 2020 Actually let's commit first.
+Tue May 19 02:18:20 2020 Actually let's commit first.[680:
+
+Tue May 19 02:39:42 2020 Comitted.
+
+:680]
 
 :679]
 
@@ -9450,3 +9454,757 @@ Tue May 19 02:18:20 2020 Actually let's commit first.
 :677]
 
 :676]
+[681:
+
+Tue May 19 02:39:48 2020 So, actually it seems that perhaps Ring
+really should be just for the AWLOCKS packet -- because that's the one
+where there won't already be a passive EW allocated for the far end of
+the circuit.
+
+It seems like cache upds/acks is really too specific for XITC==3..4.
+What we really want is something more like:
+
+  ACTIVE INIT ==     1  handleCircuitPacket tries to allocate passive
+  ACTIVE ONGOING ==  2  hCP delivers to existing passive
+  PASSIVE ONGOING == 3  hCP delivers to existing active
+  ACTIVE FINAL ==    4  hCP commits and releases existing passive?
+  PASSIVE FINAL ==   5  hCP commits and releases existing active?
+
+  (ITC RESERVED == 6)
+  ITC STATE == 7
+
+[682:
+
+Tue May 19 02:53:36 2020 Not clear about 4 and 5..  Is FINAL
+double-sided or not?
+
+Also: We explicitly will need to abort an event in the case of race
+lost.  That event will be associated with some active circuit, and
+we'll have to unhog the sites it's holding, and so forth.
+
+(And in fact we'll have had to locate that active event just to
+resolve the race, so that's sort of logical.)
+[683:
+
+Tue May 19 03:39:20 2020 So.  Let's add a bool mYoinkValue to
+T2EventWindow?  Is that really where it goes?  That is, after all,
+the pointer that we'll be hogging the sites with, so..
+[684:
+
+Tue May 19 03:54:15 2020 But if we put it in the EW, then there'll
+only be one yoink bit for potentially two separate ITC races.  It
+wouldn't be hygienic to reuse the bit.
+
+So maybe we say the yoink protocol is actually happening between a
+pair of distinct circuits that are associated with a pair of distinct
+EWs that happen to overlap on one or more sites.[685:
+
+Tue May 19 04:19:40 2020 OK, moved mYoinkVal to T2ITC.
+
+But here's a question: It seems to me there could be much more
+complicated races than we have considered so far.  In particular, our
+active EW 'X' could end up racing with TWO OR MORE active EWs 'Y' and
+'Z' on the far side.  If we resolve the races pairwise, we could end
+up with X beating Y but also Z beating X -- and then where are we?  If
+we resolve Z-vs-X first then both Y and X can continue, but if we
+resolve X-vs-Y first then only Z can continue.
+
+And we can't tell which race to resolve first based on packet order,
+because the single AWLOCKS X packet triggers both the races.  But we
+have to resolve them in a systematic but isotropic way, so that both
+ends will ultimately compute the same winners.
+
+This Is An Issue!
+[686:
+
+Tue May 19 04:45:58 2020 This Really Is An Issue.  And it could be
+even worse: Tile 1 window A might overlap with two EWs on tile 2 while
+those tile 2 windows might also overlap with DIFFERENT EWs on Tile 1:
+
+              +1A----++1B----+
+              |      ||      |
+          +------++---|--+   |
+          |   |  ||  ||  |   |
+          |   +--||--++------+
+          |      ||      |
+          +2C----++2D----+
+
+Now, we'll have a systematic order that 1A and 1B were claimed.  So we
+can count on the order they will arrive at Tile 2.  Same for 2C and 2D
+arriving at Tile 1.
+
+The fundamental problem is that losing a race destroys information.
+If you lose a race you're gone, which means that you can't be around
+to win some other race you would have won, under a different ordering.
+
+Could we track the order that our side windows were claimed, so that
+when a racing window appears from the other side, we can resolve it
+against our windows from oldest to newest?
+
+The idea is that the passive side will necessarily resolve races from
+our older window before our newer one, because it will discover the
+older-involved races first, since it will necessarily be handling the
+older packet first.
+
+So we'd have to scan the region the far side is asking to lock, and
+assemble a list of EWs that own sites on it on our side.  Then we'd
+have to order that list from oldest to newest in terms of our event
+initiations.  Then we'd check the races in order, blowing up our EWs
+or killing the incoming one according to yoink.
+
+The far end would see our oldest overlapping request first.  It would
+do what we just described on its side, checking its oldest overlapping
+against our oldest overlapping, and it would get the same result as we
+did.
+
+Seems like it might work.  We might well be blowing up a lot of EWs,
+and blowing up EWs that we 'could' have saved under some other
+ordering, but that's got to be the price of admission.
+[687:
+
+Tue May 19 05:09:01 2020 But that raises another question: How does an
+EW know when it can proceed?  How does it know there are no other
+inbound races against it?  We were thinking with the yoink protocol we
+wouldn't even have to wait for confirmation, because we could tell who
+won locally.
+
+But that's not the whole story.  We still have to confirm, so that
+it's clear to the far side that all family business has been settled
+and no further claims against this EW will be forthcoming.
+
+So on the passive side we know when the race is resolved when we can
+hog a region for some foreigner, and then send them an acknowledgment
+that they have the lock.  And on the active side we know all races are
+resolved when we receive acks from all the passive EWs.
+
+[688:
+
+Tue May 19 05:18:01 2020 I still feel like that's not quite
+everything, though.  Still seems like we could get in a state where we
+'confirmed' one remote request but then another one came in that
+overlapped something some other way, and then we're going to want to
+blow up the thing that we just confirmed.
+
+:688]
+
+:687]
+:686]
+
+:685]
+
+:684]
+:683]
+
+:682]
+
+:681]
+[689:
+
+Tue May 19 06:57:19 2020 So
+
+ send on active circuit:
+    LOCK + ctr + radius + nonce
+ recv on corresponding passive circuit:
+    LOCK + ack/nak
+
+    -> Is it possible we don't have to send a NAK?  Because that can
+       only be caused by a race and sender will detect the race and
+       compute the NAK for itself.  But the ACK means there's no
+       further risk of races on this circuit.  If that's true?
+
+[690:
+
+Tue May 19 09:17:35 2020 Off the jitsi with Jeff.
+
+:690]
+
+
+:689]
+[691:
+
+Tue May 19 14:30:18 2020 So, what do we do about the multiple
+overlapping EW issue?
+
+ - Do we believe the "resolve oldest-EW first" scheme really works?  I
+   suspect maybe we do.
+
+ - Do we believe we can/have to ack only successful EWs?
+
+ - Do we believe there really is a time we can be sure an EW won't be
+   blown up by anything incoming, and so can actually do it?
+
+   = I guess the answer to that is 'When the ACK comes'.  But it's
+     really 'when all the ACKs come'.  And it might get blown up by
+     race loss with a third tile, after we get an ACK from a second
+     tile, so we have to be able to still blow up from the active side
+     even after getting an ACK from a passive side.
+
+     The point of the ACK is that the passive side is saying 'This is
+     OK by me, let me know when you commit or abort it'.
+
+ - But doesn't that mean we have to process ALL the overlaps on the
+   passive side before we respond to the OLDEST overlap?  And aren't
+   we still vulnerable to cascading aborts as subsequent requests come
+   in?
+
+ - So maybe we don't want to be pairwise yoinking at the EW level at
+   all.  Maybe we want to be 'yoinking in time', and saying everything
+   after a race loser is deemed to 'happen after' the race winner.
+
+   Once we know our EW wins against a particular partner tile --
+   meaning active side processes an ack for that EW (really circuit)
+   from that partner tile -- nothing that partner tile can do can
+   change that.  If we're not waiting on any other tiles, we can
+   commit that EW.
+
+ - If, instead/before getting an ack, we get overlapping lock requests
+   from that partner tile, we resolve them in order, getting the same
+   answers the far side does.  Eventually either our EW will blow up,
+   or we will receive an ack from that partner.
+
+[692:
+
+Tue May 19 15:13:34 2020 So it's:
+
+ (1) ACTIVE REQUEST: Any side may blow this up
+ (2) PASSIVE ACK:    That side may no longer blow this up
+ (3) ACTIVE COMMIT:  This event cleared all sides and is done, upds included.
+ (4) ACTIVE ABORT:   This event blew up due and is gone
+
+ REQ -> ACK -> CMT
+ REQ -> ACK -> ABT
+
+  1AEW -> 2REQa
+       -> 3REQ
+
+  3AEW -> 1REQ
+
+  2ACK -> 1AEW
+
+:692]
+
+:691]
+[693:
+
+Tue May 19 15:34:20 2020 Well I'm not sure how to (ASCII-)draw an
+example, but this is seeming more plausible.  Am going to need
+oldest-first resolution.
+
+But getting to this level of understanding is really also suggesting
+to me that the circuit level might be unnecessary.  We could just use
+the EW slotnum in the circuitnum field.  Although now that I say
+that.. EW slotnums are global to the tile, but circuitnums are local
+to each ITC.  What advantage is there to knowing that if EW#12 is
+talking to WT, it can't also be talking to SE?  So we could have a
+larger pool of EWs to reuse but still have a smaller bitsize for
+circuitnums.
+
+But that raises yet another another issue: We also have the risk of
+being unable to allocate a passive EW, because ours are all tied up
+doing other things -- but the active side has no way of knowing that.
+
+So the passive side does have to have some NAK mechanism at the very
+least to say "I don't have an EW to give you for this, so no."
+
+[694:
+
+Tue May 19 15:49:50 2020 Could the passive EWs be statically allocated
+on a per ITC basis?  So that each ITC has sixteen EWs just to play the
+passive sides, so it would never need to NAK due to EW exhaustion?
+
+Do we really need passive side EWs at all?  That was a 'clean'
+approach, but what is it buying us?
+
+ - Well for one thing, it provides us with a T2EventWindow * to put
+   into mSiteOwners when we're hogging sites for a passive event.
+
+   = But we could go with some other mechanism there.  Numbers instead
+     of pointers; zero means unowned, positive P means owned by active
+     EW P, negative N means..  What?  It can't be some per-ITC thing?
+
+   = Could it be some little 'passive EW stub' that just has the
+     ctr+radius, but no space for sites?  Saying we don't need to
+     buffer passive side committed updates; we'll commit directly to
+     the tile as cache upds come in, then unhog the region when
+     they're done.
+
+   = So we could say each ITC has an array of sixteen passive EW
+     stubs, corresponding to the counterparty's sixteen active EWs.
+     And we could use some unified base pointer that could point at
+     either of those.. I guess the base class could have the ctr +
+     radius, and then the active side subclass could add the sites.
+     Then we hog regions with ptrs to base class either way.
+
+[695:
+
+Tue May 19 16:48:29 2020 Now, is the EW base class, or passive side,
+TimeoutAble?  Or is that just for active EWs?  Base class, I'd think;
+we'll need to have passive EWs wake up eventually for error recovery.
+
+State machines, ditto?  We could split them or not, it seems.  Feels
+cleaner to split them, if a lot more boilerplate.[696:
+
+Tue May 19 17:47:27 2020 The only reason really to split them, though,
+is for single-sides inequalities on state numbers.  Which really isn't
+super compelling.  Move the state machine up to the base.
+
+:696]
+
+Time to cook dinner.
+
+:695]
+
+:694]
+
+:693]
+[697:
+
+Wed May 20 01:00:32 2020 OK let's do the T2EW refactoring.  GO GO GO
+
+[698:
+
+Wed May 20 01:11:49 2020 aaand this is all to save a little space?
+The essential difference between EWActive and EWPassive is the latter
+doesn't have any sites?  How much space are we talking?  Like:
+
+    #2  0x0045d3f0 in MFM::T2EventWindow::onTimeout (this=0x504d30, srcTq=...) at src/T2EventWindow.cpp:151
+    151	    ops->timeout(*this, pb, srcTq);
+    (gdb) p mSites[0]
+    $206 = {m_atom = {<MFM::Atom<MFM::P3AtomConfig>> = {m_bits = {static BITS_PER_UNIT = 32, static ARRAY_LENGTH = 3,
+            m_bits = {4294967168, 0, 0}}}, <No data fields>}, m_base = {m_base = {<MFM::Atom<MFM::P3AtomConfig>> = {
+            m_bits = {static BITS_PER_UNIT = 32, static ARRAY_LENGTH = 3, m_bits = {4294967168, 0,
+                0}}}, <No data fields>}, m_sensory = {m_touchSensor = {m_touchType = MFM::TOUCH_TYPE_NONE,
+            m_lastTouchEventCount = 0}}, m_paint = 4278190080}, m_eventCount = 0, m_lastChangedEventCount = 0,
+      m_lastEventNumber = 0, m_isLiveSite = true}
+    (gdb) p sizeof(mSites[0])
+    $207 = 88
+
+Each OurT2Site is 88 bytes all in
+
+    (gdb) p sizeof(mSites)
+    $208 = 3608
+
+Or under 4KB for the whole event window (41*88)
+
+    (gdb) p 16*sizeof(mSites)
+    $209 = 57728
+
+Or under 60KB for 16 EWs in an ITC (16*3608)
+
+    (gdb) p 6*16*sizeof(mSites)
+    $210 = 346368
+
+Or about 350KB for all the passive EWs on a tile.
+
+    (gdb)
+
+And we're currently at something like
+
+    t2@beaglebone:~/T2-12$ top | head
+    top - 01:17:19 up 6 days,  8:32,  2 users,  load average: 0.52, 0.13, 0.04
+    Tasks:  96 total,   2 running,  94 sleeping,   0 stopped,   0 zombie
+    %Cpu(s): 69.2 us, 30.8 sy,  0.0 ni,  0.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+    MiB Mem :    483.4 total,     73.2 free,    178.9 used,    231.2 buff/cache
+    MiB Swap:      0.0 total,      0.0 free,      0.0 used.    293.4 avail Mem
+
+So we've got something like 70-300MB available depending on how hard
+you want to push the file cache buffers.
+
+      PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+    20739 root      20   0  103708  70304   4072 R  76.2  14.2   0:01.92 itcSpike12
+
+And the native engine is currently eating under 15% of memory.
+
+    20744 t2        20   0    9244   2472   2048 R   9.5   0.5   0:00.06 top
+        1 root      20   0   31904   6940   5404 S   0.0   1.4   0:18.30 systemd
+    t2@beaglebone:~/T2-12$
+
+[699:
+
+Wed May 20 01:20:33 2020 So, obviously: Screw the refactoring.  Let's
+just put sixteen more full-on event windows in each ITC, so they'll
+always be available for passive sides.[700:
+
+Wed May 20 02:40:28 2020 OK, we have passive ews sitting in the
+T2ITCs.  Over an hour: Why on earth did that take so long?
+
+Anyway, now we're blowing up in the AWLOCKS timeout.[701:
+
+Wed May 20 02:45:01 2020 So how are we going to structure the
+OLDEST-RACE-FIRST overlap detection?  Let's just try to identify the
+players.
+
+ - T2ITC::tryHandlePacket dishes to handleCircuitPacket
+
+ - [703: Wed May 20 03:20:42 2020 handleCircuitPacket will discover
+   it's looking at a lock request and dish to handleLockRequest or
+   something
+
+ - handleLockRequest will scan the requested neighborhood and note any
+   already-existing-owners, recording them in an array or something.
+
+ - Whenever an active EW request is made, some kind of time stamp is
+   captured, for 'OLDEST-RACE' ordering.  What should that be?  Should
+   we create a uniqueNow() like ccr has?  Does this ordering have to
+   apply between itcs or just within one?  [704: Wed May 20 04:32:50
+   2020  Just within an ITC, right?  If we're really only dealing with
+   races, we can only run into other owners that just sent requests to
+   us.  So we could keep a packet-shipped-number?  And even not worry
+   about it wrapping, so long as we have timeouts that will flush
+   fogged-up EWs or whatever long before wrapping could cause our
+   answer to go wrong.   Let's try that.  :704]
+
+:703]
+
+:701]
+
+:700]
+
+:699]
+
+:698]
+
+:697]
+[702:
+
+Wed May 20 03:03:53 2020 If we limited ourselves to 16 active windows
+per tile we could, once again, ditch the circuits and just use
+ewslotnums.  Right?
+
+And I do know an interesting property of this whole scheme: It's easy
+enough to imagine all EWs getting tied up in intertile protocols -- in
+which case there'd be no way even to run HIDDEN events, and that would
+'naturally' reduce the hidden site advantage.  At the cost of somewhat
+reducing the tile event rate, of course.
+
+:702]
+[705:
+
+Wed May 20 04:46:24 2020 Hmm could we just keep the EWs registered on
+an ITC in like a list or something in oldest-first order?  Is there
+any case where time-of-registration would compare differently than
+time-of-lock-request? [706:
+
+Wed May 20 04:50:41 2020 Well it appears we're not actually sending
+any lock requests yet, so there's no place to call getPacketsShipped()
+to pick up for comparison. [707:
+
+Wed May 20 04:59:44 2020 But let's build comparison plumbing into T2EW
+  anyway..[708:
+
+Wed May 20 05:00:55 2020 So how can the sequence number be on the
+T2EventWindow, if the T2 event window might be associated with
+two ITCs?  It really has to be associated with the combination of an
+ITC and an EW.[709:
+
+Wed May 20 05:06:14 2020 The ITC has T2EW * mRegisteredEWs[], we could
+expand that to a little struct and stick a mLockSequenceNumber in
+there.  But if we're putting the T2EW * in site owners, we'd still
+have to map back to that little struct somehow.  We could put
+
+ u32 mLockSequenceNumber[ITC_COUNT];
+
+in the T2EWs and be done with it that way.[710:
+
+Wed May 20 06:21:14 2020 OK we added
+
+    void captureLockSequenceNumber(T2ITC& itc) ;
+    void clearLockSequenceNumbers() ;
+    u32 getLockSequenceNumber(Dir6 dir6) ;
+
+    u32 mLockSequenceNumber[DIR6_COUNT];
+
+in T2EventWindow.h.  But nobody's using any of it yet.
+
+[711:
+
+Wed May 20 06:24:10 2020 OK, so, what could be our next steps here?
+
+ - Continue with the :700: path.
+[713:
+
+Wed May 20 14:32:48 2020 OK, trying to move on this.  But what is the
+lock request packet format?  We still haven't sent one.[714:
+
+Wed May 20 14:37:08 2020 Let's say it's TO AINIT that sends the lock
+requests.  It'll be like
+
+ XITC == [0xc0|dir8] + [001/'Ring' + cn] + [x:s8] + [y:s8] + [(yoink:u1<<7)|radius:u3]
+
+for five bytes total?  [715:
+
+Wed May 20 14:53:16 2020 And what really is the advantage of waiting
+until TO AINIT?  Why just not ship them as part of
+tryInitiateActiveEvent?  We thought TO was going to be nice because
+we'd have an outbound T2PacketBuffer set up for us.. but we need to
+send potentially multiple packets, with different contents, so that's
+not a big win.  Let's just send them.
+
+:715]
+
+
+
+:714]
+
+:713]
+   = Get to handleLockRequest.
+     - I guess set up the passive EW right away, so it can win or lose
+       races. 
+     - Scan the hood.
+     - Find overlapping active EWs.  Order them by
+
+          time_before(ew1.getLockSequenceNumber(mDir6),
+                      ew2.getLockSequenceNumber(mDir6));
+     
+     - Iterate in oldest-race-first order, calling
+       resolveRace(ew1,ew2)
+
+ - Figure out what resolveRace does
+
+   = Where is the yoink bit at present?  Should be the same place as
+     the lock sequence number, right?[712: Wed May 20 07:51:24 2020
+     It's in the Circuit struct, which could be a candidate for the
+     lock sequence, modulo the same old T2EW->Circuit lookup issue
+     :712]
+
+   = Figure out how actually to blow up a pending ew -- active or
+     passive -- unhogging its sites and freeing all its resources.
+
+
+
+:711]
+
+:710]
+
+:709]
+
+:708]
+
+:707]
+
+:706]
+
+:705]
+[716:
+
+Wed May 20 16:09:29 2020 OK, how do we find the far-side itc origin in
+our tile coords?  Is it the position of the associated cache rect?
+Maybe.[717:
+
+Wed May 20 16:54:08 2020 So, we've been using UPoint for eventwindow
+centers, but that's wrong for passive EWs, since the CENTER might be
+all the way off tile for us -- center coords could be negative, and it
+just be with the radius that it reaches into our cache or visible.  So
+we'll need to redo assignCenter and the data member, I think.[718:
+
+Wed May 20 17:09:09 2020 OK, I'm fading here; time to go deal with
+dinner.  Current status:
+
+ - We're building again
+
+ - We're sending a lock request (first one got out okay)
+
+ - Second iteration in trySendLockRequests is getting non-zero for
+   mITC but U8_MAX for mCircuitNum, which is blowing up getYoinkVal.
+ 
+Pick up there.
+[719:
+
+Thu May 21 00:00:36 2020 Realized over dinner the problem is NW is on
+mCircuits but .mCircuitNum is uninitted because NW is SHUT.[720:
+
+Thu May 21 00:05:23 2020 OK that's better.  Now we're dying INCOMPLETE
+CODE in TO AWLOCKS, which, at least, is totally true.  It might not be
+the next blow-up we were expecting, though..  What did we use for a
+timeout when we when it ITCSN_AWLOCKS?[721:
+
+Thu May 21 00:09:28 2020 Ah bug: Passed a WC waitcode to schedule(),
+which treated it like a ms.  Wanted to be calling scheduleWait().
+Bummer the types coerced silently.
+
+[722:
+
+Thu May 21 00:11:35 2020 Moving scheduleWait and the waitcodes from
+T2ITC.h up to TimeoutAble.h.[723:
+
+Thu May 21 01:06:19 2020 Ugh how much time did I just lose?  Almost an
+hour, gaaah: The vast majority of which was debugging an apparent
+infinite loop on startup.. that turned out to be caused by a
+newly-created call on scheduleWait inside the KITCPoller() ctor.  Why
+is that a problem?  Because scheduleWait uses T2Tile::get() to get at
+the TimeQueue via the tile singleton.  So?  Well, the KITCPoller ctor
+runs WHILE WE'RE ALREADY INSIDE T2Tile::get(), as the static T2Tile
+ctor runs.
+
+Grrrrr.[724:
+
+Thu May 21 01:10:58 2020 Why don't we give every TimeoutAble a
+TimeQueue& mBaseTQ or something, and rewrite all these effen functions
+to NOT take a TimeQueue& at all?
+
+When we set all this up, we we're imagining TimeoutAble's would be
+moving between different TQs at different times for different
+purposes, but we're really not seeing that.  We want everything on the
+master TQ so dispatching is all consistent and we can't have 'time
+inversions' where something in the past is stuck waiting to be
+dispatched by something else that's in the future.
+
+[725:
+
+Thu May 21 01:47:59 2020 Well, started to change all the APIs and then
+backed it all out: Having a no-arg ctor for TimeoutAble is just too
+valuable, and counting on somebody to set up a 'permanent' TQ later is
+just too gross.
+
+Instead I went the other way: Now if anybody calls T2Tile::get() while
+the T2Tile ctor is running, we blow up real good, with a message to
+stderr and a FAIL that we can break on and see the offending call on
+the call stack immediately.
+
+:725]
+
+:724]
+
+:723]
+
+:722]
+
+:721]
+
+:720]
+
+:719]
+:718]
+
+:717]
+
+:716]
+[726:
+
+Thu May 21 01:52:25 2020 So now we're back to needing code for TO
+AWLOCKS?  Still?  Shouldn't somebody have gotten a packet we sent,
+before that?[727:
+
+Thu May 21 02:06:25 2020 OK it's now clear that we're writing a
+five-byte lock request, but it's not getting delivered for some
+reason..  So eventually TO AWLOCKS hits, as it must.[728:
+
+Thu May 21 02:09:42 2020 Is our lock request packet fogged up?  Yes I
+think it is.  We're sending a 0xc0|mDir8 but it should be an
+0xa0|mDir8, right?  Doh.  Going again.  (And grrr, by the way, too.
+Why am I still generating byte[0] headers by hand????)[729:
+
+Thu May 21 02:14:01 2020 Geez byte[1] was fogged up too.[730:
+
+Thu May 21 02:15:05 2020 OK FINALLY we're hitting
+handleCircuitPacket. [731:
+
+Thu May 21 02:18:29 2020 And we're dying here:
+
+    144	  void T2EventWindow::initPassive(SPoint ctr, u32 radius, bool yoink) {
+    145	    assignCenter(ctr, radius, false);
+    146	    FAIL(INCOMPLETE_CODE); // XXX WHERE TO STICK THE YOINK
+    147	  }
+
+and what's the answer to that comment?  [732:
+
+Thu May 21 02:50:21 2020 Well, it's got to be on a Circuit because
+that's where mYoinkVal is.  And T2ITC has a whole rack of passive
+Circuits in mCircuits[0].  So that's where it ought to go, right?  And
+the passive circuit number just matches the active that we got from
+the packet..[733:
+
+Thu May 21 04:24:03 2020 OK, we've gotten past
+checkSiteAvailabilityForPassive, and theoretically we've even hogged
+the region for the remote guy.  Maybe we should watch that once before
+pushing on.
+[734:
+
+Thu May 21 04:42:30 2020 Well, it looks plausible enough in the
+non-race condition, which is all we can observe in the current setup
+(having only one non-Empty atom in the whole universe.)
+
+What happens on the passive side after we hog the region for the
+remote?  We reply with an ACK, I guess.  How is that going to work?
+Well, what state is this passive guy in?[735:
+
+Thu May 21 05:04:49 2020 It's currently in EWSN_PINIT.  Actually we're
+not really dispatching on received EW states, yet.  We're dispatching
+on XITC types.  Could we change 'Hang up' to 'Connect' or 'Answer',
+and send that?
+
+Well let's send XITC==2 to mean ACK, for now anyway.[736:
+
+Thu May 21 06:17:19 2020 OK, so the ACK has arrived and
+
+    3336: DBG: ITC/WT:OPEN: Recv 2/0xA6
+    3337: DBG: ITC/WT:OPEN: Enter HCP
+    3338: DBG: ITC/WT:OPEN: Enter HAP
+    3339: MSG: ITC/WT:OPEN EW26/AWLOCKS HAP
+
+we successfully mapped it back to the EW that's in EWLOCKS.  So I
+guess it's time to bump it?  Let TO AWLOCKS check and discover that
+it's got everything it wished for?[737:
+
+Thu May 21 06:24:40 2020 No, we're not supposed to bump until all the
+locks are known.  How do we record an ACK from a counterparty?  We
+want to call something on T2EventWindow and let it store that
+information, and bump itself if it wants to.[738:
+
+Thu May 21 06:51:44 2020 OK, we're incomplete in
+T2EventWindow::handleACK now, but I'm running out of gas.  Thinking
+CircuitInfo in T2EW.h could handle the extra state?
+
+:738]
+
+:737]
+
+:736]
+
+:735]
+
+:734]
+:733]
+
+:732]
+
+:731]
+
+:730]
+
+:729]
+
+:728]
+
+:727]
+
+:726]
+[739:
+
+Thu May 21 14:05:04 2020 OK!  We have FINALLY reached ABEHAVE while
+holding a NATIVE ENGINE INTERTILE PRECISION LOCK!
+
+[740:
+
+Thu May 21 14:45:45 2020 OK so we need to break for a meeting in a
+couple minutes, but we're very close to a phony legit event transition
+here.  Right now it appears the event window is full of Empty.  Did we
+ever load up the sites?  I think we didn't, we just set mSiteOwners so
+that nobody else would touch them.
+
+So I guess executeEvent should load up the sites..
+
+
+:740]
+
+:739]
+[741:
+
+Thu May 21 17:15:15 2020 OK, after meeting.  It's time to send out
+cache updates.
+
+But first it's time to move the flag.
+
+Committing.
+
+:741]
