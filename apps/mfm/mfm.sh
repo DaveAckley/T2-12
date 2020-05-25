@@ -9,7 +9,7 @@
 cd /
 while [ true ] ; do
     echo Launching itcSpike
-    /home/t2/MFM/bin/itcSpike12 -w /home/t2/MFM/src/drivers/itcSpike12/wconfig.txt -z "`date`"
+    /home/t2/MFM/bin/itcSpike12 -w /home/t2/MFM/src/drivers/itcSpike12/wconfig.txt -z "ITCSPIKE12"
     echo itcSpike exited status $? -- RESTARTING
 #    echo Launching mfmt2
 #    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/GITHUB/MFM/bin/mfmt2 {1H1} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/11.mfs -cp /home/t2/T2-12/apps/mfm/11.mfs -ep /home/t2/T2-12/apps/mfm/libcue.so --run -a 0 -n
