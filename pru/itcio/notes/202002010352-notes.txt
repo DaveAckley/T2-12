@@ -1,4 +1,4 @@
-{742}  -*- text -*-
+{792}  -*- text -*-
 [0:
 [3:
 [35:
@@ -9949,13 +9949,13 @@ not a big win.  Let's just send them.
 :713]
    = Get to handleLockRequest.
      - I guess set up the passive EW right away, so it can win or lose
-       races. 
+       races.
      - Scan the hood.
      - Find overlapping active EWs.  Order them by
 
           time_before(ew1.getLockSequenceNumber(mDir6),
                       ew2.getLockSequenceNumber(mDir6));
-     
+
      - Iterate in oldest-race-first order, calling
        resolveRace(ew1,ew2)
 
@@ -10006,7 +10006,7 @@ dinner.  Current status:
 
  - Second iteration in trySendLockRequests is getting non-zero for
    mITC but U8_MAX for mCircuitNum, which is blowing up getYoinkVal.
- 
+
 Pick up there.
 [719:
 
@@ -10208,3 +10208,1139 @@ But first it's time to move the flag.
 Committing.
 
 :741]
+[742:
+
+Thu May 21 23:47:41 2020 OK have to have to finish reviewing but so
+close to an intertile event here..  I guess we need yet more Circuit
+state -- per ITC*EW combo -- to track what we've sent, just like we
+used a persistent iterator to track what we'd sent in the cache sync
+process.
+
+:742]
+[743:
+
+Fri May 22 04:08:55 2020 OK now allegedly generating cache updates
+after the event transition..  We shall see.[744:
+
+Fri May 22 04:12:42 2020 OK, it appears we've shipped the cache
+updates plus its terminating packet:
+
+    3345: MSG: EW30/AWLOCKS hACK ITC/WT:OPEN
+    3346: MSG:   ITC/WT:OPEN wrote 28 == 28
+    3347: MSG:   ITC/WT:OPEN wrote 2 == 2
+
+and now we're blowing up on what comes after that:
+
+    522	    if (ew.trySendCacheUpdates()) { // True when all have been shipped to all
+    523	      FAIL(INCOMPLETE_CODE);
+
+So.  What does come after that?  Do we wait for the far end to hang
+up, or do we commit now?  Since we're the active side, we should
+probably wait for ACKs..  So we go to AWACKS?  And we reset the
+circuitinfo as we get final acks from them, so when we're done the
+event looks like a local one and we go to ACOMMIT?  We'll see.[745:
+
+Fri May 22 06:43:20 2020 OK, now we've apparently applied a cache
+update to a passive event window:
+
+    3343: DBG: ITC/ET:OPEN: Recv 28/0xA2
+    3344: DBG: ITC/ET:OPEN: Enter HCP
+    3345: DBG: ITC/ET:OPEN: Enter HCUP
+
+and then gotten the empty end-of-update packet:
+
+    3346: DBG: ITC/ET:OPEN: Recv 2/0xA2
+    3347: DBG: ITC/ET:OPEN: Enter HCP
+    3348: DBG: ITC/ET:OPEN: Enter HCUP
+ ..
+    334
+    335	    if (count == 0) { // Final update packet
+    336	      FAIL(INCOMPLETE_CODE);
+
+and now we need to know what to do next.  And that should be:
+
+ - Store the passive EW to the tile
+
+ - Hang up the circuit somehow from the passive, which sends a final
+   packet and releases the passive resources
+
+ - Recv the hang up notification, which causes the active EW to clean
+   up that circuit and remove it from its mCircuits.
+
+ - And then, if that's the last circuit in the active EW, we commit it
+   and release the active side resources.  Doesn't seem like there's a
+   real reason to have an ACOMMIT or PCOMMIT state in the machine,
+   because neither should need to block and neither sends a packet.
+
+:745]
+
+:744]
+
+:743]
+[746:
+
+Sat May 23 03:37:38 2020 OK let's take another run at this.  Store the
+passive EW to the tile GO GO GO
+
+:746]
+[747:
+
+Sat May 23 05:03:16 2020 OK we may have stored the passiveEW to the
+tile (did we ever load the passive from the tile?  That seems like a
+waste given we could just keep track of that sites came from the
+active side, and only compare them when storing back.  Anyway.)
+
+But the immediate question is how do we now 'hang up' on the T2ITC
+side of things.  We think we need to:
+
+ - Send a HANG UP packet, XITC type 5
+
+ - Unhog the passiveEW region
+
+ - Reset the ITC circuit info back to unused
+
+ - Reset the passive EW back to unused.
+
+There'll be more to do once the HANG UP reaches the active side, but
+step by step..[748:
+
+Sat May 23 05:43:43 2020 So a minor issue at the moment is what do we
+do if the attempt to send the hang up fails due to buffer space or
+whatever?  If we used the separate PCOMMIT state we could try again in
+TO PCOMMIT or whatever, but we were claiming we didn't need to do
+that.
+
+:748]
+
+:747]
+[749:
+
+Sat May 23 06:13:52 2020 OK, so I'm in T2EW::commitPassiveEWAndHangUp,
+and I'm trying to find the circuit this passive EW is associated with,
+but neither of them are set up.  Should they be, or should I not be
+looking at them?
+
+:749]
+[750:
+
+Sat May 23 07:14:56 2020 OK, now we've received the HANG UP packet
+back on the active side.
+
+ ..
+    3355: MSG: EW06-ET/PINIT PASSIVE DONE
+    3356: DBG: ITC/WT:OPEN: Recv 2/0xA6
+    3357: DBG: ITC/WT:OPEN: Enter HCP
+
+    Thread 1 "itcSpike12" hit Breakpoint 1, MFMLongJmpHere (buffer=0xbefff928,
+        toThrow=1) at src/FailPlatformSpecific.cpp:48
+    48	    longjmp(buffer,toThrow);
+    (gdb) up
+    #1  0x00465e62 in MFM::T2ITC::handleCircuitPacket (
+        this=0x4c5eb8 <MFM::T2Tile::get()::THE_INSTANCE+3768>, pb=...)
+        at src/T2ITC.cpp:137
+    137	      FAIL(INCOMPLETE_CODE);
+    (gdb) l
+    132	      */
+    133	    case 4: // TALK: Send updates
+    134	      handleCacheUpdatesPacket(pb);
+    135	      break;
+    136	    case 5: // HANG UP: Release lock
+    137	      FAIL(INCOMPLETE_CODE);
+    138	      break;
+    139	    }
+    140	  }
+    141
+    (gdb)
+
+That means that next up it's time to write the LAST FOGGEN PIECE OF
+THE UNCONTESTED INTERTILE EVENT SEQUENCE.
+
+But first sleep.
+
+:750]
+[751:
+
+Sat May 23 11:47:02 2020 OK so we're into T2ITC::handleHangUpPacket.
+I guess maybe we call the activeEW to commit and clean up first --
+cleaning up the EW side CircuitInfo, and then tear down the ITC
+circuit last?  That seems backwards: We created the activeEW first and
+then got an ITC circuit for it, so we should tear it down in reverse.
+So:
+
+ - Tear down T2ITC side circuit info (unregisterITC?)
+
+ - Tell the activeEW that this circuit is done.
+
+ - ActiveEW removes that circuit from its mCircuits.  If the activeEW
+   then determines that was the last ack, it commits, and (goes to
+   T2Tile to) freeEW itself.
+
+Something like that. GO GO GO[752:
+
+Sat May 23 12:47:03 2020 Well, the putative 'Last Piece Of The Puzzle'
+just built clean for the first time.  It can't work, right?  Trying
+it.[753:
+
+Sat May 23 12:48:24 2020 It didn't :).  Blew up in TO AWACKS, but not
+clear if that was due to breakpoints or something more real..  Going
+again. [754:
+
+Sat May 23 12:50:36 2020 Seems repeatable.  Here's what I'm looking
+at, for 'the historical documents' natch:
+
+ ..
+    3321: MSG:   ITC/ET:CACHEXG wrote 2 == 2
+    3322: MSG: ->ITC/ET:OPEN
+    3323: MSG:   ITC/WT:CACHEXG wrote 2 == 2
+    3324: MSG: ->ITC/WT:OPEN
+
+Picking up the story as the ITCs finish their cache exchanges and get
+to open.
+
+    3325: DBG: ITC/ET:OPEN: Recv 2/0xA2
+    3326: DBG: ITC/WT:OPEN: Recv 2/0xA6
+    3327: MSG:   ITC/ET:OPEN wrote 2 == 2
+    3328: MSG:   ITC/WT:OPEN wrote 5 == 5
+
+WT sends a Ring packet to request a lock.
+
+    3329: MSG:   ITC/WT:OPEN wrote 2 == 2
+    3330: DBG: ITC/ET:OPEN: Recv 5/0xA2
+    3331: DBG: ITC/ET:OPEN: Enter HCP
+    3332: DBG: ITC/ET:OPEN: Enter HRP
+
+ET goes to handleRingPacket,
+
+    3333: MSG:   ITC/ET:OPEN wrote 2 == 2
+
+and sends an ACK packet granting the lock.
+
+    3334: DBG: ITC/ET:OPEN: Recv 2/0xA2
+    3335: DBG: ITC/WT:OPEN: Recv 2/0xA6
+    3336: DBG: ITC/WT:OPEN: Recv 2/0xA6
+    3337: DBG: ITC/WT:OPEN: Enter HCP
+    3338: DBG: ITC/WT:OPEN: Enter HAP
+
+WT enters handleAnswerPacket
+
+    3339: MSG: ITC/WT:OPEN EW29-/AWLOCKS HAP
+
+What's the deal with that 'EW29-/'?  Looks like something missing?
+After the '-' is supposed to be.. the getCategory().  What is that
+again now?  It's some random const char * mCategory; in T2EW?  Who
+sets it up?  T2EW ctor sets it up!  Who called the T2EW ctor here?
+
+Ah, T2Tile::earlyInit called it:
+
+        mEWs[i] = new T2EventWindow(*this, i, "");
+
+and that certainly explains the empty category.  Should we make it
+"AC" for active?  "AT" for active tile?  All the other categories are
+the Dir6 names ET..NE.  Let's say "AC".  But pushing on:
+
+    3340: MSG: EW29-/AWLOCKS hACK ITC/WT:OPEN
+
+T2ITC::handleAnswerPacket dishes to T2EW::handleACK
+
+    3341: WRN: Big deltams 227 on update 16
+
+Hopefully these go away once we're compiling with optimizations again.
+
+Anyway, somewhere in here handleACK bumped EW29, which discovered it
+had all the locks it needed, so it went to state ABEHAVE, which
+actually EXECUTED THE DANG EVENT, and then went to ASCACHE..
+
+    3342: MSG:   ITC/WT:OPEN wrote 28 == 28
+
+..which wrote a cache update packet reporting that two atoms had
+changed.
+
+    3343: MSG:   ITC/WT:OPEN wrote 2 == 2
+
+And wrote an empty cache update packet behind it to signal the end.
+
+    3344: DBG: ITC/ET:OPEN: Recv 28/0xA2
+    3345: DBG: ITC/ET:OPEN: Enter HCP
+    3346: DBG: ITC/ET:OPEN: Enter HCUP
+
+ET receives the updates and (we believe) applies them to its passive
+EW.
+
+    3347: DBG: ITC/ET:OPEN: Recv 2/0xA2
+    3348: DBG: ITC/ET:OPEN: Enter HCP
+    3349: DBG: ITC/ET:OPEN: Enter HCUP
+
+And receives the end-of-update packet
+
+    3350: MSG: EW01-ET/PWCACHE (ITC/ET:OPEN) cPEWAHU
+
+Which triggers commitPassiveEWAndHangUp!  (And NobodyFishInTheMiddle).
+
+    3351: MSG:   ITC/ET:OPEN wrote 2 == 2
+
+After applying the remote update, ET sends the Hang Up packet.
+
+    3352: MSG: EW01-ET/PINIT PASSIVE DONE
+
+And the passive side of this event is done.
+
+    3353: DBG: ITC/WT:OPEN: Recv 2/0xA6
+    3354: DBG: ITC/WT:OPEN: Enter HCP
+    3355: DBG: ITC/WT:OPEN: Enter HUP
+    3356: MSG: EW29-/AWACKS hHU ITC/WT:OPEN
+
+WT receives that last packet and gets to T2EW::handleHangUp.  Which we
+thought would discover it's all done, and commit on the active side
+and free itself..
+
+    Thread 1 "itcSpike12" hit Breakpoint 1, MFMLongJmpHere (buffer=0xbefff928,
+        toThrow=1) at src/FailPlatformSpecific.cpp:48
+    48	    longjmp(buffer,toThrow);
+    (gdb) up
+    #1  0x004631d2 in MFM::T2EWStateOps_AWACKS::timeout (
+        this=0x4c5668 <MFM::singletonT2EWStateOps_AWACKS>, ew=..., pb=...,
+        tq=...) at src/T2EventWindow.cpp:689
+    689	    FAIL(INCOMPLETE_CODE);
+    (gdb)
+
+..but that appears not to have happened.  Looks like maybe it thought
+there was more to do, but there actually wasn't, so nothing else
+happened until TO AWACKS went bang.
+
+[755:
+
+Sat May 23 13:22:01 2020 So that was the first plausible try at an
+intertile event via loopback in the T2 native engine.  Let's go again
+and try to watch T2EW::handleHangUp in action.[756:
+
+Sat May 23 13:24:02 2020 And almost surely the problem is we're
+cleaning up the ET-WT circuit, but not the NW 'circuit' -- which
+doesn't actually exist (since NW is SHUT), but there is CircuitInfo
+for it in the active EW.[757:
+
+Sat May 23 13:26:14 2020 Yeah, that's it.  How do we want to handle
+this?  In particular, did we really even want to set up
+EW::CircuitInfo for a ITC that's SHUT?  We did need to register the EW
+with the ITC for the EWDRAIN scenario, but does the EW need to know
+about that?
+
+With the current scheme, it seems like we'd have to do another scan to
+decide if we had only unallocated circuits in mCircuits, and if so,
+release them too?  Ugh?!
+
+:757]
+
+:756]
+
+:755]
+
+:754]
+
+:753]
+
+:752]
+
+:751]
+ [758:
+
+Sat May 23 13:43:15 2020 OK going again..[759:
+
+Sat May 23 13:45:11 2020 Aaand the atom is gone!  Gone from the WT,
+but nowhere to be seen in the ET!  Ono it's a transporter malfunction!
+
+Yes yes, the atom died, very sad.  Thoughts and prayers.
+
+But: What a tremendous success for the project!
+
+I was certainly expecting to have all sorts of coord-transformation
+issues, and that's the inside-track suspicion here.  Let's look closer
+at the passive-side cache update packet handling.
+[760:
+
+Sat May 23 13:57:40 2020 OK, had a
+
+      OurT2Site site = mSites[sn];
+
+that wanted to be
+
+      OurT2Site & site = mSites[sn];
+
+which could totally be the problem.  Going again.
+
+:760]
+:759]
+
+:758]
+[761:
+
+Sat May 23 14:09:40 2020 SUCCESS!  First intertile event on loopback
+using the native engine achieved!  The DReg-not-DReg-GoWest atom went
+out the west and came back in via the east.  Yay!
+
+Not only that, it actually did like three more events before things
+blew up!
+
+Here's where it died:
+
+    3423: MSG: EW07-WT/PWCACHE (ITC/WT:OPEN) cPEWAHU
+    3424: MSG:   ITC/WT:OPEN wrote 2 == 2
+    3425: MSG: EW07-WT/PINIT PASSIVE DONE
+    3426: DBG: ITC/ET:OPEN: Recv 2/0xA2
+    3427: DBG: ITC/ET:OPEN: Enter HCP
+    3428: DBG: ITC/ET:OPEN: Enter HUP
+    3429: MSG: EW27-AC/AWACKS hHU ITC/ET:OPEN
+    3430: MSG:   ITC/ET:OPEN wrote 5 == 5
+    3431: DBG: ITC/WT:OPEN: Recv 5/0xA6
+    3432: DBG: ITC/WT:OPEN: Enter HCP
+    3433: DBG: ITC/WT:OPEN: Enter HRP
+    itcSpike12: src/T2EventWindow.cpp:339: void MFM::T2EventWindow::assignCenter(MFM::SPoint, MFM::u32, bool): Assertion `mRadius == 0' failed.
+
+    Thread 1 "itcSpike12" received signal SIGABRT, Aborted.
+    0xb6c07746 in ?? ()
+    (gdb) up
+    #1  0xb6c150ae in ?? ()
+    (gdb)
+
+So it died because an EW was being initted but it didn't have an
+mRadius of 0.  Which is totally believable that I failed to clear
+something somewhere.  Let's see if we can't catch it in the act.[762:
+
+Sat May 23 14:34:17 2020 This time it looks like we have some kind of
+race where an active EW gets into AWLOCKS, but nobody sees the Ring
+packet, or something.  Expanding debug output and going again.
+
+:762]
+
+:761]
+[763:
+
+Sat May 23 15:18:13 2020 Looks like we've gotten our active EW into
+state AWACKS when there are in fact no ACKS to be waiting for, because
+we did not in fact need any locks..  How did that happen?[764:
+
+Sat May 23 15:21:04 2020 Hmm, it LOOKS like the only place we go to
+AWACKS is:
+
+  void T2EWStateOps_ASCACHE::timeout(T2EventWindow & ew, T2PacketBuffer & pb, TimeQueue& tq) {
+    if (ew.trySendCacheUpdates()) { // True when all have been shipped to all
+      ew.setEWSN(EWSN_AWACKS);
+ ..
+
+which means we must have been in ASCACHE.  And how would we have
+gotten there?  Perhaps this:
+
+    if (ew.executeEvent()) {
+      if (ew.isRegisteredWithAnyITCs())  // XXX IS THIS THE RIGHT PREDICATE?
+        ew.setEWSN(EWSN_ASCACHE);
+      else
+
+in TO ABEHAVE??  With an XXX comment and everything how nice.
+
+What does isRegisteredWithAnyITCs actually check?  Yes, it does this:
+
+  bool T2EventWindow::isRegisteredWithAnyITCs() {
+    for (u32 i = 0; i < MAX_CIRCUITS_PER_EW; ++i) {
+      if (mCircuits[i].mITC != 0) return true;
+    }
+
+meaning it will return true for registered-but-SHUT ITCs, and our
+observed behavior is explained.
+
+Aaaand so what predicate do we WANT there?[765:
+
+Sat May 23 15:28:09 2020 Well, made bool T2EW::hasAnyLocks();
+switching to that in TO ABEHAVE.
+
+:765]
+
+:764]
+
+:763]
+[766:
+
+Sat May 23 16:05:55 2020 OK we also have, in part, this:
+
+  ..
+      bool T2EventWindow::tryInitiateActiveEvent(UPoint center,u32 radius) {
+        assignCenter(MakeSigned(center), radius, true);
+  ..
+        takeOwnershipOfRegion();
+        if (isRegisteredWithAnyITCs()) {
+          if (!trySendLockRequests()) return false; // WTF?
+          setEWSN(EWSN_AWLOCKS);
+          scheduleWait(WC_LONG);
+        } else {
+          setEWSN(EWSN_ABEHAVE);
+          scheduleWait(WC_NOW);
+        }
+
+and the isRegisteredWithAnyITCs is going to send us into that first
+branch, going to AWLOCKS, even if we don't need any locks.  That's
+currently causing all non-locking events to have a WC_LONG delay,
+followed, apparently, by the discovery that no locks are needed, so
+the event actually eventually succeeds.[767:
+
+Sat May 23 16:10:23 2020 Switching it to
+
+ ..
+    takeOwnershipOfRegion();
+    if (needsAnyLocks()) {
+      if (!trySendLockRequests()) return false; // WTF?
+ ..
+
+:767]
+
+:766]
+[768:
+
+Sat May 23 16:16:59 2020 Well, we just observed multiple full passes
+of our GoWest bein going across the tile and around on loopback, and
+then it hit TO AWACKS after 3K+ messages:
+
+    43389: DBG: ITC/ET:OPEN: Enter HAP
+    43390: MSG: ITC/ET:OPEN EW28-AC/AWLOCKS HAP
+    43391: MSG: EW28-AC/AWLOCKS hACK ITC/ET:OPEN
+    43392: DBG:   ITC/ET:OPEN wrote 28/0xA2 0xC3 ...== 28
+    43393: DBG:   ITC/ET:OPEN wrote 2/0xA2 0xC3== 2
+    43394: DBG: ITC/WT:OPEN: Recv 28/0xA6 0xC3 ...
+    43395: DBG: ITC/WT:OPEN: Enter HCUP
+    43396: DBG: ITC/WT:OPEN: Recv 2/0xA6 0xC3
+    43397: DBG: ITC/WT:OPEN: Enter HCUP
+    43398: MSG: EW03-WT/PWCACHE (ITC/WT:OPEN) cPEWAHU
+    43399: DBG:   ITC/WT:OPEN wrote 2/0xA6 0xD3== 2
+    43400: MSG: EW03-WT/PINIT PASSIVE DONE
+
+    Thread 1 "itcSpike12" hit Breakpoint 1, MFMLongJmpHere (buffer=0xbefff928,
+        toThrow=1) at src/FailPlatformSpecific.cpp:48
+    48	    longjmp(buffer,toThrow);
+    (gdb) up
+    #1  0x004634aa in MFM::T2EWStateOps_AWACKS::timeout (
+        this=0x4c5668 <MFM::singletonT2EWStateOps_AWACKS>, ew=..., pb=...,
+        tq=...) at src/T2EventWindow.cpp:732
+    732	    FAIL(INCOMPLETE_CODE);
+    (gdb) p ew.getName()
+    $56 = 0x4fa550 <MFM::T2EventWindow::getName() const::buf> "EW28-AC/AWACKS"
+    (gdb)
+
+which might actually be a flat-out genuine race, at this point, what
+with all the debug messages and such.  What did I set the AWACKS
+timeout to?[769:
+
+Sat May 23 16:24:06 2020 WC_HALF == 150ms.  Yeah, let's try WC_FULL.
+
+:769]
+
+:768]
+[770:
+
+Sat May 23 16:28:37 2020 Well, all giant payoff, big progress, for all
+the tons that still remain to be done.  Have to get off to cooking
+dinner but trying one more mod -- making the bein check if West is
+live before going that way.  If it works, we 'should' be able to pull
+the loopback and have the bein stop at the edge, then start again
+after we replug the cable.
+
+Yeah right!  I'm so sure!
+
+Let's try it!
+[771:
+
+Sat May 23 16:31:48 2020 Bein's going nowhere.  Suspecting that
+T2EW::mSitesLive is not getting set up correctly.
+
+Pick up there next time.
+[772:
+
+Sun May 24 00:10:20 2020 OK let's take a look at mSitesLive stuff.
+[773:
+
+Sun May 24 00:11:17 2020 So right now in checkSiteAvailability, we
+see:
+
+      if (!T2_SITE_IS_VISIBLE_OR_CACHE(usite.GetX(),usite.GetY())) {
+        mSitesLive[sn] = true; // Hidden sites are good to go
+        continue;
+      }
+
+which is fine as far as it goes, but it's not enough.  But we also
+see:
+
+      // For cache and visible, also assess and accumulate ITC involvements
+      bool isLive = true;
+      for (u32 dir6 = 0; dir6 < DIR6_COUNT; ++dir6) {
+        if (tile.getVisibleAndCacheRect(dir6).Contains(site)) {
+          T2ITC & itc = tile.getITC(dir6);
+          if (!itc.isVisibleUsable()) return false; // Sorry folks, this exhibit is closed
+          registerWithITCIfNeeded(itc);
+          if (T2_SITE_IS_CACHE(usite.GetX(),usite.GetY()) && !itc.isCacheUsable())
+            isLive = false; // Exhibit's working but that site is currently dead
+        }
+      }
+      if (isLive) mSitesLive[sn] = true;
+
+so why isn't that working?  Let's watch it.[774:
+
+Sun May 24 00:21:14 2020 OK it's a thinko I think.  In that loop
+above, we're getting to
+
+          if (T2_SITE_IS_CACHE(usite.GetX(),usite.GetY()) && !itc.isCacheUsable())
+            isLive = false; // Exhibit's working but that site is currently dead
+with the NW itc:
+
+    (gdb) p itc.getName()
+    $65 = 0x4fa5e0 <MFM::T2ITC::getName() const::buf> "ITC/NW:SHUT"
+    (gdb) p usite
+    $66 = {m_x = 3, m_y = 4}
+    (gdb)
+
+which is, we thought correctly, saying:
+
+    (gdb) p itc.isCacheUsable()
+    $63 = false
+    (gdb)
+
+because it is SHUT.  But cache is only usable if the ITC is OPEN, due
+to the explicit XX arg in the T2ITC state machine tables
+
+                 vvv
+  /*   name   vz,ch,mc,to,rc,sb,desc */                          \
+  XX(SHUT,     1, 0, 0, 1, 1, 0, "EWs running locally")          \
+  XX(DRAIN,    0, 0, 0, 1, 0, 0, "drain EWs to settle cache")    \
+  XX(CACHEXG,  0, 0, 2, 1, 1, 0, "exchange cache atoms")         \
+  XX(OPEN,     1, 1, 2, 1, 1, 0, "intertile EWs active")         \
+                 ^^^
+
+So ITC/NW:SHUT seems certainly on solid ground saying its cache is not
+usable.
+
+But
+
+    (gdb) p usite
+    $66 = {m_x = 3, m_y = 4}
+
+isn't part of the NW cache, now is it?  Consider the upper left of our
+:636: figure, which we never expected to look at ever again:
+
+        +01234-------
+        0oooooooooooo
+        1oooooooooooo
+        2oooooooooooo
+        3oooooooooooo
+        4aaaaeeeegggg
+        5aaaaeeeegggg
+     ..
+
+      a:WT cache    i:NE&ET vis  p:NE cache
+     ..
+      g:NW vis      o:NW cache
+     ..
+
+(3,4) is code 'a', not code 'o'.
+
+I guess the problem is we need another condition.  The main guard on
+the per-ITC loop is:
+
+        if (tile.getVisibleAndCacheRect(dir6).Contains(site)) {
+
+which says we need to do more work for sites that are EITHER cache or
+visible relative to the given dir6.  And that's right because we need
+to register with the dir6 ITC in either case.  But then the first
+clause of this is not specific enough:
+
+          if (T2_SITE_IS_CACHE(usite.GetX(),usite.GetY()) && !itc.isCacheUsable())
+
+It's not enough to ask if usite is in the cache of this whole T2 tile;
+we need to ask: Is usite in THE PART OF the cache THAT'S OWNED BY ITC?
+
+[775:
+
+Sun May 24 00:39:57 2020 Yes.  So how do we answer that?[776:
+
+Sun May 24 00:41:29 2020 Could it be as simple as:
+
+          if (itc.getCacheRect().Contains(site) && !itc.isCacheUsable())
+
+??  (Rect::Contains wants a signed point, so 'site' not 'usite'.)
+
+[777:
+
+Sun May 24 01:39:03 2020 Well, yes, that was it.  I've been watching
+it and admiring its behavior and what not.  Up over 100K messages gone
+by:
+
+ ..
+    6104840: DBG: EW02-AC/AINIT OWNING (12,4)+4
+    6104841: DBG: EW02-AC/ABEHAVE FREEING (12,4)+4
+    6104842: DBG: EW01-AC/AINIT OWNING (11,4)+4
+    6104843: DBG:   ITC/WT:OPEN wrote 5/0xA6 0x97 ...== 5
+    6104844: DBG: ITC/ET:OPEN: Recv 5/0xA2 0x97 ...
+    6104845: DBG: ITC/ET:OPEN: Enter HRP
+    6104846: DBG:   ITC/ET:OPEN wrote 2/0xA2 0xA7== 2
+    6104847: DBG: ITC/WT:OPEN: Recv 2/0xA6 0xA7
+ ..
+
+Made a little video of the the loopback cable unplug/replug behavior
+-- but thinking it would be more fun to demo that 'live' on the
+update.[778:
+
+Sun May 24 01:42:03 2020 I'm thinking maybe it's time to (make a few
+usability tweaks on this stuff and then) make a new disk image?  So we
+could INSTANTLY SEE THIS ALL DIE ON **REAL** INTERTILE instead of
+LAME-O LOOPBACK SELF-DEALING.
+
+Maybe we should wait until after the update for that.
+
+:778]
+
+:777]
+:776]
+
+:775]
+
+:774]
+
+:773]
+
+:772]
+:771]
+:770]
+[779:
+
+Sun May 24 03:36:57 2020 And we have our first event race!  Beautiful!
+Here it is, plain as day:
+
+    518467: DBG: EW13-AC/ABEHAVE FREEING (37,9)+4
+
+Some previous event is wrapping up, 18.5K log messages into the run..
+
+    518468: DBG: EW23-AC/AINIT OWNING (51,5)+4
+
+EW23 goes for an active event in the far northeast..
+
+    518469: DBG:   ITC/ET:OPEN wrote 5/0xA2 0x90 ...== 5
+
+..and sends a lock request off ET, since ITC/ET is OPEN.
+
+    518470: DBG: EW02-AC/AINIT OWNING (4,9)+4
+
+But right around the same time, EW02 goes to start an active event in
+the far northwest!
+
+    518471: DBG:   ITC/WT:OPEN wrote 5/0xA6 0x92 ...== 5
+
+And it sends a lock request out WT before seeing EW23's inbound
+request! Ono!
+
+    518472: DBG: ITC/ET:OPEN: Recv 5/0xA2 0x92 ...
+
+In this case, ET happened to read that lock request from WT first!
+
+    518473: DBG: ITC/ET:OPEN: Enter HRP
+
+And ET dishes it to handleRingPacket!
+
+    Thread 1 "itcSpike12" hit Breakpoint 1, MFMLongJmpHere (buffer=0xbefff928,
+        toThrow=1) at src/FailPlatformSpecific.cpp:48
+    48	    longjmp(buffer,toThrow);
+    (gdb) up
+    #1  0x0046278c in MFM::T2EventWindow::checkSiteAvailabilityForPassive (
+        this=0x504300) at src/T2EventWindow.cpp:280
+    280	      FAIL(INCOMPLETE_CODE); // Resolve races
+
+And boom goes the dynamite.
+
+    (gdb) l
+    275	        continue;
+    276	      }
+    277	    }
+    278
+    279	    if (conflicts.size() > 0) {
+    280	      FAIL(INCOMPLETE_CODE); // Resolve races
+    281	      return false;
+    282	    }
+    283	    // THEY WIN.  WE HOG THE REGION ON THEIR BEHALF
+    284	    takeOwnershipOfRegion();
+    (gdb)
+
+So that's another big chunk of functionality yet to be written.  Do I
+have the strength to start into it now?  Let's take a quick look.
+
+(I note at the outset that it wouldn't be super hard to make a test
+fixture that would set this situation up, so we could have a race --
+or with more work even those multiway races I was worrying about --
+more or less on demand.  We'll see if we need it.)
+
+:779]
+[780:
+
+Sun May 24 04:32:18 2020 OK well I was designing in comments in
+T2EventWindow.cpp, but I've gotten myself snarled up enough that we
+better move back here.
+
+In T2EW::checkSiteAvailabilityForPassive, we have:
+
+    std::set<T2EventWindow *> conflicts;
+ ..
+    for (u32 sn = first; sn <= last; ++sn) {
+      T2EventWindow * rew = tile.getSiteOwner(usite);
+      if (rew != 0) {
+        conflicts.insert(rew);
+      }
+ ..
+
+and I was going for something like:
+
+    if (conflicts.size() > 0) {
+      if (resolveRacesFromPassive(conflicts)) {
+        SOMETHING
+      } else {
+        SOMETHING ELSE
+      }
+      return false;
+    }
+
+And in:
+
+  bool T2EventWindow::resolveRacesFromPassive(std::set<T2EventWindow*> actives)
+
+I was imagining stuff like
+
+    // OK.  Our question here is: Do we, as a new-still-being-created
+    // passive EW, win against ALL of the active EWs in actives?
+    //
+    // Each active EW is considered in turn, strictly from oldest to
+    // newest in terms of when their ring packets were sent.
+
+But the thing is this:
+
+ - We only have a strict ordering of ring-packet-sent-times within a
+   single T2ITC.  But an active EW may have sent ring packets on two
+   different T2ITCs, and it will have two different values in two
+   different elements of mLockSequenceNumber[DIR6].
+
+ - So it seems at the very least we need the 'this' EW in
+   checkSiteAvailabilityForPassive to know what T2ITC it's a passive
+   for, and then resolveRacesFromPassive should use the lock sequence
+   numbers of that specific T2ITC to determine race resolution order.
+
+   = And it must be the case that every EW in conflicts MUST HAVE SENT
+     a ring packet on the given T2ITC, because visibility is
+     symmetric.
+
+So I guess that's something approaching a construction plan, but I'm
+fading now.  Sleep and then come back here.
+
+:780]
+[781:
+
+Sun May 24 10:31:45 2020 Well, so what I keep coming back to now is
+the possibility that one active EW 'aA' on tile T1 could race
+simultaneously against active EWs 'aB' on T2 and active 'aC' on T3.
+
+[1] So the following lock requests are all in flight:
+
+(1) aA T1->T2
+(2) aA T1->T3
+(3) aB T2->T1
+(4) aC T3->T1
+
+[2] Say T1 recvs (3).  It detects the aA:aB race, and suppose aB wins.
+
+[3] So according to our thinking so far, T1 is supposed to silently
+unwind and forget about aA, and proceed to grant the lock for aB,
+returning an aB ACK to T2.  T1 also sets up pB, the passive EW
+matching aB.
+
+[4] Also say T2 recvs (1).  It too detects the aA:aB race, and
+necessarily also computes that its own aB wins.  So it just drops the
+aA lock request on the floor and awaits the ACK from T1 for aB.
+
+[5] But at some point in these festivities, T3 will recv (2) and
+detect the aA:aC race.  Suppose aA wins that.  T3 then forgets about
+aC, and returns an aA ACK to T1.
+
+[6] But after T1 recvs (3), say, it also will recv (4).  To T1, that
+appears as aC conflicting with pB.  What to do?  T1 can't unilaterally
+abort pB, because it already granted the lock to aB.
+
+[7] And at some point before or after T1 recvs (3), it will also
+receive the ACK from T3 for aA.  And what is T1 supposed to do with
+that?  aA already silently unwound aA back at [3].
+
+[782:
+
+Sun May 24 11:55:33 2020 So all this seems to suggest a couple of
+things to me:
+
+ - First, it seems like we DO have to have a NAK reply to a lock
+   request, and not just the yoink protocol + an ACK to the winner.
+
+   If this scenario is true -- and that is not completely certain to
+   me -- then there can be hidden information, so both sides CANNOT
+   necessarily compute the same ultimate race winner separately.
+
+ - Second, it seems almost certain that we can't just unwind an active
+   EW when we lose a race -- at least not while we still have active
+   circuits on it.
+
+So T1 wouldn't be able to unwind aA in step [3] above, during recv (3)
+processing.  T1 would have to keep it aA around, because aA still has
+a circuit with T3.
+
+But that's tough, because during recv (3) processing, T1 HAS to set up
+pB and let pB hog its sites.  Cache upds from aB might arrive at any
+time.
+
+So we're saying there might be some kind of 'zombie active EW' state,
+where an active EW has lost its sites, but it still has at least one
+circuit, so it has to wait around to possibly get an ACK from some
+other poor sap who's abandoned its own active EW in favor of this
+zombie.
+
+And then when the ACK arrives, the zombie EW will send like an empty
+cache upd?  Which the passive side can 'apply', changing nothing?
+That would be the simplest approach, if it didn't blow any statistics
+or anything.
+[783:
+
+Sun May 24 12:31:09 2020 So this is seeming _slightly_ plausible if
+all very gross and disgusting.  But I do want to think a little bit
+about whether the key assumption -- that there can be hidden
+information that some race participants absolutely cannot see -- is
+really true.
+
+Consider the :781: situation again: 'aA' on T1 races simultaneously
+against 'aB' on T2 and 'aC' on T3.
+
+Now here's my question: What does T3 know about aB and what does T2
+know about aC?  Is it really possible that the answer is 'nothing'?
+If so then it seems there definitely is hidden information.
+
+Consider the NW corner again:
+
+      +01234-----------
+      0oooooooooooooooo    a:WT cache
+      1oooooooooooooooo    b:WT visible
+      2oooooooooooooooo
+      3oooooooooooooooo    g:NW vis
+      4aaaaeeeegggggggg    o:NW cache
+      5aaaaeeeegggggggg
+      6aaaaeeeegggggggg
+      7aaaaeeeegggggggg
+      8aaaabbbb
+      9aaaabbbb
+      |aaaabbbb
+
+And suppose that's T1, and T2 is WT, and T3 is NW.  We could have
+something like:
+
+   T1 aA (4,4)+4            T2 aB (-1,6)+2             .   T3 aC (3,-1)+2
+                                                      ...
+ +01234-----------         +01234-----------       +0..C..----------
+ 0oooo.ooooooooooo         0oooooooooooooooo       0oo...ooooooooooo
+ 1ooo...oooooooooo         1oooooooooooooooo       1ooo.oooooooooooo
+ 2oo.....ooooooooo         2oooooooooooooooo       2oooooooooooooooo
+ 3o.......oooooooo         3oooooooooooooooo       3oooooooooooooooo
+ 4....A....ggggggg         .aaaaeeeegggggggg       4aaaaeeeegggggggg
+ 5a.......gggggggg        ...aaaeeeegggggggg       5aaaaeeeegggggggg
+ 6aa.....egggggggg       ..B..aaeeeegggggggg       6aaaaeeeegggggggg
+ 7aaa...eegggggggg        ...aaaeeeegggggggg       7aaaaeeeegggggggg
+ 8aaaa.bbb                 .aaaabbbb               8aaaabbbb
+ 9aaaabbbb                 9aaaabbbb               9aaaabbbb
+ |aaaabbbb                 |aaaabbbb               |aaaabbbb
+
+(Where all the coords have been mapped into T1's frame of reference.)
+
+But let's see: aA and aC definitely conflict -- e.g., at (4,0) -- but
+aB doesn't actually conflict with aA, does it?  Suppose we move aA one
+row lower, and hmm aC one column right, that should do it:
+
+   T1 aA (4,5)+4            T2 aB (-1,6)+2              .  T3 aC (4,-1)+2
+                                                       ...
+ +01234-----------         +01234-----------       +01..C..---------
+ 0oooooooooooooooo         0oooooooooooooooo       0ooo...oooooooooo
+ 1oooo.ooooooooooo         1oooooooooooooooo       1oooo.ooooooooooo
+ 2ooo...oooooooooo         2oooooooooooooooo       2oooooooooooooooo
+ 3oo.....ooooooooo         3oooooooooooooooo       3oooooooooooooooo
+ 4o.......oggggggg         .aaaaeeeegggggggg       4aaaaeeeegggggggg
+ 5....A....ggggggg        ...aaaeeeegggggggg       5aaaaeeeegggggggg
+ 6a.......gggggggg       ..B..aaeeeegggggggg       6aaaaeeeegggggggg
+ 7aa.....egggggggg        ...aaaeeeegggggggg       7aaaaeeeegggggggg
+ 8aaa...bb                 .aaaabbbb               8aaaabbbb
+ 9aaaa.bbb                 9aaaabbbb               9aaaabbbb
+ |aaaabbbb                 |aaaabbbb               |aaaabbbb
+
+OK.  Now aC and aA conflict on (4,1), and aB and aA conflict on (0,5)
+-- but aB is hidden from T3 (NW), right?
+
+Is aC is hidden from T2 (WT)?  Actually I guess it's not; T2's NE
+cache would be seeing over to (0,3) in T1 coords, and aC is trying for
+that spot.
+
+[784:
+
+Sun May 24 13:01:45 2020 Is this picture all possible?  Why is there
+this T2/WT-sees-aC but T3/NW-doesn't-see-aB asymmetry?
+
+This picture has unnecessary constraints, though, right?  Our cache is
+the neighbor's viz.  The neighbor can have an event center anywhere in
+their viz, meaning anywhere in our cache, meaning their event can
+bleed over into our viz no problem.  So it could be like this, right:
+
+   T1 aA (4,5)+4            T2 aB (3,7)+2                  T3 aC (7,3)+2
+
+ +01234-----------         +01234-----------       +01234------------
+ 0oooooooooooooooo         0oooooooooooooooo       0oooooooooooooooo
+ 1oooo.ooooooooooo         1oooooooooooooooo       1ooooooo.oooooooo
+ 2ooo...oooooooooo         2oooooooooooooooo       2oooooo...ooooooo
+ 3oo.....ooooooooo         3oooooooooooooooo       3ooooo..C..oooooo
+ 4o.......oggggggg         4aaaaeeeegggggggg       4aaaaee...ggggggg
+ 5....A....ggggggg         5aaa.eeeegggggggg       5aaaaeee.gggggggg
+ 6a.......gggggggg         6aa...eeegggggggg       6aaaaeeeegggggggg
+ 7aa.....egggggggg         7a..B..eegggggggg       7aaaaeeeegggggggg
+ 8aaa...bb                 8aa...bbb               8aaaabbbb
+ 9aaaa.bbb                 9aaa.bbbb               9aaaabbbb
+ |aaaabbbb                 |aaaabbbb               |aaaabbbb
+
+and now aB is totally hidden from T3/NW and aC is totally hidden from
+T2/WT.  And the conflict picture would look like this:
+
+T1 aA (4,5)+4 +01234-----------
+T2 aB (3,7)+2 0oooooooooooooooo
+T3 aC (7,3)+2 1oooo.oo.oooooooo
+              2ooo......ooooooo
+              3oo...**C..oooooo
+              4o.....**.ggggggg
+              5...*A..*.ggggggg
+              6a.***...gggggggg
+              7a.*B**.egggggggg
+              8aa.**.bb
+              9aaa.bbbb
+              |aaaabbbb
+
+with *s marking conflicted sites.
+
+[785:
+
+Sun May 24 13:15:44 2020 So is that convincing?  The argument is:
+
+1. We can definitely have multiway races where not all of the
+participants will have visibility into all of the races.
+
+2. Therefore, participants can NOT necessarily compute the correct
+race winner themselves.
+
+3. Therefore, due to the possibility that a passive side may detect a
+hidden multiway race, a passive participant must be able to signal NAK
+-- lock NOT granted -- even on an event that the (pairwise) yoink
+protocol dictated the active side should win.
+
+4. Therefore as well, due to the possibility that an active side may
+have to abandon an an event to a hidden multiway race, an active
+participant must be able to signal CANCEL -- lock released WITHOUT an
+event -- even after the passive side has granted a lock.
+
+[786:
+
+Sun May 24 13:28:05 2020 Yikes.  That sounds semiplausible as far as
+it goes, but (1) It's a lot of hair compared to what we thought we'd
+need, and (2) Are we sure that it goes far enough?
+
+[787:
+
+Sun May 24 13:40:46 2020 So it would go something like this:
+
+(A1) Pick an active window, it looks available, hog the sites and send
+     ring packet lock requests to all other participants.
+
+(A2) Wait for ACK/NAK from all other participants.
+
+(A3) On first NAK from another participant, put the active window into
+     some special suspended state while unhogging its sites, and wait
+     for further ACK/NAKs.
+
+(A4) On ACK from another participant, record that information.
+
+(A5) Once all other participants have replied, check if we are in the
+     special suspended state.  If so, send a CANCEL to all the
+     participants that we received an ACK from, and then tear down the
+     EW.
+
+(A6) Otherwise, we are not in the special suspended state, so we
+     received ACKs from all other participants.  Move on to ABEHAVE
+     and cache upds in the existing fashion.
+
+
+[788:
+
+Sun May 24 13:49:31 2020 While on the passive side, it might be like:
+
+(P1) Receive a ring packet lock request.
+
+(P2) If all requested sites are available, set up a passive window,
+     hog the sites, and send an ACK lock granted reply.
+
+(P3) If any sites are conflicted, assemble the set of all conflicted
+     windows.  If any of the conflict windows are passive, send a NAK
+     lock rejected reply back to the source of the ring packet lock
+     request.
+
+(P4) If all of the conflict windows are active, consider them in
+     oldest-first order. For each, first apply the yoink protocol and
+     determine if the local active or the incoming active wins.
+
+(P5) If the incoming active wins, put the local active into the
+     special suspended state as in (A3) above.  Continue with the next
+     conflicted window, if any.
+
+(P6) If a local active wins, send a NAK lock rejected reply back to
+     the source of the ring packet lock request.  (Note that some
+     local actives may have been suspended by the time this happens.)
+     Do not consider the rest of the conflicted windows, if any, and
+     no passive window is created.
+
+(P7) Otherwise, the incoming active wins over all local actives, which
+     have now all been suspended, and their sites unhogged.  Continue
+     as in (P2), which will now succeed.
+
+(P8) Eventually, either a CANCEL or cache upds will be received on the
+     circuit of the passive window.  If a CANCEL arrives, unhog the
+     passive window sites and tear down the window.  If cache upds
+     arrive, move on to processing them and committing in the existing
+     fashion.
+
+[789:
+
+Sun May 24 14:16:44 2020 "And that's all there is to it!"
+
+Gah.
+
+And even at that, we're still ignoring channel errors and ITC
+disconnects and so forth -- all the 'hard' stuff.
+
+[790:
+
+Sun May 24 14:42:34 2020 Getting to be time to break for meeting,
+but.. are we believing this?  Do we think it covers the (non-error)
+cases?
+
+:790]
+:789]
+:788]
+
+:787]
+
+:786]
+
+:785]
+
+:784]
+
+:782]
+
+:781]
+[791:
+
+Mon May 25 10:29:29 2020 OK moving the flag.
+
+:791]
