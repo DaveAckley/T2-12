@@ -1,4 +1,4 @@
-{792}  -*- text -*-
+{831}  -*- text -*-
 [0:
 [3:
 [35:
@@ -11344,3 +11344,623 @@ cases?
 Mon May 25 10:29:29 2020 OK moving the flag.
 
 :791]
+[792:
+
+Wed May 27 08:02:29 2020 OK so we're past the update and it's time to
+plan some next steps.  Urm but first breakfast.
+
+:792]
+[793:
+
+Wed May 27 15:33:09 2020 Well so this day turned into not hacking :(
+
+Where are we?
+
+..I guess we're trying to implement :787:
+
+So we think we'll need:
+
+ - Decide what's up with the 'special suspended state'.  What's it
+   called?  What are its invariants?  What resources does it hold or
+   release?
+
+ - I bet we're going to need a userspace event tracing system
+   relatively soon, to get sufficient observability into the action
+   without blowing the timing.  Coordinating traces between tiles is
+   still going to be a trick.  Maybe we could blow four bytes in all
+   the circuit signals (except Talk) for a sender side sequence
+   number, which we'd capture on both sides for later matching.
+   Probably worth doing that much now, tracing system or no, just to
+   help out log file analysis.
+
+(We shouldn't use 'Flash' to mean lock discard.  It's too inside-telco
+and it aliases with 'Flash traffic', which is a better, or at least
+cooler, use of the term.  Press the pound key?  Call it Hash?  Just
+ditch the foggen telco lingo entirely, boo, and go with
+Req/Ack/Nak/Discard/Update/Done?  Boo, boo.  Hey, 'Drop'.  Drop a
+call, that's a telco thing, and a fair match to what we need.  'Drop
+(lock discard)' it is.)
+
+:793]
+[794:
+
+Wed May 27 16:34:43 2020 So what about the special suspended state?
+It's a state in the state machine, yes?  Named 'ADROP'?
+
+  XX(ADROP,    1,    0,   0,  "finish NAKed event")     \
+
+So what makes ADROP special is that we've already unhogged the sites.
+So what's an explicit flag that an EW has/doesn't have hogged sites?
+
+:794]
+[795:
+
+Thu May 28 02:05:54 2020 Geez get back in gear man.  We're almost 42
+hours out from shooting the last update and no more code exists!
+
+:795]
+[796:
+
+Thu May 28 03:33:44 2020 OK, made T2EW::isHoggingSites() to check if
+an EW (still) has any representation in mSitesOwners.  Nobody's
+calling it yet.
+
+And added state ADROP.  Let's try to hook it up, starting from that
+race detection site..
+[797:
+
+Thu May 28 03:56:09 2020 OK we're in 'resolveRacesFromPassive'.  :787:
+behavior GO GO GO[798:
+
+Thu May 28 03:56:54 2020 So we're at P3.  Next, we need to examine our
+conflicts and see if any of those EWs are passive; if so we send a NAK
+(and do what else, with ourself?)[799:
+
+Thu May 28 04:14:58 2020 OK how do we tell if an EW is active or
+passive?  Sheesh I can't remember anything.
+
+:799]
+
+:798]
+
+:797]
+:796]
+[800:
+
+Thu May 28 05:08:45 2020 OK, now we're dying in bool
+T2EW::winsYoinkRace.  Aaand we have to figure out how to implement
+that.
+
+The yoink values are stored in the T2ITC Circuit structs, so at a
+minimum we'll need to access them.  But one question is: Access them
+on WHICH T2ITC?  At active EW could be associated with two T2ITCs.  Ah
+but wait -- the other EW, the *this in winsYoinkRace, is always a
+PASSIVE EW, and that's only associated with the T2ITC it came in on.
+Is that really true?  So do we just yoink race on the passive's T2ITC
+and call it done (for that race)?
+
+Maybe.
+
+Time for morning walkies.
+
+:800]
+[801:
+
+Thu May 28 05:45:24 2020 So okay.[802:
+
+Thu May 28 05:56:35 2020 Tried a first chunk of winsYoinkRace..  Isn't
+building yet; fixing..
+
+:802]
+
+:801]
+[803:
+
+Thu May 28 06:00:39 2020 Well, we got to this:
+
+    511447: DBG: ITC/WT:OPEN: Enter HRP
+    511448: DBG: EW12-WT/PINIT YOINK ITC/WT:OPEN us0 them0
+
+And though two 0 yoink vals is completely legal, it's also a little
+suspicious.  Are we actually setting the yoinks much of anywhere?[804:
+
+Thu May 28 06:04:23 2020 Well maybe it's not so suspicious --
+getYoinkVal returns s32 and < 0 for uninitted, so maybe those were two
+legit zeros.  Going again.
+
+:804]
+
+    Thread 1 "itcSpike12" hit Breakpoint 1, 0x00478cde in MFMLongJmpHere ()
+    (gdb) up
+    #1  0x0045e4e8 in MFM::T2EventWindow::winsYoinkRace (this=0x52e6e8, ew=...)
+        at src/T2EventWindow.cpp:278
+    278	    FAIL(INCOMPLETE_CODE);
+    (gdb)
+
+:803]
+[805:
+
+Thu May 28 06:06:20 2020 OK well, second go was this:
+
+    45080: DBG: ITC/WT:OPEN: Recv 5/0xA6 0xA4 ...
+    45081: DBG: ITC/WT:OPEN: Enter HRP
+    45082: DBG: EW04-WT/PINIT YOINK ITC/WT:OPEN us1 them1
+
+Let's see us and them differ.  Going again.[806:
+
+Thu May 28 06:08:34 2020 Hmm:
+
+    510806: DBG: ITC/ET:OPEN: Recv 5/0xA2 0xA7 ...
+    510807: DBG: ITC/ET:OPEN: Enter HRP
+    510808: DBG: EW07-ET/PINIT YOINK ITC/ET:OPEN us1 them1
+
+One more try.[807:
+
+Thu May 28 06:09:33 2020
+
+    44705: DBG: ITC/ET:OPEN: Recv 5/0xA2 0xA0 ...
+    44706: DBG: ITC/ET:OPEN: Enter HRP
+    44707: DBG: EW00-ET/PINIT YOINK ITC/ET:OPEN us0 them0
+
+Alright.  Let's look closer.
+
+:807]
+
+:806]
+
+
+:805]
+[808:
+
+Thu May 28 06:12:24 2020 So, active side yoinkvals appear to be set
+
+  bool T2ITC::allocateActiveCircuitIfNeeded(EWSlotNum ewsn, CircuitNum & circuitnum) {
+    if (getITCSN() == ITCSN_SHUT) return true;  // No circuit needed
+    MFM_API_ASSERT_STATE(getITCSN() == ITCSN_OPEN);
+    CircuitNum ret = tryAllocateActiveCircuit();
+    if (ret == ALL_CIRCUITS_BUSY) return false; // Sorry no can do
+    mCircuits[1][ret].mEW = ewsn; // NOW ALLOCATED as active EW
+    mCircuits[1][ret].mYoinkVal = mTile.getRandom().Between(0,1);
+
+right there.
+
+    circuitnum = ret;             // NOW ALLOCATED as EW's circuit
+    return true;
+  }
+
+In a T2ITC::mCircuits[1], which is the active side, for example
+according to:
+
+      s8 T2ITC::getYoinkVal(CircuitNum cn, bool forActive) const {
+        MFM_API_ASSERT_ARG(cn < CIRCUIT_COUNT);
+        return mCircuits[forActive ? 1 : 0][cn].mYoinkVal;
+      }
+
+which is what we call here:
+
+            themVal = itc.getYoinkVal(ci.mCircuitNum,true);
+
+On the passive side, mYoinkVal comes from:
+
+      void T2ITC::handleRingPacket(T2PacketBuffer & pb) {
+        LOG.Debug("%s: Enter HRP", getName());
+ ..
+        const char * pkt = pb.GetBuffer();
+ ..
+        bool ayoink = ((pkt[4]>>7)&0x1) != 0;
+ ..
+        T2EventWindow & passiveEW = *mPassiveEWs[cn];
+        MFM_API_ASSERT_STATE(mCircuits[0][cn].mEW == 0);
+        MFM_API_ASSERT_STATE(mCircuits[0][cn].mYoinkVal < 0);
+        mCircuits[0][cn].mEW = passiveEW.slotNum();
+        mCircuits[0][cn].mYoinkVal = ayoink ? 1 : 0;
+        passiveEW.initPassive(ourCtr, radius, cn, *this);
+ ..
+
+Which does appear to be a different place..  Can we see the yoink bit
+getting set up in the ring packet?  Here:
+
+      bool T2EventWindow::trySendLockRequests() {
+        for (u32 i = 0; i < MAX_CIRCUITS_PER_EW; ++i) {
+          if (mCircuits[i].mITC == 0) continue;
+          T2ITC & itc = *mCircuits[i].mITC;
+          CircuitNum cn = mCircuits[i].mCircuitNum;
+          if (cn == U8_MAX) continue; // ITC is SHUT, no circuit or lock needed.
+          s8 yoinkVal = itc.getYoinkVal(cn, true);
+ ..
+
+Accessed there.
+
+          T2PacketBuffer pb;
+          pb.Printf("%c%c",
+ ..
+          pb.Printf("%c%c",
+ ..
+          u8 yoinkRad = ((yoinkVal&0x1)<<7)|mRadius;
+          pb.Printf("%c",yoinkRad);
+ ..
+
+Packeted there.  Which does appear to be in byte[4] of the packet.
+[809:
+
+Thu May 28 06:25:12 2020 Watch one more time, then pull out bigger
+guns if needed..[810:
+
+Thu May 28 06:30:01 2020 Fudge:
+
+    546850: DBG: ITC/WT:OPEN: Enter HRP
+    546851: DBG: EW02-WT/PINIT YOINK ITC/WT:OPEN us0 them0
+
+
+:810]
+
+:809]
+
+:808]
+[811:
+
+Thu May 28 06:36:34 2020 OK breaking in winsYoinkRace.  One thinko
+seems apparent: The two EWs should typically NOT have the same
+circuitnum -- because they're completely separate events, unconnected
+except for both wanting to hog aliased sites -- but winsYoinkRace
+appears to think ...
+
+Gah are we not even looking in ew?  Are we just comparing the passive
+EW to itself?  Um?????[812:
+
+Thu May 28 07:14:31 2020 Well, we were, but it still seemed messed up
+after fixing that, so I finally started going fine-grained through
+gdb..  And eventually the case I was tracing got to this:
+
+    (gdb)
+    273	    LOG.Debug("%s YOINK %s us%d them%d",
+    (gdb)
+    553715: DBG: EW12-ET/PINIT YOINK ITC/ET:OPEN us0 them1
+
+And the yoinks are NOT necessarily identical.  Doh.
+
+    278	    FAIL(INCOMPLETE_CODE);
+    (gdb)
+
+:812]
+
+:811]
+[813:
+
+Thu May 28 07:15:45 2020 So OK.  Who wins?
+
+If we go like the ITCs, [814: Thu May 28 07:20:11 2020 ...opps, the
+T2ITcs ended up not yoinking.  The LKM?[815: Thu May 28 07:21:35 2020
+...no, itcmfm.c is still using the heads-to-reset mechanism and
+letting randomness sort it out..
+
+Thu May 28 07:22:21 2020 Seems like it really really is up to us here
+at the event level to yoink this out...
+
+So this answer is: TIES GO TO GINGER.  If the bits are the same,
+Ginger wins; if they're different, Fred wins.  Which in
+one-strike-three terms means Ginger takes evens and Fred takes odds.
+
+:815]  :814]
+
+:813]
+[816:
+
+Thu May 28 08:05:27 2020 So trying to watch through a race example,
+and I'm confusing myself a lot.  In particular, thinking in terms of
+'us' and 'them' EWs is messing me up.  The *this in winsYoinkRace is a
+passive EW, which really represents 'them', but we're calling its
+yoinkVal 'usVal'.  While the active ew that gets passed in is one that
+we ourselves originated, but we're using 'themVal' for their yoink
+bit.
+
+No matter what else, we have to fix that!
+
+:816]
+[817:
+
+Thu May 28 10:10:44 2020 OK well it's half-conceivable that
+passiveWinsYoinkRace is not utterly wrong.  (There's clearly some kind
+of coord/mapping/something issue somewhere -- even in non-race
+situations, because we're getting transporter accidents wiping out
+bystanders quite often.  But we're leaving that for now.)
+
+So back to :787: What next?[818:
+
+Thu May 28 10:12:44 2020 Well for starters, :787: P5 has the same
+active/passive confusion, saying: 'If the incoming active wins'..  But
+the EW implied by the incoming ring packet is represented by a passive.
+[819:
+
+Thu May 28 10:31:03 2020 We're up to first-cut implementing P6
+apparently?
+
+:819]
+:818]
+
+:817]
+[820:
+
+Thu May 28 11:03:08 2020 Well I'm going cross-eyed here.  We just got
+as far as seeing both sides of a race, kind of:
+
+    6132360: DBG: EW31-AC/AINIT OWNING (4,11)+4
+    6132361: DBG: EW31-AC/AINIT RING abs(4,11) usrel(0,11) yoink=0
+    6132362: DBG:   ITC/WT:OPEN wrote 5/0xA6 0xA2 ...== 5
+    6132363: DBG: EW28-AC/AINIT OWNING (48,14)+4
+    6132364: DBG: EW28-AC/AINIT RING abs(48,14) usrel(0,14) yoink=1
+    6132365: DBG:   ITC/ET:OPEN wrote 5/0xA2 0xA8 ...== 5
+    6132366: DBG: ITC/ET:OPEN: Recv 5/0xA2 0xA2 ...
+    6132367: DBG: ITC/ET:OPEN: HRP abs(52,11) themrel(0,11) yoink=0
+    6132368: DBG: u EW28-AC/AWLOCKS (48,14); t EW02-ET/PINIT (52,11): YOINK ITC/ET:OPEN(Fred) us1 them0 -> they win
+
+'Our' active EW28 (48,14) overlaps with incoming ET (52,11), and ET
+wins.  (The (52,11) is the mapped EW31 (4,11) from 6132360.)
+
+So (supposedly) we unhogged EW28 and put it into state ADROP.
+
+    6132369: WRN: Big MSPAST 95386
+    6132370: DBG:   ITC/ET:OPEN wrote 2/0xA2 0xB2== 2
+
+And send an ACK telling (the active side of) EW31 that it had the lock.
+
+    6132371: DBG: ITC/WT:OPEN: Recv 5/0xA6 0xA8 ...
+    6132372: DBG: ITC/WT:OPEN: HRP abs(0,14) themrel(0,14) yoink=1
+
+Meanwhile-ish, the corresponding lock request (from EW28 (48,14)) has
+arrived at WT.
+
+    6132373: DBG: u EW31-AC/AWLOCKS (4,11); t EW08-WT/PINIT (0,14): YOINK ITC/WT:OPEN(Ginger) us0 them1 -> we win
+
+WT resolves the same race, the other way around, and correctly
+concludes that it wins.
+
+    6132374: DBG:   ITC/WT:OPEN wrote 2/0xA6 0xD8== 2
+
+And it sends the first EW NAK packet in the history of the universe.
+
+:820]
+[821:
+
+Thu May 28 16:36:37 2020 So let's think about event tracing at the
+native engine level.  It doesn't have to be as tight and fast as the
+LKM stuff, because we're here in userspace we're that much closer to
+value...  What about just a ring buffer of strings?  Or a simple
+struct with a time and a 'source' code of some kind..
+
+Or what about just expanding the foggen log structure that we already
+have?  Having some logging that goes basically straight to disk in
+some kind mfmlog file.  But do make it parsable, so we can make some
+kind of log merge program that will align a bunch of files from
+neighboring tiles, using sync marks added to packets.  The sync marks
+don't even have to be times; they probably don't want to be times;
+they could be variable length too, so rare packets could have long
+sync codes while frequent packets could have little or none.  One
+matches long sync codes to match up flows to begin with -- "Aha!  I
+have concluded that the tile that produced FILE13 was WT of the tile
+that produced FILE213!"
+
+I guess the log entries could/should have relative times in them as
+well, like a u32 of usec perhaps, so that time delays could be
+reconstructed too.
+
+:821]
+[822:
+
+Fri May 29 03:17:37 2020 OK have a couple hours here; let's knock
+together an mfm-level tracing system so we can reconstruct reasonably
+detailed after-action reports that span multiple interacting tiles.
+
+We need a master trace struct.  What will we put in it?
+
+ - u16 deltaMs: Difference between TQ::now() and prev trace TQ::now()
+
+ - u8 trace type: E.g., packet sent or received, race won, EW abort..
+
+ - u8 data len: Number of trace type specific bytes following, 0..255
+
+ - u8 data[len]: Arbitrary trace-type specific data
+
+So we're saying variable length trace records?  From 4..259 bytes?
+And that's enough room to stash an entire packet if we like, so long
+as there's nothing else in the data except the packet.
+
+And we'll declare subclasses of Trace to read and write each specific
+trace type that we want.
+
+And we'll have some pure virtual methods for everybody:
+
+ - s32 write(ByteSink&) - return bytes written >=0 or error <0
+
+ - s32 read(ByteSource&) - return bytes read >=0 or error <0
+
+ - s32 tag() - return source tag > 0, sink tag < 0, no tag == 0
+
+[823:
+
+Fri May 29 04:03:33 2020 Maybe we should try for high-res intratile
+absolute time, rather than deltaMs.  While understanding that there's
+no intertile clock alignment, so we'll have to rely on matching source
+and sink tags, at least to approximately align traces from different
+tiles.
+
+[824:
+
+Fri May 29 04:07:23 2020 So I see:
+
+    (gdb) p sizeof(struct timespec)
+    $78 = 8
+    (gdb)
+
+So why not just do that (perhaps with htonl calls)?
+
+ - struct timespec: Local absolute time
+
+ - u8 trace type: E.g., packet sent or received, race won, EW abort..
+
+ - u8 data len: Number of trace type specific bytes following, 0..255
+
+ - u8 data[len]: Arbitrary trace-type specific data
+
+If we went with fixed size records we could foggen mmap these files
+couldn't we?  For analysis purposes anyway.  Ah, like we care about
+speed or space during analysis, please!
+
+:824]
+
+:823]
+:822]
+[825:
+
+Sat May 30 15:27:01 2020 Well okay time to take my medicine.  I went
+for too much generality in the Trace subclass system and now things
+are a mess and I'm going to have to back out a bunch of stuff, I
+think.
+
+So what is the TOTAL PALETTE of types of events we'd like to capture:
+
+ - Packet movements, source, dest, and content
+
+ - Some or all state changes for each ITC
+
+ - Some of all state change for each EW
+
+ - Explicit log messages.  We can do that here too.
+
+ - Ulam-level debug messages
+
+What is the set of addresses/indices we'd need to describe all those
+locations.
+
+ - ITC dir6
+
+ - EW slot num for active EW
+
+ - ITC dir6 and channel n for passive EW
+
+ - No address
+
+So we'll put room for all that crap in TraceBase and include some kind
+of addressing mode saying which pieces of that information are the
+address for this Trace record.  And that address mode goes early in
+the trace record plus the stylized appropriate information.  And we
+have a default ctor for TraceBase that inits to no address, and then
+we have init functions to provide bits of info and set the addressing
+mode.
+
+Then the table-driven stuff doesn't even need to know the addressing
+mode, except to declare special address mode specific ctors to use for
+making the events for output.  For input it's all the same, because
+the address mode and necessary address is included in the trace rec.
+
+Unless we do want to put the addressing mode into the table, so we can
+have the address format specifics implied by the event type, and not
+have to include the address mode separately.
+
+That seems better right?  [826:
+
+Sun May 31 04:44:19 2020 No, we're making the TraceAddress completely
+separate.  The idea is that a TraceType should imply how to read the
+TraceRec of that type, independent of any address saying where it is.
+
+So the table-driven stuff should be all uniform.  There's no
+auto-generated calls on intermediate classes between TraceBase and the
+specific TraceType subclass.[827:
+
+Sun May 31 04:47:49 2020 But then how do we do writeBody?  We set up
+an address first?  And we'll say an address is always supposed to be
+enough info to get us from T2Tile::get() to whatever specific thing
+we're writeBody()-ing?  Is that the idea?
+
+Let's try it anyway.[828:
+
+Sun May 31 06:01:31 2020 So, umm, how is a 'trace address' going to
+resolve us all the way down to a T2PacketBuffer that we want to put
+into the body of the trace????? UUMMM?
+
+I think we have to rejigger the Trace API so that it gives us a
+ByteSink& that the trace event creator can do whatever they want
+with.  But yeah that helps the writing side but then where do the
+unpacked pieces go on the reading side?  The symmetry was to have a
+subclass to hold the pieces and then do reading and writing from the
+subclass pieces.
+
+[829:
+
+Sun May 31 06:33:40 2020 What if instead of having options for custom
+readbody and writebody we have custom ctors for output and input evts?
+Or do we need both?  Or what if the state table automation doesn't set
+up the subclasses at all?  How about that?  We've got to get off our
+butts here and get SOMETHING working and pop the foggen stack.
+
+How about we JUST have an enum for types, and we have a macro to
+register our subclass with its type, and we do everything else by
+hand.  No XX macro at all, how about that?
+
+:829]
+
+:828]
+
+:827]
+
+:826]Is there a point to having multiple address
+modes for the same trace type?  Well foo: active vs passive EWs.  If
+we wanted to reuse the EW trace types for both active and passive EWs
+we'd need to include the mode.
+
+Could we pack the mode and the address into a single u8?
+
+0x00 : illegal
+0x80|(slotnum&0x1f) : active EW
+0x40|((dir6&0x7)<<...
+
+guess probably not.
+
+0x0000 : illegal
+0x0100 | (slotnum&0x1f) : active EW
+0x0200 | ((dir6&0x7)<<4) | (cn&0xf) : passive EW
+0x0300 | (itcdir6&0x7) : itc
+
+u8[4] for the whole thing type + address
+
+[0] evt type
+[1] addr mode    0x00 illegal  0x01 itc      0x02 active    0x03 passive
+[2] addr arg 1        0x00          itcDir6       slotnum        itcDir6
+[3] addr arg 2        0x00          statenum      statenum       cn
+
+
+:825]
+[830:
+
+Tue Jun  2 03:17:40 2020 OK so we finally are getting close to log
+file alignment.  We are now:
+
+DONE - Scanning files for sync info included in select packets
+
+DONE - Matching sync tags between files
+
+DONE - Accumulating time disparities in both directions between instances
+   of matching tags.
+
+DONE - Assembling mean and variance of the estimates.
+
+Right now we're just printing that stuff out.  We still need to:
+
+ - Find the earliest starting time of any file
+
+ - Compute and store the offset between that time and the timebase of
+   each file, to shift the origin of all times in all files to the
+   earliest start time of any file.
+
+ - Develop a metaiterator in Alignment that advances all files in time
+   order according to their renormalized times.
+
+Also as a practical matter we need to
+
+ - Do a checkpoint commit of all this stuff
+
+ - Pull it onto a neighboring tile (or two?)
+
+ - Gather some data into MULTIPLE FILES to try genuine merging.
+
+:830]
