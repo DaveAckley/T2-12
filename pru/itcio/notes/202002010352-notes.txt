@@ -1,4 +1,4 @@
-{831}  -*- text -*-
+{850}  -*- text -*-
 [0:
 [3:
 [35:
@@ -11964,3 +11964,319 @@ Also as a practical matter we need to
  - Gather some data into MULTIPLE FILES to try genuine merging.
 
 :830]
+[831:
+
+Tue Jun  2 04:47:05 2020 OK, well we got a little trace data from
+across two physical tiles.  Getting that trace data onto one machine
+is a pain, especially considering that we can't build Weaver except on
+the tiles, at the moment..
+
+But anyway, data still looks messed up:
+
+ ..
+    53s 942ms POU ITC/ET:OPEN +5 A2AA032304
+    53s 945ms PIN ITC/WT:OPEN +5 A6AA032304
+    1m 33s 163ms POU ITC/WT:OPEN +2 A6DA
+    1m 38s 779ms STP Tile +0
+    #0 -> #0: n=300844, s=0.000000, ss=57585019272.259659
+    #0 -> #0: n=300844, s=0.000000, ss=57585019272.259659
+    #1 -> #1: n=74760, s=0.000000, ss=6043054150.038154
+    #1 -> #1: n=74760, s=0.000000, ss=6043054150.038154
+    #2 -> #2: n=272764, s=0.000000, ss=63553502563.660355
+    #2 -> #2: n=272764, s=0.000000, ss=63553502563.660355
+
+[832:
+
+Tue Jun  2 04:57:23 2020 Ah now we're getting somewhere:
+
+    #0: /home/t2/T2-12/files/misc/trace10.dat
+    #1: /home/t2/T2-12/files/misc/trace11.dat
+    #2: /home/t2/T2-12/files/misc/trace12.dat
+    #0 -> #1: n=51420, s=1384635.971920, ss=37285429.302564
+    #0 -> #2: n=249424, s=-119807286.782474, ss=57547733842.979515
+    #1 -> #0: n=51420, s=-1384635.971920, ss=37285429.302564
+    #1 -> #2: n=23340, s=-11839537.235123, ss=6005768720.731194
+    #2 -> #0: n=249424, s=119807286.782474, ss=57547733842.979515
+    #2 -> #1: n=23340, s=11839537.235123, ss=6005768720.731194
+
+Guess we need to reduce those sums and sumsqs..
+
+[833:
+
+Tue Jun  2 05:03:08 2020
+
+    #0: /home/t2/T2-12/files/misc/trace10.dat
+    #1: /home/t2/T2-12/files/misc/trace11.dat
+    #2: /home/t2/T2-12/files/misc/trace12.dat
+    #0 -> #1: n=51420, s=1384635.971920, ss=37285429.302564, avg=26.927965, var=725.115311
+    #0 -> #2: n=249424, s=-119807286.782474, ss=57547733842.979515, avg=-480.335841, var=230722.520058
+    #1 -> #0: n=51420, s=-1384635.971920, ss=37285429.302564, avg=-26.927965, var=725.115311
+    #1 -> #2: n=23340, s=-11839537.235123, ss=6005768720.731194, avg=-507.263806, var=257316.569012
+    #2 -> #0: n=249424, s=119807286.782474, ss=57547733842.979515, avg=480.335841, var=230722.520058
+    #2 -> #1: n=23340, s=11839537.235123, ss=6005768720.731194, avg=507.263806, var=257316.569012
+
+Those avgs are in seconds of disparity between reported times of
+matching random sync tags.
+
+:833]
+
+:832]
+:831]
+[834:
+
+Tue Jun  2 06:12:38 2020 So we're really trying to establish TWO
+things, not just one, by aligning the logs:
+
+ - Finding the offsets between the timebases of the log files
+
+ - Finding the connectivity between the ITCs of the T2tiles involved
+
+We're close on the first one but we need to capture, or extract, more
+information for the second one.[835:
+
+Tue Jun  2 10:47:51 2020 After nap.  
+
+:835]
+
+:834]
+[836:
+
+Tue Jun  2 14:20:14 2020 So I'm still foggen confusing myself about
+all these times.
+
+ - wlf.getFirstTimespec() - earliest timespec found in wlf
+
+ - Alignment.getBaseTimespec() - earliest timespec found across all
+   wlfs
+
+ - Alignment.mSyncUseMap (sync->[(WLF*.Trace*)]).  Each Trace* has a
+   time.  If we subtract Trace*->timespec - wlf.getFirstTimespec(), we
+   get the interval from the the beginning of this WLF to this event.
+
+ - What we want is the offset from each WLF::earliest timespec to the
+   overall earliest timespace in the Alignment.  Call that
+   WLF::startOffset or something
+
+ - then, for each Trace* t in WLF *w, the 'reported time' of t is
+   t->time - w->startOffset - a->getBaseTimespec().  That will be
+   based at 0..
+
+Wait no NO that's not it, dammit.  The earliest timespec among all the
+WLF's is completely irrelevant.  What we need is to figure out which
+file STRETCHES BACKWARD IN TIME the farthest, relative to the others,
+and then map all other files using that file's earliest as the zero.
+
+So each entry in mSyncUseMap is a vote for the offset between (a bunch
+of) pairs of files.
+
+Each sync is a vote about the StartsBefore relationship between the
+two WLFs.  The (trace time - WLF.startTime) gives the 'distance to the
+start' of WLF.  And each sync point gives us two of those, so we have
+two 'distance to start' of two WLF's.  And whichever of those is
+bigger, according to this sync, is the EARLIER-STARTING-WLF among
+these two.  We could also accumulate data about the offset from the
+beginning of the earlier-starting-wlf to the later starting one, for
+this pair.
+
+When we get all done, we have a bunch of pairwise
+this-starts-earlier-than-that, and we can iterate that relationship to
+find a WLF that nobody starts earlier than.  (Or declare an error.)
+[838:
+
+Tue Jun  2 16:06:10 2020 Actually that might not be unique.  We should
+scan all WLFs to find the set of WLFs that nobody starts earlier than
+(breaking ties to the lower index).  If that set contains more than
+one member, that means the set of files cannot be aligned because it
+has multiple disjoint sets with no sync points between them.  We can
+report the sets, and the user could retry with just one or the other.
+
+So then we do have the unique WLF that starts earliest, and we go from
+there. 
+
+:838]
+We declare that file to have an mInternalToEffectiveOffset of
+-itsEarliestTime, so its effective time starts at zero.  Then we go
+forward to all the files that it starts earlier than, and compute
+
+  later.mEffectiveStartTime = earlier.mEffectiveStartTime +
+                              startTimeOffsets[earlier,later]
+  
+and
+  later.mInternalToEffectiveOffset =
+      later.mEffectiveStartTime - later.getFirstTimespec()
+
+taking out the first timespec, so times are normalized to zero
+relative to the beginning of the WLF, and adding in the effective
+start time, so times are normalized to the beginning of time.
+
+Then we want to iterate over all the WLFs, taking the Trace*'s in
+order of their effective time, which is their internal time - their
+mInternalToEffectiveOffset.
+[837:
+
+Tue Jun  2 15:14:00 2020 That makes some sense, right?  It feels like
+I'm going three times around the barn to get to the chickens though.
+
+:837]
+
+:836]
+[839:
+
+Wed Jun  3 11:52:08 2020 OK, we alleged have 'usable' offsets
+connecting our three test files.  The anchor is #1; #0 is 27.227sec
+behind that, and #2 is 8min 27.042sec behind it.
+
+We should now be able (meaning have the raw ingredients anyway) to
+start pulling trace events from all three in reconstructed time
+order..
+
+:839]
+[840:
+
+Thu Jun  4 03:38:39 2020 OK now last damn go on this.  Now we have N
+different notions of time and we need to sort them out so we can
+actually interleave the event streams.
+
+NOTIONS OF TIME:
+
+ - INPUTS: Per tile/trace file realtime clock: Arbitrary wrt to other
+   tiles/files, but presumed internally consistent relative to itself
+
+ - OUTPUT: Consolidated relative time: Starts from zero at the
+   earliest trace in whatever the file stretches backward in time the
+   farthest, and all other traces in all files are relative to that
+
+[841:
+
+Thu Jun  4 05:52:20 2020 
+
+REPRESENTATIONS OF TIME:
+
+ - Trace.mLocalTimestamp: This trace UniqueTime in absolute trace file
+   clock terms.
+
+ - WeaverLogFile.getFirstTimespec: Timespec of earliest Trace in file,
+   taken as the origin of trace file relative times.
+
+ - WeaverLogFile.mEffectiveOffset: Timespec interval from beginning of
+   consolidated relative time to the getFirstTimespec of this
+   WeaverLogFile.  WeaverLogFile.mEffectiveOffset is zero in the WLF
+   that stretches backward in time the farthest, and may be ANY
+   POSITIVE OR NEGATIVE VALUE (or conceivably zero) in the other
+   files.
+[842:
+
+Thu Jun  4 11:24:53 2020 OK so that seems a bad idea.  It seems like
+we should expect to normalize each Trace.mLocalTimestamp by
+subtracting WLF.getFirstTimespec, to get a zero-based time for each
+WLF individually.  Then we should say WeaverLogFile.mEffectiveOffset
+is the timespec interval from the beginning of consolidated relative
+time to the beginning of WLF-relative time for each WLF, and
+mEffectiveOffset will never be negative.
+
+So then the effective time of a Trace is:
+
+ Trace.mLocalTimestamp - WLF.getFirstTimespec + WLF.mEffectiveOffset
+
+and that's the value that we should be comparing, interleaving, and
+printing as we report the logs.
+
+(And that's really what I think I though I was trying to do from the
+start.  It just wasn't working.  So let's watch our way through it and
+find out why not.)[843:
+
+Thu Jun  4 14:01:25 2020 Watching through..  OK so we found #1, the
+WLF that stretches farthest back, and we set its effectiveOffset to
+
+$76 = {tv_sec = 0x5ed6251a, tv_nsec = 0x257ac363}
+
+which is its getFirstTimespec().[844:
+
+Thu Jun  4 14:03:02 2020 And that's already wrong, right?  If the
+equation is supposed to be:
+
+ Trace.mLocalTimestamp - WLF.getFirstTimespec + WLF.mEffectiveOffset
+
+we want #1.mEffectiveOffset to be 0sec+0nsec.  The question is how do
+we come up with mEffectiveOffset for #0 and #2?[845:
+
+Thu Jun  4 14:08:35 2020 We go to the disparityMap with [n2.n1] and we
+see that
+
+    (gdb) p ifd
+    $85 = (MFM::Alignment::InterFileData &) @0x5640e0: {mDisparityCount = 51420, 
+      mSumOfDisparities = 1384635.9719195231, 
+      mSumSquareOfDisparities = 37285429.302563563, mFile1StretchesBackFartherCount = 0, 
+      mFile2StretchesBackFartherCount = 51420}
+    (gdb) 
+
+so n2 stretches back 1384635.9719195231/51420 = 26.927965225972834sec
+farther than n1.
+
+So n1
+
+:845]
+
+:844]
+
+:843]
+
+:842]
+   
+
+
+:841]
+
+:840]
+[846:
+
+Thu Jun  4 14:47:40 2020 OK about time to break for meeting, but the
+WLF.getEffectiveOffsets now seem plausible.  Next issue after meeting
+is watching the Trace time modifications as they are pulled from
+across the WLFs, to make sure
+
+Trace consolidated relative time =
+   Trace.mLocalTimestamp - WLF.getFirstTimespec + WLF.mEffectiveOffset
+
+is really what's happening..
+
+:846]
+[847:
+
+Fri Jun  5 02:29:14 2020 OK so we finally got believable trace
+interleaving.  Jeez.  Now we're going to tweak a bit:
+
+ - Pull consolidated trace time out to front and fix its width
+
+ - Unpack (at least inbound) packet data enough to summarize what's
+   going on
+
+and then it's time to pop back to examining intertile event dynamics
+and seeing if our brain is a little bit less broken on that front.
+
+:847]
+[848:
+
+Fri Jun  5 05:11:53 2020 OK, we're getting bogus sync because we're
+basing it on the trace address, but the only really reliable thing is
+to base it on the packet header instead.  So we need at least a
+partial packet header decomposition API that reflects (some of) the
+structure of T2-PHF-17.pdf or whatever.
+
+But morning walk first.
+
+:848]
+[849:
+
+Fri Jun  5 21:41:27 2020 OK -- well with the addition of an entirely
+bogus -t 'tweak' command line argument, to shift file timelines by
+hand when the recovered alignment seems impossible -- things are
+starting to seem plausible.
+
+Any other quick tweaks before committing?
+
+ - Revisions to the trace format
+   = Include and check a version number
+   = Ditch the 'pre-extracted' tag info
+
+:849]
