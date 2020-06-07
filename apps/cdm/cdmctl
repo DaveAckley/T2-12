@@ -20,8 +20,8 @@ my $COMMON_DIR = "/cdm/common";
 my $CDM_INTERNAL_HANDLE = "t2-keymaster-release-10";
 my $DELETEDS_MFZ_NAME = "cdm-deleteds.mfz";
 my $DELETEDS_MAP_NAME = "cdm-deleteds.map";
-my $MFZRUN_PROGRAM = "/home/t2/GITHUB/MFM/bin/mfzrun";
-my $MFZMAKE_PROGRAM = "/home/t2/GITHUB/MFM/bin/mfzmake";
+my $MFZRUN_PROGRAM = "/home/t2/MFM/bin/mfzrun";
+my $MFZMAKE_PROGRAM = "/home/t2/MFM/bin/mfzmake";
 
 my $VERBOSE = 1;
 
@@ -71,7 +71,10 @@ sub loadDeletedMap {
     print STDERR "Unpacking $DELETEDS_MFZ_NAME.." if $VERBOSE;
 
     my $path = "$COMMON_DIR/$DELETEDS_MFZ_NAME";
-    -r $path or return $dmref; # no deleteds file => no records found
+    if (!-r $path) {
+        print STDERR "not found => no records\n" if $VERBOSE;
+        return $dmref;
+    }
 
     my $destdir = makeTmpDir();
     my $cmd = "$MFZRUN_PROGRAM -kd /cdm $path unpack $destdir";
@@ -201,7 +204,8 @@ sub doInitMap {
     my @args = @_;
     my $confirm = "yesiamsure";
     if (scalar(@args) != 1 || $ARGV[0] ne $confirm) {
-        die "Usage: $0 initmap $confirm\n";
+        print STDERR "Usage: $0 initmap $confirm\n";
+        exit 1;
     }
     my $dmref = {}; # Start with nothing.
     saveDeletedMap($dmref);
