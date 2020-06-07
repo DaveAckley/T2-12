@@ -1,4 +1,4 @@
-{850}  -*- text -*-
+{861}  -*- text -*-
 [0:
 [3:
 [35:
@@ -6599,7 +6599,8 @@ TODO
 [485: Sun Apr 19 03:29:04 2020 Coverted it to PacketBuffer
 DONE :485] - Flesh out our userspace PacketHandler
 
- - Flesh out some initial packet formats
+[855: Sat Jun  6 16:47:12 2020 
+DONE :855] - Flesh out some initial packet formats
 
 :481][482:
 
@@ -12246,9 +12247,11 @@ is really what's happening..
 Fri Jun  5 02:29:14 2020 OK so we finally got believable trace
 interleaving.  Jeez.  Now we're going to tweak a bit:
 
- - Pull consolidated trace time out to front and fix its width
+[853:
+DONE :853] - Pull consolidated trace time out to front and fix its width
 
- - Unpack (at least inbound) packet data enough to summarize what's
+[854:
+DONE :854] - Unpack (at least inbound) packet data enough to summarize what's
    going on
 
 and then it's time to pop back to examining intertile event dynamics
@@ -12276,7 +12279,95 @@ starting to seem plausible.
 Any other quick tweaks before committing?
 
  - Revisions to the trace format
-   = Include and check a version number
-   = Ditch the 'pre-extracted' tag info
+[851:
+Included but not yet checked:851]   = Include and check a version number
+[852:
+DONE :852]   = Ditch the 'pre-extracted' tag info
 
 :849]
+[850:
+
+Sat Jun  6 16:43:41 2020 OK let's commit this.  Now have TLOG(DBG...)
+to printf to the trace file, and a bunch of other half decent stuff --
+oh, like a Quit button foggen finally.
+
+:850]
+[856:
+
+Sun Jun  7 05:15:02 2020 That's all committed I think.  Running out of
+disk and getting concerned about that with the prospect of large trace
+files.  Found some 'ardupilot-*' packages to toss:
+
+ardupilot-copter-3.6-blue ardupilot-copter-3.6-pocket
+ardupilot-rover-3.4-bbbmini ardupilot-rover-3.4-blue
+ardupilot-rover-3.4-pocket
+
+and that saved a few meg.  Uninstalled 'libbluray2' and that took out
+giant hunks of opencv -- which I do think/hope I don't need for
+anything -- and bought back over a 100MB.  So that's good if it's
+safe.. [857:
+
+Sun Jun  7 05:18:22 2020 I wonder if I could uninstall nodejs?  That
+looks like the top of a zillion packages..
+
+    root@beaglebone:/home/t2/MFM/src/drivers/itcSpike12# df -h .
+    Filesystem      Size  Used Avail Use% Mounted on
+    /dev/mmcblk1p1  3.5G  3.1G  164M  96% /
+    root@beaglebone:/home/t2/MFM/src/drivers/itcSpike12# 
+
+[858:
+
+Sun Jun  7 05:21:46 2020 Trying 'apt remove nodejs'.  Says it's only
+going to save 16MB.  But there's also tons of stuff that needs to be
+'autoremoved', I guess because I didn't do 'purge'?
+
+[859:
+
+Sun Jun  7 05:25:47 2020
+
+    root@beaglebone:/home/t2/MFM/src/drivers/itcSpike12# df -h .
+    Filesystem      Size  Used Avail Use% Mounted on
+    /dev/mmcblk1p1  3.5G  3.1G  189M  95% /
+    root@beaglebone:/home/t2/MFM/src/drivers/itcSpike12#
+[860:
+
+Sun Jun  7 05:26:28 2020 Yikes, do we really believe this is safe???
+--->
+
+    root@beaglebone:/home/t2/MFM/src/drivers/itcSpike12# apt autoremove
+    Reading package lists... Done
+    Building dependency tree       
+    Reading state information... Done
+    The following packages will be REMOVED:
+      adwaita-icon-theme at-spi2-core fontconfig gdal-data gtk-update-icon-cache gyp hicolor-icon-theme ibverbs-providers libaacs0 libaec0 libaom0 libarmadillo9 libarpack2
+      libatk-bridge2.0-0 libatk1.0-0 libatk1.0-data libatspi2.0-0 libavcodec58 libavresample4 libavutil56 libbdplus0 libbluetooth3 libc-ares2 libcaf-openmpi-3 libcairo-gobject2
+      libcairo2 libcharls2 libchromaprint1 libcoarrays-openmpi-dev libcodec2-0.8.1 libcolord2 libcroco3 libdap25 libdapclient6v5 libdapserver7v5 libdatrie1 libdc1394-22 libepoxy0
+      libepsilon1 libevent-core-2.1-6 libevent-pthreads-2.1-6 libfreexl1 libfyba0 libgdal20 libgdcm2.8 libgdk-pixbuf2.0-0 libgdk-pixbuf2.0-bin libgdk-pixbuf2.0-common
+      libgeos-3.7.1 libgeos-c1v5 libgeotiff2 libgl1 libgl1-mesa-dri libgl2ps1.4 libglapi-mesa libglu1-mesa libglvnd0 libglx-mesa0 libglx0 libgme0 libgphoto2-6 libgphoto2-l10n
+      libgphoto2-port12 libgraphite2-3 libgsm1 libgtk-3-0 libgtk-3-bin libgtk-3-common libharfbuzz0b libhdf4-0-alt libhdf5-103 libhdf5-openmpi-103 libhwloc-dev libhwloc-plugins
+      libhwloc5 libibverbs-dev libibverbs1 libice6 libilmbase23 libjs-inherits libjs-is-typedarray libjson-glib-1.0-0 libjson-glib-1.0-common libjsoncpp1 libkmlbase1
+      libkmlconvenience1 libkmldom1 libkmlengine1 libkmlregionator1 libkmlxsd1 liblept5 libllvm7 libminizip1 libmp3lame0 libmpg123-0 libnetcdf-c++4 libnetcdf13 libnl-3-dev
+      libnl-route-3-dev libnode-dev libnode64 libnspr4 libnss3 libodbc1 libogdi3.2 libogg0 libopencv-core3.2 libopencv-flann3.2 libopencv-imgcodecs3.2 libopencv-imgproc3.2
+      libopencv-ml3.2 libopencv-photo3.2 libopencv-shape3.2 libopencv-video3.2 libopenexr23 libopenmpi-dev libopenmpi3 libopenmpt0 libopus0 libpango-1.0-0 libpangocairo-1.0-0
+      libpangoft2-1.0-0 libpciaccess0 libpixman-1-0 libpmix2 libpoppler82 libpq5 libproj13 libqhull7 libraw1394-11 librest-0.7-0 librsvg2-2 librsvg2-common libsbc1
+      libsensors-config libsensors5 libshine3 libsm6 libsnappy1v5 libsocket++1 libsoup-gnome2.4-1 libsoxr0 libspatialite7 libspeex1 libssh-gcrypt-4 libssl-dev libsuperlu5
+      libswresample3 libswscale5 libsz2 libtbb2 libtcl8.6 libtesseract4 libthai-data libthai0 libtheora0 libtk8.6 libtwolame0 liburiparser1 libuv1 libuv1-dev libva-drm2
+      libva-x11-2 libva2 libvdpau-va-gl1 libvdpau1 libvorbis0a libvorbisenc2 libvorbisfile3 libvpx5 libwavpack1 libwayland-client0 libwayland-cursor0 libwayland-egl1 libx11-xcb1
+      libx264-155 libx265-165 libxcb-dri2-0 libxcb-dri3-0 libxcb-glx0 libxcb-present0 libxcb-render0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcomposite1 libxcursor1 libxdamage1
+      libxerces-c3.2 libxfixes3 libxft2 libxi6 libxinerama1 libxkbcommon0 libxrandr2 libxrender1 libxshmfence1 libxss1 libxt6 libxtst6 libxvidcore4 libxxf86vm1 libzvbi-common
+      libzvbi0 mesa-va-drivers mesa-vdpau-drivers nodejs-doc odbcinst odbcinst1debian2 openmpi-bin openmpi-common proj-bin proj-data python-pkg-resources va-driver-all
+      vdpau-driver-all x11-common
+    0 upgraded, 0 newly installed, 217 to remove and 2 not upgraded.
+    After this operation, 472 MB disk space will be freed.
+    Do you want to continue? [Y/n] 
+
+
+
+:860]    
+
+:859]
+
+:858]
+:857]
+
+:856]
