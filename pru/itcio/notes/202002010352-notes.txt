@@ -1,4 +1,4 @@
-{861}  -*- text -*-
+{867}  -*- text -*-
 [0:
 [3:
 [35:
@@ -12371,3 +12371,88 @@ Sun Jun  7 05:26:28 2020 Yikes, do we really believe this is safe???
 :857]
 
 :856]
+[861:
+
+Sun Jun  7 05:32:18 2020 Yikes:
+
+    root@beaglebone:/home/t2/MFM/src/drivers/itcSpike12# df -h .
+    Filesystem      Size  Used Avail Use% Mounted on
+    /dev/mmcblk1p1  3.5G  2.7G  626M  82% /
+    root@beaglebone:/home/t2/MFM/src/drivers/itcSpike12# 
+
+If we haven't just killed this tile, that's pretty helpful.
+
+:861]
+[862:
+
+Sun Jun  7 06:36:14 2020 Still don't know about that; haven't rebooted
+yet..  But nothing seems obviously broken.
+
+So it's bugging me that we send two packets even for a short cache
+update.  I want to rewrite it to have a single byte delimiter instead,
+and if that single byte has to fall into an otherwise empty packet, so
+be it -- but that will be rare.
+
+:862]
+[863:
+
+Sun Jun  7 08:26:27 2020 So we're sending 0xff in the sn position now
+to end the cache update.  It does save a packet but doesn't seem to
+speed anything up, anecdotally.
+
+But we do have an ITC state machine issue.  When a remote tile had a
+compatible MFZ token, but then the engine crashed, the remote tile
+still shows up as compatible on our side, and we go bravely on to
+CACHEXG, which never finishes.
+
+And that wouldn't be so bad, except CACHEXG is not a 'VIZ' state, so
+events can't happen near that ITC, and EWs get tied up.
+
+We need to do something like stay in SHUT, announcing SHUT, until we
+receive a SHUT from the far side.
+
+:863]
+[864:
+
+Mon Jun  8 06:52:13 2020 OK, well, at extremely long last, we're back
+to pushing forward through races.  We detected a race lost by passive,
+and sent back a DROP, and now we need to handle that on the active
+side:
+
+    Thread 1 "itcSpike12" hit Breakpoint 1, 0x004872da in MFMLongJmpHere ()
+    (gdb) up
+    #1  0x004700ee in MFM::T2ITC::handleCircuitPacket (this=0x4cfd24 <MFM::T2Tile::get()::THE_INSTANCE+3796>, pb=...) at src/T2ITC.cpp:138
+    138	      FAIL(INCOMPLETE_CODE);
+    (gdb) l
+    133	      break;
+    134	    case XITC_CS_HANGUP:        // Release lock (by callee)
+    135	      handleHangUpPacket(pb);
+    136	      break;
+    137	    case XITC_CS_DROP:         // Discard lock (by caller)
+    138	      FAIL(INCOMPLETE_CODE);
+    139	      break;
+    140	    }
+    141	  }
+
+[865:
+
+Mon Jun  8 06:58:33 2020 And it seems that handling that puts us at
+(A3) of :787:.
+
+    (A3) On first NAK from another participant, put the active window into
+         some special suspended state while unhogging its sites, and wait
+         for further ACK/NAKs.
+
+so the active side is supposed to go into ADROP (the 'special
+suspended state') while unhogging its sites.
+
+:865]
+
+:864]
+[866:
+
+Mon Jun  8 20:21:07 2020 Well, going for final tweaks before switching
+to concentrate on the update for this week.
+
+
+:866]
