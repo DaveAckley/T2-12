@@ -76,6 +76,8 @@ REMOVE_PACKAGES+=bonescript
 REMOVE_PACKAGES+=c9-core-installer
 REMOVE_PACKAGES+=doc-beaglebone-getting-started
 REMOVE_PACKAGES+=rfkill
+REMOVE_PACKAGES+=ardupilot-copter-3.6-blue ardupilot-copter-3.6-pocket ardupilot-rover-3.4-bbbmini ardupilot-rover-3.4-blue ardupilot-rover-3.4-pocket
+REMOVE_PACKAGES+=libbluray2
 #REMOVE_PACKAGES+=ti-open-cl
 
 UNHOLD_PACKAGES+=c9-core-installer
