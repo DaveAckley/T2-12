@@ -39,7 +39,7 @@ TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
 TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 
 
 cdmd:	FORCE
-	MPWD=`pwd`;BASE=`basename $$MPWD`;echo $$MPWD for $$BASE;pushd ..;tar cvzf $$BASE-built.tgz $(TAR_SWITCHES) $$BASE;cp -f $$BASE-built.tgz /home/debian/CDMSAVE/TGZS/;/home/t2/GITHUB/MFM/bin/mfzmake make - cdmd-$$BASE.mfz $$BASE-built.tgz;cp -f cdmd-$$BASE.mfz /home/debian/CDMSAVE/CDMDS/;popd
+	MPWD=`pwd`;BASE=`basename $$MPWD`;echo $$MPWD for $$BASE;pushd ..;tar cvzf $$BASE-built.tgz $(TAR_SWITCHES) $$BASE;cp -f $$BASE-built.tgz /home/debian/CDMSAVE/TGZS/;/home/t2/MFM/bin/mfzmake make - cdmd-$$BASE.mfz $$BASE-built.tgz;cp -f cdmd-$$BASE.mfz /home/debian/CDMSAVE/CDMDS/;popd
 
 $(SUBDIRS):	FORCE
 	$(MAKE) -C $@ $(MAKECMDGOALS)

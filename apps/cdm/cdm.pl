@@ -1369,9 +1369,6 @@ sub checkUserButton {
 }
 
 my $statPID;
-#my $statProgPath = "/home/t2/GITHUB/GFB/T2-GFB/stat13.pl";
-#my $statProgPath = "/home/t2/T2-12/apps/cdm/runStat.sh";
-#my $statProgPath = "/home/t2/GITHUB/MFM/bin/t2viz";
 my $statProgPath = "/home/t2/MFM/bin/t2viz";
 my $statProgName = "t2viz";
 my $statProgHelper = "/home/t2/T2-12/apps/mfm/RUN_SDL";
