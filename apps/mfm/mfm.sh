@@ -7,9 +7,9 @@
 #MOVING ON TO mfmt2
 cd /
 while [ true ] ; do
-    echo Launching itcSpike
-    /home/t2/MFM/bin/mfmt2 -w /home/t2/MFM/src/drivers/itcSpike12/wconfig.txt -z ITCSPIKE12
-    echo itcSpike exited status $? -- RESTARTING
+    echo Launching mfmt2
+    /home/t2/MFM/bin/mfmt2 -w /home/t2/MFM/res/mfmt2/wconfig.txt -z MFMT2-FAKE-MFZID
+    echo mfmt2 exited status $? -- RESTARTING
 #    echo Launching mfmt2
 #    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/MFM/bin/mfmt2 {{1H1}} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/14stats.mfs --startsymbol SD -ep /home/t2/T2-12/apps/mfm/libcueSD.so --run -a 0 -n -wf 10 -e 10
 #    echo mfmt2 exited status $? -- RESTARTING
