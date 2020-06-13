@@ -6,13 +6,13 @@ const char * getStateName(StateNumber sn) ; /*FORWARD*/
 static StateNumber getStateNumberFromPH(PacketHandler * ph) {
   BUG_ON(!ph);
   BUG_ON(ph->len < 2);
-  return ph->pktbuf[1]&0xf;
+  return ph->pktbuf[1] & PKT_HDR_BYTE1_BITMASK_XITC_SN;
 }
 
 static u8 getDir8FromPH(PacketHandler * ph) {
   BUG_ON(!ph);
   BUG_ON(ph->len < 1);
-  return ph->pktbuf[0]&0x7;
+  return ph->pktbuf[0] & PKT_HDR_BITMASK_DIR;
 }
 
 static StateNumber getStateKITC(ITCMFMDeviceState *mds) {
@@ -105,9 +105,9 @@ static void initWritePacketHandler(PacketHandler * pm, ITCMFMDeviceState *ds)
   oursn = is->mStateNumber;
   BUG_ON(oursn > 0xf);       /* Only 4 bits for sn */
 
-  pm->pktbuf[pm->index++] = 0xa0|dir8;  /*standard+urgent to dir8*/
   pm->pktbuf[pm->index++] =
-    PKT_HDR_BYTE1_BITMASK_MFM |         /* mfm + */
+    PKT_HDR_BITMASK_STANDARD | PKT_HDR_BITMASK_MFM | dir8;  /*standard+mfm to dir8*/
+  pm->pktbuf[pm->index++] =
     PKT_HDR_BYTE1_XITC_VALUE_KITC |     /* xitc==kitc + */
     oursn;                              /* our statenumber*/
 }
@@ -346,7 +346,7 @@ void handleKITCPacket(ITCMFMDeviceState * ds, u8 * packet, u32 len)
 static bool sendPacketHandler(PacketHandler * ph) {
   bool ret;
   BUG_ON(!ph);
-  ret = trySendUrgentRoutedKernelPacket(ph->pktbuf,ph->index) > 0;
+  ret = trySendMFMRoutedKernelPacket(ph->pktbuf,ph->index) > 0;
 
   ADD_ITC_EVENT(makeItcStateSendEvent(mapDir8ToDir6(getDir8FromPH(ph)),
                                        getStateNumberFromPH(ph)));

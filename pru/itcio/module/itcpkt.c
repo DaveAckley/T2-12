@@ -332,7 +332,7 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
   if (ipb->mRouted) { /* Do stats on routed buffers */
     u8 dir8 = prudev->mTempPacketBuffer[0]&0x7;  /* Get direction from header */
     ITCTrafficStats * t = getITCTrafficStatsFromDir8(dir8);
-    u32 index = ipb->mPriority ? TRAFFIC_URGENT : TRAFFIC_BULK;
+    u32 index = ipb->mPriority ? TRAFFIC_MFM : TRAFFIC_SERVICE;
     BUG_ON(!t);
     ++t->mCounts[index].mPacketsSent;
     t->mCounts[index].mBytesSent += pktlen;
@@ -484,7 +484,7 @@ static ssize_t statistics_show(struct class *c,
      presently is something like ( 110 + 8 * ( 2 + 3 * 11 + 8 * 11) ) < 1100 */
   int len = 0;
   int itc, speed;
-  len += sprintf(&buf[len], "dir psan sfan toan blkbsent blkbrcvd blkpsent blkprcvd urgbsent urgbrcvd urgpsent urgprcvd\n");
+  len += sprintf(&buf[len], "dir psan sfan toan XXXFIXMEXXX blkbsent blkbrcvd blkpsent blkprcvd urgbsent urgbrcvd urgpsent urgprcvd\n");
   for (itc = 0; itc < DIR8_COUNT; ++itc) {
     ITCTrafficStats * t = &S.mItcStats[itc];
     len += sprintf(&buf[len], "%u %u %u %u",
@@ -1564,8 +1564,8 @@ static int routeOutboundStandardPacket(const unsigned char pktHdr, size_t pktLen
   int dir8;
   int newminor;
   if (pktLen == 0) return -EINVAL;
-  if ((pktHdr & 0x80) == 0) return -ENXIO; /* only standard packets can be routed */
-  dir8 = pktHdr & 0x7;
+  if ((pktHdr & PKT_HDR_BITMASK_STANDARD) == 0) return -ENXIO; /* only standard packets can be routed */
+  dir8 = pktHdr & PKT_HDR_BITMASK_DIR;
   if (!isITCEnabledStatusByDir8(dir8)) return -EHOSTUNREACH;
 
   switch (dir8) {
@@ -1579,7 +1579,7 @@ FOR_XX_IN_ITC_ALL_DIR
   return newminor;
 }
 
-ssize_t trySendUrgentRoutedKernelPacket(const u8 *pkt, size_t count)
+ssize_t trySendMFMRoutedKernelPacket(const u8 *pkt, size_t count)
 {
   int minor;
   ITCCharDeviceState * cdevstate;
@@ -1588,6 +1588,9 @@ ssize_t trySendUrgentRoutedKernelPacket(const u8 *pkt, size_t count)
   int ret;
         
   if (count == 0 || count > ITC_MAX_PACKET_SIZE) return -EINVAL;
+
+  /*only mfm packets allowed via this route*/
+  if (!(pkt[0] & PKT_HDR_BITMASK_MFM)) return -ENXIO; /*never the error code you want*/
 
   minor = routeOutboundStandardPacket(*pkt, count);
   if (minor < 0) return minor; /* bad routing */
@@ -1598,7 +1601,7 @@ ssize_t trySendUrgentRoutedKernelPacket(const u8 *pkt, size_t count)
   BUG_ON(!cdevstate);
 
   prudevstate = (ITCPRUDeviceState*) cdevstate;
-  ipb = &prudevstate->mPriorityOB;  /*priority dispatch only at present*/
+  ipb = &prudevstate->mPriorityOB;  /*MFM packets are always priority dispatch*/
 
   DBGPRINTK(DBG_PKT_ROUTE,
             KERN_INFO "Routing %s %s/%d packet to %s\n",
@@ -1639,13 +1642,6 @@ static ssize_t writePacketHelper(struct file *file,
 
   DBGPRINTK(DBG_PKT_SENT, KERN_INFO "writePacketHelper(%d) read pkt type %s from user\n",minor, strPktHdr(pktHdr));
 
-#if 0 // locl stnd betwee MFM<->KITC now considered harmful
-  // HANDLE USR->LKM LOCLSTND PACKETS
-  if ((pktHdr & 0xc0) == 0x80) {
-    return handleUsrToLKMLoclStnd(minor,pktHdr,cdevstate);
-  }
-#endif
-
   if (minor == PKT_MINOR_BULK || minor == PKT_MINOR_FLASH ||
       (minor >= PKT_MINOR_MFM_ET && minor <= PKT_MINOR_MFM_NE)) {
     int newMinor = routeOutboundStandardPacket(pktHdr, count);
@@ -1661,7 +1657,7 @@ static ssize_t writePacketHelper(struct file *file,
       return -EINVAL;
     }
 
-    if (minor != PKT_MINOR_BULK) bulkRate = false; 
+    if (minor != PKT_MINOR_BULK && minor != PKT_MINOR_FLASH) bulkRate = false; 
 
     BUG_ON(newMinor > PRU_MINOR_PRU1);
 
@@ -2210,25 +2206,30 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
 
           ITCPktDeviceState * pktdev = 0;
           ITCPacketBuffer * ipb;
-          bool urgent = type&PKT_HDR_BITMASK_URGENT;
-          u32 idx = urgent ? TRAFFIC_URGENT : TRAFFIC_BULK;
+          bool mfm = type&PKT_HDR_BITMASK_MFM;
+          u32 idx = mfm ? TRAFFIC_MFM : TRAFFIC_SERVICE;
           ITCTrafficStats * t = getITCTrafficStatsFromDir8(dir8);
 
           t->mCounts[idx].mPacketsReceived++;
           t->mCounts[idx].mBytesReceived += len;
 
           /* Set up pktdev depending on destination */
-          if (!urgent)  /* bulk traffic is all delivered to /dev/itc/bulk */
-            pktdev = S.mPktDeviceState[0]; /* 0==/dev/itc/bulk */
-          else if (!(byte1&PKT_HDR_BYTE1_BITMASK_MFM)) /* urgent non-mfm is flash traffic */
-            pktdev = S.mPktDeviceState[1]; /* 1==/dev/itc/flash */
-          else if ((byte1&PKT_HDR_BYTE1_BITMASK_XITC) !=
-                   PKT_HDR_BYTE1_XITC_VALUE_KITC) { /* mfm non-kitc is ITC traffic */
+          if (!mfm) { /* service traffic is delivered to /dev/itc/{bulk|flash} */
+
+            if (byte1&PKT_HDR_BYTE1_BITMASK_BULK)
+              pktdev = S.mPktDeviceState[0]; /* 0==/dev/itc/bulk */
+            else
+              pktdev = S.mPktDeviceState[1]; /* 1==/dev/itc/flash */
+
+          } else if ((byte1&PKT_HDR_BYTE1_BITMASK_XITC) !=   /* mfm traffic has XITC in byte1 */
+                     PKT_HDR_BYTE1_XITC_VALUE_KITC) { /* non-kitc is ITC or circuit traffic */
+
             /* which we only deliver if we're known compatible */
             if (isKITCCompatible(S.mMFMDeviceState[dir6]))
               pktdev = &S.mMFMDeviceState[dir6]->mPktDevState;
             /* else pktdev remains 0 */
-          } else /* URG & MFM, and XITC==0 */{
+
+          } else /* MFM, and XITC==0 -> KITC */{
             handleKITCPacket(S.mMFMDeviceState[dir6], bytes, len);
             /*pktdev remains 0*/
           }
@@ -2241,14 +2242,14 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
                         KERN_INFO "(%s) Inbound %s queue full, dropping %s len=%d packet\n",
                         getDir8Name(type&0x7),
                         ipb->mName,
-                        urgent ? "priority" : "bulk",
+                        mfm ? "MFM" : "service",
                         len);
             else {
               tpReportIfMatch(&ipb->mTraceInsert, pktdev->mCDevState.mName, true, data, len, ipb);
 
               kfifo_in(&ipb->mFIFO, data, len); 
 
-              ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_FROM_PRU, urgent, log2in3(len), type&0x7));
+              ADD_PKT_EVENT(makePktXfrEvent(PEV_XFR_FROM_PRU, mfm, log2in3(len), type&0x7));
 
               DBGPRINTK(DBG_PKT_RCVD,
                         KERN_INFO "Stashed %s/%d packet for pktdev %s ipb %s, waking %p\n",

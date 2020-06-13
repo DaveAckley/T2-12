@@ -74,7 +74,7 @@ const char * getDir6Name(u8 dir6) ;
 typedef enum packet_header_bits {
   PKT_HDR_BITMASK_STANDARD  = 0x80,
   PKT_HDR_BITMASK_LOCAL     = 0x40,
-  PKT_HDR_BITMASK_URGENT    = 0x20,
+  PKT_HDR_BITMASK_MFM       = 0x20,
 
   // Standard Routed bits
   PKT_HDR_BITMASK_OVERRUN   = 0x10,
@@ -86,19 +86,20 @@ typedef enum packet_header_bits {
 } PacketHeaderBits;
 
 typedef enum packet_header_byte1_bits {
-  PKT_HDR_BYTE1_BITMASK_MFM  = 0x80,      /* MFM traffic (rather than flash) */
-  PKT_HDR_BYTE1_BITMASK_XITC = 0x70,      /* Types of ITC traffic */
+  PKT_HDR_BYTE1_BITMASK_BULK = 0x80,      /* Bulk traffic (rather than flash) */
+  PKT_HDR_BYTE1_BITMASK_XITC = 0xe0,      /* Types of ITC traffic */
+  PKT_HDR_BYTE1_BITMASK_XITC_SN = 0x1f    /* State number bits */
 } PacketHeaderByte1Bits;
 
 typedef enum packet_header_byte1_xitc_values {
-  PKT_HDR_BYTE1_XITC_VALUE_KITC =   0x0<<4, /* KITC (rather than userspace) */
-  PKT_HDR_BYTE1_XITC_VALUE_RING =   0x1<<4, /* Circuit ring (userspace) */
-  PKT_HDR_BYTE1_XITC_VALUE_HANGUP = 0x2<<4, /* Circuit hangup (userspace) */
-  PKT_HDR_BYTE1_XITC_VALUE_CUPD =   0x3<<4, /* Cache updates (userspace) */
-  PKT_HDR_BYTE1_XITC_VALUE_CUPDAK = 0x4<<4, /* Cache update ack (userspace) */
-  PKT_HDR_BYTE1_XITC_VALUE_RSVACT = 0x5<<4, /* Reserved active (userspace) */
-  PKT_HDR_BYTE1_XITC_VALUE_RSVPSV = 0x6<<4, /* Reserved passive (userspace) */
-  PKT_HDR_BYTE1_XITC_VALUE_ITCCMD = 0x7<<4, /* ITC command (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_KITC =   0x0<<5, /* KITC (rather than userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_ITCCMD = 0x1<<5, /* ITC command (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT2 =   0x2<<5, /* Circuit ring (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT3 =   0x3<<5, /* Call answered (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT4 =   0x4<<5, /* Line busy (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT5 =   0x5<<5, /* Call dropped (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT6 =   0x6<<5, /* Talk (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT7 =   0x7<<5  /* Call hangup (userspace) */
 } PacketHeaderByte1XITCValues;
 
 /////////TRACING SUPPORT
@@ -270,8 +271,8 @@ typedef struct itctrafficcounts {
 } ITCTrafficCounts;
 
 typedef enum trafficcounttypes {
-  TRAFFIC_BULK,
-  TRAFFIC_URGENT,
+  TRAFFIC_MFM,
+  TRAFFIC_SERVICE,
   TRAFFIC_COUNT_TYPES
 } TrafficCountTypes;
 
@@ -322,7 +323,7 @@ u32 getITCEnabledStatusByDir8(int dir8) ;
 
 void setITCEnabledStatusDir8(u32 dir8, int enabled) ;
 
-ssize_t trySendUrgentRoutedKernelPacket(const u8 *pkt, size_t count) ;
+ssize_t trySendMFMRoutedKernelPacket(const u8 *pkt, size_t count) ;
 
 
 #endif /* ITC_PKT_H */
