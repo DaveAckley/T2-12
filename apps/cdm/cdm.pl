@@ -304,15 +304,10 @@ sub updateDeleteds {
     print "UPDATE DELETEDS YA WOBBO '".join(", ",keys %{$finfo})."'\n";
 }
 
-my $debugPanelShouldBeDisplayed = 0;
 sub installCDMDGFB {
     my ($finfo) = @_;
     installCDMD($finfo);
-    if ($debugPanelShouldBeDisplayed) {
-        toggleDebugPanel();
-        sleep 1;
-        toggleDebugPanel();
-    }
+ # Nothing special needed anymore
 }
 
 sub installSetup {
@@ -687,9 +682,6 @@ sub preinitCommon {
     DPSTD("Preloading common");
     my $count = 0;
     while (checkCommonFile(0)) {
-        if (checkUserButton()) {
-            toggleDebugPanel();
-        }
         ++$count; 
     }
     DPVRB("Preload complete after $count steps");
@@ -1341,35 +1333,6 @@ sub now {
     return time()>>1;
 }
 
-my $userButtonLastKnownState;
-my $userButtonDevice = "/sys/bus/iio/devices/iio:device0/in_voltage5_raw";
-sub readButtonState {
-    open BUT, "<", $userButtonDevice or return 0; # Silently say no button press if no device
-    my $val = <BUT>;
-    close BUT or die "close $userButtonDevice: $!";
-    chomp $val;
-    my $buttonPressed = ($val < 2000) ? 1 : 0;
-    return $buttonPressed;
-}
-    
-sub checkUserButton {
-#202004100817 NO LONGER CHECKING USER BUTTON FROM CDM
-    return 0;
-    
-    # my $buttonPressed = readButtonState();
-    # # Require three matching readings for debounce
-    # return 0 
-    #     if $buttonPressed != readButtonState() 
-    #     or $buttonPressed != readButtonState();
-
-    # my $userButtonPressDetected = 0;
-    # if (defined($userButtonLastKnownState) && !$userButtonLastKnownState && $buttonPressed) {
-    #     $userButtonPressDetected = 1;
-    # }
-    # $userButtonLastKnownState = $buttonPressed;
-    # return $userButtonPressDetected;
-}
-
 my $statPID;
 my $statProgPath = "/home/t2/MFM/bin/t2viz";
 my $statProgName = "t2viz";
@@ -1392,6 +1355,7 @@ sub checkForStat {
     print STDERR "FOUND STATPID ($statPID)\n";
 }
 
+#### NOT USED BUT CURRENTLY KEPT AS SAMPLE CODE
 sub controlStatProg {
     my $statsRunning = shift;
     checkForStat();
@@ -1409,12 +1373,6 @@ sub controlStatProg {
     sleep 1;
 }
 
-sub toggleDebugPanel {
-    $debugPanelShouldBeDisplayed = $debugPanelShouldBeDisplayed ? 0 : 1;
-    controlStatProg($debugPanelShouldBeDisplayed);
-    print "TGOPANEL($debugPanelShouldBeDisplayed)\n";
-}
-
 sub eventLoop {
     my $lastBack = now();
     my $incru = 10000;
@@ -1423,9 +1381,6 @@ sub eventLoop {
     my $usleep = $minu;
     while ($continueEventLoop) {
         my $sleep = 1;
-        if (checkUserButton()) {
-            toggleDebugPanel();
-        }
         if (my $packet = readPacket()) {
             processPacket($packet);
             $usleep = $minu;

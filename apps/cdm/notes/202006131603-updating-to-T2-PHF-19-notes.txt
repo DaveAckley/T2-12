@@ -1,4 +1,4 @@
-{3}  -*- text -*- 
+{5}  -*- text -*- 
 [0:
 
 Sat Jun 13 16:03:23 2020 OK, we're in the middle of reorganizing the
@@ -26,7 +26,30 @@ Sat Jun 13 16:19:53 2020 While we're here, though, we might want to
 tear out the user-button monitoring code, which previously was used to
 launch t2viz.
 
-Should do that as a separate commit though.
+Should do that as a separate commit though.[3:
+
+Sat Jun 13 16:28:38 2020 OK, tore out a bunch of button-and-stats-prog
+related code, but left some for possible future examples, marked as
+currently unused.  Ran cdm.pl to see if it compiles, and it does, but
+now the neigbhor's CDM packets are all illegal:
+
+  ..
+    Jun 13 16:27:55 beaglebone cdm.sh[1756]: ANNOUNCED cdm-distrib-T2-GFB.mfz to 0
+    Jun 13 16:27:55 beaglebone cdm.sh[1756]: Discarded 3 packet(s) containing 169 byte(s)
+    Jun 13 16:27:58 beaglebone cdm.sh[1756]: UNHANDLED PKT(‡#003F#026cdm-distrib-T2-GFB.mfz#0047603#020Ø#011 ©Ðñ£<ƒ#011ùˆBgãr
+    Jun 13 16:27:58 beaglebone cdm.sh[1756]: 1559554678#0011)
+  ..
+
+so we'll need to get this pushed and pulled.
+
+Although, after we install the LKM, those packets will get delivered
+to /dev/itc/flash anyway..  Is mfmt2 reading flash yet?[4:
+
+Sat Jun 13 16:32:26 2020 No, it's not.
+
+:4]
+
+:3]
 
 :2]
 
