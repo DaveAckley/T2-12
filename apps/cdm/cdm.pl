@@ -16,7 +16,9 @@ $SIG{__DIE__} = sub {
     Carp::confess ;
 };
 
-my $CDM_PKT_TYPE = 0x03;
+my $CDM_PKT_BULK_FLAG = 0x80;
+my $CDM_PKT_CDM_CMD = 0x03; # was ^C for CDM.  
+my $CDM_PKT_TYPE = $CDM_PKT_BULK_FLAG | $CDM_PKT_CDM_CMD; # Now it's 0x83 for 'no break here'??
 my $CDM_PKT_TYPE_BYTE = chr($CDM_PKT_TYPE);
 
 my $MAX_MFZ_NAME_LENGTH = 28+4; # 4 for '.mfz'

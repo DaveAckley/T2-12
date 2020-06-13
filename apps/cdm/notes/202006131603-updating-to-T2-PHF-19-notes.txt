@@ -1,0 +1,35 @@
+{3}  -*- text -*- 
+[0:
+
+Sat Jun 13 16:03:23 2020 OK, we're in the middle of reorganizing the
+packet header to follow T2-PacketHeaderFormats-19, and the changes
+have consequences for CDM, so here we are.
+
+Just surveying the scene first.  Where-all does cdm.pl examine packet
+header bits?
+
+ - $CDM_PKT_TYPE is 0x03, which doesn't have bit 7 set, so in
+   T2-PHF-19 it will look like flash instead of bulk in byte1.
+   Probably just change it to 0x80|0x03.
+
+ - sendCMDTo does
+
+    my $pkt = chr(0x80+$dest).chr($CDM_PKT_TYPE).$type;
+
+   which is okay as long as $CDM_PKT_TYPE is changed.
+
+ - And that might actually be it for updating cdm.pl?[1:
+
+Sat Jun 13 16:18:00 2020 Well, cdm might be updated...[2:
+
+Sat Jun 13 16:19:53 2020 While we're here, though, we might want to
+tear out the user-button monitoring code, which previously was used to
+launch t2viz.
+
+Should do that as a separate commit though.
+
+:2]
+
+:1]
+
+:0]
