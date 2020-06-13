@@ -1,4 +1,4 @@
-{5}  -*- text -*- 
+{6}  -*- text -*- 
 [0:
 
 Sat Jun 13 16:03:23 2020 OK, we're in the middle of reorganizing the
@@ -56,3 +56,18 @@ Sat Jun 13 16:32:26 2020 No, it's not.
 :1]
 
 :0]
+[5:
+
+Sat Jun 13 16:40:03 2020 Well, LKM install + reboot seemed to go
+okay.  Now the neighbor is logging like:
+
+    Jun 13 16:39:54 beaglebone cdm.sh[1748]: UNHANDLED PKT(��Af)
+
+which is probably about right.
+
+
+Time to break for the evening, but going to push all this.
+
+Pick up back in mfmt2.
+
+:5]
