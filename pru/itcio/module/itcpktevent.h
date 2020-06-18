@@ -5,6 +5,44 @@
 #include "pin_info_maps.h"
 #include "dirdatamacro.h"         /* For DIR6_ET, DIR6_COUNT, etc */
 
+typedef enum packet_header_bits {
+  PKT_HDR_BITMASK_STANDARD  = 0x80,
+  PKT_HDR_BITMASK_LOCAL     = 0x40,
+  PKT_HDR_BITMASK_MFM       = 0x20,
+
+  PKT_HDR_BITMASK_STANDARD_LOCAL =
+    PKT_HDR_BITMASK_STANDARD | PKT_HDR_BITMASK_LOCAL,
+
+  PKT_HDR_BITMASK_STANDARD_MFM =
+    PKT_HDR_BITMASK_STANDARD | PKT_HDR_BITMASK_MFM,
+
+  // Standard Routed bits
+  PKT_HDR_BITMASK_OVERRUN   = 0x10,
+  PKT_HDR_BITMASK_ERROR     = 0x08,
+  PKT_HDR_BITMASK_DIR       = 0x07,
+
+  // Standard Local bits
+  PKT_HDR_BITMASK_LOCAL_TYPE= 0x1f
+} PacketHeaderBits;
+
+typedef enum packet_header_byte1_bits {
+  PKT_HDR_BYTE1_BITMASK_BULK = 0x80,      /* Bulk traffic (rather than flash) */
+  PKT_HDR_BYTE1_BITMASK_XITC = 0xe0,      /* Types of ITC traffic */
+  PKT_HDR_BYTE1_XITC_POS = __builtin_ctz(PKT_HDR_BYTE1_BITMASK_XITC),
+  PKT_HDR_BYTE1_BITMASK_XITC_SN = 0x1f    /* State number bits */
+} PacketHeaderByte1Bits;
+
+typedef enum packet_header_byte1_xitc_values {
+  PKT_HDR_BYTE1_XITC_VALUE_KITC =   0x0<<5, /* KITC (rather than userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_ITCCMD = 0x1<<5, /* ITC command (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT2 =   0x2<<5, /* Circuit ring (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT3 =   0x3<<5, /* Call answered (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT4 =   0x4<<5, /* Line busy (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT5 =   0x5<<5, /* Call dropped (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT6 =   0x6<<5, /* Talk (userspace) */
+  PKT_HDR_BYTE1_XITC_VALUE_CKT7 =   0x7<<5  /* Call hangup (userspace) */
+} PacketHeaderByte1XITCValues;
+
 static inline __u32 mapDir6ToDir8(__u32 dir6) {
   switch (dir6) {
   default:      return DIR8_COUNT;
