@@ -484,7 +484,7 @@ static ssize_t statistics_show(struct class *c,
      presently is something like ( 110 + 8 * ( 2 + 3 * 11 + 8 * 11) ) < 1100 */
   int len = 0;
   int itc, speed;
-  len += sprintf(&buf[len], "dir psan sfan toan XXXFIXMEXXX blkbsent blkbrcvd blkpsent blkprcvd urgbsent urgbrcvd urgpsent urgprcvd\n");
+  len += sprintf(&buf[len], "dir psan sfan toan mfmbsent mfmbrcvd mfmpsent mfmprcvd svcbsent svcbrcvd svcpsent svcprcvd\n");
   for (itc = 0; itc < DIR8_COUNT; ++itc) {
     ITCTrafficStats * t = &S.mItcStats[itc];
     len += sprintf(&buf[len], "%u %u %u %u",
