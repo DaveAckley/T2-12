@@ -3,6 +3,7 @@ PACKAGES+=fbi
 PACKAGES+=inotify-tools
 PACKAGES+=git g++
 PACKAGES+=software-properties-common 
+PACKAGES+=libncurses-dev
 
 # For unpacking .mfz files in emacs
 PACKAGES+=zip
