@@ -99,6 +99,7 @@ preremove:	FORCE
 	@if [ -f $(REMOVE_FLAG_FILE) ] ; then \
 	  echo "NOTE: '$(REMOVE_FLAG_FILE)' detected; preremoval skipped" ; \
 	else \
+	  echo "PREREMOVING PACKAGES TO SAVE SPACE" ; \
 	  ping -c 1 -n google.com || (echo Want net when removing packages...um why) ; \
 	  apt-mark unhold $(UNHOLD_PACKAGES) ; \
 	  apt-get -y remove --purge $(REMOVE_PACKAGES) ; \
