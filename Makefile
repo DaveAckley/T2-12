@@ -44,6 +44,9 @@ cdmd:	FORCE
 $(SUBDIRS):	FORCE
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
+removeflagfiles:	FORCE
+	find * -name ".flagfile*" -exec rm \{\} \;
+
 
 .PHONY:	all clean realclean install test FORCE HOSTCHECK
 
