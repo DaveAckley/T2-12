@@ -28,6 +28,10 @@ echo "Rebooting PRUs"
 #echo "4a338000.pru1" > /sys/bus/platform/drivers/pru-rproc/bind
 #echo "4a334000.pru0" > /sys/bus/platform/drivers/pru-rproc/bind
 
+sleep 1
+echo start > /sys/class/remoteproc/remoteproc1/state
+echo start > /sys/class/remoteproc/remoteproc2/state
+ 
 #logger T2 FINAL BOOT CONFIG: CPUFREQ
 #echo "Defaulting to 720MHz for heat management"
 #cpufreq-set -f 720MHz
