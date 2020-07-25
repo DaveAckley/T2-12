@@ -1610,7 +1610,8 @@ ssize_t trySendMFMRoutedKernelPacket(const u8 *pkt, size_t count)
             count,
             cdevstate->mName);
 
-  if (kfifo_avail(&ipb->mFIFO) < count) return -EAGAIN; /* Never block */
+  if (kfifo_avail(&ipb->mFIFO) < count + 1) /* Need +1 for packet length byte in fifo */
+    return -EAGAIN; /* Never block */
   ret = kfifo_in(&ipb->mFIFO, pkt, count); /*0 on no room else count*/
 
   wakeOBPktShipper(); /* if we got this far, kick the linux->pru thread */
@@ -1678,18 +1679,18 @@ static ssize_t writePacketHelper(struct file *file,
     unsigned int copied;
 
     DBGPRINTK(DBG_PKT_SENT, KERN_INFO "writePacketHelper(%d) prewait %s\n",minor, ipb->mName);
-    while (kfifo_avail(&ipb->mFIFO) < count) {
+    while (kfifo_avail(&ipb->mFIFO) < count + 1) { /*Need +1 for packet length byte in kfifo */
       if (file->f_flags & O_NONBLOCK) {
         ret = -EAGAIN;
         break;
       }
-      if (wait_event_interruptible(ipb->mWriterQ, !(kfifo_avail(&ipb->mFIFO) < count))) {
+      if (wait_event_interruptible(ipb->mWriterQ, !(kfifo_avail(&ipb->mFIFO) < count + 1))) {
         ret = -ERESTARTSYS;
         break;
       }
       DBGPRINTK(DBG_PKT_ROUTE,
                 KERN_INFO "Waiting for %d space, %d available\n",
-                count, kfifo_avail(&ipb->mFIFO));
+                count + 1, kfifo_avail(&ipb->mFIFO));
     }
 
     if (ret == 0) {
@@ -2237,7 +2238,7 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
           if (pktdev) {
             ipb = &pktdev->mUserIB;
 
-            if (kfifo_avail(&ipb->mFIFO) < len) 
+            if (kfifo_avail(&ipb->mFIFO) < len + 1)  /*Need + 1 for packet length byte in kfifo*/
               DBGPRINTK(DBG_PKT_DROPS,
                         KERN_INFO "(%s) Inbound %s queue full, dropping %s len=%d packet\n",
                         getDir8Name(type&0x7),
@@ -2301,7 +2302,7 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
       BUG_ON(!prudev);
       ipb = &prudev->mLocalIB;
 
-      if (kfifo_avail(&ipb->mFIFO) < len) 
+      if (kfifo_avail(&ipb->mFIFO) < len + 1)  /*Need + 1 for packet length byte in kfifo*/
         DBGPRINTK(DBG_PKT_DROPS,
                   KERN_INFO "(%s) Inbound queue full, dropping PRU%d len=%d packet\n",
                   getDir8Name(type&0x7), minor, len);
