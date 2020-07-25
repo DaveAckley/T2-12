@@ -78,8 +78,8 @@ typedef struct {
 /* Functions & pointers */
 typedef struct packethandler {
   u8 * pktbuf;
-  u32 index;
-  u32 len;
+  u32 index; // Index of next byte (to read or write) in pktbuf
+  u32 len;   // Valid (read) or max (write) length of pktbuf
 } PacketHandler;
 
 typedef void StateTimeout_func (ITCMFMDeviceState* mds, PacketHandler * ph) ;
