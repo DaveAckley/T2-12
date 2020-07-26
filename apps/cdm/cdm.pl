@@ -264,11 +264,13 @@ sub checkMFZDataFor {
         DPSTD("Unrecognized handle '$badhandle' in $path");
         return 0;
     }
-    if ($output !~ s/^SIGNING_HANDLE \[(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})\]//) {
+
+    if ($output !~ s/^SIGNING_HANDLE \[(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})\]//m) {
         DPSTD("Handle of $path not found in '$output'");
         return 0;
     }
     my $handle = $1;
+
     if ($output !~ s/^INNER_TIMESTAMP \[(\d+)\]//m) {
         DPSTD("Timestamp of $path not found in '$output'");
         return 0;
