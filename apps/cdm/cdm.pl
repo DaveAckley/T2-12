@@ -255,7 +255,8 @@ sub checkMFZDataFor {
 
     #### REPLACE THIS WITH 'mfzrun VERIFY' ONCE AVAILABLE
     my $path = getFinfoPath($finfo);
-    my $cmd = "echo Q | $mfzrunProgPath -kd /cdm $path list";
+#    my $cmd = "echo Q | $mfzrunProgPath -kd /cdm $path list";
+    my $cmd = "echo Q | $mfzrunProgPath -kd /cdm $path VERIFY";
     my $output = `$cmd`;
 
     if ($output =~ /.*?signer handle '(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})' is not recognized!/) {
@@ -263,26 +264,26 @@ sub checkMFZDataFor {
         DPSTD("Unrecognized handle '$badhandle' in $path");
         return 0;
     }
-    if ($output !~ s/^SIGNED BY RECOGNIZED HANDLE: (:?[a-zA-Z][-., a-zA-Z0-9]{0,62}) \(//) {
+    if ($output !~ s/^SIGNING_HANDLE \[(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})\]//) {
         DPSTD("Handle of $path not found in '$output'");
         return 0;
     }
     my $handle = $1;
-    if ($output !~ s/^\s+MFZPUBKEY.DAT\s+\d+\s+([A-Za-z0-9: ]+)$//m) {
+    if ($output !~ s/^INNER_TIMESTAMP \[(\d+)\]//m) {
         DPSTD("Timestamp of $path not found in '$output'");
         return 0;
     }
     my $timestamp = $1;
 
-    my $strp = DateTime::Format::Strptime->new(
-        pattern   => '%a %b %e %H:%M:%S %Y',
-        );
-    my $dt = $strp->parse_datetime( $timestamp );
-    my $epoch = $dt->strftime("%s");
-    DPSTD(" $path: $handle/$timestamp => $epoch");
+    # my $strp = DateTime::Format::Strptime->new(
+    #     pattern   => '%a %b %e %H:%M:%S %Y',
+    #     );
+    # my $dt = $strp->parse_datetime( $timestamp );
+    # my $epoch = $dt->strftime("%s");
+    DPSTD(" $path: $handle => $timestamp");
 
     $finfo->{signingHandle} = $handle;
-    $finfo->{innerTimestamp} = $epoch;
+    $finfo->{innerTimestamp} = $timestamp;
     $finfo->{currentLength} = $finfo->{length};
     $finfo->{checkedLength} = $finfo->{length};
     return 1;
