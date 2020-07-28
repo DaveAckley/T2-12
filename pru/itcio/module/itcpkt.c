@@ -214,7 +214,7 @@ static void initITCModuleState(ITCModuleState *s)
 #if MORE_DEBUGGING
   s->mDebugFlags = 0xf; /* some default debugging */
 #else
-  s->mDebugFlags = 0;  /* or no default debugging */
+  s->mDebugFlags = DBG_PKT_ERROR|DBG_PKT_DROPS;  /* or only 'rare' default debugging */
 #endif
 
   s->mOpenPRUMinors = 0;
@@ -2304,11 +2304,11 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
 
             if (kfifo_avail(&ipb->mFIFO) < len)   /* kifo_avail is available len for next packet only */
               DBGPRINTK(DBG_PKT_DROPS,
-                        KERN_INFO "(%s) Inbound %s queue full, dropping %s len=%d packet\n",
+                        KERN_ERR "(%s) Inbound %s queue full, dropping %s %02x+%d packet\n",
                         getDir8Name(type&0x7),
                         ipb->mName,
-                        mfm ? "MFM" : "service",
-                        len);
+                        mfm ? "MFM" : "svc",
+                        type,len);
             else {
               tpReportIfMatch(&ipb->mTraceInsert, pktdev->mCDevState.mName, true, data, len, ipb);
 
@@ -2343,7 +2343,11 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
 
         default:
         case 0:
-          printk(KERN_ERR "Illegal standard local packet %d\n",type&PKT_HDR_BITMASK_LOCAL_TYPE);
+          printk(KERN_ERR "Illegal standard local packet %02x+%d\n",type,len);
+          print_hex_dump(KERN_ERR, minor ? "<pru1: " : "<pru0: ",
+                         DUMP_PREFIX_ADDRESS, 16, 1,
+                         data, len, true);
+
           break;
 
         case 1:
@@ -2368,8 +2372,11 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
 
       if (kfifo_avail(&ipb->mFIFO) < len)   /* kifo_avail is available len for next packet only */
         DBGPRINTK(DBG_PKT_DROPS,
-                  KERN_INFO "(%s) Inbound queue full, dropping PRU%d len=%d packet\n",
-                  getDir8Name(type&0x7), minor, len);
+                  KERN_ERR "(%s) %s kfifo full, dropping PRU%d non-std 0x%02x+%d packet\n",
+                  getDir8Name(type&0x7),
+                  ipb->mName,
+                  minor,
+                  type, len);
       else {
         u32 copied;
 
