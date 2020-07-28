@@ -109,7 +109,7 @@ sub writePacket {
         }
         die "Error: $!" unless $!{EAGAIN};
         DPVRB("WRITE BLOCKING");
-        Time::HiRes::usleep($usec += 1000);
+        Time::HiRes::usleep($usec += 10000);
         if ($usec > 500000) {
             my $pru = "/sys/class/itc_pkt/pru_bufs";
             my $bufs = do{local(@ARGV,$/)=$pru;<>};
