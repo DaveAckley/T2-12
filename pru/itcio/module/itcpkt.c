@@ -264,19 +264,21 @@ static inline int bulkOutboundBytesToPRUDev(ITCPRUDeviceState * prudev) {
 }
 
 static u32 reportITCPacketFIFOStatus(char * buf, size_t size, ITCPacketFIFO * ipf) {
-  int ret = scnprintf(buf, size, "%p %9d/%5di %9d/%5do %5dl %da",
-                      ipf,
-                      ipf->kfifo.in, (ipf->kfifo.in & ipf->kfifo.mask),
-                      ipf->kfifo.out, (ipf->kfifo.out & ipf->kfifo.mask),
-                      kfifo_len(ipf),
-                      kfifo_avail(ipf));
-  return (u32) ret;
-                      
+  if (!ipf) return 0;
+  return (u32)
+    scnprintf(buf, size, "%p %9d/%-9d %4d/%-4d %4dl %3da",
+              ipf,
+              ipf->kfifo.in, ipf->kfifo.out,
+              (ipf->kfifo.in & ipf->kfifo.mask), (ipf->kfifo.out & ipf->kfifo.mask),
+              kfifo_len(ipf),
+              kfifo_avail(ipf));
 }
 
 static u32 reportITCPacketBufferStatus(char * buf, size_t size, ITCPacketBuffer * ipb) {
-  u32 used = reportITCPacketFIFOStatus(buf, size, &ipb->mFIFO);
-  used += scnprintf(buf + used, size - used, "%c%c%d%c%c %s",
+  u32 used;
+  if (!ipb) return 0;
+  used = reportITCPacketFIFOStatus(buf, size, &ipb->mFIFO);
+  used += scnprintf(buf + used, size - used, " %c%c%x%c%c %s",
                   wq_has_sleeper(&ipb->mReaderQ) ? 'R' : ' ',
                   wq_has_sleeper(&ipb->mWriterQ) ? 'W' : ' ',
                   ipb->mMinor,
@@ -306,17 +308,14 @@ static void printkITCPktDeviceStateStatus(ITCPktDeviceState * ipk) {
 }
 
 static void printkITCMFMDeviceStateStatus(ITCMFMDeviceState * ipm) {
-  char mfmname[64];
-  u32 size = sizeof(mfmname);
-  snprintf(mfmname, size, "%s %s",
-           getDir6Name(ipm->mDir6),
-           ipm->mPktDevState.mCDevState.mName);
-  printkITCPacketBufferStatus(&ipm->mPktDevState.mUserIB, mfmname);
+  printkITCPacketBufferStatus(&ipm->mPktDevState.mUserIB,
+                              ipm->mPktDevState.mCDevState.mName);
 }
 
 static void printk_ITCStatus(void) {
   u32 i;
-  printk(KERN_ERR "DUMPITCSTATUS------------------------------------------\n");
+  printk(KERN_ERR "DUMPITCSTATUS DUMPITCSTATUS DUMPITCSTATUS\n");
+  printk(KERN_ERR "kfifoptr---kfifoin/out------mskin/out----len-avail-mnrflg name----------------\n");
   for (i = 0; i < PRU_MINORS; ++i) 
     if (S.mPRUDeviceState[i]) printkITCPRUDeviceStateStatus(S.mPRUDeviceState[i]);
   for (i = 0; i < PKT_MINORS; ++i) 
@@ -514,19 +513,19 @@ __printf(5,6) int sendMsgToPRU(unsigned prunum,
 
 
 /*CLASS ATTRIBUTE STUFF*/
-static ssize_t poke_store(struct class *c,
+static ssize_t dump_store(struct class *c,
 			  struct class_attribute *attr,
 			  const char *buf,
 			  size_t count)
 {
-  unsigned poker;
-  if (sscanf(buf,"%u",&poker) == 1) {
-    printk(KERN_INFO "store poke %u\n",poker);
-    return count;
-  }
-  return -EINVAL;
+  /*DUMP ITC STATUS TO LOG WITH
+    $ echo MSG > /sys/class/itc_pkt/dump
+  */
+  printk(KERN_INFO "XDUMP!!!%s!!!\n",buf);
+  printk_ITCStatus();
+  return count;
 }
-CLASS_ATTR_WO(poke);
+CLASS_ATTR_WO(dump);
 
 static ssize_t status_show(struct class *c,
 			   struct class_attribute *attr,
@@ -547,12 +546,6 @@ static ssize_t statistics_show(struct class *c,
      presently is something like ( 110 + 8 * ( 2 + 3 * 11 + 8 * 11) ) < 1100 */
   int len = 0;
   int itc, speed;
-
-  /*XXX DEBUG: DUMP ITC STATUS TO LOG WITH
-    $ cat /sys/class/itc_pkt/statistics 
-  */
-  printk_ITCStatus();
-  /*XXX DEBUG*/
 
   len += sprintf(&buf[len], "dir psan sfan toan mfmbsent mfmbrcvd mfmpsent mfmprcvd svcbsent svcbrcvd svcpsent svcprcvd\n");
   for (itc = 0; itc < DIR8_COUNT; ++itc) {
@@ -655,6 +648,7 @@ static ssize_t pru_bufs_show(struct class *c,
 {
   int len = 0;
   int pru;
+
   len += sprintf(&buf[len], "pru libl libr libw pobl pobr pobw bobl bobr bobw\n");
   for (pru = 0; pru < PRU_MINORS; ++pru) {
     ITCPRUDeviceState * t = S.mPRUDeviceState[pru];
@@ -1362,7 +1356,7 @@ FOR_XX_IN_ITC_ALL_DIR
 
 static struct attribute * class_itc_pkt_attrs[] = {
   FOR_XX_IN_ITC_ALL_DIR
-  &class_attr_poke.attr,
+  &class_attr_dump.attr,
   &class_attr_status.attr,
   &class_attr_statistics.attr,
   &class_attr_trace_start_time.attr,
@@ -2901,7 +2895,8 @@ MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Dave Ackley <ackley@ackleyshack.com>");
 MODULE_DESCRIPTION("T2 intertile packet communications subsystem");  ///< modinfo description
 
-MODULE_VERSION("0.8");            ///< 0.8 for /dev/itc/itcevents
+MODULE_VERSION("0.9");            ///< 0.9 for /sys/class/itc_pkt/dump etc
+/// 0.8 for /dev/itc/itcevents
 /// 0.7 for KITCs
 /// 0.6 for /dev/itc/pktevents
 /// 0.5 for /dev/itc/mfm
