@@ -131,7 +131,7 @@ static void initITCPktEventState(ITCPktEventState * pes) {
   BUG_ON(!pes);
   pes->mStartTime = 0;
   pes->mShiftDistance = 12;  /* Default: divide by 4096 -> ~4usec resolution */
-  INIT_KFIFO(pes->mEvents);
+  INIT_XKFIFO("Trace",pes->mEvents);
   mutex_init(&pes->mPktEventReadMutex);
   printk(KERN_INFO "ZERGINI: initITCPktEventState(%p/%d), mutex(%p/%d), kfifo(%p/%d)\n",
          pes, sizeof(*pes),
@@ -166,9 +166,7 @@ void addPktEvent(ITCPktEventState* pes, u32 event, u32 gapevent) {
   if (kfifo_avail(&pes->mEvents) >= 2*sizeof(ITCPktEvent)) tmp.event = event;
   else tmp.event = gapevent;
 
-  kfifo_put(&pes->mEvents, tmp);
-
-  /*printk(KERN_INFO "addPktEvent done\n");*/
+  XKFIFO_PUT(&pes->mEvents, tmp);
 }
 
 static void wakeOBPktShipper(void) {
@@ -265,6 +263,68 @@ static inline int bulkOutboundBytesToPRUDev(ITCPRUDeviceState * prudev) {
   return bytesInITCPacketBuffer(&prudev->mBulkOB);
 }
 
+static u32 reportITCPacketFIFOStatus(char * buf, size_t size, ITCPacketFIFO * ipf) {
+  int ret = scnprintf(buf, size, "%p %9d/%5di %9d/%5do %5dl %da",
+                      ipf,
+                      ipf->kfifo.in, (ipf->kfifo.in & ipf->kfifo.mask),
+                      ipf->kfifo.out, (ipf->kfifo.out & ipf->kfifo.mask),
+                      kfifo_len(ipf),
+                      kfifo_avail(ipf));
+  return (u32) ret;
+                      
+}
+
+static u32 reportITCPacketBufferStatus(char * buf, size_t size, ITCPacketBuffer * ipb) {
+  u32 used = reportITCPacketFIFOStatus(buf, size, &ipb->mFIFO);
+  used += scnprintf(buf + used, size - used, "%c%c%d%c%c %s",
+                  wq_has_sleeper(&ipb->mReaderQ) ? 'R' : ' ',
+                  wq_has_sleeper(&ipb->mWriterQ) ? 'W' : ' ',
+                  ipb->mMinor,
+                  ipb->mRouted ? 'r' : ' ',
+                  ipb->mPriority ? 'p' : ' ',
+                  ipb->mName);
+  return used;
+}
+
+static void printkITCPacketBufferStatus(ITCPacketBuffer * ipb, char * inName) {
+  char buf[300];
+  u32 size = sizeof(buf);
+  reportITCPacketBufferStatus(buf, size, ipb);
+  printk(KERN_ERR "%s-%s\n",buf,inName);
+}
+
+static void printkITCPRUDeviceStateStatus(ITCPRUDeviceState * ipd) {
+  char * name = ipd->mCDevState.mName;
+  printkITCPacketBufferStatus(&ipd->mLocalIB,name);
+  printkITCPacketBufferStatus(&ipd->mPriorityOB,name);
+  printkITCPacketBufferStatus(&ipd->mBulkOB,name);
+}
+
+static void printkITCPktDeviceStateStatus(ITCPktDeviceState * ipk) {
+  char * name = ipk->mCDevState.mName;
+  printkITCPacketBufferStatus(&ipk->mUserIB,name);
+}
+
+static void printkITCMFMDeviceStateStatus(ITCMFMDeviceState * ipm) {
+  char mfmname[64];
+  u32 size = sizeof(mfmname);
+  snprintf(mfmname, size, "%s %s",
+           getDir6Name(ipm->mDir6),
+           ipm->mPktDevState.mCDevState.mName);
+  printkITCPacketBufferStatus(&ipm->mPktDevState.mUserIB, mfmname);
+}
+
+static void printk_ITCStatus(void) {
+  u32 i;
+  printk(KERN_ERR "DUMPITCSTATUS------------------------------------------\n");
+  for (i = 0; i < PRU_MINORS; ++i) 
+    if (S.mPRUDeviceState[i]) printkITCPRUDeviceStateStatus(S.mPRUDeviceState[i]);
+  for (i = 0; i < PKT_MINORS; ++i) 
+    if (S.mPktDeviceState[i]) printkITCPktDeviceStateStatus(S.mPktDeviceState[i]);
+  for (i = 0; i < MFM_MINORS; ++i) 
+    if (S.mMFMDeviceState[i]) printkITCMFMDeviceStateStatus(S.mMFMDeviceState[i]);
+}
+
 /* return size of packet sent, 0 if nothing to send, < 0 if problem */
 static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb) {
   struct rpmsg_device * rpdev;
@@ -276,11 +336,12 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
 
   pktlen = kfifo_peek_len(&ipb->mFIFO);
   if (pktlen == 0) {
-    printk(KERN_ERR "Empty pkt? OB kfifolen = %d but pktlen = %d (kfifo %p, prudev %p)\n",
+    printk(KERN_ERR "XKFIFO OB prudev %s, kfifo %s, kfifolen = %d, pktlen = %d\n",
+           prudev->mCDevState.mName,
+           ipb->mName,
            kfifolen,
-           pktlen,
-           &ipb->mFIFO,
-           prudev);
+           pktlen);
+    printk_ITCStatus();
     BUG_ON(1);
   }
 
@@ -470,6 +531,7 @@ CLASS_ATTR_WO(poke);
 static ssize_t status_show(struct class *c,
 			   struct class_attribute *attr,
 			   char *buf)
+
 {
   sprintf(buf,"%08x\n",S.mItcEnabledStatus);
   return strlen(buf);
@@ -480,10 +542,18 @@ static ssize_t statistics_show(struct class *c,
 			       struct class_attribute *attr,
 			       char *buf)
 {
+
   /* We have a PAGE_SIZE (== 4096) in buf, but won't get near that.  Max size
      presently is something like ( 110 + 8 * ( 2 + 3 * 11 + 8 * 11) ) < 1100 */
   int len = 0;
   int itc, speed;
+
+  /*XXX DEBUG: DUMP ITC STATUS TO LOG WITH
+    $ cat /sys/class/itc_pkt/statistics 
+  */
+  printk_ITCStatus();
+  /*XXX DEBUG*/
+
   len += sprintf(&buf[len], "dir psan sfan toan mfmbsent mfmbrcvd mfmpsent mfmprcvd svcbsent svcbrcvd svcpsent svcprcvd\n");
   for (itc = 0; itc < DIR8_COUNT; ++itc) {
     ITCTrafficStats * t = &S.mItcStats[itc];
@@ -2337,7 +2407,7 @@ static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname, boo
   mutex_init(&ipb->mLock);
   init_waitqueue_head(&ipb->mReaderQ);
   init_waitqueue_head(&ipb->mWriterQ);
-  INIT_KFIFO(ipb->mFIFO);
+  INIT_XKFIFO(ipbname, ipb->mFIFO);
 }
 
 static ITCPktDeviceState * makeITCPktDeviceState(struct device * dev,

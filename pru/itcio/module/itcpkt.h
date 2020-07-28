@@ -21,6 +21,28 @@
 
 #include "dirdatamacro.h"         /* For DIR6_ET, DIR6_COUNT, etc */
 
+#define XKFIFO_PUT(fifo, item)                          \
+  ({                                                    \
+    u32 __ret = kfifo_put((fifo), (item));              \
+    if (__ret == 0)                                     \
+      printk(KERN_INFO "%s:%d: XKFIFO_PUT(%s,%s)==0\n", \
+             __FILE__,__LINE__,                         \
+             #fifo, #item);                             \
+    __ret;                                              \
+  })
+
+
+#define INIT_XKFIFO(nameptr, fifo)                                      \
+  do {                                                                  \
+    INIT_KFIFO(fifo);                                                   \
+    printk(KERN_INFO                                                    \
+           "INIT_XKFIFO(%s/%s): esize=%d, recsize=%d, size=%d\n",       \
+           nameptr,                                                     \
+           #fifo,                                                       \
+           kfifo_esize(&fifo), kfifo_recsize(&fifo), kfifo_size(&fifo)); \
+  } while (0)
+
+
 #define ADD_PKT_EVENT(event)                                              \
   do {                                                                    \
    if (kfifo_avail(&(S.mEvtDeviceState[0]->mPktEvents.mEvents)) >= sizeof(ITCPktEvent)) \
