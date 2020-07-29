@@ -18,6 +18,8 @@ EMACS_INPUTS:=50acklemacs.el
 EMACS_DIR:=/etc/emacs/site-start.d
 EMACS_OUTPUTS:=$(patsubst %,$(EMACS_DIR)/%,$(EMACS_INPUTS))
 
+ALL_INPUTS:=$(CONF_INPUTS) $(ETC_INPUTS) $(SYSCTL_INPUTS) $(PROFILE_INPUTS) $(EMACS_INPUTS)
+
 ## THIS IS JUST SOMEHOW BROKEN SO DON'T DO IT
 #SUDOER_INPUTS:=sdl
 #SUDOER_DIR:=/etc/sudoers.d
@@ -31,15 +33,15 @@ all:
 	@echo $(EMACS_INPUTS) - $(EMACS_OUTPUTS) 
 #	@echo $(SUDOER_INPUTS) - $(SUDOER_OUTPUTS)
 
-touch:
-	touch  $(CONF_INPUTS) $(ETC_INPUTS)
+touch:	FORCE
+	touch $(ALL_INPUTS)
 
 clean:
 	@rm -f *~
 
 realclean:	clean touch
 
-install:	$(CONF_OUTPUTS) $(ETC_OUTPUTS) $(SYSCTL_OUTPUTS) $(PROFILE_OUTPUTS) $(EMACS_OUTPUTS) #$(SUDOER_OUTPUTS)
+install:	touch $(CONF_OUTPUTS) $(ETC_OUTPUTS) $(SYSCTL_OUTPUTS) $(PROFILE_OUTPUTS) $(EMACS_OUTPUTS) #$(SUDOER_OUTPUTS)
 
 $(CONF_OUTPUTS):	$(CONF_INPUTS)
 	cp $^ $(CONF_OUTPUT_DIR)  || (echo Must be root ; exit 2)
@@ -61,3 +63,5 @@ $(EMACS_OUTPUTS):	$(EMACS_INPUTS)
 #$(SUDOER_OUTPUTS):	$(SUDOER_INPUTS)
 #	mkdir -p $(SUDOER_DIR)
 #	cp $^ $(SUDOER_DIR)  || (echo Must be root ; exit 2)
+
+.PHONY:	FORCE
