@@ -1643,12 +1643,13 @@ FOR_XX_IN_ITC_ALL_DIR
   return newminor;
 }
 
-static bool roomInPacketFIFO(ITCPacketBuffer * ipb, u32 countNeeded, const char * action) {
+static bool roomInPacketFIFO(ITCPacketBuffer * ipb, u32 countNeeded, const char * source, const char * action) {
   if (kfifo_avail(&ipb->mFIFO) < countNeeded) { /*kfifo_avail returns room for next packet only*/
     /*No room*/
     if (ipb->mPacketsDropped++ == 0) 
       DBGPRINTK(DBG_PKT_DROPS,
-                KERN_ERR "%s kfifo full, starting to %s\n",
+                KERN_ERR "%s %s kfifo full, starting to %s\n",
+                source,
                 ipb->mName,
                 action);
     return false;
@@ -1657,7 +1658,8 @@ static bool roomInPacketFIFO(ITCPacketBuffer * ipb, u32 countNeeded, const char 
   /*Has room*/
   if (ipb->mPacketsDropped > 0) {
     DBGPRINTK(DBG_PKT_DROPS,
-              KERN_ERR "%s kfifo space available after %d attempts\n",
+              KERN_ERR "%s %s kfifo space available after %d attempts\n",
+              source,
               ipb->mName,
               ipb->mPacketsDropped);
     ipb->mPacketsDropped = 0;
@@ -1696,7 +1698,7 @@ ssize_t trySendMFMRoutedKernelPacket(const u8 *pkt, size_t count)
             count,
             cdevstate->mName);
 
-  if (!roomInPacketFIFO(ipb,count,"return -EAGAIN"))
+  if (!roomInPacketFIFO(ipb, count, cdevstate->mName, "return -EAGAIN"))
     return -EAGAIN; /* Never block */
 
   ret = kfifo_in(&ipb->mFIFO, pkt, count); /*0 on no room else count*/
@@ -2325,7 +2327,7 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
           if (pktdev) {
             ipb = &pktdev->mUserIB;
 
-            if (roomInPacketFIFO(ipb, len, "drop packets")) {
+            if (roomInPacketFIFO(ipb, len, pktdev->mCDevState.mName, "drop packets")) {
               
               tpReportIfMatch(&ipb->mTraceInsert, pktdev->mCDevState.mName, true, data, len, ipb);
 
@@ -2387,7 +2389,7 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
       BUG_ON(!prudev);
       ipb = &prudev->mLocalIB;
 
-      if (roomInPacketFIFO(ipb, len, "drop non-standard packets")) {
+      if (roomInPacketFIFO(ipb, len, prudev->mCDevState.mName, "drop non-standard packets")) {
         u32 copied;
 
         tpReportIfMatch(&ipb->mTraceInsert, prudev->mCDevState.mName, true, data, len, ipb);
