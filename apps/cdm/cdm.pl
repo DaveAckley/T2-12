@@ -422,7 +422,7 @@ sub installCDMDMFM {
     return unless defined installCDMD(@_);
     my $mfmt2pid = `ps -C mfmt2 -o pid=`;
     chomp $mfmt2pid;
-    if ($mfmt2pid =~ /^[0-9]+$/) {
+    if ($mfmt2pid =~ /^\s*[0-9]+$/) {
         print "KILLING mfmt2($mfmt2pid)\n";
         kill 'INT', $mfmt2pid;
     }
