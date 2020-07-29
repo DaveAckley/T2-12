@@ -1643,6 +1643,28 @@ FOR_XX_IN_ITC_ALL_DIR
   return newminor;
 }
 
+static bool roomInPacketFIFO(ITCPacketBuffer * ipb, u32 countNeeded, const char * action) {
+  if (kfifo_avail(&ipb->mFIFO) < countNeeded) { /*kfifo_avail returns room for next packet only*/
+    /*No room*/
+    if (ipb->mPacketsDropped++ == 0) 
+      DBGPRINTK(DBG_PKT_DROPS,
+                KERN_ERR "%s kfifo full, starting to %s\n",
+                ipb->mName,
+                action);
+    return false;
+  }
+
+  /*Has room*/
+  if (ipb->mPacketsDropped > 0) {
+    DBGPRINTK(DBG_PKT_DROPS,
+              KERN_ERR "%s kfifo space available after %d attempts\n",
+              ipb->mName,
+              ipb->mPacketsDropped);
+    ipb->mPacketsDropped = 0;
+  }
+  return true;
+}
+
 ssize_t trySendMFMRoutedKernelPacket(const u8 *pkt, size_t count)
 {
   int minor;
@@ -1674,8 +1696,9 @@ ssize_t trySendMFMRoutedKernelPacket(const u8 *pkt, size_t count)
             count,
             cdevstate->mName);
 
-  if (kfifo_avail(&ipb->mFIFO) < count) /* kifo_avail is available len for next packet only */
+  if (!roomInPacketFIFO(ipb,count,"return -EAGAIN"))
     return -EAGAIN; /* Never block */
+
   ret = kfifo_in(&ipb->mFIFO, pkt, count); /*0 on no room else count*/
 
   wakeOBPktShipper(); /* if we got this far, kick the linux->pru thread */
@@ -2302,14 +2325,8 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
           if (pktdev) {
             ipb = &pktdev->mUserIB;
 
-            if (kfifo_avail(&ipb->mFIFO) < len)   /* kifo_avail is available len for next packet only */
-              DBGPRINTK(DBG_PKT_DROPS,
-                        KERN_ERR "(%s) Inbound %s queue full, dropping %s %02x+%d packet\n",
-                        getDir8Name(type&0x7),
-                        ipb->mName,
-                        mfm ? "MFM" : "svc",
-                        type,len);
-            else {
+            if (roomInPacketFIFO(ipb, len, "drop packets")) {
+              
               tpReportIfMatch(&ipb->mTraceInsert, pktdev->mCDevState.mName, true, data, len, ipb);
 
               kfifo_in(&ipb->mFIFO, data, len); 
@@ -2323,7 +2340,7 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
                         pktdev->mCDevState.mName,
                         ipb->mName,
                         &ipb->mReaderQ);
-            }
+            } /* else implicitly drop the packet */
           
             wake_up_interruptible(&ipb->mReaderQ);
           }
@@ -2370,14 +2387,7 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
       BUG_ON(!prudev);
       ipb = &prudev->mLocalIB;
 
-      if (kfifo_avail(&ipb->mFIFO) < len)   /* kifo_avail is available len for next packet only */
-        DBGPRINTK(DBG_PKT_DROPS,
-                  KERN_ERR "(%s) %s kfifo full, dropping PRU%d non-std 0x%02x+%d packet\n",
-                  getDir8Name(type&0x7),
-                  ipb->mName,
-                  minor,
-                  type, len);
-      else {
+      if (roomInPacketFIFO(ipb, len, "drop non-standard packets")) {
         u32 copied;
 
         tpReportIfMatch(&ipb->mTraceInsert, prudev->mCDevState.mName, true, data, len, ipb);
@@ -2392,7 +2402,7 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
                   ipb->mName,
                   &ipb->mReaderQ);
         wake_up_interruptible(&ipb->mReaderQ);
-      }
+      } /* else drop packet */
     }
   }
   return 0;
@@ -2409,6 +2419,7 @@ static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname, boo
   init_waitqueue_head(&ipb->mReaderQ);
   init_waitqueue_head(&ipb->mWriterQ);
   INIT_XKFIFO(ipbname, ipb->mFIFO);
+  ipb->mPacketsDropped = 0;
 }
 
 static ITCPktDeviceState * makeITCPktDeviceState(struct device * dev,
