@@ -413,9 +413,9 @@ sub runCmdWithSync {
 sub installCDMDT2_12 {
     return unless defined installCDMD(@_);
     print "INSTALLING T2-12\n";
-    return unless runCmdWithSync("cd /home/t2/T2-12 && make -k install","T2-12: make install: ERROR");
-    print "EXITING TO RESTART\n";
-    exit 17;
+    return unless runCmdWithSync("make -C /home/t2/T2-12 -k install","T2-12: make install: ERROR");
+    print "REBOOTING!\n";
+    runCmdWithSync("reboot","reboot: ERROR");
 }
 
 sub installCDMDMFM {
