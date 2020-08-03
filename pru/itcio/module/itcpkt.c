@@ -2362,7 +2362,7 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
 
         default:
         case 0:
-          printk(KERN_ERR "Illegal standard local packet %02x+%d\n",type,len);
+          printk(KERN_ERR "Illegal standard local packet 0x%02x+%d\n",type,len);
           print_hex_dump(KERN_ERR, minor ? "<pru1: " : "<pru0: ",
                          DUMP_PREFIX_ADDRESS, 16, 1,
                          data, len, true);
