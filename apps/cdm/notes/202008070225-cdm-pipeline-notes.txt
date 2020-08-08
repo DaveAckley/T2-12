@@ -1,0 +1,284 @@
+{18}  -*- text -*- 
+[0:
+
+Fri Aug  7 02:25:10 2020 OK, so having a second power zone drives home
+much more clearly that we have to make cdm be able to do some kind of
+pipelining of cdmd distribution, rather than going hop-to-hop at
+multiple hours per hop.
+
+Here's what I'm thinking:
+
+Steps
+
+ (1) During preinitCommon/checkCommonFile, have cdm compute and save
+     in memory a vector of running SHA256 checksums, split on 1MB
+     boundaries or to the end of the file.[1: Actually maybe split
+     each file into some fixed N chunks -- N = 4, 8, 10? -- and do
+     checksums for those positions.  Idea is to pick N and checksum
+     fingerprint sized so that the split checksum info for a cdmd can
+     fit in a single packet.  Maybe 20 chunks and 8 bytes per
+     fingerprint for 160 byte main payload, plus packet header and SKU
+     and packet checksum? :1]
+
+ (2) Define a new cdm packet that carries that split checksum
+     associated with a particular cdmd.
+
+ (3) Write and somehow debug code to send and handle that split
+     checksum packet, but do not actually send it in the production
+     version.  We want to get the code to handle it out there to
+     everybody before we start sending it to anybody.
+
+ (4) Write a new kind of pending file announcement that's like a real
+     announcement, but it includes a limit on the available bytes.
+
+
+[2:
+
+Fri Aug 7 03:44:04 2020 Actually as a step 0, let's flesh out the doc
+on the current cdm packet formats.  That's currently a stub in
+T2-PHF.[3:
+
+Fri Aug  7 10:56:26 2020 OK did some of that, then did morning and
+second sleep.[4:
+
+Fri Aug  7 10:57:14 2020 So okay let's implements something
+immediately.  I say let's implement a nearly-separate parallel system
+of new packets, that only resolves back into the existing system once
+a file is apparently complete and correct at the receiver.
+
+[5:
+
+Fri Aug  7 10:58:58 2020 Let's take this parallel structure as far as
+a separate /cdm/pipe/ directory.
+
+(1) During startup, 'map' the mfz's with sha256.  Divide it into 25
+    pieces and capture 4 bytes of checksum per snapshot, so we can
+    send the whole map in a single (big) packet.[6: Fri Aug  7
+    11:21:55 2020 Or no?  Do 100 pieces and store the full SHA256
+    checksum, and send it incrementally, whenever a chunk containing a
+    percentage point mark is sent? :6]
+
+(2) Have the potential receiver request a pipeline receive, in
+    response to a normal file announcement.  During the transition, we
+    will defeat this request to preserve original semantics.
+
+(3) Let's draft only CDM 'P' for all pipeline commands?, so we can
+    modularize their handling and enabling/disabling.
+
+(4) State for a pipeline receive includes:
+    - name+len+time+xsum (full file) that we are pipelining
+    - length of file prefix we now possess
+    - incremental xsum {filepos -> checksum} map confirmed so far.
+      We also want to know which neighbors are advertising which
+      prefixlengths, to know who we can ask for another chunk.
+    - (and so min(prefixlength,max(ixsum keys)) is the max filepos we
+      can currently deliver to pipeline consumers downstream)
+    - time of last upstream chunk request, for timeout purposes
+      [8: Fri Aug  7 12:48:19 2020
+    - I guess time of last downstream pipeline announce as well?
+    :8]
+
+[7: Fri Aug  7 12:19:01 2020 So, packet flows.
+
+ - We see a standard file announcement that we apparently want.  If
+   enabled, we initialize a PipelineStatus structure (%hash) for the
+   state in (4).  Set it up to timeout immediately.  It will have the
+   ngb marked as advertising the whole file.
+
+ - During state update (doBackgroundWork, I guess), we check for
+   timeouts on any PipelineStatus structures we've got.  On timeout,
+   request the current length we're at (0 at first) from any ngb
+   marked as having that index, and set timeout.
+
+[9:
+
+Fri Aug  7 13:09:09 2020 Do we want to distinguish PipelineReceive and
+PipelineSend structures instead of just PipelineStatus?  It seems no
+but there are at least two timeouts -- failure to progress on
+receiving, and time to reannounce current availability on sending.
+
+In my gradually-emerging-semi-standard-timed-state-machine frameworks,
+each machine is in a single state at any particular time, and the
+timeout code is associated with that particular state.  What are the
+states of the PipelineStatus machine?  Is it always just in state
+RECEIVING_AND_SERVING?  That's nice and well-founded anyway.
+
+I guess we just foggen have two timeouts, in effect, and set ourselves
+to run at the earlier, but check both when we do run.
+
+If we can have a state machine with just one main state, that does
+seem like a good thing.
+
+[10:
+
+Fri Aug  7 13:53:03 2020 OK, how do we execute here?  Perl functions
+to write:
+
+GLOBAL METHODS
+
+ - plReactToTraditionalAnnouncement: Init/update pl structure (also
+   destroy any pls obsoleted by this announcement).
+
+ - plInitState: Create initialized plStatus hash
+
+ - plCheckTimeout: Call from doBackgroundWork or similar contexts, do
+   all timeout processing
+
+ - plHandlePacket: Deal with all incoming pl packets, including
+   dispatching to plStatus methods
+[11: Sat Aug  8 02:02:41 2020
+
+ - plFindPLS: Lookup existing pls for name
+
+:11]
+PLSTATUS METHODS
+ - plsReceiveTimeout
+ - plsAnnounceTimeout
+ - plsHandleChunkSupplied
+ - plsHandleChunkRequested
+ - plsReleaseCompleted
+ - plsSendAnnouncementTo
+ - ..others as needed I guess..
+[12:Sat Aug  8 02:47:57 2020
+ - plsScheduleTimeout
+
+:12]
+:10]
+
+:9]
+
+:7]    
+
+:5]
+
+:4]
+
+:3]
+:2]
+
+:0]
+[13:
+
+Sat Aug  8 02:54:56 2020 OK so here's an issue: Once we have a file in
+/cdm/common, and our neighbors want to pipeline it from us, do we have
+to copy it (or gah link it, or something) to /cdm/pipeline?  Or do we
+make the $plinfo struct be able to represent and serve files from
+either directory?
+
+I guess that?  We'll have a filePath member, and so long as
+$plinfo->{prefixLengthAvailable} < $plinfo, the thing needs to be in
+/pipeline, but once it's complete and verified, we move it do /common
+and update the $plinfo.
+
+Likewise, we'll create $plinfos on startup (or modtime change) for
+valid /common files, that should end up looking just like the $plinfos
+we get via the pipeline -- pointing into common, and used only for
+serving, not reception, since they're complete.
+
+:13]
+[14:
+
+Sat Aug  8 10:11:00 2020 OK well we need some kind of actual pipeline
+packet formats to implement here.  How exactly are we naming the file
+we want to be pipelining, in these packets?[15:
+
+Sat Aug  8 11:59:08 2020 I guess it has to be SKU, which is built on
+the seqno + armoring to detect possible missed remote restarts.
+
+So we need to ensure we have a seqno store in a pls, and go from
+there.
+
+ -> Right now SKU parsing is done by checkSKUInDir, which is only
+    prepared to look in /cdm/common or /cdm/pending.  So how will we
+    refer to (partial) files that exist only in /cdm/pipeline?
+
+Keep pushing out the overlay?  Separate seqno for $plinfo?  Separate
+SKU for that matter?
+
+[16:
+
+Sat Aug  8 12:22:14 2020 Start with the pl announcement.  We don't
+have that yet.
+
+Could we do random tags instead of seqnos?  Or say one byte spinner +
+three bytes random?  That would be plenty of defense against remote
+restarts, I'd think.  Four bytes on the wire is better than ten for
+the existing SKU.
+
+----
+WHAT: Announce pipeline file, defining tag:
+  PF+tag+addlenarg(filename)+addlenarg(length)+addlenarg(innertime)+addlenarg(checksum)
+SEND WHEN: After $plinfo create + random occasional
+ON RECV: Create/update plinfo, add/refresh ngb/tag to $plinfo->{providers}
+
+----
+WHAT: Supply an xsum mark
+  PM+tag+addlenarg(filepos)+addlenarg(xsumforfilepos)
+SEND WHEN: After PD that spans filepos
+ON RECV: Access plinfo and provider via tag, refresh provider, add [filepos,xsumforfilepos] to $plinfo->{xsumMap}
+
+----
+WHAT: Report prefix availability
+ PA+tag+addlenarg(prefixlength)
+SEND WHEN: After PF, and after prefixlength changes.
+ON RECV: Access plinfo and provider via tag, refresh provider, update prefixlength in provider
+
+----
+WHAT: Request a pipeline file chunk:
+  PR+tag+addlenarg(filepos)
+SEND WHEN: After a PD that grew a file, or on PR timeout.
+ON RECV: Access plinfo, check filepos availability, send PD, and PM if indicated.
+
+----
+WHAT: Provide a pipeline file chunk, perhaps with xsum mark
+  PD+tag+addlenarg(filepos)+addlenarg(chunk)+addlenarg(xsummarkifany)
+SEND WHEN: In response to PR.  If filepos+chunklen spans a mark, trim
+           chunklen to end at mark and append xsummarkof resulting
+           position, otherwise take default chunklen or rest
+           available, and do not appends xsummark.
+ON RECV: Access plinfo, check if filepos aligned with current file
+         length.  If not, discard, if so, add chunk to digester and
+         write to file.  If xsummark appended, compare to digest
+         value.  Abort entire plinfo and underlying file if fail,
+         otherwise add current position and xsummark to xsummap, and
+         update prefixlenavailable (which should trigger sending PA as
+         above).
+
+         If prefixlenavailable has reached plinfo->{fileLength}, do
+         pending file release operation to release the pipeline file,
+         then rebuild (? reinit?) the plinfo, leading to a new tag and
+         a new PF.  This may temporarily disrupt downstream providers
+         but they should pick up the PF tag and continue from there.
+         
+
+[17:
+
+Sat Aug  8 14:16:05 2020 So, more detailed plinfo struct:
+
+
+plinfo = {
+          'fileName' => 'cdmd-T2-12.mfz',        # name, also key in %plSTATE
+          'fileChecksum' => '..',                # info about whole file
+          'fileInnerTimestamp' => '1596031468',  # ditto
+          'fileLength' => '1892932',             # ditto
+          'filePath' => './cdmDEBUG/pipeline/cdmd-T2-12.mfz', # location
+          'lastAnnounceTime' => 0,         # last time we announced this
+          'lastRequestTime' => 0,          # last time anybody asked for this?
+          'prefixLengthAvailable' => 0,    # max confirmed via xsumMap or fileChecksum
+          'xsumMap' => [
+                         [ 18930, '1f..' ],
+                         [ 37860, 'tx..' ],
+                         ..
+                       ],
+          'providers' => { dir -> [tag, prefixlengthavailable, age ],
+                           .. }
+        };
+
+
+:17]
+
+:16]
+
+:15]
+
+:14]
