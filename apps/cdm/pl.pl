@@ -16,7 +16,7 @@ $SIG{__DIE__} = sub {
     Carp::confess ;
 };
 
-my $PIPELINE_ENABLED = 1;
+my $PIPELINE_ENABLED = 0;
 my $CDM_PKT_BULK_FLAG = 0x80;
 my $CDM_PKT_CDM_CMD = 0x03; # was ^C for CDM.  
 my $CDM_PKT_TYPE = $CDM_PKT_BULK_FLAG | $CDM_PKT_CDM_CMD; # Now it's 0x83 for 'no break here'??
@@ -125,7 +125,8 @@ sub closePackets {
     close(PKTS) or die "Can't close $pktdev: $!";
 }
 
-my $baseDir = "./cdmDEBUG";
+#my $baseDir = "./cdmDEBUG";
+my $baseDir = "/cdm";
 my $commonSubdir = "common";
 my $pendingSubdir = "pending";
 my $logSubdir = "log";
@@ -1030,6 +1031,9 @@ sub doBackgroundWork {
 
     # PENDING MGMT
     checkPendingFile();
+
+    # PIPELINE MGMT
+    plDoBackgroundWork();
 }
 
 sub createAnnounceFilePacket {
@@ -1400,7 +1404,7 @@ sub processPacket {
     if ($bytes[1] eq $CDM_PKT_TYPE_BYTE) {
         declareNgbDirAlive($srcDir);
 
-        if ($bytes[2] eq "P") {
+        if ($bytes[2] eq "P" && $PIPELINE_ENABLED) {
             plProcessPacket(\@bytes);
             return;
         }
@@ -1498,17 +1502,6 @@ sub eventLoop {
     }
 }
 
-sub main {
-    STDOUT->autoflush(1);
-    flushPendingDir();
-    checkInitDirs();
-    preinitCommon();
-    openPackets();
-    flushPackets();
-    eventLoop();
-    closePackets();
-}
-
 #####################
 ### PIPELINE IMPLEMENTATION
 use Data::Dumper;
@@ -1548,8 +1541,19 @@ sub plGetTagArgFrom {
 }
 
 sub plInitTagsAndProviders {
+    return unless $PIPELINE_ENABLED;
     %plFILEtoPROVIDER = ();
     %plPROVIDERtoFILE = ();
+}
+
+sub plPreinitCommonFiles {
+    return unless $PIPELINE_ENABLED;
+    my $cref = getSubdirModel($commonSubdir);
+    my $deaders = 0;
+    my @finfos = values %{$cref};
+    foreach my $finfo (@finfos) {
+        plSetupCommonFile($finfo);
+    }
 }
 
 sub plGetFilenameFromTag {
@@ -1629,7 +1633,7 @@ sub plNewPLS {
 }
 
 # Call at startup
-sub flushPipelineDir {
+sub plFlushPipelineDir {
     my $count = remove_tree($pipelinePath);
     if ($count > 1) {
         DPSTD("Flushed $count $pipelinePath files");
@@ -1681,6 +1685,10 @@ sub plCreatePipelineFileAnnouncementPacket {
     return $pkt;
 }
 
+sub plDoBackgroundWork {
+    return unless $PIPELINE_ENABLED;
+    DPSTD("plDoBackgroundWork");
+}
 
 # sub plReactToTraditionalAnnouncement {
 #     my ($filename,$contentLength,$checksum,$timestamp,$seqno,$dir) = @_;
@@ -2321,7 +2329,7 @@ sub testShimForChunkMovement {
 sub newmain {
     STDOUT->autoflush(1);
     flushPendingDir();
-    flushPipelineDir();
+    plFlushPipelineDir();
     checkInitDirs();
     loadCommonMFZFiles();
 
@@ -2349,6 +2357,25 @@ sub newmain {
     exit 3;
 }
 
-newmain();
+sub main {
+    STDOUT->autoflush(1);
+
+    flushPendingDir();
+    plFlushPipelineDir();
+
+    checkInitDirs();
+    preinitCommon();
+
+    plInitTagsAndProviders();
+    plPreinitCommonFiles();
+
+    openPackets();
+    flushPackets();
+    eventLoop();
+    closePackets();
+}
+
+
+main();
 
 
