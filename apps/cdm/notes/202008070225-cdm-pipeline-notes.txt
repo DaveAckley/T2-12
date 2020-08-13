@@ -1,4 +1,4 @@
-{18}  -*- text -*- 
+{64}  -*- text -*- 
 [0:
 
 Fri Aug  7 02:25:10 2020 OK, so having a second power zone drives home
@@ -282,3 +282,619 @@ plinfo = {
 :15]
 
 :14]
+[18:
+
+Sun Aug  9 01:39:35 2020 Well oops the keymaster trees got overwritten
+by neighboring cdmds when I connected up a few tiles after moving the
+flag.. but fortunately we'd maintained git discipline and after
+cloning T2-12 and MFM from github it seems we're all caught up.
+
+[19:
+
+Sun Aug  9 02:21:12 2020 Although we did mess up the MFM build at
+first.  Two notes:
+
+ - Do 'T2-12$ make' before 'MFM$ make'.  T2-12 creates t2adc.h, which
+   MFM includes.
+
+ - MFM dies first time on missing 'StdElements.inc' which gets built
+   out of order or something?
+
+:19]
+
+:18]
+[20:
+
+Sun Aug  9 02:33:40 2020 So okay, I think we're set up again.  Let's
+just spike in from the top, implementing the packets from :16: above
+and something like the expanded plinfo from :17: above, with glue at
+the top to try them out, and quick report back here whenever we hit
+some kind of hitch. 
+[21:
+
+Sun Aug  9 02:38:29 2020 Well, that's not good enough.  Let's be more
+specific.  Give me some actual
+
+TODO
+
+[22: Sun Aug  9 04:35:11 2020 plsFindXsumInRange($plinfoCommon,$lo,$hi); 
+DONE :22] - Routine to binary search xsummap for a point in a range.
+   lowestAtLeast.
+
+[23: plsInsertInXsumMap($plinfo,$filepos,$xsum);
+DONE :23] - Routine to insert a new point into an xsummap via splice
+
+[24: loose code..
+DONE :24] - Test shim for prev two
+
+[31: Sun Aug  9 11:31:04 2020 plNewTag
+DONE :31] - Routine to generate a tag[32: Sun Aug  9 11:31:32 2020
+
+Also plAddTagTo
+DONE - Routine to add tag to packet
+
+And plGetTagArgFrom
+DONE - Routine to read a tag off a packet :32]
+
+ - Come make more to-do[27:
+
+ - Routine to init pls providers map
+
+ - Routine to accept notification of provider (pl-related) activity
+
+ - Routine to accept updates of provider tag-pfxlen availability
+
+ - Routine to age/timeout the provider map
+
+ - Routine select a provider that advertises availability of filepos
+
+:27]
+
+:21]
+:20]
+[25:
+
+Sun Aug  9 08:46:50 2020 OK, had a second sleep.  Feeling okay about
+the xsummap management.  What's specifically next?  Hard parts feel
+like coordination between finfo and plinfo..  Let's go for the
+packets, I guess, and try to be sensitive to our lurking confusions as
+we do..
+[26:
+
+Sun Aug  9 08:49:07 2020 Actually, how about we spike toward the pls
+'providers' map?  That's an area of some design uncertainty.  We'd
+like to be able just to offer and query about prefixlengths available,
+and have a little shim showing the provider info changing.
+
+:26]
+:25]
+[28:
+
+Sun Aug  9 08:55:37 2020 Now, we do need to know that all of the
+providers in a pls map are providing precisely the same version of
+precisely the file.. but I guess that all goes into the pls
+selection.  How to we get from tag to pls?  Must have some master
+map.  So it can't be just the 'providers' map inside the PLSs.[29:
+
+Sun Aug  9 08:59:33 2020 In the existing SKU-based $finfo code that is
+done via $seqnoMap{$seqno} when talking about our own content (from
+/cdm/common), and via $hoodModel{$dir}->{contentOffered}->{$seqno} for
+neighbor's content (coming into our /cdm/pending).
+
+[30:
+
+Sun Aug  9 09:03:32 2020 Do we want to dovetail into that?  Use SKU
+and seqno?  Just seqno?  All sounds scary.  Goals for our pipeline
+overlay 'tags':
+
+ - Short but 'unique enough' in a given cdm.pl run
+
+ - Stable for duration of a cdm.pl run
+
+ - Fast access from tag to $plinfo and back again
+
+
+
+:30]
+
+:29]
+
+:28]
+[33:
+
+Sun Aug  9 11:55:15 2020 OK so I guess now we're looking at a global
+tag map?  To serve what operations?
+
+ - plGetFilenameFromTag($tag, $dir) : get filename or undef
+ - plGetFromTag($tag, $dir) : get existing $plinfo or undef
+
+ - plPutFilenameOnTag($tag, $dir, $filename) : add/replace, delete on undef?
+ - plPutOnTag($tag, $dir, $plinfo) : ditto
+
+ - plInitTagMap() : re/init
+[34:
+
+Sun Aug  9 12:35:57 2020 So we made %plTAGMAP be tag -> {dir -> filename} 
+
+but it's kind of weird because (1) we expect having multiple dirs
+using the same tag to be vanishingly rare, and (2) we'll (generally?
+invariably?) know the dir going in anyway.  Why not have it be
+
+ dir -> {tag -> filename}
+
+instead?
+
+And I guess the other question is where do we store other tag-related
+information, like aging or prefixavailability info?
+
+Do we maybe ditch %plSTATE and make the tag map be
+
+ dir -> {tag -> plinfo}
+
+(possibly using dir==8 again to mean 'our own plinfos'?)
+
+Or do we make the bidirectional mapping more explicit, with like
+
+ %plFILEtoTAG   filename -> {dir -> tag}    # e.g., generate chunk request
+ %plTAGtoFILE   dir -> {tag -> filename}    # e.g., handle tag recv
+
+ %plFILEtoPLINFO filename -> plinfo
+
+ plinfo  {
+         ..
+         providers -> {dir -> [tag prefix age .. ]} # ?
+         ..
+         }
+[35:
+
+Sun Aug  9 16:12:19 2020 Or might we prefer to ditch
+plinfo->providers:
+
+ %plFILEtoPROVIDER   filename -> {dir -> [tag prefix age ..]}    # e.g., generate chunk request
+ %plPROVIDERtoFILE   dir -> {tag -> filename}                    # e.g., handle tag recv
+
+ %plFILEtoPLINFO filename -> plinfo
+
+ plinfo  {
+         ..
+         fileName -> ..   
+         ..
+         }
+
+and so we're saying the plinfo contains no per-provider info at all,
+just properties of the file as a whole.  There could be some
+cleanliness there I'd think.[37:
+
+Mon Aug 10 02:08:50 2020 So let's push a bit here; let's go with the
+:35: maps and the 'file only plinfo' and see how far it gets us.
+
+Need a shim that actually fakes sending and receiving pipeline chunks.
+
+:37][36:
+
+Sun Aug  9 16:45:07 2020 But time to cook.
+
+:36]
+
+:35]
+
+:34]
+:33]
+[38:
+
+Mon Aug 10 10:06:25 2020 OK, so, we had this idea that when we see a
+traditional file announcement, we could create a pipeline entry for
+it, and we created plReactToTraditionalAnnouncement specifically for
+that purpose.
+
+But a traditional file announcement DOES NOT INCLUDE A TAG.  There's
+NO WAY we can send a plChunkRequest back to a provider that has only
+sent us a traditional file announcement, because, for all we know, the
+provider doesn't even support pipelined transfers.
+
+The whole plReactToTraditionalAnnouncement is specifically broken.  We
+need to undo that, and just have the shim set up a pipeline
+announcement somehow, and go from there.
+
+(We're also going to need some kind of way to NOT immediately respond
+to traditional file announcements, if we want to avoid initiating a
+traditional transfer as well..  It would be better if there was some
+backward-compatible way to assess the version of a neighboring cdm, or
+a set of supported features, or something.)
+
+(Now, I note that the old 'A' aliveness packet, thought 'obsolete',
+still does exist.  And it contains a one byte payload which we could
+claim is a version?  Well except that old cdms send a random value
+there, right?[39:
+
+Mon Aug 10 10:18:03 2020 Here's the existing 'A' handling code:
+
+        if ($bytes[2] eq "A") {
+            # Handle old len3 type A packets
+            DPPKT(sprintf("Rcvd 'A' from %d uniq %02x\n",$srcDir,defined($bytes[3]) ? ord($bytes[3]) : 0));
+            return;
+        }
+
+and nothing above that cares about the packet length.  We could reuse
+"A" as meaning something like an 'available features' list or
+whatever, and just start sticking on flags and bytes and whatever
+starting at byte[3], with the proviso that all code that looks at
+those bytes has to silently ignore stuff they don't recognize.
+
+And then we could, say, slap on a 'P' to mean that pipeline operations
+are supported.  [40: Mon Aug 10 10:22:41 2020 And I guess we'd need to
+ensure that all cdms that are taking this interpretation of "A" need
+to ensure they send out their own "A" packet promptly on startup, to
+minimize the race time:40]
+
+:39])
+
+
+:38]
+[41:
+
+Mon Aug 10 10:30:02 2020 Pop pop pop: But what we need now is to tear
+up the 'react to traditional' thing and start generating a pipeline
+file announcement instead, and then react to that.[42:
+
+Mon Aug 10 10:32:29 2020 Can $plinfo have the OUTBOUND tag, even
+though it's now supposed to have NO PER-PROVIDER data?  We're going to
+use the same OUTBOUND tag no matter who we supply the file to, so it
+seems like we could/should.  Kind of like the outbound tag is CONSUMER
+data rather than provider..
+
+:42]
+
+:41]
+[43:
+
+Tue Aug 11 01:38:15 2020 OK so we're trying to handle a shim chunk
+request and we're getting confused between 'inbound' and 'outbound'
+tags.  The idea is we have a (almost surely) distinct inbound tag for
+each provider we request data from, but all those inbound tags live in
+the %plFILEtoPROVIDER map, keyed by the filename, and none of them
+refer to a plinfo directly.
+
+Instead, the %plFILEtoPLINFO map links a filename to a plinfo, so we
+only have one plinfo per filename.
+
+And, how do we represent files we have in common/? plSetupCommonFile
+does that yes?[44:
+
+Tue Aug 11 01:47:37 2020 Yes, and it ends up doing
+
+    $plFILEtoPLINFO{$name} = $plinfo;
+    $plOUTBOUNDTAGtoPLINFO{$plinfo->{outboundTag}} = $plinfo;
+
+So that's when we have a complete verified file, and we should prefer
+that whenever we can.  But we can also have in-progress pipeline
+versions of files.[45:
+
+Tue Aug 11 01:50:18 2020 Ah, wait a second.  At the moment we have
+$plinfo->{prefixLengthAvailable}, but that seems to violate the 'no
+per-provider in plinfo' rule from :35: above.  It seems like that
+belongs somewhere in the pipeline records inside %plFILEtoPROVIDER.
+
+Which brings back the dir==8-means-local hack.  But it's weird because
+there's only two places the actual file can be -- common/ or
+pipeline/, but there's seven directions plus local.  Maybe the
+plinfo->{prefixLengthAvailable} is actually right -- it means the
+verified length that THIS HERE FILE has, regardless of what any other
+provider might say they have for the same name.  So even if the
+plinfo->pfxLenAvl can change, it doesn't change in a per-provider way;
+it only changes when THIS HERE FILE grows far enough to reach another
+verification point.
+
+:45]
+
+:44]
+
+:43]
+[46:
+
+Tue Aug 11 02:03:39 2020 So we should really get serious about having
+the running sha256 digester inside the plinfo.  And we should have
+shims about growing a copy of an mfz on disk, and seeing its plinfo
+pfxLenAvl grow as the file passes xsummap checkpoints.
+
+Let's go for a spike on that next.  Going for the full chunk packet
+exchange is premature until we flesh out plinfo file growing
+mechanics.
+
+But urgh, not now, let's say second sleep early tonight.
+
+:46]
+[47:
+
+Tue Aug 11 06:08:23 2020 OK plinfo grow go go go.[48:
+
+Tue Aug 11 07:39:34 2020 OK, so we've now grown an exact duplicate of
+an mfz in pipeline/.  Ooh we haven't updated the prefixlen on it as we
+hit our xsum marks though..[49:
+
+Tue Aug 11 07:43:55 2020 OK prefixLengthAvailable is growing with the
+checked portion of the file, though nobody is looking at it.
+
+Where do we go from here?  What lies between here and full chunk
+packet exchange?
+
+ - I guess we have to commit or redesign on the $dir==8 -> common
+   idea, for one thing.
+
+ - How do we search and decide who to ask for a chunk?  Given a
+   filename, we iterate over the dir->prec map, and check each prec to
+   see if they offer what we want, and do some selection process
+   between multiple offerings.[50: Tue Aug 11 08:42:38 2020 
+
+ - I guess the selection process is (1) $dir==8 wins if available.
+   Except we shouldn't be asking for a chunk at all if we have the
+   whole thing locally.  Wait.  If plinfo is pointing into common/ we
+   just shouldn't have or accept any other providers, right?  If a
+   newer version of filename comes along, that should knock the
+   existing plinfo-to-common out and replace it with a stub in
+   pipeline/.
+
+The point being that at any given time, there is only one actual disk
+file that represents the plinfo data source for this file.  It might
+be complete and in common/ and it might not.[51:
+
+Tue Aug 11 10:55:08 2020 OK so how can we proceed here?
+
+We'd like to understand the process whereby plinfos for common/ and
+pipeline/ files come to exist in our main containers:
+
+    my %plFILEtoPLINFO;         # filename -> plinfo
+    my %plOUTBOUNDTAGtoPLINFO;  # outboundTag -> plinfo
+    my %plFILEtoPROVIDER; # filename -> {dir -> [tag prefix age ..] }
+    my %plPROVIDERtoFILE; # dir -> {tag -> filename}
+
+ - Well, plSetupCommonFile($finfo) builds a plinfo from a finfo, fills
+   out the whole xsummap, and makes entries in %plFILEtoPLINFO and
+   %plOUTBOUNDTAGtoPLINFO.  But it apparently touches nothing in
+   %plFILEtoPROVIDER or %plPROVIDERtoFILE.
+
+   So if we want to SUPPLY a chunk to a neighbor, we go by
+   %plOUTBOUNDTAGtoPLINFO.  That makes sense.  But what about the
+   pipeline setup?  That might have to setup an outbound tag too.
+
+ - While on the other hand, plProcessFileAnnouncement($dir,$bytes)
+   uses plSetupNewPipelineFile($name, $contentLength, $checksum,
+   $timestamp) if (1) there's no plinfo for $name in %plFILEtoPLINFO,
+   or (2) the existing $plinfo->{fileInnerTimestamp} is less than the
+   $timestamp from the packet.
+
+   Now, at the moment, plSetupNewPipelineFile does not modify any of
+   the main containers.  Which seems kind of wrong.  What do we think
+   it should do? [52: Tue Aug 11 11:52:01 2020 Well, unclear.  At the
+   moment, plProcessFileAnnouncement, which calls
+   plSetupNewPipelineFile, later calls plPutOnTag($tag,$dir,$plinfo)
+   and that eventually modifies %plPROVIDERtoFILE.  It also calls
+   plGetProviderRecordForFilenameAndDir($filename, $dir), which
+   eventually modifies %plFILEtoPROVIDER.
+
+   But as far as I can tell, plProcessFileAnnouncement never does
+   anything that touches %plFILEtoPLINFO or %plOUTBOUNDTAGtoPLINFO
+   which I'd think means their stuff won't get found later on, except
+   by shims that have their grubby fingers on the plinfo explicitly.
+
+   So on first principles, plProcessFileAnnouncement should play king
+   of the hill with an existing plinfo on the same file.  The 'if':
+
+    if (!$plinfo || $plinfo->{fileInnerTimestamp} < $fileinnertimestamp) {
+
+   statement does do that, but the 'then' clause doesn't follow
+   through on it.
+
+   If there is an existing plinfo, but we're newer than it, we should
+   replace it in %plFILEtoPLINFO and %plOUTBOUNDTAGtoPLINFO with
+   ourselves and our outbound tag, so that all future announcements
+   downstream will use the new one (regardless of how many bytes of it
+   we actually have).
+
+   Actually we should modify %plFILEtoPLINFO and
+   %plOUTBOUNDTAGtoPLINFO whether there's an existing plinfo or not,
+   right? 
+
+
+:52]
+
+:51]
+
+:50]
+
+:49]
+
+:48]
+
+:47]
+[53:
+
+Wed Aug 12 06:48:02 2020 OK well that was a big cook yesterday
+(vindaloo for dinner + freezer) and also did some really-quite-usable
+script for HSA2020 so that was good.  Now it's time to move the flag
+today soon so we'll see if we do much here.
+
+For here, we were on getting the main containers updated properly as
+part of our test shims.  And the last go showed:
+
+    XXplFILEtoPROVIDER $VAR1 = {
+              'HACKcdmd-T2-12.mfz' => {
+                                        '1' => [
+                                                 1,
+                                                 0,
+                                                 0,
+                                                 0
+                                               ]
+                                      }
+            };
+    XXplPROVIDERtoFILE $VAR1 = {
+              '1' => {
+                       '3134941762' => 'HACKcdmd-T2-12.mfz'
+                     }
+            };
+    GOODBYE
+
+which was progress.  So, what isn't working next?[54:
+
+Wed Aug 12 07:51:53 2020 Well, testShimForPlinfoGrow isn't actually
+making packets, but it is reading the data chunks with
+plsGetChunkAt($plinfoCommon,$filepos); and writing them with
+plsWriteChunk($plinfoPipeline,$chunk); -- maybe now we're ready to try
+lifting that up to packet sending and handling?
+
+Let's compare testShimForPlinfoGrow and testShimForChunkMovement and
+get the latter to use what it needs of the former..[55:
+
+Wed Aug 12 08:10:58 2020 Well it's still not clear if/how we can test
+the file announcement and setup stuff, since we are talking to
+ourself..  The idea was/would be to set up a real file in common, but
+create a fake name for it in the announcement packet, so that we won't
+think we have it on the handling side, and we'll init a pipeline
+plinfo for it.  That wasn't working before; let's try it again and see
+where it blows up now.[56:
+
+Wed Aug 12 08:51:22 2020 Well it kind of seems to be working.
+
+So what's next.  Chunks.[57:
+
+Wed Aug 12 08:56:55 2020 OK, so it looks like we're (fake) sending and
+receiving an availability packet -- and we're sending it ostensibly
+using the original (common/) file, but since we hacked the
+announcement packet, its outbound tag 29775360
+
+    PLS1READY $VAR1 = {
+ ..
+              'fileName' => 'cdmd-T2-12.mfz',
+              'filePath' => './cdmDEBUG/common/cdmd-T2-12.mfz',
+              'outboundTag' => 29775360,
+ ..
+
+is now also the inbound provider tag associated with the pipeline/
+file that got set up:
+
+    PIPELINEPREFIXAVAIL(\201\203PA\306V^@^G1892908)
+    GF1XX HACK2cdmd-T2-12.mfz 1 HASH(0x1a42e40)
+    PADN: $VAR1 = [
+              1,
+              29775360,
+              1892908,
+              798622100
+            ];
+
+So let's send some chunks.[58:
+
+Wed Aug 12 09:27:33 2020 OK so plProcessChunkRequest was most
+half-warmed-over copypasta of plProcessPrefixAvailability.  So now we
+need to get to a plsGetChunkAt call like in testShimForPlinfoGrow.
+
+:58]
+
+:57]
+
+:56]
+
+:55]
+
+
+:54]
+
+:53]
+[59:
+
+Wed Aug 12 11:05:22 2020 Moving the flag.
+
+:59]
+[60:
+
+Wed Aug 12 12:37:29 2020 Flag moved.
+
+:60]
+[61:
+
+Thu Aug 13 06:13:17 2020 Don't know what the deal is with this
+sleeping through the night business.  Can't last.
+
+:61]
+[62:
+
+Thu Aug 13 06:13:36 2020 So our test shims have reached the point of
+simulated packets sent and received that initialize and build a
+pipeline file.  I guess the main thing left is to finish receiving a
+file and get it into common/, to close the big loop.
+
+Maybe we should make a much smaller test cdmd for all this?  Like
+20-30KB maybe instead of 1.8MB?
+
+:62]
+[63:
+
+Thu Aug 13 11:59:40 2020 Well it's looking like
+testShimForChunkMovement is now getting us all the way from this:
+
+    t2@beaglebone:~/T2-12/apps/cdm$ ls -al cdmDEBUG/*
+    cdmDEBUG/common:
+    total 40
+    drwxr-xr-x 2 t2 t2  4096 Aug 13 11:27 .
+    drwxr-xr-x 7 t2 t2  4096 Aug 13 11:27 ..
+    -rw-r--r-- 1 t2 t2 12412 Aug 13 06:30 cdmd-TEST.mfz
+
+    cdmDEBUG/log:
+    total 8
+    drwxr-xr-x 2 t2 t2 4096 Aug  9 02:23 .
+    drwxr-xr-x 7 t2 t2 4096 Aug 13 11:27 ..
+
+    cdmDEBUG/pending:
+    total 8
+    drwxr-xr-x 2 t2 t2 4096 Aug 13 11:27 .
+    drwxr-xr-x 7 t2 t2 4096 Aug 13 11:27 ..
+
+    cdmDEBUG/pipeline:
+    total 8
+    drwxr-xr-x 2 t2 t2 4096 Aug 13 11:27 .
+    drwxr-xr-x 7 t2 t2 4096 Aug 13 11:27 ..
+
+    cdmDEBUG/public_keys:
+    total 12
+    drwxr-xr-x 2 t2 t2 4096 Aug  9 02:23 .
+    drwxr-xr-x 7 t2 t2 4096 Aug 13 11:27 ..
+    -rw-r--r-- 1 t2 t2  288 Aug  9 02:23 t2%2dkeymaster%2drelease%2d10.pub
+    t2@beaglebone:~/T2-12/apps/cdm$ 
+
+to this:
+
+    t2@beaglebone:~/T2-12/apps/cdm$ ls -al cdmDEBUG/*
+    cdmDEBUG/common:
+    total 40
+    drwxr-xr-x 2 t2 t2  4096 Aug 13 12:01 .
+    drwxr-xr-x 7 t2 t2  4096 Aug 13 12:00 ..
+    -rw-r--r-- 1 t2 t2 12412 Aug 13 06:30 cdmd-TEST.mfz
+    -rw-r--r-- 1 t2 t2 12412 Aug 13 12:01 HACK2cdmd-TEST.mfz
+
+    cdmDEBUG/log:
+    total 8
+    drwxr-xr-x 2 t2 t2 4096 Aug  9 02:23 .
+    drwxr-xr-x 7 t2 t2 4096 Aug 13 12:00 ..
+
+    cdmDEBUG/pending:
+    total 8
+    drwxr-xr-x 2 t2 t2 4096 Aug 13 12:01 .
+    drwxr-xr-x 7 t2 t2 4096 Aug 13 12:00 ..
+
+    cdmDEBUG/pipeline:
+    total 8
+    drwxr-xr-x 2 t2 t2 4096 Aug 13 12:01 .
+    drwxr-xr-x 7 t2 t2 4096 Aug 13 12:00 ..
+
+    cdmDEBUG/public_keys:
+    total 12
+    drwxr-xr-x 2 t2 t2 4096 Aug  9 02:23 .
+    drwxr-xr-x 7 t2 t2 4096 Aug 13 12:00 ..
+    -rw-r--r-- 1 t2 t2  288 Aug  9 02:23 t2%2dkeymaster%2drelease%2d10.pub
+    t2@beaglebone:~/T2-12/apps/cdm$ 
+
+with only 10.8K lines of debug output in between..
+
+So.  I think maybe we should commit this as a plausible WIP, and then
+start thinking about replacing cdm.pl..
+
+:63]
