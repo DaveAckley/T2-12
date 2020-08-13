@@ -1,4 +1,4 @@
-{64}  -*- text -*- 
+{69}  -*- text -*- 
 [0:
 
 Fri Aug  7 02:25:10 2020 OK, so having a second power zone drives home
@@ -898,3 +898,55 @@ So.  I think maybe we should commit this as a plausible WIP, and then
 start thinking about replacing cdm.pl..
 
 :63]
+[64:
+
+Thu Aug 13 12:17:33 2020 OK, now we want a cdm.pl that has all the
+pl.pl stuff, but doesn't use breathe a word of it unless
+$PIPELINE_ENABLED = 1.
+
+How actually do we get from the shims to the event loop?  Let's go
+through what testShimForChunkMovement calls..
+
+:64]
+[65:
+
+Thu Aug 13 13:00:15 2020 Well, pl.pl is running as root on a single
+tile with a loopback, and with $PIPELINE_ENABLED = 0, and it seems to
+be doing okay:
+
+    SENDIT(\202\203A^T)
+    cdmd-TEST.mfz^E12412^PQ\236\347\335\300\232\225\372sk_\263\235\252
+    15973218101)
+    cdmd-TEST.mfz^E12412^PQ\236\347\335\300\232\225\372sk_\263\235\252
+    15973218101)
+    GOT PACKET(\206\203A^T
+    Rcvd 'A' from 6 uniq 14
+
+    cdmd-TEST.mfz^E12412^PQ\236\347\335\300\232\225\372sk_\263\235\252
+    15973218101)
+    AF(fn=cdmd-TEST.mfz,dir=2,ts=1597321810,seq=1)
+    CHECKING Ignore complete and matched in common
+
+and so on..
+
+Maybe switch it back to the real /cdm base?  So if we turn on another
+tile maybe it won't start sending us everything?[66:
+
+Thu Aug 13 13:04:43 2020 Well, that seems to be okay too.  We think
+maybe we could turn on a neighbor tile now and have 'nothing' happen?  
+
+:66]
+
+:65]
+[67:
+
+Thu Aug 13 13:10:56 2020 Seems like a pl.pl is talking to an existing
+cdm.pl without issue, and they're announcing and ignoring each other
+with the best of them.
+[68:
+
+Thu Aug 13 13:22:43 2020 Let's commit and pull pl.pl to the other guy.
+
+:68]
+
+:67]
