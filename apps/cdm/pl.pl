@@ -1686,7 +1686,7 @@ sub plCreateChunkRequestPacket {
     my ($precdir,$tag,$pfx,$age) = @{$prec};
     die unless $dir == $precdir;
     $prec->[3] = now(); # age is last time we asked.
-    DPSTD("PRECQ plCreateChunkRequestPacket($filename,$filepos,$precdir,$tag,$pfx,$age)");
+    DPDBG("PRECQ plCreateChunkRequestPacket($filename,$filepos,$precdir,$tag,$pfx,$age)");
     return undef if $filepos > $pfx;
     my $pipelineOperationsCode = "P";
     my $chunkRequestCode = "R";
@@ -1942,7 +1942,7 @@ sub plProcessChunkReplyAndCreateNextRequest {
     $filepos += 0; # destringify
     ($chunk,$lenPos)      = getLenArgFrom($lenPos,$bref);
     ($xsumopt,$lenPos)    = getLenArgFrom($lenPos,$bref);
-    DPSTD("RPYacr($inboundTag,$filepos)");
+    DPDBG("RPYacr($inboundTag,$filepos)");
 #    print "QQplOUTBOUNDTAGtoPLINFO ".Dumper(\%plOUTBOUNDTAGtoPLINFO);
     my $plinfo = plGetPlinfoFromInboundTag($inboundTag,$dir);
     if (!defined $plinfo) {
