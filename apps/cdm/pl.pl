@@ -1895,7 +1895,7 @@ sub plProcessChunkRequestAndCreateReply {
     ($outboundTag,$lenPos) = plGetTagArgFrom($lenPos,$bref);
     ($filepos,$lenPos)    = getLenArgFrom($lenPos,$bref);
     $filepos += 0; # destringify
-    DPSTD("plPCR($outboundTag,$filepos)");
+#    DPSTD("plPCR($outboundTag,$filepos)");
 #    print "QQplOUTBOUNDTAGtoPLINFO ".Dumper(\%plOUTBOUNDTAGtoPLINFO);
     my $plinfo = plFindPLSFromOutboundTag($outboundTag);
     if (!defined $plinfo) {
@@ -1907,7 +1907,8 @@ sub plProcessChunkRequestAndCreateReply {
     my $prec = plGetProviderRecordForFilenameAndDir($filename, $dir);
     die if $prec->[0] != $dir;
     if ($prec->[1] != $outboundTag) {
-        DPSTD("PR: WARNING Inconsistent tag '$prec->[1]' vs '$outboundTag', CONTINUING");
+        DPSTD("PR: WARNING $filename has inconsistent tag '$prec->[1]' vs '$outboundTag', OVERWRITING");
+        $prec->[1] = $outboundTag;
     }
     my ($chunk,$xsumopt) = plsGetChunkAt($plinfo,$filepos);
     $xsumopt = "" unless defined $xsumopt;
@@ -1949,13 +1950,14 @@ sub plProcessChunkReplyAndCreateNextRequest {
         return;
     }
     
-    print "RPYplinfo1 ".Dumper(\$plinfo);
+#    print "RPYplinfo1 ".Dumper(\$plinfo);
 
     if ($xsumopt ne "") {
+        DPSTD("$plinfo->{fileName} PREFIX EXTENDED TO $filepos");
         plsInsertInXsumMap($plinfo,$filepos,$xsumopt);
         if (plsCheckXsumStatus($plinfo,$xsumopt)) {
             $plinfo->{prefixLengthAvailable} = $filepos;
-            print "pLAnOW=$filepos\n";
+#            print "pLAnOW=$filepos\n";
         } else {
             die "NONONOOOOWONFONGOIWRONGO\n";
         }
@@ -1978,16 +1980,17 @@ sub plProcessChunkReplyAndCreateNextRequest {
             DPSTD("RECVD LAST OF $inboundTag $plinfo->{fileName}");
             return "";
         }
-    }
 
-    # Make request for next chunk!
+        # Make request for next chunk!
 
-    my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
-    if (!defined $chunkpacket) {
-        DPDBG("NO CHUNKS");
-        return "";
+        my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
+        if (!defined $chunkpacket) {
+            DPDBG("NO CHUNKS");
+            return "";
+        }
+        return $chunkpacket;
     }
-    return $chunkpacket;
+    return "";
 }
 
 sub plProcessChunkReply {
