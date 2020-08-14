@@ -16,7 +16,16 @@ $SIG{__DIE__} = sub {
     Carp::confess ;
 };
 
-my $PIPELINE_ENABLED = 0;
+use constant CDM_PROTOCOL_VERSION_PIPELINE => 2;    # 202008140223 Pipeline overlay
+use constant CDM_PROTOCOL_VERSION_ASPINNER => 1;    # Pre-version-protocol version
+use constant CDM_PROTOCOL_VERSION_PREHISTORY => 0;  
+use constant CDM_PROTOCOL_VERSION_UNKNOWN => -1;  
+
+###########
+my $CDM_PROTOCOL_OUR_VERSION = CDM_PROTOCOL_VERSION_PIPELINE;
+###########
+
+my $PIPELINE_ENABLED = 1;
 my $CDM_PKT_BULK_FLAG = 0x80;
 my $CDM_PKT_CDM_CMD = 0x03; # was ^C for CDM.  
 my $CDM_PKT_TYPE = $CDM_PKT_BULK_FLAG | $CDM_PKT_CDM_CMD; # Now it's 0x83 for 'no break here'??
@@ -29,13 +38,13 @@ my $mode = O_RDWR|O_NONBLOCK;
 
 my @dirnames = ("NT", "NE", "ET", "SE", "ST", "SW", "WT", "NW");
 
-my $DEBUG_FLAG_PACKETS = 1;
-my $DEBUG_FLAG_DEBUG = $DEBUG_FLAG_PACKETS<<1;
-my $DEBUG_FLAG_STANDARD = $DEBUG_FLAG_DEBUG<<1;
-my $DEBUG_FLAG_VERBOSE = $DEBUG_FLAG_STANDARD<<1;
-my $DEBUG_FLAG_ALL = 0xffffffff;
+use constant DEBUG_FLAG_PACKETS => 1;
+use constant DEBUG_FLAG_DEBUG => DEBUG_FLAG_PACKETS<<1;
+use constant DEBUG_FLAG_STANDARD => DEBUG_FLAG_DEBUG<<1;
+use constant DEBUG_FLAG_VERBOSE => DEBUG_FLAG_STANDARD<<1;
+use constant DEBUG_FLAG_ALL => 0xffffffff;
 
-my $DEBUG_FLAGS = $DEBUG_FLAG_ALL; ## = $DEBUG_FLAG_STANDARD
+my $DEBUG_FLAGS = DEBUG_FLAG_STANDARD; ## = DEBUG_FLAG_ALL
 
 #my %triggerMFZs = ( 'cdm-triggers.mfz' => &updateTriggers );
 # Hardcode deletions only, for now
@@ -60,10 +69,10 @@ sub DPF {
     print "$msg\n";
 }
 
-sub DPPKT { DPF($DEBUG_FLAG_PACKETS,shift); }
-sub DPSTD { DPF($DEBUG_FLAG_STANDARD,shift); }
-sub DPVRB { DPF($DEBUG_FLAG_VERBOSE,shift); }
-sub DPDBG { DPF($DEBUG_FLAG_DEBUG,shift); }
+sub DPPKT { DPF(DEBUG_FLAG_PACKETS,shift); }
+sub DPSTD { DPF(DEBUG_FLAG_STANDARD,shift); }
+sub DPVRB { DPF(DEBUG_FLAG_VERBOSE,shift); }
+sub DPDBG { DPF(DEBUG_FLAG_DEBUG,shift); }
 
 sub getDirName {
     my $dir = shift;
@@ -90,7 +99,7 @@ sub readPacket {
     my $count;
     if (defined($count = sysread(PKTS, $pkt, 512))) {
         return if $count == 0;
-        DPPKT("GOT PACKET($pkt)");
+        DPPKT("GOT PACKET[$count]($pkt)");
         return $pkt;
     }
     return undef;
@@ -517,6 +526,8 @@ sub checkTriggersAndAnnounce {
     my $trigref = $triggerMFZs{$filename};
     &$trigref($finfo) if defined($trigref);
 
+    plSetupCommonFile($finfo); # Something changed on this guy
+
     my $count = 0;
     foreach my $k (shuffle(keys %hoodModel)) {
         my $v = $hoodModel{$k};
@@ -525,7 +536,7 @@ sub checkTriggersAndAnnounce {
             ++$count;
         }
     }
-    DPSTD("ANNOUNCED $filename to $count");
+    DPPKT("ANNOUNCED $filename to $count");
 }
 
 sub assignSeqnoAndCaptureModtime {
@@ -793,9 +804,12 @@ sub checkCommonFile {
     if ($announceOK) {
         my $announcements = 0;
         foreach my $ngb (getRandomAliveNgbList()) {
-            announceFileTo($ngb,$finfo);
+            my $ngbversion = $ngb->{cdmProtocolVersion};
+            announceFileTo($ngb,$finfo)
+                if $ngbversion > CDM_PROTOCOL_VERSION_UNKNOWN  # Don't announce til they give us a version
+                && $ngbversion < CDM_PROTOCOL_VERSION_PIPELINE; # Don't be traditional if pipeline will do
             ++$announcements;
-            last if oneIn(3);
+            last if oneIn(2);
         }
         return 1 if $announcements > 0;
     }
@@ -916,6 +930,7 @@ sub newNgb {
         clacksSinceAliveRcvd => $longAgo,
         isAlive => 0,
         contentOffered => {}, # seqno -> filename
+        cdmProtocolVersion => -1, # No version information received
     };
 }
 
@@ -1006,7 +1021,7 @@ sub doBackgroundWork {
 
         $ngb->{clacksSinceAliveSent} = 0;
         $alivetag = ($alivetag + 1)&0xff;
-        sendCDMTo($ngb->{dir},'A',chr($alivetag));
+        sendCDMTo($ngb->{dir},'A',chr($alivetag).chr($CDM_PROTOCOL_OUR_VERSION));
     }
 
     # Record our liveness info for t2viz to viz
@@ -1084,10 +1099,10 @@ sub checkAnnouncedFile {
     my ($filename,$contentLength,$checksum,$timestamp,$seqno,$dir) = @_;
     die unless defined $dir;
 
-    if ($PIPELINE_ENABLED) {
-        DPDBG("Delegating to plRtTA");
-        return plReactToTraditionalAnnouncement($filename,$contentLength,$checksum,$timestamp,$seqno,$dir);
-    }
+    # if ($PIPELINE_ENABLED) {
+    #     DPDBG("Delegating to plRtTA");
+    #     return plReactToTraditionalAnnouncement($filename,$contentLength,$checksum,$timestamp,$seqno,$dir);
+    # }
 
     DPDBG("CHECKING Ignore complete and matched in common");
     return if checkIfFileInCommon($filename,$checksum,$timestamp);
@@ -1388,6 +1403,20 @@ sub declareNgbDirAlive {
     }
 }
 
+sub processAlivePacket {
+    my $bref = shift or die;
+    my @bytes = @$bref;
+    my $pktlen = scalar(@bytes); # pktlen known >= 3
+    my $srcDir = ord($bytes[0])&0x07;
+    my $ngb = getNgbInDir($srcDir);
+    my $ngbversion = $pktlen < 5 ? 1 : ord($bytes[4]);
+
+    if ($ngb->{cdmProtocolVersion} != $ngbversion) {
+        DPSTD("PEER DIR $srcDir RUNNING VERSION $ngbversion");
+        $ngb->{cdmProtocolVersion} = $ngbversion;
+    }
+}
+
 sub processPacket {
     my $pkt = shift;
     if (length($pkt) < 3) {
@@ -1410,8 +1439,7 @@ sub processPacket {
         }
 
         if ($bytes[2] eq "A") {
-            # Handle old len3 type A packets
-            DPPKT(sprintf("Rcvd 'A' from %d uniq %02x\n",$srcDir,defined($bytes[3]) ? ord($bytes[3]) : 0));
+            processAlivePacket(\@bytes);
             return;
         }
         if ($bytes[2] eq "F") {
@@ -1548,6 +1576,7 @@ sub plInitTagsAndProviders {
 
 sub plPreinitCommonFiles {
     return unless $PIPELINE_ENABLED;
+    DPSTD("PREINIT COMMON FILE PIPELINES");
     my $cref = getSubdirModel($commonSubdir);
     my $deaders = 0;
     my @finfos = values %{$cref};
@@ -1681,13 +1710,23 @@ sub plCreatePipelineFileAnnouncementPacket {
     $pkt = addLenArgTo($pkt,$plinfo->{fileLength});
     $pkt = addLenArgTo($pkt,$plinfo->{fileInnerTimestamp});
     $pkt = addLenArgTo($pkt,$plinfo->{fileChecksum});
-    DPPKT("PIPELINEANNOUNCE($pkt)");
+#    DPPKT("PIPELINEANNOUNCE($pkt)");
     return $pkt;
 }
 
 sub plDoBackgroundWork {
     return unless $PIPELINE_ENABLED;
-    DPSTD("plDoBackgroundWork");
+    return unless oneIn(2);
+    my $ngb = getRandomNgb();
+    return unless $ngb->{cdmProtocolVersion} >= CDM_PROTOCOL_VERSION_PIPELINE;
+
+    my @otags = keys %plOUTBOUNDTAGtoPLINFO;
+    my $otag = $otags[createInt(scalar(@otags))];
+    my $plinfo = plFindPLSFromOutboundTag($otag);
+    defined $plinfo or die;
+    my $pkt = plCreatePipelineFileAnnouncementPacket($ngb,$plinfo);
+    writePacket($pkt);
+    DPPKT("ANNOUNCED PIPELINE $otag TO $ngb->{dir}");
 }
 
 # sub plReactToTraditionalAnnouncement {
@@ -1717,7 +1756,7 @@ sub plSetupCommonFile {
     my $name = $finfo->{filename};
     $finfo->{checkedLength} == $finfo->{length} or die;
     if (defined (plFindPLS($name))) {
-        DPWRN("PLS exists for '$name', continuing");
+        DPSTD("PLS exists for '$name', regenerating");
     }
 
     my $path = getFinfoPath($finfo);
@@ -1731,6 +1770,7 @@ sub plSetupCommonFile {
     $plinfo->{outboundTag} = plNewTag();
     plsBuildXsumMap($plinfo);
     plSetPlinfoAsSource($plinfo);
+    DPSTD(" pipeline initted: $name => $plinfo->{outboundTag}");
     return $plinfo;
 }
 
@@ -1964,12 +2004,12 @@ sub plProcessFileAnnouncement {
     if (!$plinfo || $plinfo->{fileInnerTimestamp} < $fileinnertimestamp) {
         $plinfo = plSetupNewPipelineFile($filename,$filelength,$filechecksum,$fileinnertimestamp);
         plSetPlinfoAsSourceAndInit($plinfo);
-        DPDBG("plProcessFileAnnouncement NEW");
+        DPSTD("(RE)INITTED PIPELINE $filename => $inboundTag, SOURCE $dir");
     }
-    print "plProcessFileAnnouncement GOGOGOGOG".Dumper($plinfo);
+#    print "plProcessFileAnnouncement GOGOGOGOG".Dumper($plinfo);
     plPutOnTag($inboundTag,$dir,$plinfo);
     my $prec = plGetProviderRecordForFilenameAndDir($filename, $dir);
-    print "PREC ".Dumper($prec);
+#    print "PREC ".Dumper($prec);
 }
 
 sub plGetProviderMapForFilename {
@@ -1978,8 +2018,8 @@ sub plGetProviderMapForFilename {
     if (!defined $providermap) {
         $providermap = {};
         $plFILEtoPROVIDER{$filename} = $providermap;
-        print "F2P111 ".Dumper(\%plFILEtoPROVIDER);
-        DPDBG("GPMFO $filename $providermap");
+#        print "F2P111 ".Dumper(\%plFILEtoPROVIDER);
+#        DPDBG("GPMFO $filename $providermap");
     }
     return $providermap;
 }
@@ -1988,7 +2028,7 @@ sub plGetProviderRecordForFilenameAndDir {
     my ($filename,$dir) = @_;
     my $providermap = plGetProviderMapForFilename($filename);
     my $prec = $providermap->{$dir};
-    DPDBG("GF1XX $filename $dir $providermap");
+#    DPDBG("GF1XX $filename $dir $providermap");
     if (!defined $prec) {
         $prec =
             [
@@ -1998,8 +2038,8 @@ sub plGetProviderRecordForFilenameAndDir {
              0       #[3] age
             ];
         $providermap->{$dir} = $prec;
-        DPDBG("GF2XX $filename $dir prc=".join(", ",@$prec));
-        print "F2P222 ".Dumper(\%plFILEtoPROVIDER);
+#        DPDBG("GF2XX $filename $dir prc=".join(", ",@$prec));
+#        print "F2P222 ".Dumper(\%plFILEtoPROVIDER);
     }
     return $prec; 
 }
@@ -2367,7 +2407,7 @@ sub main {
     preinitCommon();
 
     plInitTagsAndProviders();
-    plPreinitCommonFiles();
+    # plPreinitCommonFiles();  
 
     openPackets();
     flushPackets();
