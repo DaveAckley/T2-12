@@ -1,4 +1,4 @@
-{69}  -*- text -*- 
+{73}  -*- text -*- 
 [0:
 
 Fri Aug  7 02:25:10 2020 OK, so having a second power zone drives home
@@ -945,8 +945,39 @@ cdm.pl without issue, and they're announcing and ignoring each other
 with the best of them.
 [68:
 
-Thu Aug 13 13:22:43 2020 Let's commit and pull pl.pl to the other guy.
+Thu Aug 13 13:22:43 2020 Let's commit and pull pl.pl to the other
+  guy.[69:
+
+Thu Aug 13 13:24:04 2020 ehhhhhhxcept the other guy is a regular tile
+and just has a T2-12 directory, not a T2-12 repo..[70:
+
+Thu Aug 13 13:33:29 2020 OK, so it seems like two pl.pls are talking
+to each other OK.
+
+:70]
+
+:69]
 
 :68]
 
 :67]
+[71: 
+
+Fri Aug 14 02:14:07 2020 So, we were going to do an enabling thing,
+where even if we had $PIPELINE_ENABLED == 1, we wouldn't do pipeline
+stuff in a particular direction until we had seen a 'feature
+announcement' packet -- reusing the 'obsolete' "A" aliveness packet --
+that included some flag meaning 'pipeline capable'.
+
+:71]
+[72:
+
+Fri Aug 14 04:30:38 2020 OK committing a bunch of stuff in pl.pl,
+including 'use constant's hey, and version stuff, and don't send
+announcements -- traditional or pipeline -- to dir until we've seen an
+"A" packet from dir, and so on.
+
+Getting closer to a plausible cut-over to cdm.pl; not there quite
+yet. 
+
+:72]
