@@ -526,13 +526,17 @@ sub checkTriggersAndAnnounce {
     my $trigref = $triggerMFZs{$filename};
     &$trigref($finfo) if defined($trigref);
 
-    plSetupCommonFile($finfo); # Something changed on this guy
+    my $plinfo = plSetupCommonFile($finfo); # Something changed on this guy
 
     my $count = 0;
     foreach my $k (shuffle(keys %hoodModel)) {
         my $v = $hoodModel{$k};
         if ($v->{isAlive}) {
-            announceFileTo($v,$finfo);
+            if ($v->{cdmProtocolVersion} >= CDM_PROTOCOL_VERSION_PIPELINE) {
+                plAnnounceFileTo($v,$plinfo);
+            } else {
+                announceFileTo($v,$finfo);
+            }
             ++$count;
         }
     }
@@ -1013,6 +1017,7 @@ sub doBackgroundWork {
     my $ngb = getRandomNgb();
     if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 50) {
         $ngb->{isAlive} = 0;
+        $ngb->{cdmProtocolVersion} = -1;  # Back to unknown
         DPSTD(getDirName($ngb->{dir})." is dead");
     }
     
@@ -1099,14 +1104,12 @@ sub checkAnnouncedFile {
     my ($filename,$contentLength,$checksum,$timestamp,$seqno,$dir) = @_;
     die unless defined $dir;
 
-    # if ($PIPELINE_ENABLED) {
-    #     DPDBG("Delegating to plRtTA");
-    #     return plReactToTraditionalAnnouncement($filename,$contentLength,$checksum,$timestamp,$seqno,$dir);
-    # }
-
     DPDBG("CHECKING Ignore complete and matched in common");
     return if checkIfFileInCommon($filename,$checksum,$timestamp);
         
+    my $commonref = getSubdirModel($commonSubdir);
+    my $finfo = $commonref->{$filename};
+
     my $completeButCommonSeemsOlder =
         defined($finfo) 
         && defined($finfo->{seqno})
@@ -1206,6 +1209,15 @@ sub plsCheckXsumStatus {
     my ($plinfo,$xsumopt) = @_;
     my $dig = $plinfo->{xsumDigester}->clone->b64digest();
     return $dig eq $xsumopt;
+}
+
+sub plsGetFileActualLength {
+    my $plinfo = shift or die;
+    my $path = $plinfo->{filePath};
+    open my $hdl, "<", $path or die "plsGetFileActualLength open $path: $!";
+    my $len = tell $hdl;
+    close $hdl or die "plsGetFileActualLength close $path: $!";
+    return $len;
 }
 
 sub plsWriteChunk {
@@ -1412,7 +1424,7 @@ sub processAlivePacket {
     my $ngbversion = $pktlen < 5 ? 1 : ord($bytes[4]);
 
     if ($ngb->{cdmProtocolVersion} != $ngbversion) {
-        DPSTD("PEER DIR $srcDir RUNNING VERSION $ngbversion");
+        DPSTD(getDirName($srcDir)." RUNNING VERSION $ngbversion");
         $ngb->{cdmProtocolVersion} = $ngbversion;
     }
 }
@@ -1598,8 +1610,8 @@ sub plGetPlinfoFromTag {
     defined $dir or die;
     my $filename = plGetFilenameFromTag($tag,$dir);
     return undef unless defined $filename;
-    print "plP2FZZ ".Dumper(\%plPROVIDERtoFILE);
-    print "plF2PZZ ".Dumper(\%plFILEtoPROVIDER);
+#    print "plP2FZZ ".Dumper(\%plPROVIDERtoFILE);
+#    print "plF2PZZ ".Dumper(\%plFILEtoPROVIDER);
 
     return plFindPLS($filename);
 }
@@ -1714,6 +1726,17 @@ sub plCreatePipelineFileAnnouncementPacket {
     return $pkt;
 }
 
+sub plAnnounceFileTo {
+    my ($ngb,$plinfo) = @_;
+    defined $plinfo or die;
+    my $pkt = plCreatePipelineFileAnnouncementPacket($ngb,$plinfo);
+    writePacket($pkt);
+    my $availpacket = plCreatePipelinePrefixAvailabilityPacket($ngb,$plinfo);
+    writePacket($availpacket);
+    DPPKT("ANNOUNCED PIPELINE $plinfo->{outboundTag} => $plinfo->{filePath} TO $ngb->{dir}");
+}
+    
+
 sub plDoBackgroundWork {
     return unless $PIPELINE_ENABLED;
     return unless oneIn(2);
@@ -1724,32 +1747,8 @@ sub plDoBackgroundWork {
     my $otag = $otags[createInt(scalar(@otags))];
     my $plinfo = plFindPLSFromOutboundTag($otag);
     defined $plinfo or die;
-    my $pkt = plCreatePipelineFileAnnouncementPacket($ngb,$plinfo);
-    writePacket($pkt);
-    DPPKT("ANNOUNCED PIPELINE $otag TO $ngb->{dir}");
+    plAnnounceFileTo($ngb,$plinfo);
 }
-
-# sub plReactToTraditionalAnnouncement {
-#     my ($filename,$contentLength,$checksum,$timestamp,$seqno,$dir) = @_;
-#     DPDBG("plReactToTraditionalAnnouncement HERE ($filename,$contentLength,$timestamp,$seqno,$dir)");
-
-#     $filename = "HACK".$filename;
-#     if (checkIfFileInCommon($filename,$checksum,$timestamp)) {
-#         return;
-#     }
-
-#     my $plinfo = plFindPLS($filename);
-#     if (!$plinfo || $plinfo->{fileInnerTimestamp} < $timestamp) {
-#         if (!$plinfo) {
-#             DPDBG("plSetupNewPipelineFile ($filename,$contentLength,$timestamp)");
-#             $plinfo = plSetupNewPipelineFile($filename,$contentLength,$checksum,$timestamp);
-#         }
-#         plAddPLS($plinfo);
-#         plReportProvider($plinfo,$dir);
-#     }
-#     print "plReactToTraditionalAnnouncement ".Dumper($plinfo);
-#     die unless defined $dir;
-# }
 
 sub plSetupCommonFile {
     my $finfo = shift or die;
@@ -1852,7 +1851,7 @@ sub plProcessPrefixAvailability {
     }
     $prec->[2] = $prefixlen;
     $prec->[3] = now();
-    print "PADN: ".Dumper($prec);
+#    print "PADN: ".Dumper($prec);
 }
 
 sub plProcessChunkRequestAndCreateReply {
@@ -1988,6 +1987,41 @@ sub plCheckAndReleasePipelineFile {
 }
     
 
+sub plCheckAnnouncedFile {
+    my ($filename,$contentLength,$checksum,$timestamp,$tag,$dir) = @_;
+    die unless defined $dir;
+
+    DPDBG("CHECKING Ignore complete and matched in common");
+    return if checkIfFileInCommon($filename,$checksum,$timestamp);
+        
+    my $commonref = getSubdirModel($commonSubdir);
+    my $finfo = $commonref->{$filename};
+
+    my $completeButCommonSeemsOlder =
+        defined($finfo) 
+        && defined($finfo->{seqno})
+        && $finfo->{checksum} ne $checksum
+        && defined($finfo->{innerTimestamp})
+        && $finfo->{innerTimestamp} < $timestamp;
+
+    ## Start the pipeline if absent from common and pipeline
+    ## or allegedly obsolete in common
+    my $plinfo = plFindPLS($filename);
+    if ($completeButCommonSeemsOlder || !defined($finfo)) {
+        if (defined $plinfo) {
+            my $len = plsGetFileActualLength($plinfo);
+            my $chunkpacket = plCreateChunkRequestPacket($dir,$filename,$len);
+            if (!defined $chunkpacket) {
+                DPDBG("NO CHUNKS");
+                return;
+            }
+            writePacket($chunkpacket);
+        }
+        return;
+    }
+}
+
+
 sub plProcessFileAnnouncement {
     my ($dir,$bref) = @_;
     my $blen = scalar(@$bref);
@@ -2010,6 +2044,7 @@ sub plProcessFileAnnouncement {
     plPutOnTag($inboundTag,$dir,$plinfo);
     my $prec = plGetProviderRecordForFilenameAndDir($filename, $dir);
 #    print "PREC ".Dumper($prec);
+    plCheckAnnouncedFile($filename,$filelength,$filechecksum,$fileinnertimestamp,$inboundTag,$dir)
 }
 
 sub plGetProviderMapForFilename {
