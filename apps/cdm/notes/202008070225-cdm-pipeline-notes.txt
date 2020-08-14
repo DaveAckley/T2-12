@@ -1,4 +1,4 @@
-{73}  -*- text -*- 
+{76}  -*- text -*- 
 [0:
 
 Fri Aug  7 02:25:10 2020 OK, so having a second power zone drives home
@@ -981,3 +981,30 @@ Getting closer to a plausible cut-over to cdm.pl; not there quite
 yet. 
 
 :72]
+[73:
+
+Fri Aug 14 04:56:02 2020 OK, so testShimForChunkMovement did not
+demonstrate how we decide whether we want to pursue a pipeline
+announcement and request the first chunk -- it just did it.  Now at
+the moment, on the traditional side, processFileAnnouncement goes to
+checkAnnouncedFile, which does a whole bunch of complicated checks to
+decide if we want the file.  Do we need to refactor and/or
+copy-paste-up some kind of plCheckAnnouncedFile that does similar
+stuff?
+
+:73]
+[74:
+
+Fri Aug 14 07:07:13 2020 So jeez, man, checkAnnouncedFile is
+all messed up!  I tried to refactor it in pl.pl and left it referring
+to $finfo without any declaration.  Doh.
+
+:74]
+[75:
+
+Fri Aug 14 14:43:52 2020 OK, pushed a bunch of commits tweaking around
+with stuff that showed up with loopback and two tile interactions.
+Now going to set up a third tile to see if we can see the pipeline
+actually begin to flow.
+
+:75]
