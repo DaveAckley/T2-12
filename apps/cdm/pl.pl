@@ -1546,7 +1546,7 @@ use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 my %plFILEtoPLINFO;         # filename -> plinfo
 my %plOUTBOUNDTAGtoPLINFO;  # outboundTag -> plinfo
-my %plFILEtoPROVIDER; # filename -> {dir -> [tag prefix age ..] }
+my %plFILEtoPROVIDER; # filename -> {dir -> "PREC"[inboundtag prefix age ..] }
 my %plPROVIDERtoFILE; # dir -> {tag -> filename}
 
 my $plSPINNER = int(rand(256)); # init 0..255
@@ -1904,12 +1904,7 @@ sub plProcessChunkRequestAndCreateReply {
     }
 #    print "PLPCR1 ".Dumper(\$plinfo);
     my $filename = $plinfo->{fileName};
-    my $prec = plGetProviderRecordForFilenameAndDir($filename, $dir);
-    die if $prec->[0] != $dir;
-    if ($prec->[1] != $outboundTag) {
-        DPSTD("PR: WARNING $filename has inconsistent tag '$prec->[1]' vs '$outboundTag', OVERWRITING");
-        $prec->[1] = $outboundTag;
-    }
+
     my ($chunk,$xsumopt) = plsGetChunkAt($plinfo,$filepos);
     $xsumopt = "" unless defined $xsumopt;
     
@@ -2055,7 +2050,7 @@ sub plProcessFileAnnouncement {
 #    print "plProcessFileAnnouncement GOGOGOGOG".Dumper($plinfo);
     plPutOnInboundTag($inboundTag,$dir,$plinfo);
     my $prec = plGetProviderRecordForFilenameAndDir($filename, $dir);
-    print "PREC ".Dumper($prec);
+#    print "PREC ".Dumper($prec);
     plCheckAnnouncedFile($filename,$filelength,$filechecksum,$fileinnertimestamp,$inboundTag,$dir)
 }
 
