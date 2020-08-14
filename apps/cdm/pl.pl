@@ -1848,14 +1848,13 @@ sub plProcessPrefixAvailability {
     die if $prec->[0] != $dir;
     if ($prec->[1] != $inboundTag) {
         if ($prec->[1] != 0) {
-            DPSTD("PA: Overwriting old tag '$prec->[1]' with '$inboundTag'");
+            DPSTD("PA: Overwriting old tag '$prec->[1]' for $filename from $dir with '$inboundTag'");
         }
         $prec->[1] = $inboundTag;  # set up tag
         $prec->[2] = -1;
-        $prec->[3] = -1;
+        $prec->[3] = 0;  # Age refreshes when we send a packet
     }
     $prec->[2] = $prefixlen;  # and actual availability
-    $prec->[3] = 0;  # Age refreshes when we send a packet
 
     ### Start the pipeline after we get a prefix, not just an announcement.
     my $commonref = getSubdirModel($commonSubdir);
@@ -1873,14 +1872,17 @@ sub plProcessPrefixAvailability {
 
     if ($completeButCommonSeemsOlder || !defined($finfo)) {
         my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
-        if (defined $plinfo && clacksOld($prec->[3], 1)) {
+        if (defined $plinfo && clacksOld($prec->[3], 2)) {
             my $len = plsGetFileActualLength($plinfo);
-            my $chunkpacket = plCreateChunkRequestPacket($dir,$filename,$len);
-            if (!defined $chunkpacket) {
-                DPDBG("NO CHUNKS");
-                return;
+            if ($len < $prec->[2]) {  # Don't ask for more than they got
+                DPSTD("REQUESTING $filename:$len FROM $dir:$prec->[2] AT AGE ".(now() - $prec->[3]));
+                my $chunkpacket = plCreateChunkRequestPacket($dir,$filename,$len);
+                if (!defined $chunkpacket) {
+                    DPDBG("NO CHUNKS");
+                    return;
+                }
+                writePacket($chunkpacket);
             }
-            writePacket($chunkpacket);
         }
         return;
     }
@@ -2196,7 +2198,7 @@ sub plsBuildXsumMap {
 #    print "plsBuildXsumMap ".Dumper($plinfo);
     $plinfo->{xsumMap} = [];
     my $path = $plinfo->{filePath};
-    my $XSUM_PIECE_COUNT = 100;
+    my $XSUM_PIECE_COUNT = 50;
     my $chunksize = max(1<<12,ceiling($plinfo->{fileLength}/$XSUM_PIECE_COUNT));
      $digester->reset();
     open(HDL,"<",$path) or die "Can't read $path: $!";
