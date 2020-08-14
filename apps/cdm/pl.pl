@@ -1237,7 +1237,7 @@ sub plsWriteChunk {
 
 sub plsGetChunkAt {
     my ($plinfo, $filepos) = @_;
-    my $chunkLen = 160;
+    my $chunkLen = 180;
     my ($markpos, $xsum) = plsFindXsumInRange($plinfo, $filepos, $filepos+$chunkLen);
     if (defined $xsum) {
         if ($markpos > $filepos) {
@@ -1984,6 +1984,11 @@ sub plProcessChunkReplyAndCreateNextRequest {
         if (!defined $chunkpacket) {
             DPDBG("NO CHUNKS");
             return "";
+        }
+        {
+            my $requestHZ = 20; # Limit request rate a little bit
+            my $rateLimiterUsec = int(1_000_000/$requestHZ);
+            Time::HiRes::usleep($rateLimiterUsec);
         }
         return $chunkpacket;
     }
