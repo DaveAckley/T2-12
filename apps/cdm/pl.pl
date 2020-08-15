@@ -1947,7 +1947,14 @@ sub plProcessChunkRequestAndCreateReply {
 
     my ($chunk,$xsumopt) = plsGetChunkAt($plinfo,$filepos);
     $xsumopt = "" unless defined $xsumopt;
-    
+
+    my $endpos = $filepos + length($chunk);
+    if ($endpos == $plinfo->{fileLength}) {
+        DPSTD("LAST CHUNK ($endpos) OF $plinfo->{filePath} TO ".getDirName($dir));
+        if ($xsumopt eq "") {
+            DPSTD("WHY IS THERE NO FINAL XSUM HERE?");
+        }
+    }
     my $pipelineOperationsCode = "P";
     my $dataReplyCode = "D";
     my $pkt = chr(0x80+$dir).chr($CDM_PKT_TYPE).$pipelineOperationsCode.$dataReplyCode;
@@ -1978,7 +1985,7 @@ sub plsCreateChunkRequestPacket {  # Pick from all 'valid' providers
         my ($pfx,$sage,$rage) =
             ($prec->[PREC_PFXL],$prec->[PREC_SAGE],$prec->[PREC_RAGE]);
         my $votes = 1;
-        next if $filepos >= $pfx;
+        next if $filepos > $pfx;
         if (clacksAge($rage) < 20) {  # Among those we've heard from lately,
             $votes += clacksAge($sage); # Favor the ones we haven't asked as much
         }
@@ -2048,7 +2055,8 @@ sub plProcessChunkReplyAndCreateNextRequest {
 #    my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
     my $chunkpacket = plsCreateChunkRequestPacket($plinfo,$filepos);
     if (!defined $chunkpacket) {
-        DPSTD("NO CHUNK REQ?");
+        DPSTD("NO CHUNK? FP $filepos, FL $plinfo->{fileLength}, LC "
+              .length($chunk).", LX ".length($xsumopt));
         return undef;
     }
     {
