@@ -1547,7 +1547,7 @@ use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 my %plFILEtoPLINFO;         # filename -> plinfo
 my %plOUTBOUNDTAGtoPLINFO;  # outboundTag -> plinfo
-my %plFILEtoPROVIDER; # filename -> {dir -> "PREC"[inboundtag prefix age ..] }
+my %plFILEtoPROVIDER; # filename -> {dir -> "PREC"[inboundtag prefix sage rage ..] }
 my %plPROVIDERtoFILE; # dir -> {tag -> filename}
 
 my $plSPINNER = int(rand(256)); # init 0..255
@@ -1684,10 +1684,10 @@ sub plFlushPipelineDir {
 sub plCreateChunkRequestPacket {
     my ($dir,$filename,$filepos) = @_;
     my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
-    my ($precdir,$tag,$pfx,$age) = @{$prec};
+    my ($precdir,$tag,$pfx,$sage,$rage) = @{$prec};
     die unless $dir == $precdir;
-    $prec->[3] = now(); # age is last time we asked.
-    DPDBG("PRECQ plCreateChunkRequestPacket($filename,$filepos,$precdir,$tag,$pfx,$age)");
+    $prec->[3] = now(); # [3] sage is last time we sent a request
+    DPDBG("PRECQ plCreateChunkRequestPacket($filename,$filepos,$precdir,$tag,$pfx,$sage,$rage)");
     return undef if $filepos > $pfx;
     my $pipelineOperationsCode = "P";
     my $chunkRequestCode = "R";
@@ -1839,6 +1839,11 @@ sub plSetupNewPipelineFile {
     return $plinfo;
 }
 
+sub clacksAge {
+    my $oldnow = shift or die;
+    return now() - $oldnow;
+}
+
 sub clacksOld {
     my ($prevnow, $clacks) = @_;
     die unless defined $clacks;
@@ -1868,7 +1873,8 @@ sub plProcessPrefixAvailability {
         }
         $prec->[1] = $inboundTag;  # set up tag
         $prec->[2] = -1;
-        $prec->[3] = 0;  # Age refreshes when we send a packet
+        $prec->[3] = 0;  # sage refreshes when we send a chunk request
+        $prec->[4] = 0;  # rage refreshes when we recv a chunk reply
     }
     $prec->[2] = $prefixlen;  # and actual availability
 
@@ -1897,16 +1903,18 @@ sub plsMaybeSendChunkRequest {
     die unless defined $dir && defined $plinfo;
     my $filename = $plinfo->{fileName};
     my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
-    if (clacksOld($prec->[3], 3)) {
+    my $sage = $prec->[3];
+    if (clacksOld($sage, 3)) {
         my $len = plsGetFileActualLength($plinfo);
         if ($len < $prec->[2]) {  # Don't ask for more than they got
             my $filepath = $plinfo->{filePath};
-            DPSTD("REQUESTING $filepath:$len FROM $dir:$prec->[2] AT AGE ".(now() - $prec->[3]));
+            DPSTD("REQUESTING $filepath:$len FROM $dir:$prec->[2] AT AGE ".(now() - $sage));
             my $chunkpacket = plCreateChunkRequestPacket($dir,$filename,$len);
             if (!defined $chunkpacket) {
                 DPDBG("NO CHUNKS");
                 return;
             }
+            $prec->[3] = now(); # sage refreshes when we send a request
             writePacket($chunkpacket);
         }
     }
@@ -1953,6 +1961,26 @@ sub plProcessChunkRequest {
     }
 }
 
+sub plsCreateChunkRequestPacket {  # Pick from all 'valid' providers
+    my ($plinfo,$filepos) = @_;
+    die unless defined $filepos;
+    my $filename = $plinfo->{fileName};
+    my $providermap = plGetProviderMapForFilename($filename);
+    my ($windir,$tot) = (undef,0);
+    foreach my $dir (keys %$providermap) {
+        my $prec = $providermap->{$dir};
+        my ($precdir,$tag,$pfx,$sage,$rage) = @{$prec};
+        my $votes = 1;
+        if (clacksAge($rage) < 20) {  # Among those we've heard from lately,
+            $votes += clacksAge($sage); # Favor the ones we haven't asked as much
+        }
+        $tot += $votes;
+        $windir = $dir if oddsOf($votes,$tot);
+    }
+    return undef unless defined $windir;
+    return plCreateChunkRequestPacket($windir, $filename, $filepos);
+}
+
 sub plProcessChunkReplyAndCreateNextRequest {
     my ($dir,$bref) = @_;
 
@@ -1973,6 +2001,10 @@ sub plProcessChunkReplyAndCreateNextRequest {
         return undef;
     }
     
+    my $filename = $plinfo->{fileName};
+    my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
+    $prec->[4] = now(); # rage refreshes when we recv a chunk replay
+
 #    print "RPYplinfo1 ".Dumper(\$plinfo);
 
     if ($xsumopt ne "") {
@@ -2005,7 +2037,8 @@ sub plProcessChunkReplyAndCreateNextRequest {
     }
 
     # Make request for next chunk!
-    my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
+#    my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
+    my $chunkpacket = plsCreateChunkRequestPacket($plinfo,$filepos);
     if (!defined $chunkpacket) {
         DPDBG("NO CHUNKS");
         return undef;
@@ -2109,7 +2142,8 @@ sub plGetProviderRecordForFilenameAndDir {
              $dir,   #[0] dir
              0,      #[1] tag
              0,      #[2] prefixlen
-             0       #[3] age
+             0,      #[3] sage
+             0       #[4] rage
             ];
         $providermap->{$dir} = $prec;
 #        DPDBG("GF2XX $filename $dir prc=".join(", ",@$prec));
