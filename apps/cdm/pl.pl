@@ -1749,7 +1749,8 @@ sub plDoBackgroundWork {
         my $otag = $otags[createInt(scalar(@otags))];
         my $plinfo = plFindPLSFromOutboundTag($otag);
         defined $plinfo or die;
-        plAnnounceFileTo($ngb,$plinfo);
+        plAnnounceFileTo($ngb,$plinfo)
+            if $plinfo->{prefixLengthAvailable} > 0;
     } else {
         # inbound work
         my @filenames = keys %plFILEtoPLINFO;
@@ -2224,7 +2225,7 @@ sub plsBuildXsumMap {
 #    print "plsBuildXsumMap ".Dumper($plinfo);
     $plinfo->{xsumMap} = [];
     my $path = $plinfo->{filePath};
-    my $XSUM_PIECE_COUNT = 50;
+    my $XSUM_PIECE_COUNT = 100;
     my $chunksize = max(1<<12,ceiling($plinfo->{fileLength}/$XSUM_PIECE_COUNT));
      $digester->reset();
     open(HDL,"<",$path) or die "Can't read $path: $!";
