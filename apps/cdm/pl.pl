@@ -1840,7 +1840,8 @@ sub plSetupNewPipelineFile {
 }
 
 sub clacksAge {
-    my $oldnow = shift or die;
+    my $oldnow = shift;
+    defined $oldnow or die;
     return now() - $oldnow;
 }
 
