@@ -1225,7 +1225,8 @@ sub plsWriteChunk {
     open HDL, ">>", $path or die "plsWriteChunk $path: $!";
     my $filepos = tell HDL;
     if ($atpos != $filepos) {
-        DPSTD("Ignoring out of sequence chunk at $atpos; file at $filepos");
+        DPSTD("Ignoring out of sequence chunk at $atpos; file at $filepos")
+            if $atpos+length($chunk) != $filepos; # Be quiet about immediate redundancies
         return undef;
     }
     print HDL $chunk;
