@@ -1738,15 +1738,29 @@ sub plAnnounceFileTo {
 
 sub plDoBackgroundWork {
     return unless $PIPELINE_ENABLED;
-    return unless oneIn(2);
-    my $ngb = getRandomNgb();
-    return unless $ngb->{cdmProtocolVersion} >= CDM_PROTOCOL_VERSION_PIPELINE;
+    my $ngb = getRandomAliveNgb();
+    return unless
+        defined $ngb &&
+        $ngb->{cdmProtocolVersion} >= CDM_PROTOCOL_VERSION_PIPELINE;
 
-    my @otags = keys %plOUTBOUNDTAGtoPLINFO;
-    my $otag = $otags[createInt(scalar(@otags))];
-    my $plinfo = plFindPLSFromOutboundTag($otag);
-    defined $plinfo or die;
-    plAnnounceFileTo($ngb,$plinfo);
+    if (oneIn(2)) {
+        # outbound work
+        my @otags = keys %plOUTBOUNDTAGtoPLINFO;
+        my $otag = $otags[createInt(scalar(@otags))];
+        my $plinfo = plFindPLSFromOutboundTag($otag);
+        defined $plinfo or die;
+        plAnnounceFileTo($ngb,$plinfo);
+    } else {
+        # inbound work
+        my @filenames = keys %plFILEtoPLINFO;
+        my $filecount = scalar(@filenames);
+        if ($filecount > 0) {
+            my $filename = $filenames[createInt($filecount)];
+            my $plinfo = plFindPLS($filename);
+            plsMaybeSendChunkRequest($plinfo,$ngb->{dir})
+                if defined $plinfo;
+        }
+    }
 }
 
 sub plSetupCommonFile {
@@ -1871,20 +1885,28 @@ sub plProcessPrefixAvailability {
     ## or allegedly obsolete in common
 
     if ($completeButCommonSeemsOlder || !defined($finfo)) {
-        my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
-        if (defined $plinfo && clacksOld($prec->[3], 2)) {
-            my $len = plsGetFileActualLength($plinfo);
-            if ($len < $prec->[2]) {  # Don't ask for more than they got
-                DPSTD("REQUESTING $filename:$len FROM $dir:$prec->[2] AT AGE ".(now() - $prec->[3]));
-                my $chunkpacket = plCreateChunkRequestPacket($dir,$filename,$len);
-                if (!defined $chunkpacket) {
-                    DPDBG("NO CHUNKS");
-                    return;
-                }
-                writePacket($chunkpacket);
-            }
-        }
+        plsMaybeSendChunkRequest($plinfo, $dir);
         return;
+    }
+}
+
+sub plsMaybeSendChunkRequest {
+    my ($plinfo,$dir) = @_;
+    die unless defined $dir && defined $plinfo;
+    my $filename = $plinfo->{fileName};
+    my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
+    if (clacksOld($prec->[3], 3)) {
+        my $len = plsGetFileActualLength($plinfo);
+        if ($len < $prec->[2]) {  # Don't ask for more than they got
+            my $filepath = $plinfo->{filePath};
+            DPSTD("REQUESTING $filepath:$len FROM $dir:$prec->[2] AT AGE ".(now() - $prec->[3]));
+            my $chunkpacket = plCreateChunkRequestPacket($dir,$filename,$len);
+            if (!defined $chunkpacket) {
+                DPDBG("NO CHUNKS");
+                return;
+            }
+            writePacket($chunkpacket);
+        }
     }
 }
 
@@ -1944,7 +1966,7 @@ sub plProcessChunkReplyAndCreateNextRequest {
     my $plinfo = plGetPlinfoFromInboundTag($inboundTag,$dir);
     if (!defined $plinfo) {
         DPSTD("PD: No plinfo for $inboundTag from $dir, ignoring");
-        return;
+        return undef;
     }
     
 #    print "RPYplinfo1 ".Dumper(\$plinfo);
@@ -1983,44 +2005,46 @@ sub plProcessChunkReplyAndCreateNextRequest {
         my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
         if (!defined $chunkpacket) {
             DPDBG("NO CHUNKS");
-            return "";
+            return ("",$plinfo);
         }
         {
-            my $requestHZ = 20; # Limit request rate a little bit
+            my $requestHZ = 25; # Limit request rate a little bit
             my $rateLimiterUsec = int(1_000_000/$requestHZ);
             Time::HiRes::usleep($rateLimiterUsec);
         }
-        return $chunkpacket;
+        return ($chunkpacket,$plinfo);
     }
-    return "";
+    return ("",$plinfo);
 }
 
 sub plProcessChunkReply {
     my ($dir,$bref) = @_;
-    my $pkt = plProcessChunkReplyAndCreateNextRequest($dir,$bref);
-    DPPKT("CHUNKRESPONSE($pkt)");
-    if ($pkt ne "") {
-        writePacket($pkt);
+    my ($pkt,$plinfo) = plProcessChunkReplyAndCreateNextRequest($dir,$bref);
+    if (defined $pkt) {
+        DPPKT("CHUNKRESPONSE($pkt)");
+        if ($pkt ne "") {
+            writePacket($pkt);
+        } else {
+            defined $plinfo or die;
+            plsCheckAndReleasePipelineFile($plinfo);
+        }
     }
 }
 
-sub plCheckAndReleasePipelineFile {
-    my ($dir,$filename) = @_;
-    defined $filename or die;
-    my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
-    my ($precdir,$tag,$pfx,$age) = @{$prec};
-    my $plinfo = plFindPLS($filename);
+sub plsCheckAndReleasePipelineFile {
+    my $plinfo = shift or die;
     if (defined $plinfo->{finfo}) {
         die "XXX WRITE ME?";
     }
+    my $filename = $plinfo->{fileName};
     my $curpath = $plinfo->{filePath};
     my $destpath = "$pendingPath/$plinfo->{fileName}";
     move($curpath,$destpath);
     my $finfo = getFinfoFrom($filename,$pendingSubdir);
     $finfo->{checksum} = $plinfo->{fileChecksum};
     $finfo->{innerTimestamp} = $plinfo->{fileInnerTimestamp};
-    print "CRAPX ".Dumper(\$finfo);
-    print "CRAPY ".Dumper(\$plinfo);
+#    print "CRAPX ".Dumper(\$finfo);
+#    print "CRAPY ".Dumper(\$plinfo);
     checkAndReleasePendingFile($finfo);
     $plinfo->{finfo} = $finfo;
     $plinfo->{filePath} = getFinfoPath($finfo);
@@ -2404,10 +2428,12 @@ sub testShimForChunkMovement {
 
         DPPKT("[[[$i]]] GOTREPLY ".length($reply));
         @bytes =  split(//,$reply);
-        my $nextrequest = plProcessChunkReplyAndCreateNextRequest($ngb->{dir},\@bytes);
+        my ($nextrequest,$plinfo) =
+            plProcessChunkReplyAndCreateNextRequest($ngb->{dir},\@bytes);
+        die unless defined $nextrequest;
         if (length($nextrequest) == 0) {
             DPSTD("RELEASE HERENOW???");
-            plCheckAndReleasePipelineFile($ngb->{dir},$hackfilename);
+            plsCheckAndReleasePipelineFile($plinfo);
             DPSTD("RELEASE HERENOW NOYES???");
             last;
         }
