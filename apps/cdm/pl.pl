@@ -534,7 +534,8 @@ sub checkTriggersAndAnnounce {
         if ($v->{isAlive}) {
             if ($v->{cdmProtocolVersion} >= CDM_PROTOCOL_VERSION_PIPELINE) {
                 plAnnounceFileTo($v,$plinfo);
-            } else {
+            } elsif ($v->{cdmProtocolVersion} > CDM_PROTOCOL_VERSION_UNKNOWN) {
+                # Don't announce til they give us a version 
                 announceFileTo($v,$finfo);
             }
             ++$count;
@@ -1950,7 +1951,7 @@ sub plProcessChunkRequestAndCreateReply {
 
     my $endpos = $filepos + length($chunk);
     if ($endpos == $plinfo->{fileLength}) {
-        DPSTD("LAST CHUNK ($endpos) OF $plinfo->{filePath} TO ".getDirName($dir));
+        DPSTD("LAST CHUNK ($endpos/$filepos) OF $plinfo->{filePath} TO ".getDirName($dir));
         if ($xsumopt eq "") {
             DPSTD("WHY IS THERE NO FINAL XSUM HERE?");
         }
