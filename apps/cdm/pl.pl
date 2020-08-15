@@ -1985,36 +1985,33 @@ sub plProcessChunkReplyAndCreateNextRequest {
     }
 
     my $nowat = plsWriteChunk($plinfo,$chunk,$filepos);
-    if (defined($nowat)) {
-        
-        $filepos += length($chunk);
-        if ($nowat != $filepos) {
-            DPSTD(sprintf("PD: LENGTH MISMATCH nowat=%d, filepos=%d, length(chunk)=%d",
-                          $nowat, $filepos, length($chunk)));
-            die "FAILONGO";
-            return undef;
-        }
-
-        if ($filepos == $plinfo->{fileLength} && $xsumopt ne "" && length($chunk) == 0) {
-            DPSTD("RECVD LAST OF $inboundTag $plinfo->{fileName}");
-            return ("",$plinfo);
-        }
-
-        # Make request for next chunk!
-
-        my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
-        if (!defined $chunkpacket) {
-            DPDBG("NO CHUNKS");
-            return ("",$plinfo);
-        }
-        {
-            my $requestHZ = 25; # Limit request rate a little bit
-            my $rateLimiterUsec = int(1_000_000/$requestHZ);
-            Time::HiRes::usleep($rateLimiterUsec);
-        }
-        return ($chunkpacket,$plinfo);
+    return undef unless defined $nowat;
+    
+    $filepos += length($chunk);
+    if ($nowat != $filepos) {
+        DPSTD(sprintf("PD: LENGTH MISMATCH nowat=%d, filepos=%d, length(chunk)=%d",
+                      $nowat, $filepos, length($chunk)));
+        die "FAILONGO";
+        return undef;
     }
-    return ("",$plinfo);
+
+    if ($filepos == $plinfo->{fileLength} && $xsumopt ne "" && length($chunk) == 0) {
+        DPSTD("RECVD LAST OF $inboundTag $plinfo->{fileName}");
+        return ("",$plinfo);
+    }
+
+    # Make request for next chunk!
+    my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
+    if (!defined $chunkpacket) {
+        DPDBG("NO CHUNKS");
+        return ("",$plinfo);
+    }
+    {
+        my $requestHZ = 25; # Limit request rate a little bit
+        my $rateLimiterUsec = int(1_000_000/$requestHZ);
+        Time::HiRes::usleep($rateLimiterUsec);
+    }
+    return ($chunkpacket,$plinfo);
 }
 
 sub plProcessChunkReply {
