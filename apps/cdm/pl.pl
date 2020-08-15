@@ -1972,6 +1972,7 @@ sub plsCreateChunkRequestPacket {  # Pick from all 'valid' providers
         my $prec = $providermap->{$dir};
         my ($precdir,$tag,$pfx,$sage,$rage) = @{$prec};
         my $votes = 1;
+        next if $filepos >= $pfx;
         if (clacksAge($rage) < 20) {  # Among those we've heard from lately,
             $votes += clacksAge($sage); # Favor the ones we haven't asked as much
         }
@@ -2041,7 +2042,7 @@ sub plProcessChunkReplyAndCreateNextRequest {
 #    my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
     my $chunkpacket = plsCreateChunkRequestPacket($plinfo,$filepos);
     if (!defined $chunkpacket) {
-        DPDBG("NO CHUNKS");
+        DPSTD("NO CHUNK REQ?");
         return undef;
     }
     {
