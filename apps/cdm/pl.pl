@@ -1997,7 +1997,7 @@ sub plProcessChunkReplyAndCreateNextRequest {
 
         if ($filepos == $plinfo->{fileLength} && $xsumopt ne "" && length($chunk) == 0) {
             DPSTD("RECVD LAST OF $inboundTag $plinfo->{fileName}");
-            return "";
+            return ("",$plinfo);
         }
 
         # Make request for next chunk!
