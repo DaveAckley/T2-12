@@ -1547,7 +1547,12 @@ use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 my %plFILEtoPLINFO;         # filename -> plinfo
 my %plOUTBOUNDTAGtoPLINFO;  # outboundTag -> plinfo
-my %plFILEtoPROVIDER; # filename -> {dir -> "PREC"[inboundtag prefix sage rage ..] }
+my %plFILEtoPROVIDER; # filename -> {dir -> "PREC"[dir inboundtag prefix sage rage ..] }
+use constant PREC_PDIR => 0;
+use constant PREC_ITAG => 1;
+use constant PREC_PFXL => 2;
+use constant PREC_SAGE => 3;
+use constant PREC_RAGE => 4;
 my %plPROVIDERtoFILE; # dir -> {tag -> filename}
 
 my $plSPINNER = int(rand(256)); # init 0..255
@@ -1686,7 +1691,7 @@ sub plCreateChunkRequestPacket {
     my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
     my ($precdir,$tag,$pfx,$sage,$rage) = @{$prec};
     die unless $dir == $precdir;
-    $prec->[3] = now(); # [3] sage is last time we sent a request
+    $prec->[PREC_SAGE] = now(); # [3] sage is last time we sent a request
     DPDBG("PRECQ plCreateChunkRequestPacket($filename,$filepos,$precdir,$tag,$pfx,$sage,$rage)");
     return undef if $filepos > $pfx;
     my $pipelineOperationsCode = "P";
@@ -1867,17 +1872,17 @@ sub plProcessPrefixAvailability {
     }
     my $filename = $plinfo->{fileName};
     my $prec = plGetProviderRecordForFilenameAndDir($filename, $dir);
-    die if $prec->[0] != $dir;
-    if ($prec->[1] != $inboundTag) {
-        if ($prec->[1] != 0) {
-            DPSTD("PA: Overwriting old tag '$prec->[1]' for $filename from $dir with '$inboundTag'");
+    die if $prec->[PREC_PDIR] != $dir;
+    if ($prec->[PREC_ITAG] != $inboundTag) {
+        if ($prec->[PREC_PFXL] != 0) {
+            DPSTD("PA: Overwriting old tag '$prec->[PREC_ITAG]' for $filename from $dir with '$inboundTag'");
         }
-        $prec->[1] = $inboundTag;  # set up tag
-        $prec->[2] = -1;
-        $prec->[3] = 0;  # sage refreshes when we send a chunk request
-        $prec->[4] = 0;  # rage refreshes when we recv a chunk reply
+        $prec->[PREC_ITAG] = $inboundTag;  # set up tag
+        $prec->[PREC_PFXL] = -1;
+        $prec->[PREC_SAGE] = 0;  # sage refreshes when we send a chunk request
+        $prec->[PREC_RAGE] = 0;  # rage refreshes when we recv a chunk reply
     }
-    $prec->[2] = $prefixlen;  # and actual availability
+    $prec->[PREC_PFXL] = $prefixlen;  # and actual availability
 
     ### Start the pipeline after we get a prefix, not just an announcement.
     my $commonref = getSubdirModel($commonSubdir);
@@ -1904,18 +1909,18 @@ sub plsMaybeSendChunkRequest {
     die unless defined $dir && defined $plinfo;
     my $filename = $plinfo->{fileName};
     my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
-    my $sage = $prec->[3];
-    if (clacksOld($sage, 3)) {
+    my $sage = $prec->[PREC_SAGE];
+    if (clacksAge($sage) >= 3) {
         my $len = plsGetFileActualLength($plinfo);
-        if ($len < $prec->[2]) {  # Don't ask for more than they got
+        if ($len < $prec->[PREC_PFXL]) {  # Don't ask for more than they got
             my $filepath = $plinfo->{filePath};
-            DPSTD("REQUESTING $filepath:$len FROM $dir:$prec->[2] AT AGE ".(now() - $sage));
+            DPSTD("REQUESTING $filepath:$len FROM $dir:$prec->[PREC_PFXL] AT AGE ".clacksAge($sage));
             my $chunkpacket = plCreateChunkRequestPacket($dir,$filename,$len);
             if (!defined $chunkpacket) {
                 DPDBG("NO CHUNKS");
                 return;
             }
-            $prec->[3] = now(); # sage refreshes when we send a request
+            $prec->[PREC_SAGE] = now(); # sage refreshes when we send a request
             writePacket($chunkpacket);
         }
     }
@@ -1970,7 +1975,8 @@ sub plsCreateChunkRequestPacket {  # Pick from all 'valid' providers
     my ($windir,$tot) = (undef,0);
     foreach my $dir (keys %$providermap) {
         my $prec = $providermap->{$dir};
-        my ($precdir,$tag,$pfx,$sage,$rage) = @{$prec};
+        my ($pfx,$sage,$rage) =
+            ($prec->{PREC_PFXL},$prec->{PREC_SAGE},$prec->{PREC_RAGE});
         my $votes = 1;
         next if $filepos >= $pfx;
         if (clacksAge($rage) < 20) {  # Among those we've heard from lately,
@@ -2005,7 +2011,7 @@ sub plProcessChunkReplyAndCreateNextRequest {
     
     my $filename = $plinfo->{fileName};
     my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
-    $prec->[4] = now(); # rage refreshes when we recv a chunk replay
+    $prec->[PREC_RAGE] = now(); # rage refreshes when we recv a chunk replay
 
 #    print "RPYplinfo1 ".Dumper(\$plinfo);
 
@@ -2117,6 +2123,7 @@ sub plProcessFileAnnouncement {
 #    print "plProcessFileAnnouncement GOGOGOGOG".Dumper($plinfo);
     plPutOnInboundTag($inboundTag,$dir,$plinfo);
     my $prec = plGetProviderRecordForFilenameAndDir($filename, $dir);
+    $prec->[PREC_RAGE] = now(); # Let's say we've heard from them
 #    print "PREC ".Dumper($prec);
     plCheckAnnouncedFile($filename,$filelength,$filechecksum,$fileinnertimestamp,$inboundTag,$dir)
 }
