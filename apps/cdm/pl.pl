@@ -1946,8 +1946,10 @@ sub plProcessChunkRequestAndCreateReply {
 sub plProcessChunkRequest {
     my ($dir,$bref) = @_;
     my $pkt = plProcessChunkRequestAndCreateReply($dir,$bref);
-    DPPKT("CHUNKREPLY($pkt)");
-    writePacket($pkt);
+    if (defined($pkt)) {
+        DPPKT("CHUNKREPLY($pkt)");
+        writePacket($pkt);
+    }
 }
 
 sub plProcessChunkReplyAndCreateNextRequest {
