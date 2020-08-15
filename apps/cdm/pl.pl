@@ -1976,7 +1976,7 @@ sub plsCreateChunkRequestPacket {  # Pick from all 'valid' providers
     foreach my $dir (keys %$providermap) {
         my $prec = $providermap->{$dir};
         my ($pfx,$sage,$rage) =
-            ($prec->{PREC_PFXL},$prec->{PREC_SAGE},$prec->{PREC_RAGE});
+            ($prec->[PREC_PFXL],$prec->[PREC_SAGE],$prec->[PREC_RAGE]);
         my $votes = 1;
         next if $filepos >= $pfx;
         if (clacksAge($rage) < 20) {  # Among those we've heard from lately,
