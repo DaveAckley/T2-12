@@ -2004,7 +2004,7 @@ sub plProcessChunkReplyAndCreateNextRequest {
     my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
     if (!defined $chunkpacket) {
         DPDBG("NO CHUNKS");
-        return ("",$plinfo);
+        return undef;
     }
     {
         my $requestHZ = 25; # Limit request rate a little bit
