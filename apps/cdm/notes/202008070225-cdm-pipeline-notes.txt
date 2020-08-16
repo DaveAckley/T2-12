@@ -1,4 +1,4 @@
-{76}  -*- text -*- 
+{89}  -*- text -*- 
 [0:
 
 Fri Aug  7 02:25:10 2020 OK, so having a second power zone drives home
@@ -1008,3 +1008,110 @@ Now going to set up a third tile to see if we can see the pipeline
 actually begin to flow.
 
 :75]
+[76:
+
+Sat Aug 15 07:05:21 2020 OK, so have had a bunch of bug fixes and
+commits to push to my little three tile pipeline, but we're making
+progress.
+
+Current issue: We have an 'age' field in the provider record, but no
+equivalent in the plinfo.  So when we're doing plDoBackgroundWork, we
+end up requesting inbound chunks that are already in flight, and end
+up getting redundant chunks delivered.  Which we do handle, and life
+goes on, but it blows bubbles in the pipeline sometimes, and burns up
+bandwidth for no real good purpose in any case.
+
+Two thoughts come to mind:
+ - Write something like 'plFindMostRecentProviderRecord', and don't do
+   a background chunk request unless the most recent provider's age is
+   greater than some small timeout.
+
+[78: Sun Aug 16 00:32:01 2020 Made plsCreateChunkRequestPacket, so
+DONE :78] - (Or/and,) Modify plProcessChunkReplyAndCreateNextRequest to pick
+   randomly from among all apparently relevant providers, instead of
+   always going back to the same well.  That should help keep the
+   provider records refreshed, and possibly improve bandwidth
+   distribution a bit.
+
+:76]
+[77:
+
+Sun Aug 16 00:31:06 2020 Well, it's getting to be time to cut over and
+make our pl.pl spike into the new cdm.pl.  [79:
+
+Sun Aug 16 00:33:20 2020 We still have a bunch of troubles in the
+code, but it appears that with enough timeouts and restarts, the files
+do get through the pipeline eventually.
+
+[80:
+
+Sun Aug 16 00:34:02 2020 So the deployment plan would be something
+like this:
+
+[82: Sun Aug 16 02:02:31 2020
+DONE :82] (1) Rename pl.pl to cdm.pl on the keymaster.
+[83: DONE  :83] (2) Generate a new cdmd-T2-12.mfz.[81: Sun Aug 16 01:55:32 2020 Don't
+     forget to update cdmd-T2-12.mfz-cdm-install-tag.dat on the
+     keymaster before modifying /cdm/common! :81]
+[86:
+DONE :86] (3) Test to see how that deploys on my three tile pipeline.  In
+     particular, with the rest of the pipeline rebooted so they're
+     running unmodified old cdm.pl when the experiment starts.
+[87: Found some (see :85:) but
+DONE :87] (4) Keep an eye out for any sticking points.
+ (5) If/when all goes well enough, set up the camera for a time lapse
+     attempt to watch T2-12 spread through the two power zones
+ (6) Move the two tiles (but not the keymaster) back into zone 1 where
+     they came from.
+ (7) Let it rip
+ (8) If/when all goes well enough, do the same with a new version of
+     cdmd-MFM.mfz, and see how long the two-zone update takes.
+ (9) Spontaneous human combustion.
+
+:80]
+
+:79]
+
+:77]
+[84:
+
+Sun Aug 16 02:11:52 2020 Note we get this on the the keymaster:
+
+    Aug 16 02:07:56 beaglebone cdm.sh[18812]: INSTALL found candidate T2-12 -> /home/t2
+    Aug 16 02:07:56 beaglebone cdm.sh[18812]: INSTALL T2-12: Candidate appears outdated (1596494456 vs 1597564884)
+    Aug 16 02:07:56 beaglebone cdm.sh[18812]: INSTALL T2-12: NOT INSTALLING. Delete /home/t2/cdmd-T2-12.mfz-cdm-install-tag.dat to allow this install
+    Aug 16 02:07:56 beaglebone cdm.sh[18812]:  pipeline initted: cdmd-T2-12.mfz => 1690802263
+
+after we modified the tag file but hadn't updated /cdm/common.  Thank
+you Mr. Past Programmer.
+
+Here we go with # cp /home/t2/cdmd-T2-12.mfz /cdm/common/
+
+:84]
+[85:
+
+Sun Aug 16 04:10:09 2020 Well, had some weird trapping state where an
+old original cdm.pl responded (apparently properly) to a traditional
+file announcement sent (apparently properly) to it from a new version
+2 cdm, but after receiving only a few chunks into /cdm/pending, the
+process apparently stalled indefinitely.  Had to restart the old
+original cdm.pl, at which point a second traditional transfer attempt
+did succeed.
+
+So there may be more such as the pipelining cdm spreads across the
+grid.  We shall see.
+
+But, I've cleaned out all the test .MFZs, and I think we're about
+ready to transfer the end of my test pipeline to the actual grid and
+see how far we get.
+
+:85][88:
+
+Sun Aug 16 05:18:47 2020 Well, it's looking like we have to manually
+reboot the 'frontier' version 1 cdm tiles after their neighbors
+upgrade.  That's a drag but living with it for now.
+
+Need to shut down the keymaster to move its wall wart over to power
+zone two..
+
+:88]
