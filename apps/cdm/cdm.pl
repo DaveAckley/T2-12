@@ -16,6 +16,16 @@ $SIG{__DIE__} = sub {
     Carp::confess ;
 };
 
+use constant CDM_PROTOCOL_VERSION_PIPELINE => 2;    # 202008140223 Pipeline overlay
+use constant CDM_PROTOCOL_VERSION_ASPINNER => 1;    # Pre-version-protocol version
+use constant CDM_PROTOCOL_VERSION_PREHISTORY => 0;  
+use constant CDM_PROTOCOL_VERSION_UNKNOWN => -1;  
+
+###########
+my $CDM_PROTOCOL_OUR_VERSION = CDM_PROTOCOL_VERSION_PIPELINE;
+###########
+
+my $PIPELINE_ENABLED = 1;
 my $CDM_PKT_BULK_FLAG = 0x80;
 my $CDM_PKT_CDM_CMD = 0x03; # was ^C for CDM.  
 my $CDM_PKT_TYPE = $CDM_PKT_BULK_FLAG | $CDM_PKT_CDM_CMD; # Now it's 0x83 for 'no break here'??
@@ -28,13 +38,13 @@ my $mode = O_RDWR|O_NONBLOCK;
 
 my @dirnames = ("NT", "NE", "ET", "SE", "ST", "SW", "WT", "NW");
 
-my $DEBUG_FLAG_PACKETS = 1;
-my $DEBUG_FLAG_DEBUG = $DEBUG_FLAG_PACKETS<<1;
-my $DEBUG_FLAG_STANDARD = $DEBUG_FLAG_DEBUG<<1;
-my $DEBUG_FLAG_VERBOSE = $DEBUG_FLAG_STANDARD<<1;
-my $DEBUG_FLAG_ALL = 0xffffffff;
+use constant DEBUG_FLAG_PACKETS => 1;
+use constant DEBUG_FLAG_DEBUG => DEBUG_FLAG_PACKETS<<1;
+use constant DEBUG_FLAG_STANDARD => DEBUG_FLAG_DEBUG<<1;
+use constant DEBUG_FLAG_VERBOSE => DEBUG_FLAG_STANDARD<<1;
+use constant DEBUG_FLAG_ALL => 0xffffffff;
 
-my $DEBUG_FLAGS = $DEBUG_FLAG_STANDARD;
+my $DEBUG_FLAGS = DEBUG_FLAG_STANDARD; ## = DEBUG_FLAG_ALL
 
 #my %triggerMFZs = ( 'cdm-triggers.mfz' => &updateTriggers );
 # Hardcode deletions only, for now
@@ -59,10 +69,10 @@ sub DPF {
     print "$msg\n";
 }
 
-sub DPPKT { DPF($DEBUG_FLAG_PACKETS,shift); }
-sub DPSTD { DPF($DEBUG_FLAG_STANDARD,shift); }
-sub DPVRB { DPF($DEBUG_FLAG_VERBOSE,shift); }
-sub DPDBG { DPF($DEBUG_FLAG_DEBUG,shift); }
+sub DPPKT { DPF(DEBUG_FLAG_PACKETS,shift); }
+sub DPSTD { DPF(DEBUG_FLAG_STANDARD,shift); }
+sub DPVRB { DPF(DEBUG_FLAG_VERBOSE,shift); }
+sub DPDBG { DPF(DEBUG_FLAG_DEBUG,shift); }
 
 sub getDirName {
     my $dir = shift;
@@ -89,7 +99,7 @@ sub readPacket {
     my $count;
     if (defined($count = sysread(PKTS, $pkt, 512))) {
         return if $count == 0;
-        DPPKT("GOT PACKET($pkt)");
+        DPPKT("GOT PACKET[$count]($pkt)");
         return $pkt;
     }
     return undef;
@@ -124,14 +134,17 @@ sub closePackets {
     close(PKTS) or die "Can't close $pktdev: $!";
 }
 
+#my $baseDir = "./cdmDEBUG";
 my $baseDir = "/cdm";
 my $commonSubdir = "common";
 my $pendingSubdir = "pending";
 my $logSubdir = "log";
 my $pubkeySubdir = "public_keys";
-my @subDirs = ($commonSubdir, $pendingSubdir,$logSubdir,$pubkeySubdir);
+my $pipelineSubdir = "pipeline";
+my @subDirs = ($commonSubdir, $pendingSubdir,$logSubdir,$pubkeySubdir,$pipelineSubdir);
 my $commonPath = "$baseDir/$commonSubdir";
-my $pendingPath = "$baseDir/pending";
+my $pendingPath = "$baseDir/$pendingSubdir";
+my $pipelinePath = "$baseDir/$pipelineSubdir";
 
 my $mfzrunProgPath = "/home/t2/MFM/bin/mfzrun";
 
@@ -253,9 +266,10 @@ sub checkMFZDataFor {
     my $finfo = shift;
     return 0 if defined $finfo->{seqno}; # Or some refreshment maybe?
 
-    #### REPLACE THIS WITH 'mfzrun VERIFY' ONCE AVAILABLE
     my $path = getFinfoPath($finfo);
-#    my $cmd = "echo Q | $mfzrunProgPath -kd /cdm $path list";
+    # 'echo Q' below is needed if there's a problem with
+    # /cdm/public_keys (or with the signature of $path), but we don't
+    # want the subprocess to hang on input ever if we can avoid it
     my $cmd = "echo Q | $mfzrunProgPath -kd /cdm $path VERIFY";
     my $output = `$cmd`;
 
@@ -512,20 +526,41 @@ sub checkTriggersAndAnnounce {
     my $trigref = $triggerMFZs{$filename};
     &$trigref($finfo) if defined($trigref);
 
+    my $plinfo = plSetupCommonFile($finfo); # Something changed on this guy
+
     my $count = 0;
     foreach my $k (shuffle(keys %hoodModel)) {
         my $v = $hoodModel{$k};
         if ($v->{isAlive}) {
-            announceFileTo($v,$finfo);
+            if ($v->{cdmProtocolVersion} >= CDM_PROTOCOL_VERSION_PIPELINE) {
+                plAnnounceFileTo($v,$plinfo);
+            } elsif ($v->{cdmProtocolVersion} > CDM_PROTOCOL_VERSION_UNKNOWN) {
+                # Don't announce til they give us a version 
+                announceFileTo($v,$finfo);
+            }
             ++$count;
         }
     }
-    DPSTD("ANNOUNCED $filename to $count");
+    DPPKT("ANNOUNCED $filename to $count");
+}
+
+sub assignSeqnoAndCaptureModtime {
+    my ($finfo,$newpath) = @_;
+    my $filename = $finfo->{filename} or die;
+    my $seqno = assignSeqnoForFilename($filename);
+    $finfo->{seqno} = $seqno;
+    $finfo->{modtime} = -M $newpath;
+    return $seqno;
+}
+
+sub checkAndReleasePendingFileAndAnnounce {
+    my $finfo = shift or die;
+    checkAndReleasePendingFile($finfo);
+    checkTriggersAndAnnounce($finfo);
 }
 
 sub checkAndReleasePendingFile {
-    my $finfo = shift;
-
+    my $finfo = shift or die;
     DPDBG("checkAndReleasePendingFile $finfo");
 
     # Make sure the checksum matches
@@ -547,16 +582,13 @@ sub checkAndReleasePendingFile {
     my $filename = $finfo->{filename};
     my $pref = getSubdirModel($pendingSubdir);
     my $cref = getSubdirModel($commonSubdir);
-    my $seqno = assignSeqnoForFilename($filename);
-    $finfo->{seqno} = $seqno;
-    $finfo->{modtime} = -M $newpath;
+    my $seqno = assignSeqnoAndCaptureModtime($finfo,$newpath);
     DPDBG("checkAndReleasePendingFile MFZ modtime ".$finfo->{modtime});
 
     delete $pref->{$filename}; # Remove metadata from pending
     $cref->{$filename} = $finfo; # Add it to common
     DPSTD("RELEASED $filename");
 
-    checkTriggersAndAnnounce($finfo);
 }
 
 sub lexDecode {
@@ -585,11 +617,16 @@ sub lexEncode {
 
 sub generateSKU {
     my ($finfo, $seqno) = @_;
+    return generateSKUFromParts($finfo->{filename},$finfo->{checksum},$finfo->{innerTimestamp},$seqno);
+}
+
+sub generateSKUFromParts {
+    my ($filename, $checksum, $timestamp, $seqno) = @_;
     my $sku = sprintf("%s%02x%02x%03d%s",
-                      substr($finfo->{filename},0,1),
-                      ord(substr($finfo->{checksum},0,1)),
-                      ord(substr($finfo->{checksum},1,1)),
-                      $finfo->{innerTimestamp}%1000,
+                      substr($filename,0,1),
+                      ord(substr($checksum,0,1)),
+                      ord(substr($checksum,1,1)),
+                      $timestamp%1000,
                       lexEncode($seqno));
     DPDBG("SKU($sku)");
     return $sku;
@@ -649,7 +686,7 @@ sub checkPendingFile {
     my $len = $finfo->{length};
     my $cur = $finfo->{currentLength};
     if ($len == $cur) {
-        checkAndReleasePendingFile($finfo);
+        checkAndReleasePendingFileAndAnnounce($finfo);
         return;
     }
     if ($finfo->{timeCount} > 0) {
@@ -772,9 +809,12 @@ sub checkCommonFile {
     if ($announceOK) {
         my $announcements = 0;
         foreach my $ngb (getRandomAliveNgbList()) {
-            announceFileTo($ngb,$finfo);
+            my $ngbversion = $ngb->{cdmProtocolVersion};
+            announceFileTo($ngb,$finfo)
+                if $ngbversion > CDM_PROTOCOL_VERSION_UNKNOWN  # Don't announce til they give us a version
+                && $ngbversion < CDM_PROTOCOL_VERSION_PIPELINE; # Don't be traditional if pipeline will do
             ++$announcements;
-            last if oneIn(3);
+            last if oneIn(2);
         }
         return 1 if $announcements > 0;
     }
@@ -895,6 +935,7 @@ sub newNgb {
         clacksSinceAliveRcvd => $longAgo,
         isAlive => 0,
         contentOffered => {}, # seqno -> filename
+        cdmProtocolVersion => -1, # No version information received
     };
 }
 
@@ -977,6 +1018,7 @@ sub doBackgroundWork {
     my $ngb = getRandomNgb();
     if ($ngb->{isAlive} && rand(++$ngb->{clacksSinceAliveRcvd}) > 50) {
         $ngb->{isAlive} = 0;
+        $ngb->{cdmProtocolVersion} = -1;  # Back to unknown
         DPSTD(getDirName($ngb->{dir})." is dead");
     }
     
@@ -985,7 +1027,7 @@ sub doBackgroundWork {
 
         $ngb->{clacksSinceAliveSent} = 0;
         $alivetag = ($alivetag + 1)&0xff;
-        sendCDMTo($ngb->{dir},'A',chr($alivetag));
+        sendCDMTo($ngb->{dir},'A',chr($alivetag).chr($CDM_PROTOCOL_OUR_VERSION));
     }
 
     # Record our liveness info for t2viz to viz
@@ -1010,9 +1052,12 @@ sub doBackgroundWork {
 
     # PENDING MGMT
     checkPendingFile();
+
+    # PIPELINE MGMT
+    plDoBackgroundWork();
 }
 
-sub announceFileTo {
+sub createAnnounceFilePacket {
     my ($aliveNgb,$finfo) = @_;
 #    print STDERR " ANCE".$aliveNgb->{dir}.": ".$finfo->{filename}."+".$finfo->{innerTimestamp}."\n";
 
@@ -1025,6 +1070,12 @@ sub announceFileTo {
     $pkt = addLenArgTo($pkt,$finfo->{innerTimestamp});
     $pkt = addLenArgTo($pkt,$finfo->{seqno});
     DPPKT("ANNOUNCE($pkt)");
+    return $pkt;
+}
+
+sub announceFileTo {
+    my ($aliveNgb,$finfo) = @_;
+    $pkt = createAnnounceFilePacket($aliveNgb,$finfo);
     writePacket($pkt);
 }
 
@@ -1034,20 +1085,31 @@ sub touchFile {
     close TMP or die "Can't close touched $path: $!";
 }
 
-sub checkAnnouncedFile {
-    my ($filename,$contentLength,$checksum,$timestamp,$seqno,$dir) = @_;
-    die unless defined $dir;
+sub checkIfFileInCommon {
+    my ($filename,$checksum,$timestamp) = @_;
 
     ## Ignore complete and matched in common
     my $commonref = getSubdirModel($commonSubdir);
     my $finfo = $commonref->{$filename};
-    return if # ignore announcement if the file
+    return 1 if # ignore announcement if the file
         defined $finfo               # exists
         && defined $finfo->{seqno}   # and is complete
         && $finfo->{checksum} eq $checksum;  # and matches
-    return if # also ignore announcement if the file
+    return 1 if # also ignore announcement if the file
         defined $finfo               # exists
         && !defined $finfo->{seqno}; # but isn't complete
+    return 0;
+}
+
+sub checkAnnouncedFile {
+    my ($filename,$contentLength,$checksum,$timestamp,$seqno,$dir) = @_;
+    die unless defined $dir;
+
+    DPDBG("CHECKING Ignore complete and matched in common");
+    return if checkIfFileInCommon($filename,$checksum,$timestamp);
+        
+    my $commonref = getSubdirModel($commonSubdir);
+    my $finfo = $commonref->{$filename};
 
     my $completeButCommonSeemsOlder =
         defined($finfo) 
@@ -1128,6 +1190,65 @@ sub processFileAnnouncement {
     }
     DPPKT("AF(fn=$filename,dir=$dir,ts=$timestamp,seq=$seqno)");
     checkAnnouncedFile($filename,$contentLength,$checksum,$timestamp,$seqno,$dir);
+}
+
+sub plsReadFile {
+    my ($plinfo, $filepos, $length) = @_;
+    my $path = $plinfo->{filePath};
+    open HDL, "<", $path or die "plsReadFile $path: $!";
+    seek HDL, $filepos, Fcntl::SEEK_SET;
+    my $data = "";
+    my $count = read HDL,$data,$length;
+    if (!defined $count) {
+        DPSTD("UNEXPECTED EOF AT $path+$filepos");
+    }
+    close HDL or die "Can't close $path: $!";
+    return $data;
+}
+
+sub plsCheckXsumStatus {
+    my ($plinfo,$xsumopt) = @_;
+    my $dig = $plinfo->{xsumDigester}->clone->b64digest();
+    return $dig eq $xsumopt;
+}
+
+sub plsGetFileActualLength {
+    my $plinfo = shift or die;
+    my $path = $plinfo->{filePath};
+    my $len = -s $path;
+    return $len;
+}
+
+sub plsWriteChunk {
+    my ($plinfo, $chunk, $atpos) = @_;
+    die unless defined $atpos;
+    my $path = $plinfo->{filePath};
+    open HDL, ">>", $path or die "plsWriteChunk $path: $!";
+    my $filepos = tell HDL;
+    if ($atpos != $filepos) {
+        DPSTD("Ignoring out of sequence chunk at $atpos; file at $filepos")
+            if $atpos+length($chunk) != $filepos; # Be quiet about immediate redundancies
+        return undef;
+    }
+    print HDL $chunk;
+    $filepos = tell HDL; # update
+    close HDL or die "Can't close $path: $!";
+    $plinfo->{xsumDigester}->add($chunk);
+    return $filepos;
+}
+
+sub plsGetChunkAt {
+    my ($plinfo, $filepos) = @_;
+    my $chunkLen = 180;
+    my ($markpos, $xsum) = plsFindXsumInRange($plinfo, $filepos, $filepos+$chunkLen);
+    if (defined $xsum) {
+        if ($markpos > $filepos) {
+            $xsum = undef; # Don't return xsum til it's first in chunk
+            $chunkLen = $markpos - $filepos;   # but change length so that it will be first next time
+        }
+    } 
+    my $chunk = plsReadFile($plinfo, $filepos, $chunkLen);
+    return ($chunk, $xsum);
 }
 
 sub processChunkRequest {
@@ -1294,6 +1415,20 @@ sub declareNgbDirAlive {
     }
 }
 
+sub processAlivePacket {
+    my $bref = shift or die;
+    my @bytes = @$bref;
+    my $pktlen = scalar(@bytes); # pktlen known >= 3
+    my $srcDir = ord($bytes[0])&0x07;
+    my $ngb = getNgbInDir($srcDir);
+    my $ngbversion = $pktlen < 5 ? 1 : ord($bytes[4]);
+
+    if ($ngb->{cdmProtocolVersion} != $ngbversion) {
+        DPSTD(getDirName($srcDir)." RUNNING VERSION $ngbversion");
+        $ngb->{cdmProtocolVersion} = $ngbversion;
+    }
+}
+
 sub processPacket {
     my $pkt = shift;
     if (length($pkt) < 3) {
@@ -1310,9 +1445,13 @@ sub processPacket {
     if ($bytes[1] eq $CDM_PKT_TYPE_BYTE) {
         declareNgbDirAlive($srcDir);
 
+        if ($bytes[2] eq "P" && $PIPELINE_ENABLED) {
+            plProcessPacket(\@bytes);
+            return;
+        }
+
         if ($bytes[2] eq "A") {
-            # Handle old len3 type A packets
-            DPPKT(sprintf("Rcvd 'A' from %d uniq %02x\n",$srcDir,defined($bytes[3]) ? ord($bytes[3]) : 0));
+            processAlivePacket(\@bytes);
             return;
         }
         if ($bytes[2] eq "F") {
@@ -1403,47 +1542,1008 @@ sub eventLoop {
     }
 }
 
-sub main {
+#####################
+### PIPELINE IMPLEMENTATION
+use Data::Dumper;
+$Data::Dumper::Sortkeys = 1;
+my %plFILEtoPLINFO;         # filename -> plinfo
+my %plOUTBOUNDTAGtoPLINFO;  # outboundTag -> plinfo
+my %plFILEtoPROVIDER; # filename -> {dir -> "PREC"[dir inboundtag prefix sage rage ..] }
+use constant PREC_PDIR => 0;
+use constant PREC_ITAG => 1;
+use constant PREC_PFXL => 2;
+use constant PREC_SAGE => 3;
+use constant PREC_RAGE => 4;
+my %plPROVIDERtoFILE; # dir -> {tag -> filename}
+
+my $plSPINNER = int(rand(256)); # init 0..255
+
+sub plNextSpinnerValue { 
+    $plSPINNER = 1 if ++$plSPINNER >= 128;  # SKIPS ZERO AND 128..255
+    return $plSPINNER;
+}
+
+sub plNewTag {
+    my $spin = plNextSpinnerValue();
+    my $rnd = int(rand(1<<24));
+    return ($spin<<24)|$rnd;
+}
+
+sub plAddTagTo {
+    my ($str,$tag) = @_;
+    die("Undefined or zero tag supplied at '$str'") unless defined $tag && $tag != 0;
+    my $netorder = pack("N",$tag); # Bigendian
+    $str .= $netorder;
+    return $str;
+}
+
+sub plGetTagArgFrom {
+    my ($lenpos,$bref) = @_;
+    return (0, $lenpos) if (scalar(@{$bref})) < $lenpos+4;
+    my $repack = pack("C4",map(ord,@$bref[$lenpos..($lenpos+4-1)]));
+    my $tag = unpack("N",$repack);
+    return ($tag, $lenpos+4);
+}
+
+sub plInitTagsAndProviders {
+    return unless $PIPELINE_ENABLED;
+    %plFILEtoPROVIDER = ();
+    %plPROVIDERtoFILE = ();
+}
+
+sub plPreinitCommonFiles {
+    return unless $PIPELINE_ENABLED;
+    DPSTD("PREINIT COMMON FILE PIPELINES");
+    my $cref = getSubdirModel($commonSubdir);
+    my $deaders = 0;
+    my @finfos = values %{$cref};
+    foreach my $finfo (@finfos) {
+        plSetupCommonFile($finfo);
+    }
+}
+
+sub plGetFilenameFromInboundTag {
+    my ($tag,$dir) = @_;
+    defined $dir or die;
+    my $tagmap = $plPROVIDERtoFILE{$dir};
+    return undef unless defined $tagmap;
+    return $tagmap->{$tag};
+}
+
+sub plGetPlinfoFromInboundTag {
+    my ($tag,$dir) = @_;
+    defined $dir or die;
+    my $filename = plGetFilenameFromInboundTag($tag,$dir);
+    return undef unless defined $filename;
+#    print "plP2FZZ ".Dumper(\%plPROVIDERtoFILE);
+#    print "plF2PZZ ".Dumper(\%plFILEtoPROVIDER);
+
+    return plFindPLS($filename);
+}
+
+sub plPutFilenameOnInboundTag {
+    my ($tag,$dir,$filename) = @_;
+    defined $filename or die;
+    my $tagmap = $plPROVIDERtoFILE{$dir};
+    if (!defined $tagmap) {
+        $tagmap = {};
+        $plPROVIDERtoFILE{$dir} = $tagmap;
+    }
+    $tagmap->{$tag} = $filename;
+}
+
+sub plPutOnInboundTag {
+    my ($tag,$dir,$plinfo) = @_;
+    defined $plinfo or die;
+    my $filename = $plinfo->{fileName};
+    defined $filename or die;
+    plPutFilenameOnInboundTag($tag,$dir,$filename);
+}
+
+sub plFindPLS {
+    my $name = shift or die;
+    my $plinfo = $plFILEtoPLINFO{$name};
+    return $plinfo;
+}
+
+sub plFindPLSFromOutboundTag {
+    my $obtag = shift or die;
+    my $plinfo = $plOUTBOUNDTAGtoPLINFO{$obtag};
+    return $plinfo;
+}
+
+
+sub plPathFromName {
+    my $name = shift or die;
+    return "$pipelinePath/$name";
+}
+
+sub plNewPLS {
+    my $name = shift or die;
+    my $path = plPathFromName($name);
+
+    my %ret = (
+        finfo => undef,
+        fileName => $name,
+        filePath => undef,
+        fileLength => -1,
+        fileInnerTimestamp => -1,
+        fileChecksum => "",
+        prefixLengthAvailable => 0,
+        xsumMap => [],
+        xsumDigester => Digest::SHA->new(256),
+        outboundTag => 0
+        );
+    
+    return \%ret;
+}
+
+# Call at startup
+sub plFlushPipelineDir {
+    my $count = remove_tree($pipelinePath);
+    if ($count > 1) {
+        DPSTD("Flushed $count $pipelinePath files");
+    }
+    %plFILEtoPLINFO = ();
+}
+
+sub plCreateChunkRequestPacket {
+    my ($dir,$filename,$filepos) = @_;
+    my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
+    my ($precdir,$tag,$pfx,$sage,$rage) = @{$prec};
+    die unless $dir == $precdir;
+    $prec->[PREC_SAGE] = now(); # [3] sage is last time we sent a request
+    DPDBG("PRECQ plCreateChunkRequestPacket($filename,$filepos,$precdir,$tag,$pfx,$sage,$rage)");
+    return undef if $filepos > $pfx;
+    my $pipelineOperationsCode = "P";
+    my $chunkRequestCode = "R";
+    my $pkt = chr(0x80+$dir).chr($CDM_PKT_TYPE).$pipelineOperationsCode.$chunkRequestCode;
+    $pkt = plAddTagTo($pkt,$tag);
+    $pkt = addLenArgTo($pkt,$filepos);
+    return $pkt;
+}
+
+sub plCreatePipelinePrefixAvailabilityPacket {
+    my ($aliveNgb,$plinfo) = @_;
+    die unless defined $plinfo->{outboundTag};
+    my $pipelineOperationsCode = "P";
+    my $fileAnnouncementCode = "A";
+    my $pkt = chr(0x80+$aliveNgb->{dir}).chr($CDM_PKT_TYPE).$pipelineOperationsCode.$fileAnnouncementCode;
+    $pkt = plAddTagTo($pkt,$plinfo->{outboundTag});
+    $pkt = addLenArgTo($pkt,$plinfo->{prefixLengthAvailable});
+    DPPKT("PIPELINEPREFIXAVAIL($pkt)");
+    return $pkt;
+}
+
+sub plCreatePipelineFileAnnouncementPacket {
+    my ($aliveNgb,$plinfo) = @_;
+#    print STDERR " ANCE".$aliveNgb->{dir}.": ".$finfo->{filename}."+".$finfo->{innerTimestamp}."\n";
+
+    die unless defined $plinfo->{outboundTag};
+    my $pipelineOperationsCode = "P";
+    my $fileAnnouncementCode = "F";
+    my $pkt = chr(0x80+$aliveNgb->{dir}).chr($CDM_PKT_TYPE).$pipelineOperationsCode.$fileAnnouncementCode;
+    $pkt = plAddTagTo($pkt,$plinfo->{outboundTag});
+    $pkt = addLenArgTo($pkt,$plinfo->{fileName});
+    $pkt = addLenArgTo($pkt,$plinfo->{fileLength});
+    $pkt = addLenArgTo($pkt,$plinfo->{fileInnerTimestamp});
+    $pkt = addLenArgTo($pkt,$plinfo->{fileChecksum});
+#    DPPKT("PIPELINEANNOUNCE($pkt)");
+    return $pkt;
+}
+
+sub plAnnounceFileTo {
+    my ($ngb,$plinfo) = @_;
+    defined $plinfo or die;
+    my $pkt = plCreatePipelineFileAnnouncementPacket($ngb,$plinfo);
+    writePacket($pkt);
+    my $availpacket = plCreatePipelinePrefixAvailabilityPacket($ngb,$plinfo);
+    writePacket($availpacket);
+    DPPKT("ANNOUNCED PIPELINE $plinfo->{outboundTag} => $plinfo->{filePath} TO $ngb->{dir}");
+}
+    
+
+sub plDoBackgroundWork {
+    return unless $PIPELINE_ENABLED;
+    my $ngb = getRandomAliveNgb();
+    return unless
+        defined $ngb &&
+        $ngb->{cdmProtocolVersion} >= CDM_PROTOCOL_VERSION_PIPELINE;
+
+    if (oneIn(2)) {
+        # outbound work
+        my @otags = keys %plOUTBOUNDTAGtoPLINFO;
+        my $otag = $otags[createInt(scalar(@otags))];
+        my $plinfo = plFindPLSFromOutboundTag($otag);
+        defined $plinfo or die;
+        plAnnounceFileTo($ngb,$plinfo)
+            if $plinfo->{prefixLengthAvailable} > 0;
+    } else {
+        # inbound work
+        my @filenames = keys %plFILEtoPLINFO;
+        my $filecount = scalar(@filenames);
+        if ($filecount > 0) {
+            my $filename = $filenames[createInt($filecount)];
+            my $plinfo = plFindPLS($filename);
+            plsMaybeSendChunkRequest($plinfo,$ngb->{dir})
+                if defined $plinfo;
+        }
+    }
+}
+
+sub plSetupCommonFile {
+    my $finfo = shift or die;
+    my $name = $finfo->{filename};
+    $finfo->{checkedLength} == $finfo->{length} or die;
+    if (defined (plFindPLS($name))) {
+        DPSTD("PLS exists for '$name', regenerating");
+    }
+
+    my $path = getFinfoPath($finfo);
+    my $plinfo = plNewPLS($name);
+    $plinfo->{finfo} = $finfo;
+    $plinfo->{filePath} = $path;
+    $plinfo->{fileChecksum} = $finfo->{checksum};
+    $plinfo->{fileLength} = $finfo->{length};
+    $plinfo->{prefixLengthAvailable} = $finfo->{length};
+    $plinfo->{fileInnerTimestamp} = $finfo->{innerTimestamp};
+    $plinfo->{outboundTag} = plNewTag();
+    plsBuildXsumMap($plinfo);
+    plSetPlinfoAsSource($plinfo);
+    DPSTD(" pipeline initted: $name => $plinfo->{outboundTag}");
+    return $plinfo;
+}
+
+## For use with both common/ and pipeline/ files
+sub plSetPlinfoAsSource {
+    my $plinfo = shift or die;
+    my $name = $plinfo->{fileName};
+    my $otag = $plinfo->{outboundTag};
+    die unless defined $name && defined $otag && $otag > 0;
+
+    if (defined $plFILEtoPLINFO{$name}) {
+        DPSTD("Reinitting $name");
+        delete $plFILEtoPLINFO{$name};
+        delete $plOUTBOUNDTAGtoPLINFO{$otag};
+    }
+
+    $plFILEtoPLINFO{$name} = $plinfo;
+    $plOUTBOUNDTAGtoPLINFO{$otag} = $plinfo;
+}
+
+## For use only with pipeline/ files
+sub plSetPlinfoAsSourceAndInit {
+    my $plinfo = shift or die;
+    plSetPlinfoAsSource($plinfo);
+
+    my $name = $plinfo->{fileName};
+    my $plpath = plPathFromName($name);
+    my $path = $plinfo->{filePath};
+    die unless $plpath eq $path;
+
+    DPSTD("Resetting $path");
+    open(HDL,">",$path) or die "Can't write $path to init: $!";
+    close HDL or die "Can't close $path after init: $!";
+
+    $plinfo->{prefixLengthAvailable} = 0;
+
+    DPSTD("Initted $path");
+    return $plinfo;
+}
+
+
+sub plSetupNewPipelineFile {
+    my ($name,$contentLength,$checksum,$timestamp) = @_;
+    my $plinfo = plNewPLS($name);
+    $plinfo->{finfo} = undef;
+    $plinfo->{filePath} = plPathFromName($name);
+    $plinfo->{fileChecksum} = $checksum;
+    $plinfo->{fileLength} = $contentLength;
+    $plinfo->{fileInnerTimestamp} = $timestamp;
+    $plinfo->{outboundTag} = plNewTag();
+
+    return $plinfo;
+}
+
+sub clacksAge {
+    my $oldnow = shift;
+    defined $oldnow or die;
+    return now() - $oldnow;
+}
+
+sub clacksOld {
+    my ($prevnow, $clacks) = @_;
+    die unless defined $clacks;
+    return $prevnow + $clacks <= now();
+}
+
+sub plProcessPrefixAvailability {
+    my ($dir,$bref) = @_;
+    my $blen = scalar(@$bref);
+    # [0:3] known to be CDM PA type
+    my $lenPos = 4;
+    my ($inboundTag,$prefixlen);
+    ($inboundTag,$lenPos)  = plGetTagArgFrom($lenPos,$bref);
+    ($prefixlen,$lenPos)   = getLenArgFrom($lenPos,$bref);
+    $prefixlen += 0; # destringify
+    my $plinfo = plGetPlinfoFromInboundTag($inboundTag,$dir);
+    if (!defined $plinfo) {
+        DPSTD("PA: No plinfo for $inboundTag from $dir, ignoring");
+        return;
+    }
+    my $filename = $plinfo->{fileName};
+    my $prec = plGetProviderRecordForFilenameAndDir($filename, $dir);
+    die if $prec->[PREC_PDIR] != $dir;
+    if ($prec->[PREC_ITAG] != $inboundTag) {
+        if ($prec->[PREC_PFXL] != 0) {
+            DPSTD("PA: Overwriting old tag '$prec->[PREC_ITAG]' for $filename from $dir with '$inboundTag'");
+        }
+        $prec->[PREC_ITAG] = $inboundTag;  # set up tag
+        $prec->[PREC_PFXL] = -1;
+        $prec->[PREC_SAGE] = 0;  # sage refreshes when we send a chunk request
+        $prec->[PREC_RAGE] = 0;  # rage refreshes when we recv a chunk reply
+    }
+    $prec->[PREC_PFXL] = $prefixlen;  # and actual availability
+
+    ### Start the pipeline after we get a prefix, not just an announcement.
+    my $commonref = getSubdirModel($commonSubdir);
+    my $finfo = $commonref->{$filename};
+
+    my $completeButCommonSeemsOlder =
+        defined($finfo) 
+        && defined($finfo->{seqno})
+        && $finfo->{checksum} ne $plinfo->{fileChecksum}
+        && defined($finfo->{innerTimestamp})
+        && $finfo->{innerTimestamp} < $plinfo->{fileInnerTimestamp};
+
+    ## Start the pipeline if absent from common and pipeline
+    ## or allegedly obsolete in common
+
+    if ($completeButCommonSeemsOlder || !defined($finfo)) {
+        plsMaybeSendChunkRequest($plinfo, $dir);
+        return;
+    }
+}
+
+sub plsMaybeSendChunkRequest {
+    my ($plinfo,$dir) = @_;
+    die unless defined $dir && defined $plinfo;
+    my $filename = $plinfo->{fileName};
+    my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
+    my $sage = $prec->[PREC_SAGE];
+    if (clacksAge($sage) >= 3) {
+        my $len = plsGetFileActualLength($plinfo);
+        if ($len < $prec->[PREC_PFXL]) {  # Don't ask for more than they got
+            my $filepath = $plinfo->{filePath};
+            DPSTD("REQUESTING $filepath:$len FROM $dir:$prec->[PREC_PFXL] AT AGE ".clacksAge($sage));
+            my $chunkpacket = plCreateChunkRequestPacket($dir,$filename,$len);
+            if (!defined $chunkpacket) {
+                DPDBG("NO CHUNKS");
+                return;
+            }
+            $prec->[PREC_SAGE] = now(); # sage refreshes when we send a request
+            writePacket($chunkpacket);
+        }
+    }
+}
+
+sub plProcessChunkRequestAndCreateReply {
+    my ($dir,$bref) = @_;
+    my $blen = scalar(@$bref);
+    # [0:3] known to be CDM PR type
+    my $lenPos = 4;
+    my ($outboundTag,$filepos);
+    ($outboundTag,$lenPos) = plGetTagArgFrom($lenPos,$bref);
+    ($filepos,$lenPos)    = getLenArgFrom($lenPos,$bref);
+    $filepos += 0; # destringify
+#    DPSTD("plPCR($outboundTag,$filepos)");
+#    print "QQplOUTBOUNDTAGtoPLINFO ".Dumper(\%plOUTBOUNDTAGtoPLINFO);
+    my $plinfo = plFindPLSFromOutboundTag($outboundTag);
+    if (!defined $plinfo) {
+        DPSTD("PR: No plinfo for $outboundTag from $dir, ignoring");
+        return undef;
+    }
+#    print "PLPCR1 ".Dumper(\$plinfo);
+    my $filename = $plinfo->{fileName};
+
+    my ($chunk,$xsumopt) = plsGetChunkAt($plinfo,$filepos);
+    $xsumopt = "" unless defined $xsumopt;
+
+    my $endpos = $filepos + length($chunk);
+    if ($endpos == $plinfo->{fileLength}) {
+        DPSTD("LAST CHUNK ($endpos/$filepos) OF $plinfo->{filePath} TO ".getDirName($dir));
+        if ($xsumopt eq "") {
+            DPSTD("WHY IS THERE NO FINAL XSUM HERE?");
+        }
+    }
+    my $pipelineOperationsCode = "P";
+    my $dataReplyCode = "D";
+    my $pkt = chr(0x80+$dir).chr($CDM_PKT_TYPE).$pipelineOperationsCode.$dataReplyCode;
+    $pkt = plAddTagTo($pkt,$outboundTag);
+    $pkt = addLenArgTo($pkt,$filepos);
+    $pkt = addLenArgTo($pkt,$chunk);
+    $pkt = addLenArgTo($pkt,$xsumopt);
+    return $pkt;
+}
+
+sub plProcessChunkRequest {
+    my ($dir,$bref) = @_;
+    my $pkt = plProcessChunkRequestAndCreateReply($dir,$bref);
+    if (defined($pkt)) {
+        DPPKT("CHUNKREPLY($pkt)");
+        writePacket($pkt);
+    }
+}
+
+sub plsCreateChunkRequestPacket {  # Pick from all 'valid' providers
+    my ($plinfo,$filepos) = @_;
+    die unless defined $filepos;
+    my $filename = $plinfo->{fileName};
+    my $providermap = plGetProviderMapForFilename($filename);
+    my ($windir,$tot) = (undef,0);
+    foreach my $dir (keys %$providermap) {
+        my $prec = $providermap->{$dir};
+        my ($pfx,$sage,$rage) =
+            ($prec->[PREC_PFXL],$prec->[PREC_SAGE],$prec->[PREC_RAGE]);
+        my $votes = 1;
+        next if $filepos > $pfx;
+        if (clacksAge($rage) < 20) {  # Among those we've heard from lately,
+            $votes += clacksAge($sage); # Favor the ones we haven't asked as much
+        }
+        $tot += $votes;
+        $windir = $dir if oddsOf($votes,$tot);
+    }
+    return undef unless defined $windir;
+    return plCreateChunkRequestPacket($windir, $filename, $filepos);
+}
+
+sub plProcessChunkReplyAndCreateNextRequest {
+    my ($dir,$bref) = @_;
+
+    my $blen = scalar(@$bref);
+    # [0:3] known to be CDM PD type
+    my $lenPos = 4;
+    my ($inboundTag,$filepos,$chunk,$xsumopt);
+    ($inboundTag,$lenPos) = plGetTagArgFrom($lenPos,$bref);
+    ($filepos,$lenPos)    = getLenArgFrom($lenPos,$bref);
+    $filepos += 0; # destringify
+    ($chunk,$lenPos)      = getLenArgFrom($lenPos,$bref);
+    ($xsumopt,$lenPos)    = getLenArgFrom($lenPos,$bref);
+    DPDBG("RPYacr($inboundTag,$filepos)");
+#    print "QQplOUTBOUNDTAGtoPLINFO ".Dumper(\%plOUTBOUNDTAGtoPLINFO);
+    my $plinfo = plGetPlinfoFromInboundTag($inboundTag,$dir);
+    if (!defined $plinfo) {
+        DPSTD("PD: No plinfo for $inboundTag from $dir, ignoring");
+        return undef;
+    }
+    
+    my $filename = $plinfo->{fileName};
+    my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
+    $prec->[PREC_RAGE] = now(); # rage refreshes when we recv a chunk replay
+
+#    print "RPYplinfo1 ".Dumper(\$plinfo);
+
+    if ($xsumopt ne "") {
+        DPSTD("$plinfo->{fileName} PREFIX EXTENDED TO $filepos");
+        plsInsertInXsumMap($plinfo,$filepos,$xsumopt);
+        if (plsCheckXsumStatus($plinfo,$xsumopt)) {
+            $plinfo->{prefixLengthAvailable} = $filepos;
+#            print "pLAnOW=$filepos\n";
+        } else {
+            die "NONONOOOOWONFONGOIWRONGO\n";
+        }
+    } else {
+        $xsumopt = "";
+    }
+
+    my $nowat = plsWriteChunk($plinfo,$chunk,$filepos);
+    return undef unless defined $nowat;
+    
+    $filepos += length($chunk);
+    if ($nowat != $filepos) {
+        DPSTD(sprintf("PD: LENGTH MISMATCH nowat=%d, filepos=%d, length(chunk)=%d",
+                      $nowat, $filepos, length($chunk)));
+        die "FAILONGO";
+        return undef;
+    }
+
+    if ($filepos == $plinfo->{fileLength} && $xsumopt ne "" && length($chunk) == 0) {
+        DPSTD("RECVD LAST OF $inboundTag $plinfo->{fileName}");
+        return ("",$plinfo);
+    }
+
+    # Make request for next chunk!
+#    my $chunkpacket = plCreateChunkRequestPacket($dir,$plinfo->{fileName},$filepos);
+    my $chunkpacket = plsCreateChunkRequestPacket($plinfo,$filepos);
+    if (!defined $chunkpacket) {
+        DPSTD("NO CHUNK? FP $filepos, FL $plinfo->{fileLength}, LC "
+              .length($chunk).", LX ".length($xsumopt));
+        return undef;
+    }
+    {
+        my $requestHZ = 25; # Limit request rate a little bit
+        my $rateLimiterUsec = int(1_000_000/$requestHZ);
+        Time::HiRes::usleep($rateLimiterUsec);
+    }
+    return ($chunkpacket,$plinfo);
+}
+
+sub plProcessChunkReply {
+    my ($dir,$bref) = @_;
+    my ($pkt,$plinfo) = plProcessChunkReplyAndCreateNextRequest($dir,$bref);
+    if (defined $pkt) {
+        DPPKT("CHUNKRESPONSE($pkt)");
+        if ($pkt ne "") {
+            writePacket($pkt);
+        } else {
+            defined $plinfo or die;
+            plsCheckAndReleasePipelineFile($plinfo);
+        }
+    }
+}
+
+sub plsCheckAndReleasePipelineFile {
+    my $plinfo = shift or die;
+    if (defined $plinfo->{finfo}) {
+        die "XXX WRITE ME?";
+    }
+    my $filename = $plinfo->{fileName};
+    my $curpath = $plinfo->{filePath};
+    my $destpath = "$pendingPath/$plinfo->{fileName}";
+    move($curpath,$destpath);
+    my $finfo = getFinfoFrom($filename,$pendingSubdir);
+    $finfo->{checksum} = $plinfo->{fileChecksum};
+    $finfo->{innerTimestamp} = $plinfo->{fileInnerTimestamp};
+#    print "CRAPX ".Dumper(\$finfo);
+#    print "CRAPY ".Dumper(\$plinfo);
+    checkAndReleasePendingFile($finfo);
+    $plinfo->{finfo} = $finfo;
+    $plinfo->{filePath} = getFinfoPath($finfo);
+}
+    
+
+sub plCheckAnnouncedFile {
+    my ($filename,$contentLength,$checksum,$timestamp,$tag,$dir) = @_;
+    die unless defined $dir;
+
+    DPDBG("CHECKING Ignore complete and matched in common");
+    return checkIfFileInCommon($filename,$checksum,$timestamp);
+}
+
+
+sub plProcessFileAnnouncement {
+    my ($dir,$bref) = @_;
+    my $blen = scalar(@$bref);
+    # [0:3] known to be CDM PF type
+    my $lenPos = 4;
+    my ($inboundTag,$filename,$filelength,$fileinnertimestamp,$filechecksum);
+    ($inboundTag,$lenPos)         = plGetTagArgFrom($lenPos,$bref);
+    ($filename,$lenPos)           = getLenArgFrom($lenPos,$bref);
+    ($filelength,$lenPos)         = getLenArgFrom($lenPos,$bref);
+    ($fileinnertimestamp,$lenPos) = getLenArgFrom($lenPos,$bref);
+    ($filechecksum,$lenPos)       = getLenArgFrom($lenPos,$bref);
+
+    my $plinfo = plFindPLS($filename);
+    if (!$plinfo || $plinfo->{fileInnerTimestamp} < $fileinnertimestamp) {
+        $plinfo = plSetupNewPipelineFile($filename,$filelength,$filechecksum,$fileinnertimestamp);
+        plSetPlinfoAsSourceAndInit($plinfo);
+        DPSTD("(RE)INITTED PIPELINE $filename => $inboundTag, SOURCE $dir");
+    }
+#    print "plProcessFileAnnouncement GOGOGOGOG".Dumper($plinfo);
+    plPutOnInboundTag($inboundTag,$dir,$plinfo);
+    my $prec = plGetProviderRecordForFilenameAndDir($filename, $dir);
+    $prec->[PREC_RAGE] = now(); # Let's say we've heard from them
+#    print "PREC ".Dumper($prec);
+    plCheckAnnouncedFile($filename,$filelength,$filechecksum,$fileinnertimestamp,$inboundTag,$dir)
+}
+
+sub plGetProviderMapForFilename {
+    my $filename = shift or die;
+    my $providermap = $plFILEtoPROVIDER{$filename};
+    if (!defined $providermap) {
+        $providermap = {};
+        $plFILEtoPROVIDER{$filename} = $providermap;
+#        print "F2P111 ".Dumper(\%plFILEtoPROVIDER);
+#        DPDBG("GPMFO $filename $providermap");
+    }
+    return $providermap;
+}
+
+sub plGetProviderRecordForFilenameAndDir {
+    my ($filename,$dir) = @_;
+    my $providermap = plGetProviderMapForFilename($filename);
+    my $prec = $providermap->{$dir};
+#    DPDBG("GF1XX $filename $dir $providermap");
+    if (!defined $prec) {
+        $prec =
+            [
+             $dir,   #[0] dir
+             0,      #[1] tag
+             0,      #[2] prefixlen
+             0,      #[3] sage
+             0       #[4] rage
+            ];
+        $providermap->{$dir} = $prec;
+#        DPDBG("GF2XX $filename $dir prc=".join(", ",@$prec));
+#        print "F2P222 ".Dumper(\%plFILEtoPROVIDER);
+    }
+    return $prec; 
+}
+
+sub plProcessPacket {
+    my $bref = shift;
+    my $blen = scalar(@$bref);
+    if ($blen < 4) {
+        DPSTD("Short PL packet '$pkt' ignored");
+        return;
+    }
+    my $dir = ord($bref->[0])&0x7;
+    # [0:2] known to be CDM P type
+    my $plCmd = $bref->[3];
+    if ($plCmd eq "F") {
+        plProcessFileAnnouncement($dir, $bref);
+        return;
+    }
+
+    if ($plCmd eq "A") {
+        plProcessPrefixAvailability($dir, $bref);
+        return;
+    }
+
+    if ($plCmd eq "R") {
+        plProcessChunkRequest($dir, $bref);
+        return;
+    }
+
+    if ($plCmd eq "D") {
+        plProcessChunkReply($dir, $bref);
+        return;
+    }
+
+    DPSTD("Unrecognized PL operation '$plCmd' ignored");
+}
+
+sub ceiling {
+    my $n = shift;
+    return ($n == int $n) ? $n : int($n + 1);
+}
+
+sub max {
+    my ($n,$m) = @_;
+    return ($n >= $m) ? $n : $m;
+}
+
+sub indexOfLowestAtLeast {
+    my ($mapref, $value) = @_;
+    my $pairlen = scalar(@{$mapref});
+    return 1 if $pairlen == 0; # Off end of empty
+    die if $pairlen < 2 or $pairlen&1;
+    my ($loidx,$hiidx) = (0, $pairlen/2-1);
+#    DPSTD("indexOfLowestAtLeast($loidx,$hiidx,$pairlen)WANT($value)");
+    while ($loidx < $hiidx) {
+        my $mididx = int(($hiidx+$loidx)/2);
+        my $midv = $mapref->[2*$mididx];
+#    DPSTD("LO $loidx ".$mapref->[2*$loidx]);
+#    DPSTD("HI $hiidx ".$mapref->[2*$hiidx]);
+#    DPSTD("MD $mididx: $midv <> $value");
+        if ($midv == $value) {
+            return $mididx;
+        } elsif ($midv < $value) {
+            $loidx = $mididx+1;
+        } else { # ($midv > $value) 
+            $hiidx = $mididx;
+        } 
+    }
+    my $lastv = $mapref->[2*$loidx];
+#    DPSTD("OUT $loidx $hiidx $lastv $value");
+    return ($lastv >= $value) ? $loidx : $loidx + 1;
+}
+
+sub plsInsertInXsumMap {
+    my ($plinfo, $filepos, $xsum) = @_;
+    defined $xsum or die;
+    my $aref = $plinfo->{xsumMap};
+    defined $aref or die;
+    my $overidx = indexOfLowestAtLeast($aref,$filepos);
+    if (2*$overidx >= scalar(@{$aref})) {
+        push @{$aref}, $filepos, $xsum;
+#        DPSTD("INSERTATEND($overidx,$filepos,$xsum)");
+    } else {
+        my $overkey = $aref->[2*$overidx];
+        if ($overkey == $filepos) {
+            my $overv = $aref->[2*$overidx+1];
+            if ($overv eq $xsum) {
+                DPSTD("MATCHED $filepos,$xsum");
+            } else {
+                DPSTD("REPLACED? $filepos:$overv->$xsum");
+                $aref->[2*$overidx+1] = $xsum;
+            }
+        } else {
+            splice @{$aref},2*$overidx,0,$filepos,$xsum;
+            DPSTD("INSERTBEFORE($overkey, $filepos, $xsum)");
+        }
+    }
+}
+
+
+sub plsFindXsumInRange {
+    my ($plinfo, $lo, $hi) = @_;
+    return undef if $lo > $hi;
+    my $aref = $plinfo->{xsumMap};
+    my $loidx = indexOfLowestAtLeast($aref, $lo);
+    my $hiidx = indexOfLowestAtLeast($aref, $hi+1);
+    return ($loidx != $hiidx) ? ($aref->[2*$loidx], $aref->[2*$loidx+1]) : undef;
+}
+
+sub plsBuildXsumMap {
+    my $plinfo = shift or die;
+#    print "plsBuildXsumMap ".Dumper($plinfo);
+    $plinfo->{xsumMap} = [];
+    my $path = $plinfo->{filePath};
+    my $XSUM_PIECE_COUNT = 100;
+    my $chunksize = max(1<<12,ceiling($plinfo->{fileLength}/$XSUM_PIECE_COUNT));
+     $digester->reset();
+    open(HDL,"<",$path) or die "Can't read $path: $!";
+    my $position = 0;
+    my $lastposition = -1;
+    while (1) {
+        my $data;
+        my $count = read HDL,$data,$chunksize;
+        die "Bad read $path: $!" unless defined $count;
+        $position += $count;
+        $digester->add($data);
+        if ($lastposition != $position) {
+            plsInsertInXsumMap($plinfo, $position, $digester->clone->b64digest()); # food dog own eat
+#            push @{$plinfo->{xsumMap}}, $position, $digester->clone->b64digest();
+            $lastposition = $position;
+        }
+#        DPSTD("$position $count $chunksize =".$plinfo->{xsumMap}->{$position});
+        last if $count == 0;
+    }
+    close HDL or die "Can't close $path: $!";
+    return $plinfo;
+}
+
+sub testShimForTag {
+    for (my $i = 0; $i < 10; ++$i) {
+        my $tag = plNewTag();
+        my $pkt = chr($i).":";
+        $pkt = plAddTagTo($pkt,$tag);
+        $pkt .= "!";
+        $pkt = plAddTagTo($pkt,$tag+1);
+        printf("$i 0x%08x %s\n",$tag,$pkt);
+        my @bytes = split(//,$pkt);
+        my $bref = \@bytes;
+        my $lenpos = 2; # skip i:
+        my ($utag1, $utag2);
+        ($utag1,$lenpos) = plGetTagArgFrom($lenpos,$bref);
+        ($utag2,$lenpos) = plGetTagArgFrom($lenpos+1,$bref); # skip !
+        printf("$i 0x%08x 0x%08x 0x%08x \n",$tag,$utag1,$utag2);
+    }
+}
+
+sub testShimForXsumMap {
+    my $plinfoCommon = shift;
+    foreach my $v (100000, 113580, 113580+1,0,1892908,1892907,1892908+1) {
+        my $mapref = $plinfoCommon->{xsumMap};
+        my $idx = indexOfLowestAtLeast($mapref, $v);
+        my $kidx = 2*$idx;
+        my $vidx = 2*$idx+1;
+        my $key = $kidx < scalar @{$mapref} ? $mapref->[$kidx] : -1;
+        my $val = $vidx < scalar @{$mapref} ? $mapref->[$vidx] : -1;
+        print "IoLAL $v: $idx => $key, $val\n";
+    }
+    foreach my $v (100000, 113580, 113580+1, 113580-100, 0,1892908,1892907,1892908+1) {
+        my $hi = $v+100;
+        my ($pos,$xsum) = plsFindXsumInRange($plinfoCommon,$v,$hi);
+        if (defined $xsum) {
+            print "pFXIR $v..$hi: $pos, $xsum\n";
+        } else {
+            print "pFXIR $v..$hi: undef\n";
+        }
+    }
+    foreach my $v ([1684770, 'Nx2WLV4IqyuB1w2z9XTKZpRwYSIkQE8X/adX2aZVnAg'],
+                   [1836210, 'r4PTseL7htd7LWFMtdO/8p54Ry+evFjsaM6teTt4Eow'],
+                   [1836210, 'DIFFseL7htd7LWFMtdO/8p54Ry+evFjsaM6teTt4Eow'],
+                   [1400819, 'BEFOREZ7bYnUJx0/TkHrA0yt8syvj/EuS6F1Yrn4yOk'],
+                   [0, 'WAY START'],
+                   [0, 'WAY START REPLACE'],
+                   [1, 'NEAR START'],
+                   [1892908, 'AT ENDLCnmI61tHUddndA3dG3cP/aRsOIO7Td1MoAGc'],
+                   [1892909, 'PAST END MANO HUddndA3dG3cP/aRsOIO7Td1MoAGc']) {
+        my ($filepos,$xsum) = @{$v};
+        DPSTD("INSDERT($filepos,$xsum)");
+        plsInsertInXsumMap($plinfoCommon,$filepos,$xsum);
+        DPSTD("INSDERTED($filepos,$xsum)");
+    }
+    print "TESTSHIMFINAL".Dumper($plinfoCommon);
+}
+
+sub testShimForTagMap {
+    plInitTagsAndProviders();
+    my (@fixedtags, @vartags);
+    for (my $i = 0; $i < 8; ++$i) {
+        my $tag = plNewTag();
+        push @fixedtags, $tag;
+        my $filename0 = "fnFIXED.mfz";
+        plPutFilenameOnTag($tag,$i,$filename0);
+
+        $tag = plNewTag();
+        push @vartags, $tag;
+        my $filename1 = "fn".$i.".mfz";
+        plPutFilenameOnTag($tag,$i,$filename1);
+    }
+    print "SDMFTAGM".Dumper(\%plPROVIDERtoFILE);
+}
+
+sub testShimForPlinfoGrow {
+    plInitTagsAndProviders();
+
+    my $finfo = shift or die;
+    my $ngb = getNgbInDir(1);
+    my $origfilename = $finfo->{filename};
+
+    my $plinfoCommon = plSetupCommonFile($finfo);
+
+    my $hackfilename = "HACK".$origfilename;
+    my $plinfoPipeline =
+        plSetupNewPipelineFile($hackfilename,
+                               $plinfoCommon->{fileLength},
+                               $plinfoCommon->{fileChecksum},
+                               $plinfoCommon->{fileInnerTimestamp});
+    my $outboundTag = $plinfoPipeline->{outboundTag};
+    plPutOnTag($outboundTag,$ngb->{dir},$plinfoPipeline);
+    my $prec = plGetProviderRecordForFilenameAndDir($hackfilename, $ngb->{dir});
+
+    print "PLINFOCOMMON ".Dumper($plinfoCommon);
+
+    my $filepos = 0;
+    while (1) {
+        my ($chunk,$xsumopt) = plsGetChunkAt($plinfoCommon,$filepos);
+        if (!defined $chunk) {
+            print "NO MORE CHUNKS\n";
+            last;
+        }
+        if (defined $xsumopt) {
+            plsInsertInXsumMap($plinfoPipeline,$filepos,$xsumopt);
+            if (plsCheckXsumStatus($plinfoPipeline,$xsumopt)) {
+                $plinfoPipeline->{prefixLengthAvailable} = $filepos;
+                print "pLA=$filepos\n";
+
+            } else {
+                die "WONFONGOIWRONGO\n";
+            }
+        } else {
+            $xsumopt = "";
+        }
+        my $nowat = plsWriteChunk($plinfoPipeline,$chunk,$filepos);
+        #print "FPXS: $filepos $xsumopt\n";
+        $filepos += length($chunk);
+        if ($nowat != $filepos) {
+            DPSTD("$nowat vs $filepos INCONSISTO\n");
+        }
+        last if ($filepos == $plinfoCommon->{fileLength} && $chunk eq "");
+    }
+    print "FPXS! Done at $filepos\n";
+    print "POSTPLINFOPIPELINE ".Dumper($plinfoPipeline);
+}
+
+sub testShimForChunkMovement {
+    plInitTagsAndProviders();
+
+    my $finfo = shift or die;
+    my $ngb = getNgbInDir(1);
+
+    print "FINFO ".Dumper($finfo);
+    my $plinfoCommon = plSetupCommonFile($finfo);
+    print "PLINFOCOMMONG ".Dumper($plinfoCommon);
+
+    my $origfilename = $plinfoCommon->{fileName};
+    my $hackfilename = "HACK2".$origfilename;
+
+    $plinfoCommon->{fileName} = $hackfilename;
+    my $announcePacket = plCreatePipelineFileAnnouncementPacket($ngb,$plinfoCommon);
+    $plinfoCommon->{fileName} = $origfilename;
+
+    # 'send' pipeline packet for, should init pipeline for hackfilename
+    processPacket($announcePacket);
+
+    my $pls = plFindPLS($origfilename);
+    print "PLS1READY ".Dumper($pls);
+
+    my $pls2 = plFindPLS($hackfilename);
+    print "PLS2READY ".Dumper($pls2);
+
+    print "plP2FZZ ".Dumper(\%plPROVIDERtoFILE);
+    print "plF2PZZ ".Dumper(\%plFILEtoPROVIDER);
+
+    ## Now send an availability notice -- should get handled by pipeline file
+    my $availpacket = plCreatePipelinePrefixAvailabilityPacket($ngb,$pls);
+    processPacket($availpacket);
+
+    print "HACKPOSTAVAIL ".Dumper($pls2);
+    print "XXXKS2A ".Dumper(\%plFILEtoPROVIDER);
+
+    ## now we need a loop to simulate requesting sending and receiving chunks
+    my $filepos = 0;
+    ## Find a provider who can help us
+    my $chunkpacket = plCreateChunkRequestPacket($ngb->{dir},$hackfilename,$filepos);
+    if (!defined $chunkpacket) {
+        DPDBG("NO CHUNKS");
+        last;
+    }
+    print "CHNKPKT '$chunkpacket' ".join(",",map(ord,split(//,$chunkpacket)))."\n";
+    my @bytes;
+    for (my $i = 0; $i < 1000; ++$i) {
+        ## going to fake around this call: processPacket($chunkpacket);
+        @bytes = split(//,$chunkpacket);
+        my $reply = plProcessChunkRequestAndCreateReply($ngb->{dir},\@bytes);
+
+        DPPKT("[[[$i]]] GOTREPLY ".length($reply));
+        @bytes =  split(//,$reply);
+        my ($nextrequest,$plinfo) =
+            plProcessChunkReplyAndCreateNextRequest($ngb->{dir},\@bytes);
+        die unless defined $nextrequest;
+        if (length($nextrequest) == 0) {
+            DPSTD("RELEASE HERENOW???");
+            plsCheckAndReleasePipelineFile($plinfo);
+            DPSTD("RELEASE HERENOW NOYES???");
+            last;
+        }
+        $chunkpacket = $nextrequest;
+    }
+}
+
+sub newmain {
     STDOUT->autoflush(1);
     flushPendingDir();
+    plFlushPipelineDir();
+    checkInitDirs();
+    loadCommonMFZFiles();
+
+    ### INIT A SINGLE common/ file
+    die "Need a .mfz in $commonPath" if scalar(@pathsToLoad) == 0;
+    my $filename = shift @pathsToLoad;
+    my $finfo = getFinfoFromCommon($filename);
+    my $path = getFinfoPath($finfo) || die "No path";
+    checkMFZDataFor($finfo);
+    my $seqno = assignSeqnoAndCaptureModtime($finfo,$path);
+    $finfo->{checksum} = checksumWholeFile($path);
+
+#    testShimForXsumMap($plinfoCommon);
+#    testShimForXsumMap(plSetupNewPipelineFile("foo","1234567","checksumbaby",88888888));
+#    testShimForTag();
+#    testShimForTagMap();
+#    testShimForPlinfoGrow($finfo);
+    testShimForChunkMovement($finfo);
+    print "XXplFILEtoPLINFO ".Dumper(\%plFILEtoPLINFO);
+    print "XXplOUTBOUNDTAGtoPLINFO ".Dumper(\%plOUTBOUNDTAGtoPLINFO);
+    print "XXplFILEtoPROVIDER ".Dumper(\%plFILEtoPROVIDER);
+    print "plP2FZZ ".Dumper(\%plPROVIDERtoFILE);
+    print "plF2PZZ ".Dumper(\%plFILEtoPROVIDER);
+    print "GOODBYE\n";
+    exit 3;
+}
+
+sub main {
+    STDOUT->autoflush(1);
+
+    flushPendingDir();
+    plFlushPipelineDir();
+
     checkInitDirs();
     preinitCommon();
+
+    plInitTagsAndProviders();
+    # plPreinitCommonFiles();  
+
     openPackets();
     flushPackets();
     eventLoop();
     closePackets();
 }
 
-if (scalar(@ARGV)) {
-    my $ok = 1;
-    foreach my $arg (@ARGV) {
-        my $base = basename($arg);
-        if ($base !~ /.*?[.]mfz$/) {
-            print "Not .mfz '$arg'\n";
-            $ok = 0;
-        } elsif (!-r $arg) {
-            $ok = 0;
-            print "Unreadable '$arg'\n";
-        } 
-    }
-    exit 1 unless $ok;
-    my $destdir = "/cdm/common";
-    foreach my $arg (@ARGV) {
-        if (!copy($arg,$destdir)) {
-            print "Copy $arg-> $destdir failed: $!";
-            $ok = 0;
-        } else {
-            print "$arg -> $destdir\n";
-        }
-    }
-    exit 2 unless $ok;
-    checkInitDirs();
-    preinitCommon();
-    exit 0;
-} else {
-    print "STARTING STANDARD\n";
-    main();
-    exit 9;
-}
+
+main();
 
 
