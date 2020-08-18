@@ -1909,6 +1909,12 @@ sub plsMaybeSendChunkRequest {
     my ($plinfo,$dir) = @_;
     die unless defined $dir && defined $plinfo;
     my $filename = $plinfo->{fileName};
+    my $pipelinepath = plPathFromName($filename);
+    if ($pipelinepath ne $plinfo->{filePath}) {
+        # Only ask about files in pipeline/ doh
+        return;
+    }
+
     my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
     my $sage = $prec->[PREC_SAGE];
     if (clacksAge($sage) >= 3) {
