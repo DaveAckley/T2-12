@@ -2018,6 +2018,14 @@ sub plProcessChunkReplyAndCreateNextRequest {
     }
     
     my $filename = $plinfo->{fileName};
+
+    # pl chunks can go only onto pipeline files!
+    my $pipelinepath = plPathFromName($filename);
+    if ($pipelinepath ne $plinfo->{filePath}) {
+        print "Ignoring chunk reply aimed at $plinfo->{filePath}\n";
+        return;
+    }
+
     my $prec = plGetProviderRecordForFilenameAndDir($filename,$dir);
     $prec->[PREC_RAGE] = now(); # rage refreshes when we recv a chunk replay
 
@@ -2030,7 +2038,8 @@ sub plProcessChunkReplyAndCreateNextRequest {
             $plinfo->{prefixLengthAvailable} = $filepos;
 #            print "pLAnOW=$filepos\n";
         } else {
-            die "NONONOOOOWONFONGOIWRONGO\n";
+            print "Xsum check failed at $filepos on $plinfo->{fileName}\n";
+            return;
         }
     } else {
         $xsumopt = "";
