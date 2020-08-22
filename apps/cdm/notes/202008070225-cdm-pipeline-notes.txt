@@ -1,4 +1,4 @@
-{89}  -*- text -*- 
+{102}  -*- text -*- 
 [0:
 
 Fri Aug  7 02:25:10 2020 OK, so having a second power zone drives home
@@ -1115,3 +1115,175 @@ Need to shut down the keymaster to move its wall wart over to power
 zone two..
 
 :88]
+[89:
+
+Wed Aug 19 09:24:00 2020 OK, so we're past t2sup283, such as it proved
+to be.  Super super late with it, though.  The rule should be: Actual
+development must end Sunday night, and Monday on should be only about
+video production.  What about we release the Sep 1 update on time, how
+about that, as penance, okay?  Just to show we could, if we wanted to.
+
+:89]
+[90:
+
+Wed Aug 19 09:26:08 2020 So, we need to clean up cdm.pl so we can
+figure out what's going on.  In particular, we need to clean up our
+intentions for what cdm.pl is supposed to have going on.  The issue
+currently is we're getting half-updated plinfos and such as packets
+start shooting in every direction in real grids.
+
+Let's get much much clearer about the plinfo life cycle and who
+updates what when.  It's not even clear to me the current
+implementation is well-founded.
+
+[91:
+
+Wed Aug 19 09:29:46 2020 So.  Restate fundamentals:
+
+ - /cdm/common holds only complete and verified MFZs.  Therefore:
+
+   = The contents of /cdm/common should be read-only except by the
+     'release verified MFZ' process.
+
+   = It should be obvious which records refer to read-only data vs
+     referring to growable files.
+
+ - Right now we have $finfo to describe common and pending files, and
+   $plinfo to describe pipeline files.  Do we want to ditch that?[92:
+
+Thu Aug 20 06:00:08 2020 Well, did HsA stuff yesterday, but back now.
+
+Thinking yes, we should do a more thorough redo, given that the
+version incompatibility issue really wasn't so bad, since we could use
+the "A" packet to distinguish who we were talking to.
+[93:
+
+Thu Aug 20 09:49:22 2020 And perhaps since we got deep enough into it
+all over the last week+, we could do a cleanup and not take forever.
+
+I kind of wonder how bad it might be if we redid it in C++.  That
+would force a cleaning up for sure..[94:
+
+Thu Aug 20 09:51:01 2020 I want to try.[95:
+
+Thu Aug 20 09:54:58 2020 Hmm what if we moved it to MFM in
+src/drivers/cdmcpp or something?  Tempting.  Could we possibly want to
+move it all the way into mfmt2?  That's pretty scary.  Keep it
+separate but share code as helpful underneath, I think.
+
+Let's try to rough it out and see how fast the motivation drains..[96:
+
+Thu Aug 20 11:41:24 2020 Well, if this isn't a motivation drainer, at
+least it's a task expander: We're going to need to refactor mfmt2 to
+pull out most of its guts into a libt2tile or something, so that cdmng
+can get at it as well as mfmt2.
+
+Let's take it as a task expander but jump on it quickly.[97:
+
+Thu Aug 20 11:43:12 2020 How long will it take?  GO GO GO
+[98:
+
+Thu Aug 20 11:59:46 2020 And how do we subclass a static singleton?
+Can't have T2Tile::get() if we're not going to have a T2Tile at all in
+cdmng.  But can't have it be T2Main::get() if that's supposed.. it has
+to be a template?  But we don't have an instance of the type to
+template on.
+
+[99:
+
+Thu Aug 20 12:14:37 2020 cHao at stackoverflow suggests:
+
+    class Base {
+        static Base * theOneTrueInstance;
+
+      public:
+          static Base & getInstance() {
+                  if (!theOneTrueInstance) initInstance();
+                          return *theOneTrueInstance;
+                              }
+                                  static void initInstance() { new Base; }
+
+      protected:
+          Base() {
+                   if (theOneTrueInstance) throw
+          std::logic_error("Instance already exists");
+                   theOneTrueInstance = this;
+                       }
+
+        virtual ~Base() { } // so random strangers can't delete me
+        };
+
+    Base* Base::theOneTrueInstance = 0;
+
+
+    class Derived : public Base {
+      public:
+          static void initInstance() {
+                  new Derived;  // Derived() calls Base(), which sets this
+      as "the instance"
+          }
+
+      protected:
+          Derived() { }   // so we can't be instantiated by outsiders
+              ~Derived() { }  // so random strangers can't delete me
+     };
+
+Which seems plausible enough.  We could add like
+
+  static Derived & get() {
+    return (Derived&) Base::get();
+  }
+
+to avoid casting and keep the existing T2Tile users intact, if we were
+confident enough the cast would work..  Or like
+
+  static Derived & get() {
+    Base * b = &Base::get();
+    Derived * d = dynamic_cast<Derived*>(b);
+    MFM_API_ASSERT_NONNULL(d);
+    return (Derived&) *d;
+  }
+
+if we weren't.
+
+:99]
+
+:98]
+
+:97]
+
+:96]
+
+:95]
+
+:94]
+
+:93]
+
+:92]
+
+:91]
+
+:90]
+[100:
+
+Thu Aug 20 15:32:33 2020 OK, well, finally foggen stop the clock --
+mfmt2 is working again, using the new mfmt2lib library for the
+combined stuff that cdmng might want too.
+
+So 15:32 - 11:43 -> 'not even' four hours.
+
+Urgh.
+
+Let's push right on to spiking out cdmng though, so we'll have
+something (even arguably) forward for the day.
+
+[101:
+
+Thu Aug 20 15:53:37 2020 OK, well cdmng is building over in the MFM
+tree.  It's doing nothing, but it's building.
+
+Moving to /home/t2/MFM/src/drivers/cdmng/notes/202008201554-notes.txt
+
+:101]
+:100]

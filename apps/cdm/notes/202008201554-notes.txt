@@ -1,0 +1,385 @@
+{20}  -*- text -*- 
+[0:
+
+Thu Aug 20 15:54:24 2020 And here we are.
+[19:
+
+Sat Aug 22 10:27:31 2020 OK, moved this file here from the
+never-committed MFM/src/drivers/cdmng directory where it was born.
+
+Will continue here with the cdm.pl redesign.
+
+:19][1:
+
+Thu Aug 20 15:54:57 2020 So let's think about a proper foggen class to
+represent an asset managed by CDMng.  (Which we're going to start
+calling just CDM again, we think, pretty soon.)
+
+Beliefs:
+
+ - We represent only MFZ assets
+
+ - We follow cdm.pl semantics, at least to get going, unless there's
+   pressing reason
+
+What are we going to call this class?  What yumbo c++ container are we
+going to use for it?  MFZAsset?  ZAsset?
+
+(Ooh, suppose we use command line arguments for things like
+maintaining the deleteds file and such.)
+[2:
+
+Thu Aug 20 16:13:53 2020 Let's go with MFZAsset.  No data structure
+distinction between finfo and plinfo; all just MFZAsset.
+
+MFZAssets have a state:
+
+ - COMMON: Complete and verified and read-only in common
+ - PARTIAL
+
+[3:
+
+Fri Aug 21 06:14:35 2020 Maybe we want to separate representing the
+'file in the abstract' from the 'data that we have'.  There's a bunch
+of things that can happen even if we have no data at all:
+
+ - Hear about an MFZ for the first time
+
+ - Hear about a newer version of an MFZ that we have an older one of
+
+[4:
+
+Fri Aug 21 06:16:46 2020 And it seems like we really shouldn't ditch
+an older one until we the have VERIFIED content for a newer version
+
+And is the whole system screwed if a bit flips in a file announcement
+so that some obsolete version looks to be from the year 3000?  Even
+though the underlying content won't verify -- once it finally arrives
+-- how do we ever kill off that circulating file announcement?
+
+What if mfzmake on the keymaster also signed an announcement for the
+MFZ?  How small could we make that?  Filename+inner
+timestamp+checksum+sig
+
+cdm-deleteds.mfzdddddddddddddddd
+1562107060
+990756-2483-40265a
+t2-keymaster-release-10
+[5:
+
+Fri Aug 21 08:39:30 2020 So this is how long it takes to remember that
+what Perl bought us was trivial interfaces to both Zip and RSA
+encryption, that (1) we're going to have to do much more by hand in
+C++, and yet (2) must absolutely match perl behavior down to the bit.
+
+Urgh.
+
+Let's find some sample code and do spikes for both..[6:
+
+Fri Aug 21 08:45:36 2020 Hmm it seems that zip interface APIs are not
+really that standardized?  One has to pick some project and go with
+it?  Double urgh.[7:
+
+Fri Aug 21 08:58:57 2020 Well, I'm thinking indeed I screwed up here,
+and we should stay in perl, but just clean it up -- do real modules
+and multifile and stuff.
+
+I want to keep the t2lib refactoring though, because I can totally see
+the possibility of other apps coming up that will want to share chunks
+of the t2-specific infrastructure.
+
+Just have to ditch cdmng.
+
+Urgh.
+
+:7]
+
+:6]
+
+:5]
+:4]
+
+:3]
+
+:2]
+
+:1]
+:0]
+[8:
+
+Fri Aug 21 09:01:29 2020 The issue remains of why should we trust a
+pipelined file announcement enough to repeat it, and risk creating a
+flying dutchman if a timestamp error gets through.  Still think we'd
+like to get a stub or a receipt or a proxy or something out of the
+mfzmake process, that we could use as (most of) the pipelined file
+announcement.
+
+[9:
+
+Fri Aug 21 09:50:47 2020 So it looks like a b64 signature is 172 bytes
+long.  Pretty long, but we could probably cram it into a file
+announcement, looking something like
+
+0x80|dir + 0x83 + 'F' + announcement + sig
+
+where the sig signs all the prior bytes, including the packet header,
+taking dir as 0.
+
+hdr: 3 bytes
+announcement:
+  filename: 40 bytes?
+  inner timestamp in binary: 4 bytes
+  inner length: 4 bytes
+sig: 172  
+
+3 + 40 + 4 + 4 + 172 == 223
+
+but still need handle?
+
+t2-keymaster-release-10
+
+is another 23 right there == 246
+
+and still need some amount of inner checksum, to help deter
+collisions, right?
+
+maybe six bytes of checksum == 252
+
+[10:
+
+Fri Aug 21 14:28:17 2020 What does mfzrun do with future-version mfz
+files?  Could we go to version 2 and pack this announcement in the
+outer mfz as ANNOUNCE.PKT or something?[11:
+
+Fri Aug 21 14:33:51 2020 Right now mfzrun horks unless the version is
+exact 
+
+ ..
+    sub VERSION { "1.0" }
+    sub MFZRUN_HEADER { "MFZ(".VERSION.")\n" }
+ ..
+    die "Bad .mfz header in '$progname'"
+        unless defined $firstLine and $firstLine eq MFZRUN_HEADER;
+     
+But it really kind of looks like we could just go ahead and pack
+ANNOUNCE.PKT into the outer zip and the existing mfzrun code would
+completely ignore it.  It does FindName for the two files it cares
+about -- MFZ_ZIP_NAME and MFZ_SIG_NAME -- and doesn't care about
+anything else.
+
+We could say the 1.0 format is the file format, not all the details of
+what's inside.
+
+So I think we could do this, as long as we make having ANNOUNCE.PKT be
+optional in cdm, and have some fallback (like: No pipelining) if it's
+not in an MFZ.
+[12:
+
+Fri Aug 21 14:51:11 2020 Yikes though: Here's the regex for a handle:
+
+(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})
+
+Looks like length 63 possible.  How does that square with your
+post-war commie conspiracy packet budget huh?
+
+I suppose we could addLenArg the arguments and just insist the overall
+result fits in one packet?  Or else what?  Fail mfzmake?
+
+cdm-distrib-T2-GFB.mfz is 22 bytes and currently the longest thing in
+/cdm/common.  But we thought we where going to allow well more than
+that.
+
+I assume we can't trim the sig at all or it won't verify, so let's run
+it down again:
+
+255-172 == 83
+
+If we don't b64 the signature how much do we save?  B64 is six bits
+per byte, so 172*6 == 1032 and 1032/8 == 129 bytes.  That's a little
+better -- basically half the packet.  Let's assume that.
+
+  3   hdr
+ 40   filename
+  4   timestamp
+  4   len
+  8   checksum
+===
+ 59
+172   sig
+===
+231
+
+255-231 == 24  for handle
+
+t2-keymaster-release-10 Just Barely Fits.  Gah.
+
+We can ditch the packet hdr for 3 bytes
+
+Create a new 'handle registry' of some kind, with a registered handle
+number, so that we don't include the handle by name at all?  We could
+go with even four bytes for a registered handle number and still save
+20 bytes.
+
+Hmmm
+
+[13:
+
+Fri Aug 21 15:16:50 2020 So the idea would be that as mfzmake time,
+unless your private key was associated with a known registered public
+key, we wouldn't include the announcement file at all.  And if it was,
+we'd record the public key registration number in the announcement.
+
+Then we'd be at something like
+
+  3   hdr
+ 40   filename
+  4   timestamp
+  4   len
+  8   checksum
+  4   pubkeyregnum
+===
+ 63
+129   sig
+===
+192   which really isn't too bad.  For a packet.  Could even go to 48
+      for the filename maybe
+
+Which would then be:
+
+  3   hdr
+ 48   filename
+  4   timestamp
+  4   len
+  8   checksum
+  4   pubkeyregnum
+===
+ 71
+129   sig
+===
+200
+
+and we could just pad the filename out to 48 with nulls and say
+everything goes in fixed positions.
+
+[14:
+
+Fri Aug 21 15:31:59 2020
+
+Perhaps we should include an announcement version number, Mr. President?
+
+Just to be safe.
+
+Make it like
+
+  3   hdr
+  1   announcement version
+  4   timestamp
+  4   len
+  8   checksum
+  4   pubkeyregnum
+ 47   filestem (filename - '.mfz')
+===
+ 71
+129   sig
+===
+200
+
+In which we actually have more room for filename by committing to .mfz
+as the only possible extension.  It's not really the file stem, it's
+more like the 'cdm content name' or something.
+
+Now, before we get too close to pulling the trigger here -- do we
+really want to include the packet header?
+
+ - Locks us into the specific 'F' packet
+ - Has to be modified to insert/delete the dir on the fly, and sig
+   won't verify without that
+ + Acts like a magic number for registered announcement files
+ + Makes file length == packet length for budgetary purposes
+ - Would have to be checked anyway by code before putting on the wire
+ + Would have to be checked anyway by code before putting on the wire
+ 
+Maybe it's okay.  If necessary, down the road, we can add our own
+header and nest this whole thing inside another packet -- after all,
+we still have 55 bytes to give.
+
+Let's stick with it.
+
+[15:
+
+Fri Aug 21 15:41:54 2020 Now, how do we make this 'registered public
+key' business work?
+
+ - We can hard-code a mapping from int => handle inside
+   mfzmake/common.pl.inc and cdm.pl.  To register a new mapping to
+   have to change the code in all those places
+
+ - We can add a new command line arg to mfzmake saying 'use this
+   registration number'.  That means: Look up the handle for this
+   number and use that, and hork if you don't have a private key for
+   that handle.
+
+ - And we'll only and automatically include the announcement file when
+   the command line registration number is used.
+
+ - I suppose we should include the pubkey file in the registration
+   map?  How do we check that it actually matches the supplied
+   privkeyfile?
+
+:15]
+
+:14]
+
+
+
+:13]
+
+:12]
+
+:11]
+
+:10]
+
+:9]
+:8]
+[16:
+
+Sat Aug 22 01:24:06 2020 Going with:
+
+  3   hdr                   0x80.0x83.'F'
+  1   announcement version  0x01
+  4   big-endian inner timestamp
+  4   big-endian inner length
+  2   big-endian regnum
+  8   inner checksum substr
+ 50   content name (filename - '.mfz')
+===
+ 72
+129   RSA sig
+===
+201
+
+[17:
+
+Sat Aug 22 01:39:10 2020 Or, as a perl pack format:
+
+"CCA".         # hdr
+"CNNnA7A50".   # announcement
+"A129"         # sig
+
+:17]
+
+:16]
+[18:
+
+Sat Aug 22 05:16:42 2020 OK, so I think we may have successfully
+introduced the 'cdmake' command to mfzmake, which causes it to
+generate an ANNOUNCE.pkt in the outer zip, which is precisely 200
+bytes long and represents the pipeline file announcement packet to be
+sent to neighbors, unmodified except for adding the appropriate dir to
+the first byte.
+
+We need to hack cdm.pl to send and receive it, but we need to do a lot
+of hacking on cdm.pl, since we're going to clean it up.
+
+:18]
