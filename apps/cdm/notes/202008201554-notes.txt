@@ -1,4 +1,4 @@
-{149}  -*- text -*- 
+{154}  -*- text -*- 
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -2055,3 +2055,33 @@ at traditional transfers, and we have new features like cdm-deleteds
 is kind of working as well.
 
 :148]
+[149:
+
+Mon Aug 31 06:04:12 2020 OK so will need more sleep after a bit but
+head full of stuff so saying let's do a short run now.
+
+TODO
+
+[151: Mon Aug 31 10:46:36 2020 Well, took a cut at this
+STARTED ANYWAY:151] - Release trigger for cdmd-T2-12.mfz
+
+[150: Mon Aug 31 10:11:26 2020
+DONE, a first cut anyway:150] - A 'CDM view' for mfmt2?
+
+:149]
+[152:
+
+Mon Aug 31 10:46:59 2020 Hard to know how to test the T2-12 release
+trigger, since it's going to nuke our git working repo even if it
+succeeds.
+
+Maybe we should move our working directory elsewhere, at least for a
+while?
+
+[153:
+
+Mon Aug 31 10:53:28 2020 Well, putting it in /home/t2/T2-12-repo, for
+now.  
+
+:153]
+:152]
