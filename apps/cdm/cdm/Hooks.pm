@@ -152,17 +152,10 @@ sub installCDMD { # return undef unless install actually happened
 
     my $finalDirName = "$dirName/$baseName";
     DPSTD("INSTALL $baseName: (7) Moving $finalDirName to $prevDirName");
-<<<<<<< Updated upstream
-    return unless runCmdWithSync("mv $finalDirName $prevDirName","INSTALL $baseName: ERROR");
-
-    DPSTD("INSTALL $baseName: (8) Moving $initialBaseNameDir to $finalDirName");
-    return unless runCmdWithSync("mv $initialBaseNameDir $finalDirName","INSTALL $baseName: ERROR");
-=======
     return unless runCommandWithSync("mv $finalDirName $prevDirName","INSTALL $baseName: ERROR");
 
     DPSTD("INSTALL $baseName: (8) Moving $initialBaseNameDir to $finalDirName");
     return unless runCommandWithSync("mv $initialBaseNameDir $finalDirName","INSTALL $baseName: ERROR");
->>>>>>> Stashed changes
 
     DPSTD("INSTALL $baseName: (9) Tagging install $tagFileName -> $innerTimestamp");
     {
