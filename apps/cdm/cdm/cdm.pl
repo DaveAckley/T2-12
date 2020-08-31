@@ -7,7 +7,7 @@ use Constants qw(:all);
 use DP qw(:all);
 
 use PacketClasses;
-;
+use Hooks;
 
 ## Cleanliness stuff
 use warnings FATAL => 'all';
