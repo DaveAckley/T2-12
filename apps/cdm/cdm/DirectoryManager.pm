@@ -159,6 +159,22 @@ sub update {
     return 1; # 'Did something'?
 }
 
+sub reportMFZStats {
+    my __PACKAGE__ $self = shift;
+    my @cns = sort keys %{$self->{mMFZManagers}};
+    my $maxlen = 0;
+    for my $cn (@cns) {
+        $maxlen = max($maxlen,length($cn));
+    }
+    my @ret = ();
+    for my $cn (@cns) {
+        my $mgr = $self->{mMFZManagers}->{$cn};
+        my $len = $mgr->getCurrentLength();
+        push @ret, sprintf(" %*s %d\n",$maxlen,$cn,$len);
+    }
+    return @ret;
+}
+
 ## VIRTUAL
 sub newContent {
     my __PACKAGE__ $self = shift;

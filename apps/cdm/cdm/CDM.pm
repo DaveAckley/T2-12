@@ -13,6 +13,7 @@ use fields qw(
     mTraditionalManager
     mPipelineManager
     mHookManager
+    mStatusReporter
 );
 
 use Exporter qw(import);
@@ -34,6 +35,7 @@ use NeighborhoodManager;
 use TMTraditional;
 use TMPipeline;
 use HookManager;
+use StatusReporter;
 
 # Other imports
 use Fcntl;
@@ -240,6 +242,9 @@ sub createTasks {
     $self->{mPipelineManager} = TMPipeline->new($self);
     $self->{mPipelineManager}->init();
 
+    die if defined $self->{mStatusReporter};
+    $self->{mStatusReporter} = StatusReporter->new($self);
+    $self->{mStatusReporter}->init();
 #    my $demo = MFZManager->new("DEMO",$self);
 #    $self->{mInPipelineContent}->insertMFZMgr($demo);
 }

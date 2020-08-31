@@ -13,6 +13,7 @@ my @math = qw(
     lexDecode
     hexEscape
     deHexEscape
+    formatSeconds
     );
 my @dir6s = qw(
     getDir6Name 
@@ -113,6 +114,34 @@ sub deHexEscape {
     my $str = shift;
     $str =~ s/%([a-fA-f0-9]{2})/chr(hex($1))/ge;
     return $str;
+}
+
+my %units = (
+    7*60*60*24 => "w",
+    60*60*24 => "d",
+    60*60 => "h",
+    60 => "m",
+    1 => "s",
+    );
+my @chunks = sort {$b <=> $a} keys %units;
+
+sub formatSeconds {
+    my $sec = shift;
+    my $neg = "";
+    my $ret = "";
+    if ($sec < 0) {
+        $neg = "-";
+        $sec = -$sec;
+    }
+    for my $size (@chunks) {
+        if ($sec > $size) {
+            my $count = int($sec/$size);
+            $sec -= $count*$size;
+            $ret .= " " if $ret ne "";
+            $ret .= "${count}$units{$size}";
+        }
+    }
+    return "$neg$ret";
 }
 
 ## DIRECTIONS

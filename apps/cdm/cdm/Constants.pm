@@ -40,6 +40,8 @@ use constant SUBDIR_PIPELINE => "pipeline";
 use constant SUBDIR_PUBKEY => "public_keys";
 
 use constant PATH_PROG_MFZRUN => "/home/t2/MFM/bin/mfzrun";
+use constant PATH_DATA_IOSTATS => "/sys/class/itc_pkt/statistics";
+use constant PATH_BASEDIR_REPORT_IOSTATS => "log/status.txt";
 
 use constant CDM_DELETEDS_MFZ => "cdm-deleteds.mfz";
 use constant CDMD_T2_12_MFZ =>   "cdmd-T2-12.mfz";
@@ -126,6 +128,8 @@ my @constants = qw(
 
 my @paths = qw(
     PATH_PROG_MFZRUN
+    PATH_DATA_IOSTATS
+    PATH_BASEDIR_REPORT_IOSTATS
     );
 
 our @EXPORT_OK = (@constants, @subdirs, @mfzfiles, @paths);
