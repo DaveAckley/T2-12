@@ -20,7 +20,8 @@ $SIG{__DIE__} = sub {
 DPSetFlags(DEBUG_FLAG_STACK_PREFIX|DEBUG_FLAG_STANDARD);
 DPSTD("$0 start");
 
-my $cdm = CDM->new("./cdmDEBUG");
+#my $cdm = CDM->new("./cdmDEBUG");
+my $cdm = CDM->new("/cdm");
 $cdm->init();
 Hooks::installHooks($cdm);
 

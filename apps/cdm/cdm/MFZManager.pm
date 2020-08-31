@@ -407,7 +407,8 @@ sub update {
     }
 
     my $dm = $self->{mDirectoryManager};
-    if ($dm->{mDirectoryName} eq SUBDIR_COMMON) {
+    my $inCommon = $dm->{mDirectoryName} eq SUBDIR_COMMON;
+    if ($inCommon) {
         my DMCommon $dmc = $dm;
         my $cn = $self->{mContentName};
         my $its = $self->{mFileInnerTimestamp};
@@ -439,7 +440,7 @@ sub update {
     # immediately try to reload the thing.  If we just delete
     # us-the-mgr, we're likely to just get another (old) copy of it
     # coming in from a ngb, before the DM notices it on its own.
-    if ($self->mfzState() == MFZ_STATE_CCNV &&
+    if ($inCommon &&
         defined($self->{mFileModificationTime}) &&
         -M $filepath != $self->{mFileModificationTime}) {
 

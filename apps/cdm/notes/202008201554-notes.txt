@@ -1,4 +1,4 @@
-{154}  -*- text -*- 
+{155}  -*- text -*- 
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -2085,3 +2085,10 @@ now.
 
 :153]
 :152]
+[154:
+
+Mon Aug 31 11:50:01 2020 OK, committing and pushing in T2-12.  Gotta
+try the install trigger..
+
+:154]
+
