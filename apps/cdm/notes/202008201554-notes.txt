@@ -1,4 +1,4 @@
-{20}  -*- text -*- 
+{149}  -*- text -*- 
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -50,7 +50,7 @@ of things that can happen even if we have no data at all:
 [4:
 
 Fri Aug 21 06:16:46 2020 And it seems like we really shouldn't ditch
-an older one until we the have VERIFIED content for a newer version
+an older one until we have the VERIFIED content for a newer version
 
 And is the whole system screwed if a bit flips in a file announcement
 so that some obsolete version looks to be from the year 3000?  Even
@@ -383,3 +383,1675 @@ We need to hack cdm.pl to send and receive it, but we need to do a lot
 of hacking on cdm.pl, since we're going to clean it up.
 
 :18]
+[20:
+
+Sat Aug 22 12:09:35 2020 OK, moved the flag.  Time to take the
+rethinking and apply it to cdm.pl.
+
+First up, reorganizing for packages.  I think also we should probably
+actually install cdm.pl somewhere, rather than running it out of the
+T2-12 in production?  Let's do that first..[21:
+
+Sat Aug 22 12:11:29 2020 apps/cdm/Makefile has
+
+    DEST_DIR:=/opt/scripts/t2
+
+but it's not using it?[22:
+
+Sat Aug 22 12:12:19 2020 Ah, it installs cdm.sh there, but that's
+all.  So maybe make /opt/scripts/t2/cdm/ and copy the code there?
+
+[23:
+
+Sat Aug 22 12:58:20 2020 Call coming up.  Continue after.[24:
+
+Sat Aug 22 13:06:43 2020 Have we got anything .pm-ish in this tree yet
+that we could steal?[25:
+
+Sat Aug 22 14:22:16 2020 After call.
+
+We do have T2-12/tests/ITC/old10/T2tils.pm, it might be something.
+
+:25]
+
+:24]
+
+:23]
+
+:22]
+
+:21]
+
+:20]
+[26:
+
+Sat Aug 22 14:53:26 2020 OK, we might have a plausiblish 'make
+install' for cdm now.  And cdm.sh 'ought' to work from either the
+source or installed dirs.
+
+Now reorg for PMs.  Let's review the design thinking we were doing
+when we were thinking C++..
+[27:
+
+Sat Aug 22 14:56:10 2020 We wanted to separate 'mfz in the abstract'
+from 'data that we have'.  Call them..  MetaData and Data?  MetaMFZ
+and MFZContent?  MFZMetadata vs MFZContent?  MFZMetadata vs
+MFZContentManager?  MFZMetadata vs MFZManager?
+
+And a class for the container(s)?  Maybe not yet.  Skeleton first. 
+
+:27]
+:26]
+[28:
+
+Sun Aug 23 04:00:33 2020 OK so we've got plenty of module-y structure
+and we've started fleshing out CDM.pm.  And we're getting worried
+about just moving 90% of cdm.pl into CDM.pm without actually
+reconsidering the design and addressing the mess that we made in
+cdm.pl.  So we're back here to think some more.
+
+Issues:
+
+ - How hard do we structure for incremental state machine execution?
+   In copying code we've now arrived at checkCommonFile, which is an
+   incremental execution thing.  We kind of think we should pull
+   common management out to its own class?
+
+ - Really want to keep the main loop as clean as possible.  We should
+   have some kind of 'task' abstraction even if the various tasks
+   might not be different classes?
+
+[29:
+
+Sun Aug 23 05:17:52 2020 How about we do that?  Task.pm?  It wraps
+another object or other state, and provides scheduling and time-based
+dispatching.  Wrapped objects provide a single main callback.
+[30:
+
+Sun Aug 23 11:31:51 2020 I guess partly the point is perl will call
+anything on anything..[31:
+
+Sun Aug 23 13:50:35 2020 OK, so now we have TimeoutAble.pm and
+TimeQueue.pm.   Rather than subclassing, we create instances of
+TimeoutAble and supply a code ref to be called back on timeout.
+
+We're running the TQ at one-second granularity to emphasize this is
+about long-term actions not precision timing..[32:
+
+Sun Aug 23 13:53:33 2020 So OK.  Need some more
+
+TODO
+
+ - Build something to load and watch over common/ like checkCommonFile
+   currently does.
+
+ - Build the main content-by-name container so the checkCommonFile
+   analog has something to populate.
+
+ - Do more design on MFZManager and/or MFZMetadata.  How independent
+   to they want to be?  If we always stub out a file for MFZMetadata
+   doesn't the distinction collapse?
+
+
+:32]
+
+:31]
+
+:30]
+:29]
+
+:28]
+[33:
+
+Sun Aug 23 14:03:29 2020 So yeah, suppose we say main container is
+contentName -> MFZManager and go from there for now.
+
+:33]
+[34:
+
+Sun Aug 23 14:39:52 2020 Was trying to figure out the clean way to
+initialize subclass data members after building the base class, and
+ended up reading through a bunch of the stuff on Class::Struct.
+
+And now kinda really want to redo with that and 'use fields'
+throughout, before things get too complicated here..  But have to
+break for meeting at the top of the hour..
+
+:34]
+[35:
+
+Sun Aug 23 23:48:32 2020 OK use fields GO GO GO.[36:
+
+Mon Aug 24 01:17:38 2020 OK have a first cut using 'use base' and 'use
+fields'.  Hour and a half?  Urgh.  TimeoutAble is now a base class
+after all, and one overrides onTimeout to do whatever one wants.
+
+Ended up not using Class::Struct because it seemed a little narrow in
+the end; we'll see.
+
+So what next?  MFZManager vs MFZMetadata design?
+
+Also, MFZManager might be conflating inbound and outbound tasks on a
+single pipeline.  Certainly seems possible we could want separate
+timeouts for reasking for an upstream chunk and reannouncing to a
+downstream neighbor.
+
+Is a reason to keep MFZManager and MFZMetadata separate that we might
+want to have multiple MFZMetadata objects for a single content name?
+Even if a new valid announcement on a name arrives, maybe we want to
+keep the old one around (for a while) to provide errors when
+downstream asks for an old tag?  Seems Not Compelling That.
+
+What if we have a complete and verified MFZ in common/ MFZ plus also a
+newer incomplete MFZ in pipeline/ under the same name?  Hah, there!
+
+We can't be wanting to actually delete the common/ MFZ before the
+pipeline version is complete.  So either we have two MFZMetadatas for
+the same content name, or we have a file in common/ that has no
+MFZMetadata associated with it.  Which Do You Prefer.
+
+[37:
+
+Mon Aug 24 01:36:42 2020 Maybe need to walk through some cases.
+
+[38:
+
+Mon Aug 24 02:05:11 2020 Opps.
+[39:
+
+Mon Aug 24 02:05:19 2020 Cases.
+
+LOAD COMMON
+ - Make MFZManager for each complete and verified
+ - Look for ANNOUNCE.PKT inside the MFZ.  (How will we do that?)
+
+:39]
+
+:38]
+:37]
+
+:36]
+
+:35]
+[40:
+
+Mon Aug 24 02:08:12 2020 Are we going to support non-cdmake MFZs at
+all?  Seems like maybe now's the time to say no.  How does cdmctl deal
+with cdm-deleteds?  Shell out to mfzmake?
+[41:
+
+Mon Aug 24 02:09:57 2020 Yeah, it does:
+
+    my $cmd = "$MFZMAKE_PROGRAM make $CDM_INTERNAL_HANDLE $path $deletedsFile";
+
+which should become something like
+
+    my $cmd = "$MFZMAKE_PROGRAM cdmake $CDM_INTERNAL_REGNUM $path $deletedsFile";
+
+[42:
+
+Mon Aug 24 02:18:05 2020 Well, hacked that in the obvious way and it
+appears plausible enough.
+
+But it does totally drive home the point that we ought to take
+cdm-deleteds seriously in this cdm re-redo.  Maybe we should try to do
+a special MFZManager just for cdm-deleteds, since others will need to
+depend on it.
+
+How does cdmctl delete something anyway?  ..You give it a list of
+.mfzs to delete.  OK.  So we could get the ANNOUNCE.PKT out of there,
+and use that as the token to identify a deleted mfz.
+
+If we had ANY WAY to extract the ANNOUNCE.PKT from an mfz without
+actually writing zip-level code..  Note that 'mfzrun FOO.mfz unpack'
+WON'T DO IT, because that only unpacks the inner zip.  mfzrun needs a
+new command.  Let's do that.  Call it.. 'announce' I guess -- print
+out the announcement packet of this .mfz, if it's got one.
+[43:
+
+Mon Aug 24 04:07:23 2020 OK, now 'mfzrun FOO.mfz announce' prints the
+ANNOUNCE.PKT file to stdout, if it exists and the signature verifies.
+
+Pop pop pop
+
+[44:
+
+Mon Aug 24 04:24:56 2020 As long as we're perl packaging stuff, is
+there any way we could get rid of the abomination of
+src/drivers/mfzmake/common.pl.inc and make it a package?  For one
+thing, it would certainly be nice if cdm could import that package,
+and examine the guts of MFZ directly, instead of shelling out to
+mfzrun all the time.
+
+But come on.  Stop expanding the hack.  You just added 'mfzrun
+announce' so that cdm (still) doesn't _need_ to muck inside MFZs
+itself. 
+[45:
+
+Mon Aug 24 04:50:36 2020 So how about we get cdm.pl to load
+cdm-deleteds.mfz and see how that goes.
+
+:45]
+:44]
+
+:43]
+
+
+:42]
+:41]
+:40]
+[46:
+
+Mon Aug 24 09:10:03 2020 OK pushing again.  Still on loading common,
+but now via 'DirManager.pm'.[47:
+
+Mon Aug 24 09:55:29 2020 Still struggling to understand the goal
+here.  OK we read a bunch of filenames/paths from say common/.  Then
+what?  We want to end up with MFZManager for each of them.  And we
+want a MFZMetadata to describe each of them.  We want some dictionary
+to hold the complete-and-verified ones, and some other dictionary to
+hold the in-progress ones.  Caller will need to know whether they want
+only C&V files or IP files, and go to the appropriate dictionary.
+
+Where are these two dictionaries?  CDM.pm presumably?[48:
+
+Mon Aug 24 10:25:47 2020 OK made
+
+    $self->{mCompleteAndVerifiedContent} = {}; # ContentName -> MFZManager
+    $self->{mInPipelineContent} = {};          # ContentName -> MFZManager
+
+in CDM.pm.  Let's officially ditch the MFZMetadata idea -- rolling it
+into MFZManager -- and try to build CnV MFZManagers for common/
+
+:48]
+
+:47]
+
+:46]
+[49:
+
+Mon Aug 24 12:33:02 2020 OK, well, making some progress, but feeling
+like we want to subclass DirManager for DirManagerCommon and
+DirManagerPipeline instead of trying to distinguish them with flags.
+The initiatives wrt file creation, for example, are opposite in the
+two cases.
+
+:49]
+[50:
+
+Mon Aug 24 15:02:27 2020 Waiting for 3pm meeting to start..
+
+:50]
+[51:
+
+Tue Aug 25 10:55:18 2020 Hmm a bunch of time there with no notes, but
+we have had some progress if subclassing 'DirManager' is supposed to
+be the starting point:
+
+ - We now have DMCommon isa DirManager and DMPipeline isa DirManager.
+
+ - We detect modtime changes on common/ and reload.
+
+ - We detect modtime changes on .mfz's and drop their MFZManager,
+   which leads to the .mfz being reloaded.
+
+ - We load .mfz files and use 'mfzrun ANNOUNCE' to get and check their
+   metadata, 
+
+ - We have a start at PacketListener isa TimeoutAble.  We're flushing
+   packets at startup, and reading them (but not yet dispatching).
+
+ - We redid TimeQueue for high res time instead of integer seconds.
+
+Had a half hour+ power failure this morning.  (The UPS kept the net up
+for most of that, so we could how widespread the outage was, good job
+buddy.)
+
+Getting set up again here.
+
+:51]
+[52:
+
+Tue Aug 25 11:08:29 2020 Think a good next stop could be a class to
+model the neighbors.  Will that be six instances, or one, or both?[53:
+
+Tue Aug 25 11:28:44 2020 Urgh we already have 'DirManager' for
+'Dir'ectory, but now here comes 'Dir'ection for neighbors..  Maybe
+blow out to DirectoryManager, before it's too late?[54:
+
+Tue Aug 25 11:41:37 2020 OK now we're 'Directory' for pretty much
+every 'dir' that meant directory.
+
+:54]
+
+:53]
+
+:52]
+[55:
+
+Wed Aug 26 00:07:58 2020 Well getting to be time for more sleep.  We
+have NeighborhoodManager.pm that holds NeighborManager and handles
+reading /sys/class/itc_pkt/status, since that produces all neighbor
+statuses at once.
+
+We have NeighborManager with an mState.  We should have them send
+"A"liversion packets every so often, and track the version they
+believe is running at the far end.
+
+We should maybe have PacketListener give the NeighborManager first
+crack at any inbound packets from a given neighbor?  Then if NgbMgr
+doesn't eat it, pass it to the general content dispatch?  Or maybe,
+since it's called PacketListener and all, it should have enough smarts
+to know which packets to dispatch and which to handle.  PacketListener
+might as well be the central content resolver itself, right?
+
+:55]
+[56:
+
+Wed Aug 26 09:12:09 2020 OK, we're sending and handling A packets
+saying version 3.  Thinking now we should be more explicit about which
+inbound packets we are willing to consider as a function of whether
+and what we know about their version.
+
+Right now we have NM::considerInboundCDM eating "A" packets; we could
+have it also eat any packets that shouldn't be examined before we have
+version info.
+
+The documented CDM packet types are:
+
+A aliveness
+F File announcement (traditional)
+C Content request   (traditional)
+D Data reply        (traditional)
+P Pipeline operation (with subtypes)
+   F File announcement
+   A prefix Availability
+   R content Request
+   D Data reply 
+
+So for inbound packets maybe NeighborManager:
+
+ - should always process As.
+ 
+ - should consume Ps unless theirVersion >= 3 ?
+
+ - should consume Fs, Cs ,Ds unless theirVersion >= 1
+
+with the second point implying we can be incompatible with version 2
+pipelining and just fall back to one-hop with v2s.
+
+[57: Wed Aug 26 09:28:26 2020
+
+And for outbound packets?  Do they all go through NM before departing?
+Seems like eating outbound packets suggests some internal lack of
+coordination.  Seems more like caller ought to check what's what
+before even generating an inappropriate outbound packet.
+
+But could have Rules for Callers or something in that regard?
+
+ - Always consider sending A before anything else.  Could do that
+   as a drive-by and maybe end up sending two packets.
+
+ - Don't generate Fs or Cs unless theirVersion >= 1
+
+ - Don't generate Ps unless theirVersion >= 3
+
+ - Don't generate Ds unless the targeted content is the current CnV
+   for that name.  Reply with an F, if possible, if not.  (Note the
+   'current CnV' might in fact be obsolete relative to an in-progress
+   pipeline version of the same name, but we're not going to ditch the
+   current CnV unless and until we have a new CnV.)
+
+ - Don't generate Cs unless theirVersion >= 1
+
+ - Don't generate Cs if we have a newer PiP ('Pipeline in Progress')
+   on the same name.  (Note that PiPs shall have 'progress
+   constraints' on them -- if the inbound prefix doesn't actually grow
+   for some amount of time, it gets aborted.  Unclear how that plays
+   out.  Maybe we don't abort the pipelined content, but we mark it as
+   'non-progressive', so it won't be a considered a PiP anymore,
+   unless and until we get a PF retargeting the same content?.)
+
+[58:
+
+Wed Aug 26 09:56:39 2020 Have to break for a meeting.
+
+:58]
+
+:57]
+
+:56]
+[59:
+
+Wed Aug 26 12:14:00 2020 OK, did the filtering rules in :56: above.
+Now need to think about routing FCDs to the appropriate places.
+
+Which are..
+
+ - F, traditional file announcement: To DirectoryManager?  But that's
+   just a base class; we have DMCommon and DMPipeline?[60:
+
+Wed Aug 26 13:04:41 2020 Well, I guess I'm not sure that we have
+enough abstractions yet.  An F could involve both DMCommon and
+DMPending, for example.  Do we want to have like a
+TraditionalTransferManager vs a PipelineTransferManager?  They would
+do things like manage the SKUs and tags for content names, as well as
+link to where the content can (currently) be found.
+
+Maybe probably so.
+
+But nap time I think.  Long run last night; if not a lot of notes.
+
+:60]
+
+:59]
+[61:
+
+Thu Aug 27 00:07:18 2020 OK let's get a half-decent run in now.  Give
+me TransferManager and TMTraditional and TMPipeline GO GO GO.
+
+Currently we have
+
+ - MFZManager models a single MFZ file, in some directory, that might
+    or might not be complete and verified.  Created either during
+    directory loading (common/) or in response to a file announcement
+    (pending/ or pipeline/).  Destroyed during MFZManager::update when
+    underlying file vanishes or is unexpectedly modified.
+
+ - DirectoryManager models a directory of MFZs.  Is the 'official'
+   container of MFZs via {mMFZManagers}->{ contentName => MFZManager }
+
+But we don't have any direct analog to the 'SKU' in the old $finfos
+and the outbound tag in the (less) old $plinfos.
+
+(1) Traditional file announcement arrives.  How do we process it?
+    (1.1) Look in DMCommon to see if we already have that version or
+          newer.  Drop uninteresting, else pass to DMPending if
+          possibly interesting.
+    (1.2) Look in DMPending (which doesn't exist yet?) to see if we
+          have already started an MFZ for it or newer.  Drop if
+          uninteresting, else pass to NeighborhoodManager to record as
+          a source
+    (1.3) Look in NeighborManager to see if we already have a
+          SourceRecord (? which doesn't exist yet) for it.  Drop if
+          uninteresting, else create a SourceRecord
+
+    
+
+:61]
+[62:
+
+Thu Aug 27 00:38:44 2020 What if we made an explicit Packet class,
+with subclasses for each type of packet?  Idea is a traditional file
+announcement, say, would get automatically expanded into a PacketTFA
+(or whatever) when it's read, and then we could KEEP that object in
+some natural place to refer to the content that it has.  So there
+need be no such thing as a 'SourceRecord', say, instead we'd keep the
+'actual' received PacketTFA in the NeighborManager and access its
+fields that way.
+
+In the reverse direction, of course, we'd create these packet objects
+as objects, then have a serialization method that would do the
+appropriate packing to send it out.
+
+It's clean but a little scary, potentially confusing, to be dual-using
+the packets for static data structures as well as in-flight data.
+
+The nice thing is it's so transparent.  What was NW announcing about
+FOO.mfz?  Well check the packet they sent.
+
+Screw it let's do it.  Packet.pm and subclasses.[63:
+
+Thu Aug 27 04:32:05 2020 Well taking too long of course but holy moly
+Perl 'pack' format has got everything!  I thought I was dead once I
+remembered that the traditional packet formats used a lot of
+one-byte-length+that-many-bytes constructs for variable width fields,
+but foggen 'slash' format in the Perl packing language covers that!
+
+So ONE pack language expression involving five '/' constructs:
+
+            ("a1 C/a* C/a* C/a* C/a* C/a*",  # Lovely!
+             \$self->{mCmd},
+             \$self->{mName},
+             \$self->{mLength},
+             \$self->{mChecksum},
+             \$self->{mInnerTimestamp},
+             \$self->{mSeqno}
+            );
+
+serves to create (pack) or parse (unpack) the cdm command byte plus
+five variable length fields of the CDM "F" packet.
+
+"As They Say:" NOICE!
+[64:
+
+Thu Aug 27 04:37:29 2020  Let's do the other traditional packets![65:
+
+Thu Aug 27 05:55:31 2020 Wow, now we have Packet subclasses
+registering themselves with Packet.pm via BEGIN blocks, and we have
+
+ my $pkt = Packet::parse($packetString);
+
+that iterates through the registered types, finding somebody that
+recognizes $packetString, and then building an instance of the
+associated class, unpacking $packetString into it, and returning it.
+Wow!
+
+[66:
+
+Thu Aug 27 05:58:54 2020 Good run.  Second sleep now.[67:
+
+Thu Aug 27 10:17:42 2020 And about time to move the flag.
+[68:
+
+Thu Aug 27 10:52:28 2020 Packing up.
+
+:68]
+:67]
+
+:66]
+
+:65]
+
+:64]
+:63]
+
+:62]
+[69:
+
+Thu Aug 27 12:17:03 2020 Flag moved.  Where are we here.
+[70:
+
+Thu Aug 27 12:46:20 2020 (Dealing with a dead car battery grr.)
+
+:70]
+:69]
+[71:
+
+Thu Aug 27 12:46:33 2020 So what's next.
+
+ - Do the new Packet structure for the pipeline packets?
+
+ - Try actually to implement the one-hop protocol?  This I think.
+
+:71]
+[72:
+
+Thu Aug 27 12:55:19 2020 To implement the one-hop protocol:
+
+ - Somebody must send a traditional file announcement.  Seems like
+   that could be an interaction between a NeighborManager and
+   DMCommon?  NM would have a { contentname -> offeringtime } kind of
+   thing and refresh it every so often?  An 'mCommonOffers' perhaps?
+   NM asks DMCommon for a random CnV, checks it mCommonOffers, and
+   sends a PacketCDM_F if it's been a while.
+
+ - Somebody must receive it.  PacketIO gets a packet, and calls the
+   Packet::parse class method on it, which returns a $pkt =
+   PacketCDM_F.  Then PacketIO calls $pkt->receive()?  We should have
+   a virtual Packet::validate() method to represent constraints that
+   un/pack can't deal with.  We ould have Packet::parse call it right
+   after unpacking, I'd think, and have validate return itself if it's
+   happy or undef if it's not:
+
+            my $ret = eval {
+                $pself->unpack();
+                $pself = $pself->validate();
+                $pself;
+            };
+
+   or have unpack() do it:
+
+    sub unpack {
+        my ($self) = @_;
+        my ($fmt,@varrefs) = $self->packFormatAndVars();
+        my @values = unpack($fmt,$self->{mPacketBytes});
+        for (0 .. $#varrefs) {
+            ${$varrefs[$_]} = $values[$_];
+        }
+        return $self->validate();
+    }
+
+
+:72]
+[73:
+
+Thu Aug 27 23:30:13 2020 OK time for another run.  We have validation
+happening plausibly in the new Packet* classes.  If perhaps some of
+the checks aren't as strict as they could be, I think they'll at least
+deal with egregious cases like unpack failing due to a short packet.
+
+The pack/unpack symmetry is so nice that I'm actually validating
+outbound packets before I send them, too -- because why not?
+
+[74:
+
+Thu Aug 27 23:33:40 2020 Also, for the record, I've been doing one-off
+tests at the command line with mouthfuls like this:
+
+t2@beaglebone:~/T2-12/apps/cdm/cdm$ perl -I . -e 'use PacketCDM_F; my $s = PacketCDM_F->new(); print($s->{mCDMCmd}." wongonwg($s)\n");$s->{mCmd} = "F"; $s->{mName} = "Foo-Bar"; $s->{mLength}=1234; $s->{mInnerTimestamp} = 1989870; $s->{mChecksum} = 9999; $s->{mSeqno}=-127;my ($fmt,@vars) = $s->pack(); use Data::Dumper;$Data::Dumper::Sortkeys = 1; print Dumper(\$sb);  $s->rawByte(4,"G"); $s->unpack(); print "((".$s->{mPacketBytes}."))"; print Dumper(\$s)'
+
+which at the moment produces output like this:
+
+    131 wongonwg(PacketCDM_F=HASH(0x138b1a8))
+    INITOFNO2P PacketCDM_F=HASH(0x138b1a8)>>131
+    $VAR1 = \'C1C1 A1C/a* C/a* C/a* C/a* C/a*';
+    $VAR1 = [
+              \128,
+              \131,
+              \'F',
+              \'Foo-Bar',
+              \1234,
+              \9999,
+              \1989870,
+              \-127
+            ];
+    $VAR1 = [
+              128,
+              131,
+              'F',
+              'Foo-Bar',
+              1234,
+              9999,
+              1989870,
+              -127
+            ];
+    Packed packet failed validation: Missing seqno at /home/t2/T2-12/apps/cdm/cdm/Packet.pm line 90.
+    t2@beaglebone:~/T2-12/apps/cdm/cdm$ 
+
+(where that validation failure at the end is the 'purpose' of the test..)
+
+:74]
+:73]
+[75:
+
+Fri Aug 28 00:03:46 2020 So, now we could use some higher level
+protocol logic to start sending and receiving this new Packets.
+
+Actually, can we redo "A" handling first?  We're already sending and
+receiving them..[76:
+
+Fri Aug 28 00:05:28 2020 OK, the flow we currently have for receiving
+"A" packets looks like this:
+
+    cdm.pl ==>
+     $CDM->eventLoop ==>
+      $TimeQueue->runExpired ==>
+       $PacketIO->onTimeout ==>
+        $PacketIO->processPackets ==>
+*        $PacketIO->dispatchPacket ==>
+*         $NeighborManager->considerInboundCDM ==>
+*          $NeighborManager->processCmdTypeA
+
+and for sending them looks like this:
+
+    cdm.pl ==>
+     $CDM->eventLoop ==>
+      $TimeQueue->runExpired ==>
+       $NeighborManager->onTimeout ==>        
+        $NeighborManager->update ==>        
+*        $NeighborManager->considerSendingVersion ==>        
+*         $NeighborManager->sendVersion ==>        
+           $PacketIO->writePacket
+
+and I'm thinking we want to rework the starred lines.
+
+Let's go.
+
+[77:
+
+Fri Aug 28 00:17:07 2020 Right now, PacketIO::dispatchPacket is
+unpacking and analysing a $pkt string by hand.  Let's build a Packet
+there instead.
+[78:
+
+Fri Aug 28 00:19:36 2020 We currently have Packet::parse returning
+undef on failure -- wouldn't we be happier making the effort to get
+back an error message?[79:
+
+Fri Aug 28 00:23:42 2020 Well, that's a bit of a schlep, since we
+absolutely might be die-ing inside parse/validate, and capturing die
+output involves more hair than just 'eval { foo }';.  Let's let it go,
+I think, and say:
+
+  Packet::parse may or may not print an error message, but will
+  certainly return undef, if there's a problem.  Otherwise it returns
+  a (subclass of) Packet.
+  
+:79]
+
+:78]
+:77]
+
+:76]
+
+:75]
+[80:
+
+Fri Aug 28 00:57:39 2020 So last time we tried to make up an inbound
+packet processing flow, we got (usefully) sidetracked by validation.
+But now we have validation and so we're back to the inbound flow.
+
+So far we've modified PacketIO::dispatchPacket to build a Packet --
+Just Can't Remember Who To Send It To.
+
+Let's loosely follow the previous code, and give the relevant
+NeighborManager a first crack at it, and then, if the NM doesn't eat
+it, ask the packet to receive itself. ?
+
+Perhaps we always just do that?  Maybe provide support code to help
+get to the NM if a receiver in a Packet subclass wants it?
+
+Let's give it a try.  New virtual method on Packet: handle
+
+[81:
+
+Fri Aug 28 02:03:24 2020 OK, so now we have
+$packet->handleInbound($cdm) and we're successfully handling A packets
+with it, finding that ET and WT on loopback are VERSION 3 (ourselves),
+while NE is VERSION 2.  Next stop, generate and send the A packet
+using our mavalis new technology.
+
+:81]
+
+:80]
+[82:
+
+Fri Aug 28 02:39:45 2020 OK, so now we're sending A packets via
+$apkt->sendVia($packetio).  Last bug getting to that was forgetting to
+set the packet header dir8 based on the NM mDir8.
+
+So.  Good run so far.  Not quite three hours in.
+
+Let's try to convert tradition F packet processing to new-style:
+
+ - PacketCDM_F::handleInbound,
+
+ - and somebody to issue them.  That'll be the challenge.
+
+:82]
+[83:
+
+Fri Aug 28 02:46:53 2020 OK, we're handling an inbound traditional F.
+What do we do?  Possible tasks/flows:
+
+ - Ask DMCommon if it's got an MFZManager for name
+
+..[84:
+
+Fri Aug 28 03:03:35 2020 Guess I'm starting to drift here.
+
+But it seems like the proper person to ask is CDM itself.  CDM is the
+thing that's got the
+
+    mCompleteAndVerifiedContent
+    mInPipelineContent
+
+data members.  The former a DMCommon and the latter a DMPipeline.
+
+But we have no DMPending.  Shouldn't we?  At some point earlier we
+were talking about transfer managers, no?  
+[85:
+
+Fri Aug 28 03:06:38 2020 Yes, :61: above.  (Which is way back when 27
+hours ago..)
+
+So we're thinking of TransferManager as a base class, with
+TMTraditional and TMPipeline as subclasses?  TMTraditional should
+own DMPending, and TMPipeline should own DMPipeline.  Who owns
+DMCommon?  Both traditional and pipeline interact with DMCommon.
+
+Maybe CDM still owns DMCommon?  Is there value then in having
+TMTraditional separate from DMPending, and TMPipeline separate from
+DMPipeline?  They don't want to collapse?
+
+Well, suppose we leave all the DMs under CDM, and have the TMs get
+them as needed via the CDM.  The main point is to have a clear place
+for transfer-related code.
+
+So let's try to say yes TransferManager, yes TMPipeline and yes
+TMTraditional (which really should be called something else) and see
+how far we get.[86:
+
+Fri Aug 28 04:36:57 2020 Well, I've definitely lost it now.  Should
+have stopped at three hours or so.  Now closing in on morning stuff so
+can't sleep yet.
+
+:86]
+
+:85]
+:84]
+
+:83]
+[87:
+
+Fri Aug 28 11:33:18 2020 OK after second sleep.  Let's get files
+moving traditionally, coordinated by TMTraditional, NOW NOW NOW.
+
+So far, we've:
+
+ - made a TMTraditional, and
+
+ - installed it $CDM->{mTraditionalManager} during createTasks().
+
+Let's get TMTraditional announcing files during its updates.
+
+:87]
+[88:
+
+Fri Aug 28 11:40:51 2020 Noting for the record that we do have some
+lack of clarity about when we conventionally expect rescheduling to
+happen during onTimeout workflows.
+
+For example, it appears TMTraditional is failing to reschedule itself,
+so it just runs once, near startup, and that's it.
+
+I think the safe thing would be to have long-lasting processes
+reschedule themselves at the _start_ of onTimeout using a conservative
+long delay, and then let code during the update flow reschedule
+earlier if they feel a reason too.  Actually, should we have a
+mechanism for only moving a timeout earlier, rather than just
+resetting it to something else?
+
+[89:
+
+Fri Aug 28 11:49:35 2020 Well, for now, maybe just have a built-in
+default period, managed by TimeoutAble, and leave reschedule as it is.
+We can revisit later if we're unhappy about having multiple resched
+reasons during a single update.[90:
+
+Fri Aug 28 12:22:31 2020 So now we have $to->defaultInterval() and
+$to->defaultInterval($newdefaultintveral), implemented partly in
+TimeoutAble.pm and partly in TimeQueue.pm
+
+So TMTraditional is now surviving.
+
+Pop pop pop.  Get to announcing a file.  Expecting yet another object
+or map to manage announcement timings.
+
+[91:
+
+Fri Aug 28 12:31:12 2020 Should we think about some kind of thing to
+manage contacts at the TransferManager level?  It would be answering
+what questions?
+
+ - When's the last time we mentioned FOO.MFZ to NE?
+
+ - What's the (MFZ, DIR) pair we've least-recently considered
+   announcing?
+
+How about we pick some number of random (MFZ, DIR) pairs and return
+the least-recently considered among those random pairs?
+
+ - How can we, or do we need to, scrub our 'contact map' when MFZs or
+   neighbor status changes?
+
+Are we talking some version of a 2D array for (MFZ, NGB) -- in
+particular, where we can iterate on either dimension as well as go in
+for specific cells?
+
+Do we really even need to build and maintain a data structure here, vs
+just picking a single random MFZ and a single (alive) NGB and going
+with that?
+
+Maybe make a method like $transferManager->selectPair() and we can
+start out with (randomMFZ,randomLiveNGB) and expand it later if we
+feel the need?
+
+Let's take a shot at that.
+
+:91]
+
+:90]
+
+:89]
+
+:88]
+[92:
+
+Fri Aug 28 14:26:02 2020 After lunch.  Working through
+MFZManager::loadCnVMFZ trying to see how we get to a traditional file
+announcement packet.
+
+Reminding ourselves that we are storing a (nearly final) announce
+packet FOR PIPELINING in the MFZManager, but that's not for
+traditional use.
+
+Actually, let's just rename that field:
+
+  mFileAnnouncePacket -> mFilePipelineAnnouncePacket
+
+[93:
+
+Fri Aug 28 14:29:38 2020 Done.
+
+:93]
+
+:92]
+[94:
+
+Fri Aug 28 14:34:01 2020 OK, we're creating a traditional announcement
+inside MFZManager, and now we have to get a sequence number from
+somewhere.  Where are we going to get it, so that it can be used to
+re-access this MFZManager later?
+
+Do we make it a class variable of MFZManager?  What does the
+cdm.pl-old do?  [95:
+
+Fri Aug 28 14:39:20 2020 It does
+
+  $seqno = ++$globalCheckedFilesCount;
+  
+in 'assignSeqnoForFilename', which happens in checkCommonFile (like
+our loadCnVMFZ), plus perhaps elsewhere.
+
+But, looking in cdm.pl-old, I see a bug for us now -- I was using
+using the checksum reported by 'mfzrun ANNOUNCE' as the PacketCDM_F
+mChecksum, but I think that's wrong.  It needs to be like
+
+        $finfo->{checksum} = checksumWholeFile($path);
+
+instead.  [96:
+
+Fri Aug 28 14:48:14 2020 OK, may have fixed that.  Put
+checksumWholeFile into T2Utils.[97:
+
+Fri Aug 28 14:49:13 2020 Pop pop: So back to the seqno issue.  So I
+guess we'll assign a seqno from an MFZManager class counter in
+loadCnVMFZ, and we'll see how it goes.[98:
+
+Fri Aug 28 14:51:19 2020 And more importantly, we'll add mSeqno as
+another data member alongside mOutboundTag.  But we won't initialize
+either of them until we need to.[99:
+
+Fri Aug 28 14:54:22 2020 OK, we have a possibly plausible
+MFZManager::createTraditionalAnnouncement, which uses the mSeqno
+assigned by loadCnVMFZ, but looking ahead we're going to need a way to
+get back from a seqno to the MFZManager, but at the moment we're not
+providing anything to anybody.  This would be where a hook into a
+TransferManager would be nice.
+
+[100:
+
+Fri Aug 28 15:04:44 2020 Could we unify seqnos and outboundtags?
+Well, seqnos are slowly growing small ints; outbound tags are mostly
+random 32 bitters.
+
+Wait.  Maybe we don't want mSeqno in MFMZManager.  Maybe that's the
+claim that seqno is a transfer manager property, not an MFZ property.
+Same thing for mOutboundTag, actually.  We should be going to a
+transfer manager for both of those things.
+
+But that means we somehow have to join DirectoryManager, MFZManager,
+and TransferManager, and have them all keep up to date or resync with
+each other as things change.
+[104:
+
+Sat Aug 29 02:33:52 2020 So what's a next step here?  We have
+TMTraditional selecting MFZ and Ngb --
+
+44681.46:TMtrad#11: DirectoryManager getRandomMFZMgr [common] MFZManager=HASH(0x2fe47a8), MFZManager=HASH(0x2fe49a0)
+44681.46:TMtrad#11: TMTraditional selectPair(MFZMgr:cdmd-TEST.mfz#13,NgbWT#8
+
+so we should make a packet and send it.[105:
+
+Sat Aug 29 02:45:45 2020 Ah okay we also are midway through a rethink
+of the locations of seqnos and outbound tags.  Currently dying thus:
+
+    2.37:DirMgr:common#0: loadCnVMFZ MFZMgr:TEST.mfz#13 (1,1598262268,234945,234681,0,TEST)
+     at ./cdm.pl line 16.
+            main::__ANON__("Attempt to access disallowed key 'mSeqno' in a restricted has"...) called at /home/t2/T2-12/apps/cdm/cdm/MFZManager.pm line 134
+            MFZManager::loadCnVMFZ(MFZManager=HASH(0x18e0cb8)) called at /home/t2/T2-12/apps/cdm/cdm/DMCommon.pm line 32
+
+because we killed the seqno key.  So we're saying we want to generate
+and save aliases or synonyms or abbreviations for content names, at
+the Transfer Manager level.  Well let's just do it.
+[106:
+
+Sat Aug 29 03:23:54 2020 Here Comes Mr State's Dog.
+
+So creating state in a TransferManager, for seqno or outbound tag,
+means we have to have a mechanism for maintaining that state, because
+it's surely possible for MFZs to rot out from underneath MFZManagers,
+and on up.
+
+If we'd made an MFZManager be immutable, we could use its
+TimeoutAble::mNumber as a unique key.  Have we made MFZManager
+immutable?  [107:
+
+Sat Aug 29 03:32:22 2020 No we have not, because for example we have
+MFZManager::mState, setters for mfzState, incrementally growing
+XsumMap..  So how do we know when our seqno has gone bad?[108:
+
+Sat Aug 29 03:49:21 2020 Urgh dammit not coding here; reading perl doc
+and whatnot.  Is there some kind of 'monotonicity criterion' we could
+lean on?  That MFZManager is not immutable, but it only changes to
+"become more it's truer self" in some way -- such as growing towards
+the complete file size or by getting verified once it is.
+
+If that was true, or we deem it to be correct whether it's currently
+true or not, then we could rely on TimeoutAble::mNumber.
+
+Let's do it and damn the torpedoes.
+
+So TMTraditional, our first test use-case, will use [mNumber seqno] as
+the offer data.  And we'll recreate the offer data if the
+$mfzngb->{mNumber} changes.
+
+It's tempting to think: Why Not Use mNumber As the seqno?
+
+That would be harder to do with the outboundTag structure.
+
+But if we're saying the mNumber must change when the .mfz underlying
+an MFZManager has changed..
+
+Let's do the additional dereference for now, and let this cook in the
+background for a while.[109:
+
+Sat Aug 29 04:10:28 2020 OK, getting there.  Realized our new Packet
+structure allows a nice thing: Instead of storing the seqno in the
+cached TransferManager offer data, we can store the PacketCFM_F packet
+instance itself.  Then just retarget its packet header and send it off
+in all directions as long as the MFZManager::mNumber doesn't change.
+
+But our packet appears incomplete so far, so we couldn't even send it!
+Behold:
+
+    19.02:TMtrad#11: sendVia failed (Packed packet failed validation: Missing length at /home/t2/T2-12/apps/cdm/cdm/Packet.pm line 122, <__ANONIO__> line 5.
+    )
+    19.02:TMtrad#11: TMTraditional SSSSSENTT
+
+Now, CDM_F::mLength is set by MFZM::mFileTotalLength, which is initted
+to -1 in MFZM::new.  So when does it get set properly?[110:
+
+Sat Aug 29 04:15:32 2020 It gets set in MFZM::loadCnVMFZ (naturally).
+So we should make sure mfzState() >= MFZ_STATE_CCNV before building an
+announcement.  Do we want to check that in selectPair, possibly?  No,
+because TMPipeline won't have that restriction.  
+
+:110]
+
+:109]
+
+:108]
+
+:107]
+
+:106]
+
+
+:105]
+
+:104]
+[101:
+
+Fri Aug 28 15:42:58 2020 Taking a Friday afternoon break.
+
+:101]
+:100]
+
+:99]
+
+:98]
+
+:97]
+
+:96]Which I guess loadCnVMFZ will have to do..  We better be
+reusing this work pretty hard..
+
+:95]
+
+:94]
+[102:
+
+Sat Aug 29 02:22:18 2020 OK let's get a solid three hours in here GO
+GO GO.  We should have traditional transfer RUNNING well before the
+clock expires GO GO GO.
+
+Have to get a glass of ice water first tho[103:
+
+Sat Aug 29 02:28:50 2020 Well cokfee instead because the pitcher was
+low but okay
+
+GO GO GO
+
+:103]
+
+:102]
+[111:
+
+Sat Aug 29 04:20:32 2020 WHO RAH!  We have reached:
+
+	main::__ANON__("XXX IMPLEMENT ME at /home/t2/T2-12/apps/cdm/cdm/PacketCDM_F.p"...) called at /home/t2/T2-12/apps/cdm/cdm/PacketCDM_F.pm line 81
+
+which is this in PacketCDM_F.pm:
+
+    ##VIRTUAL
+    sub handleInbound {
+        my ($self,$cdm) = @_;
+        die "XXX IMPLEMENT ME";
+    }
+
+So.  How do we handle an inbound traditional packet announcement?
+
+Is a TransferManager involved in inbound processing?  Somebody needs
+to connect us to DMPending.  Are TransferManagers meant to be
+bidirectional?  That was a pretty confusing aspect of cdm.pl-old
+
+But since the thing has got TRANSFER right in the name, it shouldn't
+be much of a stretch to think both sender and recipient would be
+involved?  If we renamed it to ServerManager then having a
+ClientManager wouldn't be so weird.
+
+Well, let's try to do both sides in the TransferManager, carefully,
+gingerly, and see how clear we can keep it.
+[112:
+
+Sat Aug 29 04:38:24 2020 So that means PacketCMD_F::handleInbound
+needs to reach TMTraditional -- and who should know that?
+
+Who's dispatching to handleInbound ATM?[113:
+
+Sat Aug 29 04:39:56 2020 It's PacketIO::dispatchPacket ==>
+handleInbound.  And that makes sense -- it's the packet type that
+would naturally know (much of) how it should be routed.
+
+So we should have packetCMD_F::handleInbound get TMTraditional from
+CDM, and call some clienty-sounding method on it.
+[114:
+
+Sat Aug 29 04:49:13 2020 OK, we've gotten to here:
+
+    7.22:PacketIO#3: TransferManager handleAnnouncement not overriden for WT CDM 'F' + 49
+
+It's getting close to morning business but the next stop is
+TMTraditional::handleAnnouncement.  Let's start into it anyway.
+
+:114]
+
+:113]
+
+:112]
+:111]
+[115:
+
+Sat Aug 29 06:06:13 2020 OK, back from morning stuff, and immediately
+found my stupid typoe that had been hiding from diagnosis when I broke
+off.  Now we're back to
+
+   main::__ANON__("XXX FINISH ME at /home/t2/T2-12/apps/cdm/cdm/TMTraditional.pm"...) called at /home/t2/T2-12/apps/cdm/cdm/TMTraditional.pm line 37
+
+:115]
+[116:
+
+Sat Aug 29 06:23:18 2020 Added and tested Packet::validateAsClass and
+Packet::assertValid so we can insist that a $pkt be a specific
+subclass of Packet.  First use is:
+
+    sub handleAnnouncement {
+        my $self = shift;
+        my PacketCDM_F $pkt = PacketCDM_F->assertValid(shift);
+  ..
+
+(and now we need the rest of that..)
+:116]
+[117:
+
+Sat Aug 29 06:25:16 2020 And how do we handle a traditional file
+announcement?
+
+Well, cdm.pl-old goes
+
+processFileAnnouncement ==> checkAnnouncedFile ==> checkIfFileInCommon
+
+and if not, then it manually creates stuff in pending.
+
+What does that look like now?  Guess we want to get our mitts on
+DMCommon and ask it about $pkt->{mName}.  Our grubby mitts, I mean.
+
+:117]
+[118:
+
+Sat Aug 29 08:07:40 2020 OK, so we've made quite a bit of plain
+procedural flow here, in TMTraditional::handleAnnouncement and now
+TMTraditional::requestChunkFrom, and we're starting to hit 
+off-main-line cases like this:
+
+     at ./cdm.pl line 16, <__ANONIO__> line 2.
+            main::__ANON__("Died at /home/t2/T2-12/apps/cdm/cdm/DirectoryManager.pm line "...) called at /home/t2/T2-12/apps/cdm/cdm/DirectoryManager.pm line 63
+            DirectoryManager::insertMFZMgr(DMPending=HASH(0x2b8d6c8), MFZManager=HASH(0x2bce8e0)) called at /home/t2/T2-12/apps/cdm/cdm/DMPending.pm line 32
+            DMPending::newContent(DMPending=HASH(0x2b8d6c8), "cdmd-MFM.mfz") called at /home/t2/T2-12/apps/cdm/cdm/TMTraditional.pm line 71
+            TMTraditional::handleAnnouncement(TMTraditional=HASH(0x1e68338), PacketCDM_F=HASH(0x2bcebb0)) called at /home/t2/T2-12/apps/cdm/cdm/PacketCDM_F.pm line 104
+
+because we're hitting existing files in pending/ when we go to init a
+new one in response to a traditional file announcement.
+
+Are we not flushing pending/ on startup?  (Which would only avoid a
+subset of such problems, but..)[119:
+
+Sat Aug 29 08:12:46 2020 It looks like we are:
+
+    ./cdm.pl start
+    Found ./cdmDEBUG
+    Flushed 2 ./cdmDEBUG/pending files
+    Found ./cdmDEBUG/common
+    Found ./cdmDEBUG/log
+    Made ./cdmDEBUG/pending
+
+so that's not it.  Maybe it's just a repeated 'F' acket that we aren't
+detecting as repeated?
+
+
+:119]
+
+:118]
+[120:
+
+Sat Aug 29 08:30:27 2020 OK, now we've gotten to here:
+
+    0.59:PacketIO#3: QQUNPACK(PacketCDM_F=HASH(0x1b26a08))
+
+Recvd an F from ngb and processing it..
+  ..
+    0.59:PacketIO#3: DirMgr:pending#1 inserted (cdm-distrib-T2-GFB.mfz)
+Leading to creating an entry in pending
+  ..
+    0.59:PacketIO#3: sendVia2(PacketCDM_C=HASH(0x1b27a18))
+And us requesting a chunk of it from them
+  ..
+    0.99:PacketIO#3: No inbound handler for NE CDM 'D' + 200
+But us not being able to handle it when it arrives.
+
+
+:120]
+[121:
+
+Sat Aug 29 09:00:14 2020 OK, fading here; want to wise up and take a
+break instead of doing crabby code.  For when we return
+
+TODO
+
+ - Change TransferManager so serverData and clientData support
+   indexing by $contentName and indexing by some other provided
+   scalar.
+
+ - Use that in TMTraditional to look up clientData by SKU
+
+ - Use that to complete a first cut at handleDataChunk.
+
+:121]
+[122:
+
+Sat Aug 29 13:05:34 2020 Starting.
+
+:122]
+[123:
+
+Sat Aug 29 13:56:03 2020 OK so I'm losing track of the symmetry that
+I'd thought I'd seen between the serverData and the clientData.  I've
+been trying to reuse the same accessing code, just passing
+\$self->{mServerData} vs \$self->{mClientData} -- but that seems wrong
+now.
+
+In particular, there seems to be a single serverData record
+for a given $cn, but there can be multiple clientData records for a
+given $cn, depending on dir8.  We broadcast the same thing to all our
+neighbors, but our neighbors all broadcast different things to us.
+
+If anything, it seems more like us-as-server is just like one more
+direction that can have metadata.  So maybe we could collapse
+mServerData and mClientData and just have something like
+
+  mMetadata => [ { cn -> { dir9 -> [dir9 cn key2 ..] } } { dir9 -> { key2 -> cn } } ]
+
+where dir9 is dir8 + some special code meaning 'server'?  Too
+dangerous to consider dir9 == undef means 'server'?  Probably.
+Probably better to use 8.  Make it visible in the ${rec}s.
+
+and we'd have
+
+  getMetadata($cn,$dir9) undef or existing [$dir9 $cn key2 ..]
+  storeMetadata($rec) insert/overwrite based on dir9, cn, and key2 of $rec
+  eraseMetadata($rec) delete based on dir9, cn, and key2 of $rec
+
+  getMetadataK2($k2,$dir9) undef or existing [$dir9 cn $k2 ..]
+
+Are we saying that server and client recs are expected to have the
+same structure beyond the first two elements?  We'll see.
+
+[124:
+
+Sat Aug 29 14:25:13 2020 Pull the trigger time's a-wasting GO GO GO
+
+:124]
+
+:123]
+[125:
+
+Sat Aug 29 15:02:41 2020 OK so we have that roughed out in
+TransferManager.  How do we test it?
+
+:125]
+[126:
+
+Sat Aug 29 22:03:20 2020 OK so time for another run.  We're real close
+on traditional transfer.  Need to handle getting to the end, and deal
+with the transfer to DMCommon..
+
+We left off before dinner facing this bizarre bug where an
+MFZManager's mDirectoryManager seems to suddenly change into an
+unblessed hash, like this:
+
+    9.20:PacketIO#3: MFZManager::appendDataTo 3371 + 177
+    9.20:PacketIO#3: MFZManager::getPathToFile MFZManager=HASH(0x2336340) DMPending=HASH(0x22ff6d0)
+
+That's output from:
+
+    DPSTD("${\FUNCNAME} $self $self->{mDirectoryManager}");
+
+and $self->{mDirectoryManager} is a DMPending=HASH(..), which makes
+perfect sense..
+
+    9.20:PacketIO#3: MFZManager::appendDataTo 3548 + 177
+    9.20:PacketIO#3: MFZManager::getPathToFile MFZManager=HASH(0x2336340) DMPending=HASH(0x22ff6d0)
+
+Ditto
+
+    9.42:MFZMgr:cdm-distrib-T2-GFB.mfz#16: MFZManager::getPathToFile MFZManager=HASH(0x2336340) DMPending=HASH(0x22ff6d0)
+
+Ditto ditto
+
+    9.42:MFZMgr:cdm-distrib-T2-GFB.mfz#16: ./cdmDEBUG/pending/cdm-distrib-T2-GFB.mfz MODTIME CHANGE, deleting mgr
+
+Ahh hmmmmmm
+
+    9.43:PacketIO#3: MFZManager::getPathToFile MFZManager=HASH(0x2336340) HASH(0x233bd08)
+     at ./cdm.pl line 16, <__ANONIO__> line 1.
+            main::__ANON__("Died at /home/t2/T2-12/apps/cdm/cdm/MFZManager.pm line 261, <"...) called at /home/t2/T2-12/apps/cdm/cdm/MFZManager.pm line 
+261
+
+and we're dead..  So, that 'deleting mgr' now catches the eye AY WAT?
+
+[127:
+
+Sat Aug 29 22:12:24 2020 So that's coming from MFZManager's
+onTimeout/update method, which has this
+
+    # Start over on modtime changes
+    if (defined($self->{mFileModificationTime}) && -M $filepath != $self->{mFileModificationTime}) {
+        DPSTD("$filepath MODTIME CHANGE, deleting mgr");
+        $self->{mDirectoryManager}->removeMFZMgr($self);
+        return;
+    }
+
+which might (possibly) be a reasonable to do in DMCommon, but we can't
+be doing that for DMPending (nor DMPipeline) when the modification
+time is going to be changing with every data packet.[128:
+
+Sat Aug 29 22:15:37 2020 We could maybe do that check only if
+mfzState() is CnV?[129:
+
+Sat Aug 29 22:18:46 2020 Well, trying that for now:
+
+    # If we're CnV, we shouldn't change: Start over on modtime changes 
+    if ($self->mfzState() == MFZ_STATE_CCNV &&
+        defined($self->{mFileModificationTime}) &&
+        -M $filepath != $self->{mFileModificationTime}) {
+
+        DPSTD("$filepath MODTIME CHANGE, deleting mgr");
+        $self->{mDirectoryManager}->removeMFZMgr($self);
+        return;
+    }
+
+but certainly noting that cleanup should be more thorough and
+structured than that.
+
+:129]
+
+:128]
+
+:127]
+
+:126]
+[130:
+
+Sat Aug 29 22:22:00 2020 OK, so, FINALLY, traditional transfers are
+starting to accumulate in pending:
+
+      /home/t2/T2-12/apps/cdm/cdm/cdmDEBUG/pending:
+      total used in directory 184 available 363368
+      drwxr-xr-x 2 t2 t2  4096 Aug 29 22:20 .
+      drwxr-xr-x 7 t2 t2  4096 Aug 29 22:20 ..
+      -rw-r--r-- 1 t2 t2  1143 Aug 29 22:20 cdm-deleteds.mfz
+      -rw-r--r-- 1 t2 t2  7603 Aug 29 22:20 cdm-distrib-T2-GFB.mfz
+      -rw-r--r-- 1 t2 t2 82257 Aug 29 22:21 cdmd-MFM.mfz
+      -rw-r--r-- 1 t2 t2 79969 Aug 29 22:21 cdmd-T2-12.mfz
+
+Compared to:
+
+      /cdm/common:
+      total used in directory 16552 available 409136
+      drwxr-xr-x 2 root root     4096 Aug 29 08:06 .
+      drwxr-xr-x 7 root root     4096 Aug 29 08:06 ..
+      -rw-r--r-- 1 root root     1143 Aug  9 05:26 cdm-deleteds.mfz
+      -rw-r--r-- 1 root root     7603 Aug  3 23:00 cdm-distrib-T2-GFB.mfz
+      -rw-r--r-- 1 root root 14960349 Aug  9 07:30 cdmd-MFM.mfz
+      -rw-r--r-- 1 root root  1954598 Aug  6 13:31 cdmd-T2-12.mfz
+
+on our NE neighbor.
+
+We need to get crispy about 'file complete' and 'file obsolete'
+transitions.  At least and soon.
+
+[131:
+
+Sat Aug 29 22:45:40 2020 Jeez looking at George Douros' 'Symbola'
+font.  Jeez.
+
+:131]
+
+:130]
+[132:
+
+Sat Aug 29 22:48:18 2020 OK so let's take a beat, here.  What do we
+THINK should happen when the last of a pending .mfz comes in?
+
+ - FOO.mfz on disk should be checked by mfzrun VERIFY.  If
+   verification fails the file should be deleted, and the MFZManager
+   either deleted ("easier") or marked as "unverifiable" (just delete
+   it). 
+
+ - FOO.mfz on disk should be moved from pending/ to common/.
+
+ - If there's an existing common/FOO.mfz, it should be
+   removed, and its DMCommon MFZManager should be removed as well
+
+[133:
+
+Sat Aug 29 23:13:18 2020 So how about naming some 'terminal actions'
+for MFZManagers?
+
+ - MFZManager::deleteContent() -- Delete file on disk, remove $self
+   from DirectoryManager::mMFZManagers, mark $self dead or deleted
+   somehow, and unschedule self from TQ.  Perhaps have
+   TransferManager metadata records check that their mfzmgr is still
+   alive when they access it.
+
+ - MFZManager::detachFromContent() -- Do all the things of
+   deleteContent except don't delete the file on disk.  The goal is to
+   allow us to then manipulate the file (e.g., mv pending -> common)
+   and create a new MFZManager for it.
+
+[134:
+
+Sat Aug 29 23:19:50 2020 Yeah this is helpful.  Go again:
+
+ - MFZManager::destructDetach() -- Remove $self from
+   DirectoryManager::mMFZManagers, mark $self dead or deleted somehow,
+   and unschedule self from TQ.  Perhaps have TransferManager metadata
+   records check that their mfzmgr is still alive when they access it.
+
+ - MFZManager::destructDelete() -- Do destructDetach, then delete the
+   file on disk.
+
+[135:
+
+Sat Aug 29 23:22:27 2020 Come on try it.  GO GO GO
+
+:135]
+
+:134]
+
+:133]
+
+:132]
+[136:
+
+Sun Aug 30 01:12:25 2020 OK, so current question is about content
+names.  In cdm.pl-old, we basically trust the surface filename -- if
+the file is FOO.mfz, the content name is 'FOO', and that's that.  If
+we make a copy of it called FOO2.mfz, its content name is 'FOO2'.
+
+But there is also an 'inner content name', in the MFZNAME.DAT file in
+the inner zip.  And if the file was called 'FOO.mfz' when it was
+signed, then 'FOO.mfz' remains the inner content name regardless of
+what happens to the surface file name.
+
+So you'd think, really for safety, one should rely on the inner
+content name for purposes of triggering actions and what not.
+
+I think in fact, in the old system, if you had some signed mfz like
+cdmd-MFM.mfz, that happened to be newer than some other signed mfz
+like cdmd-T2-12.mfz, you could copy cdmd-MFM.mfz on top of
+cdmd-T2-12.mfz, and my best guess is the 'new' cdmd-T2-12.mfz would
+get distributed, unpacked into its inner correct place (because that's
+determined by the tar file), but then the wrong hardcoded install
+routine would be run.[137:
+
+Sun Aug 30 02:08:22 2020 So I think an alleged 'cdmd-T2-12.mfz' that
+really contained a cdmd-MFM.tgz inside would get installed to
+/home/t2/MFM, and then 'make -C /home/t2/T2-12 install' would get run,
+re-installing the current T2-12 stuff.
+
+But anyway.[138:
+
+Sun Aug 30 02:10:03 2020 So the bottom line issue is this:
+
+The ANNOUNCE.PKT that is being packed into new MFZ files *does*
+contain the inner content name in a reasonably accessible form.  (And
+in a reasonably credible form too, since it's independently signed).
+
+If we depended on that announce packet, we'd have a reasonably
+principled way to check which MFZManagers represented different takes
+on the same content.
+
+But we were still hoping for 'backward compatibility'.[139:
+
+Sun Aug 30 03:04:53 2020 Screw it.  Let's count on the ANNOUNCE.PKT.
+The existing code in the grid won't need it, so it'll go ahead and
+install the cdmd-T2-12.mfz containing both the ANNOUNCE.PKT and the
+code that depends on it.
+
+So, we're going refactor the loadCnV code rather than have a separate
+non-ANNOUNCE-using version.
+[140:
+
+Sun Aug 30 03:10:34 2020 Well so for now we're just calling loadCnVMFZ
+on the $pmgr we're looking at..  And it's failing because it's looking
+at an old .mfz in from the neighbors..  So we have to replace the
+ngb's /cdm/common .mfz's with something new..
+
+:140]
+:139]
+
+:138]
+
+:137]
+
+:136]
+[141:
+
+Sun Aug 30 04:11:23 2020 Well, late late and almost surely rickety,
+but traditional transfer seems to be working -- so long as it's only
+'new style' .mfzs containing ANNOUNCE.PKT files.
+
+So that's something.  And the transfer between pending/ and common/ is
+smooth enough that it switches right over to
+
+    187.50:PacketIO#3: Don't need PacketCDM_F=HASH(0x2231890) MFZMgr:NEWSTAL.mfz#14
+
+once it's released 'NEWSTAL' the new .mfz
+
+[142:
+
+Sun Aug 30 05:05:08 2020 Morning time.  Should implement a 'C' handler
+so others can get stuff from us..
+
+:142]
+
+:141]
+[143:
+
+Sun Aug 30 07:14:53 2020 OK, getting to be second sleep time, but
+we've made a lot of progress.  Files are traditionally transferring in
+and out.  At the moment, we tend to be requesting files we already
+have in common, accumulating them in pending, then discovering that we
+don't need them -- at which point, at the moment, they just sit there
+in pending.
+
+In cdm.pl-old, we avoided that problem by preloading everything in
+common, before we started talking to the world.  Probably should just
+do that again here, for now at least.
+
+:143]
+[144:
+
+Sun Aug 30 13:50:11 2020 Up.  Well it's time to look at TMPipeline I
+guess!  Have a whole day and a bit of time left.  There are remaining
+issues in TMTraditional -- for example we're missing the part about
+adding sources to the metadata..
+
+Actually, maybe we should get a three-tile cluster going here, just to
+see a _little_ bit of the multi-source and multi-path issues, before
+losing the current head of of TMTraditional state.[145:
+
+Sun Aug 30 16:28:42 2020 OK, post meeting; have an hour or so before
+final dinner prep.
+
+Could we consider activating cdm-deleteds for the first time in the
+history of the universe?[146:
+
+Sun Aug 30 17:05:33 2020 OK so here's the format of the records in the
+cdm-deleteds.map that lives inside cdm-deleteds.mfz:
+
+    cdm-distrib-T2-GFB.mfz 7603 d80920a9d0f1a33c8309f9884267e372 1559576278
+
+and I think at least for a first cut, we'd just care about the
+contentname and the inner timestamp, and we'd say any file of that
+name that isn't newer than the given timestamp counts as deleted.
+
+We'll make a DMCommon::mDeletedsMap { cn -> [ cn len cksum innerts ] }
+data member.  We'll make a special release trigger on cdm-deleteds.mfz
+that reloads that map.[147:
+
+Sun Aug 30 17:12:24 2020 Have to stop now, but: We'll provide a
+DMCommon::isDeleted($cn,$its) method, and check that in newContent or
+thereabouts. 
+
+:147]
+
+
+:146]
+
+:145]
+
+:144]
+[148:
+
+Mon Aug 31 01:18:02 2020 Well, I've got to get some sleep here, but
+yah know, it's getting to be time to commit this bad bein.  I think
+it's close to the point where it's better than the original ever was
+at traditional transfers, and we have new features like cdm-deleteds
+is kind of working as well.
+
+:148]
