@@ -142,6 +142,10 @@ sub getMetadataOfMFZ {
 
 sub checkOrAddToMap {
     my ($mfz,$dmref) = @_;
+    if ($mfz eq $DELETEDS_MFZ_NAME) {
+        print "Illegal to delete '$mfz'\n";
+        return -1;
+    }
     my $path = "$COMMON_DIR/$mfz";
     if (!-e $path) {
         print "No such file '$path'\n";
