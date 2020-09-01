@@ -14,7 +14,7 @@ my @math = qw(
     hexEscape
     deHexEscape
     formatSeconds
-    formatCount
+    formatSize
     formatPercent
     );
 my @dir6s = qw(
