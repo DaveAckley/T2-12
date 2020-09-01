@@ -172,7 +172,16 @@ sub reportMFZStats {
     for my $cn (@cns) {
         my $mgr = $self->{mMFZManagers}->{$cn};
         my $len = $mgr->getCurrentLength();
-        push @ret, sprintf(" %*s %d\n",$maxlen,$cn,$len);
+        my $totlen = $mgr->{mFileTotalLength};
+        if ($totlen <= 0) {
+            push @ret, sprintf(" %*s %s %s\n",$maxlen,$cn,formatSize($len));
+        } else {
+            my $pct = 100.0*$len/$totlen;
+            push @ret, sprintf(" %*s %s %s\n",
+                               $maxlen, $cn,
+                               formatSize($len),
+                               formatPercent($pct));
+        }
     }
     return @ret;
 }
