@@ -79,11 +79,12 @@ sub captureBulkIOStats {
             $rec->[REC_TOTIN] = $svcbrcvd;
             $rec->[REC_TOTOUT] = $svcbsent;
             if ($diffsec > 0) {
-                my $sample = $diffin / $diffsec;
-                $rec->[REC_FASTIN] = defined($rec->[REC_FASTIN]) ? FAST_FRAC_OLD * $rec->[REC_FASTIN] + FAST_FRAC_NEW * $sample : $sample;
-                $rec->[REC_SLOWIN] = defined($rec->[REC_SLOWIN]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWIN] + SLOW_FRAC_NEW * $sample : $sample;
-                $rec->[REC_FASTOUT] = defined($rec->[REC_FASTOUT]) ? FAST_FRAC_OLD * $rec->[REC_FASTOUT] + FAST_FRAC_NEW * $sample : $sample;
-                $rec->[REC_SLOWOUT] = defined($rec->[REC_SLOWOUT]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWOUT] + SLOW_FRAC_NEW * $sample : $sample;
+                my $insample = $diffin / $diffsec;
+                my $outsample = $diffout / $diffsec;
+                $rec->[REC_FASTIN] = defined($rec->[REC_FASTIN]) ? FAST_FRAC_OLD * $rec->[REC_FASTIN] + FAST_FRAC_NEW * $insample : $insample;
+                $rec->[REC_SLOWIN] = defined($rec->[REC_SLOWIN]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWIN] + SLOW_FRAC_NEW * $insample : $insample;
+                $rec->[REC_FASTOUT] = defined($rec->[REC_FASTOUT]) ? FAST_FRAC_OLD * $rec->[REC_FASTOUT] + FAST_FRAC_NEW * $outsample : $outsample;
+                $rec->[REC_SLOWOUT] = defined($rec->[REC_SLOWOUT]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWOUT] + SLOW_FRAC_NEW * $outsample : $outsample;
             }
         }
     }
