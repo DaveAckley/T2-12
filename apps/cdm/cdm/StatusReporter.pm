@@ -102,7 +102,7 @@ sub writeBulkIOStats {
     my $basedir = $self->{mCDM}->{mBaseDirectory};
     my $path = "$basedir/${\PATH_BASEDIR_REPORT_IOSTATS}";
     open HDL, ">", $path or die "Can't write $path: $!";
-    print HDL "CDM STATUS (up ".formatSeconds($uptime).")\n";
+    print HDL "CDM UPTIME ".formatSeconds($uptime)."\n";
     for my $dir6 (getDir6s()) {
         my $dir8 = mapDir6ToDir8($dir6);
         my $rec = $self->{mRatesDir8}->{$dir8};
