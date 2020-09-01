@@ -164,24 +164,17 @@ sub update {
 sub reportMFZStats {
     my __PACKAGE__ $self = shift;
     my @cns = sort keys %{$self->{mMFZManagers}};
-    my $maxlen = 0;
-    for my $cn (@cns) {
-        $maxlen = max($maxlen,length($cn));
-    }
+    my $maxlen = 16;
     my @ret = ();
     for my $cn (@cns) {
         my $mgr = $self->{mMFZManagers}->{$cn};
         my $len = $mgr->getCurrentLength();
         my $totlen = $mgr->{mFileTotalLength};
-        if ($totlen <= 0) {
-            push @ret, sprintf(" %*s %s %s\n",$maxlen,$cn,formatSize($len));
-        } else {
-            my $pct = 100.0*$len/$totlen;
-            push @ret, sprintf(" %*s %s %s\n",
-                               $maxlen, $cn,
-                               formatSize($len),
-                               formatPercent($pct));
-        }
+        push @ret,
+            sprintf(" %4s %4s %*s\n",
+                    $totlen > 0 ? formatPercent(100.0*$len/$totlen) : "-- ",
+                    formatSize($len),
+                    -$maxlen, substr($cn,0,$maxlen));
     }
     return @ret;
 }
