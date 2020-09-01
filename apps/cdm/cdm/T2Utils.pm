@@ -156,7 +156,7 @@ sub formatSize {
             if ($size > 10 || int($size) == $size) {
                 $ret = sprintf("%3d%s", $size,$unit);
             } else {
-                $ret = sprintf("%3.1%s",$size,$unit);
+                $ret = sprintf("%3.1f%s",$size,$unit);
             }
             last;
         }
