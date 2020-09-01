@@ -24,6 +24,7 @@ our %EXPORT_TAGS;
 ## Imports
 # Our classes
 use Constants qw(:all);
+use T2Utils qw(:all);
 use DP qw(:functions :flags);
 use MFZManager;
 use TimeQueue;
@@ -43,7 +44,7 @@ use File::Path qw(make_path remove_tree);
 use File::Basename;
 use File::Copy qw(move copy);
 use Errno qw(EAGAIN);
-use Time::HiRes;
+use Time::HiRes qw(sleep);
 use List::Util qw/shuffle/;
 use Digest::SHA qw(sha512_hex);
 use DateTime::Format::Strptime;
@@ -120,8 +121,8 @@ sub schedule {
 sub eventLoop {
     my ($self) = @_;
     while (1) {
-        my $next = $self->{mTimeQueue}->runExpired();
-        sleep ($next >= 0 ? $next : 1);
+        my $next = $self->{mTimeQueue}->runEvent();
+        sleep(max($next,0.05));
     }
 }
 

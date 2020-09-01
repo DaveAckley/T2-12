@@ -94,30 +94,28 @@ sub unschedule {
     remove(@_);
 }
 
-sub runExpired {
+sub runEvent {
     my ($self,$max) = @_;
     my $now = now();
     my $count = 0;
     my $nearestUnexpired;
     DPPushPrefix(sprintf("%.2f",$now-$self->{mCreationTime}));
-    #DPDBG("runExpired now=$now");
-    for (; !defined $max || $count < $max; ++$count) {
-        my ($min,$minto);
-        # 'Priority queue'
-        for (my $idx = 0; $idx < $self->{mCount}; ++$idx) {
-            my $to = $self->{mTimeoutAbles}->[$idx];
-            my $when = $to->expires();
-            #DPDBG("Considering ".$to->getTag()." at $when (now=$now)");
+    # 'Priority queue'
+    my ($min,$minto);
+    for (my $idx = 0; $idx < $self->{mCount}; ++$idx) {
+        my $to = $self->{mTimeoutAbles}->[$idx];
+        my $when = $to->expires();
+        #DPDBG("Considering ".$to->getTag()." at $when (now=$now)");
 
-            if ($when < $now) {
-                #DPDBG("Eligible at $when (now=$now)");
-                ($min,$minto) = ($when,$to)
-                    if !defined($min) || ($when < $min);
-            } elsif (!defined($nearestUnexpired) || $when < $nearestUnexpired) {
-                $nearestUnexpired = $when;
-            }
+        if ($when < $now) {
+            #DPDBG("Eligible at $when (now=$now)");
+            ($min,$minto) = ($when,$to)
+                if !defined($min) || ($when < $min);
+        } elsif (!defined($nearestUnexpired) || $when < $nearestUnexpired) {
+            $nearestUnexpired = $when;
         }
-        last unless defined $minto;
+    }
+    if (defined $minto) {
         $self->unschedule($minto);  # must reschedule if it wants to live
         my $interval = $minto->{mDefaultInterval};  # which it can do by default
         $minto->reschedule($interval) if defined $interval;
@@ -126,7 +124,7 @@ sub runExpired {
         $minto->onTimeout();
     }
     DPPopPrefix();
-    return defined($nearestUnexpired) ? $nearestUnexpired - $now : 0;
+    return (!defined($minto) && defined($nearestUnexpired)) ? $nearestUnexpired - $now : 0;
 }
 
 1;
