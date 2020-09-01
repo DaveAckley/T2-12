@@ -40,7 +40,15 @@ TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
 TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 
 
 cdmd:	FORCE
-	MPWD=`pwd`;BASE=`basename $$MPWD`;echo $$MPWD for $$BASE;pushd ..;tar cvzf $$BASE-built.tgz $(TAR_SWITCHES) $$BASE;cp -f $$BASE-built.tgz /home/debian/CDMSAVE/TGZS/;/home/t2/MFM/bin/mfzmake cdmake 0 cdmd-$$BASE.mfz $$BASE-built.tgz;cp -f cdmd-$$BASE.mfz /home/debian/CDMSAVE/CDMDS/;popd
+	MPWD=`pwd`;BASE=`basename $$MPWD`; \
+	echo $$MPWD for $$BASE; \
+	pushd ..;tar cvzf $$BASE-built.tgz $(TAR_SWITCHES) $$BASE; \
+	cp -f $$BASE-built.tgz /home/debian/CDMSAVE/TGZS/; \
+	/home/t2/MFM/bin/mfzmake cdmake 0 cdmd-$$BASE.mfz $$BASE-built.tgz; \
+	/home/t2/MFM/bin/mfzrun -kd /cdm ./cdmd-$$BASE.mfz VERIFY | \
+	perl -ne 'print $$1 if /INNER_TIMESTAMP \[(\d+)\]/' > ./cdmd-$$BASE.mfz-cdm-install-tag.dat; \
+	cp -f cdmd-$$BASE.mfz /home/debian/CDMSAVE/CDMDS/; \
+	popd
 
 $(SUBDIRS):	FORCE
 	$(MAKE) -C $@ $(MAKECMDGOALS)
