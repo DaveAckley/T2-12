@@ -1,7 +1,7 @@
 APP_NAME:=cdm.sh
 DEST_DIR:=/opt/scripts/t2
 DEST_PATH:=$(DEST_DIR)/$(APP_NAME)
-SRC_FILES:=$(wildcard cdm/*.pm cdm/*.pl)
+SRC_FILES:=$(wildcard cdm/*.pm cdm/*.pl cdm/mfzrun)
 OBJ_DEST_DIR:=/opt/scripts/t2/cdm
 OBJS:=$(OBJ_DEST_DIR)/$(SRC_FILES)
 

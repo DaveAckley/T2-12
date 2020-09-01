@@ -4,6 +4,12 @@ use strict;
 
 use Exporter qw(import);
 
+####
+use File::Basename;
+use Cwd qw(abs_path);
+use constant PATH_CDM_SOURCE_DIRECTORY => dirname (abs_path(__FILE__));
+####
+
 use constant CDM_PROTOCOL_VERSION_SRSLYNOW => 3;    # 202008260233 OO Refactor & cleanup
 use constant CDM_PROTOCOL_VERSION_PIPELINE => 2;    # 202008140223 Pipeline overlay
 use constant CDM_PROTOCOL_VERSION_ASPINNER => 1;    # Pre-version-protocol version
@@ -39,7 +45,7 @@ use constant SUBDIR_PENDING => "pending";
 use constant SUBDIR_PIPELINE => "pipeline";
 use constant SUBDIR_PUBKEY => "public_keys";
 
-use constant PATH_PROG_MFZRUN => "/home/t2/MFM/bin/mfzrun";
+use constant PATH_PROG_MFZRUN => "${\PATH_CDM_SOURCE_DIRECTORY}/mfzrun";
 use constant PATH_DATA_IOSTATS => "/sys/class/itc_pkt/statistics";
 use constant PATH_BASEDIR_REPORT_IOSTATS => "log/status.txt";
 
@@ -127,6 +133,7 @@ my @constants = qw(
     );
 
 my @paths = qw(
+    PATH_CDM_SOURCE_DIRECTORY
     PATH_PROG_MFZRUN
     PATH_DATA_IOSTATS
     PATH_BASEDIR_REPORT_IOSTATS
