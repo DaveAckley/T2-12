@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DIR=`pwd`
+DIR=/opt/scripts/t2
 cd /
 while [ true ] ; do
     TERM=dumb $DIR/cdm/cdm.pl
