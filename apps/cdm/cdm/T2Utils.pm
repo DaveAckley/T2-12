@@ -14,6 +14,8 @@ my @math = qw(
     hexEscape
     deHexEscape
     formatSeconds
+    formatCount
+    formatPercent
     );
 my @dir6s = qw(
     getDir6Name 
@@ -143,6 +145,35 @@ sub formatSeconds {
     }
     return "$neg$ret";
 }
+
+my @kunits = split(//," KMGTPE");
+sub formatSize {
+    my $size = shift;
+    my $ret = "";
+    return " <0 " if $size < 0;
+    for my $unit (@kunits) {
+        if ($size < 1000) {
+            if ($size > 10 || int($size) == $size) {
+                $ret = sprintf("%3d%s", $size,$unit);
+            } else {
+                $ret = sprintf("%3.1%s",$size,$unit);
+            }
+            last;
+        }
+        $size /= 1000.0;
+    }
+    return $ret;
+}
+
+sub formatPercent {
+    my $pct = shift;
+    return " <0%" if $pct < 0;
+    return sprintf(".%02d%%",int($pct*100)) if $pct < 1;
+    return sprintf("%3.1d%%",$pct) if $pct < 10;
+    return sprintf("%3d%%",int($pct)) if $pct < 999;
+    return "1K+%";
+}
+
 
 ## DIRECTIONS
 
