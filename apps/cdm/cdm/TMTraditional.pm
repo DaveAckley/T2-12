@@ -107,6 +107,8 @@ sub sendDataChunk {
     return DPSTD("${\FUNCNAME} No server metadata sku($sku), ignoring ${\$pkt->summarize()}")
         unless defined $rec;
     my ($dir8,$cn,$recsku,$mgr,$announcepkt) = @{$rec};
+    return DPSTD("${\FUNCNAME} MFZMgr for $cn/$recsku is dead, ignoring ${\$pkt->summarize()}")
+        unless $mgr->isLive();
     my $startIdx = $pkt->{mCurrentLength};
     DPSTD("Starting send of $cn (SKU $sku) to ${\getDir8Name($pkt->getDir8())}")
         if $startIdx == 0;
