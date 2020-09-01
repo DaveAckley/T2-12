@@ -19,6 +19,8 @@ our %EXPORT_TAGS;
 use File::Copy; # For move
 use List::Util qw(shuffle);
 
+use T2Utils qw(:all);
+
 use DP qw(:all);
 
 ## Methods

@@ -179,7 +179,7 @@ sub considerPendingRelease {
     DPSTD("${\FUNCNAME} cn($cn) ok($ok) existing($existing) storeable($storeable)");
     if ($storeable) {
         if ($existing) {
-            $dmc->forgetMFZMgr($cmgr);
+            $self->forgetMFZMgr($cmgr);
             $cmgr->destructDelete();
         }
         $dmc->takeMFZAndFile($pmgr);
