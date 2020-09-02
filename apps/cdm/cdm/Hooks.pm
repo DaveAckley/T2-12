@@ -14,6 +14,7 @@ use File::Temp qw(tempdir);
 use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
+use HookManager qw(:actions);
 
 my %cdmdTargetDirs = (
     'cdmd-MFM.mfz' => "/home/t2",
@@ -264,8 +265,19 @@ sub CDMD_T2_12_MFZ_RELEASE_HOOK {
 
     DPSTD("RUNNING T2-12 MAKE INSTALL");
     return unless runCommandWithSync("make -C /home/t2/T2-12 -k install","T2-12: make install: ERROR");
-#    print "REBOOTING!\n";
-#    runCommanddWithSync("reboot","reboot: ERROR");
+}
+
+sub CDMD_MFM_MFZ_RELEASE_HOOK {
+    my MFZManager $mgr = shift or die;
+    my $hooktype = shift or die;
+    die unless $hooktype eq HOOK_TYPE_RELEASE;
+    
+    my HookManager $rlm = shift or die;
+
+    my $cn = $mgr->{mContentName};
+    $cn eq CDMD_MFM_MFZ or die;
+    
+    return unless defined installCDMD($mgr);
 }
 
 ##CLASS METHOD
@@ -279,6 +291,9 @@ sub installHooks {
                               \&HOOK_ACTION_RESTART_CDM);
     $rlm->registerHookActions(HOOK_TYPE_RELEASE, CDMD_T2_12_MFZ,
                               \&CDMD_T2_12_MFZ_RELEASE_HOOK,
+                              \&HOOK_ACTION_RESTART_CDM);
+    $rlm->registerHookActions(HOOK_TYPE_RELEASE, CDMD_MFM_MFZ,
+                              \&CDMD_MFM_MFZ_RELEASE_HOOK,
                               \&HOOK_ACTION_RESTART_MFMT2);
 }
 

@@ -7,8 +7,8 @@ use fields qw(
     );
 
 use Exporter qw(import);
-
-our @HOOK_ACTIONS = qw(
+BEGIN {
+my @HOOK_ACTIONS = qw(
     HOOK_ACTION_RESTART_MFMT2
     HOOK_ACTION_REBOOT
     HOOK_ACTION_RESTART_CDM
@@ -16,8 +16,11 @@ our @HOOK_ACTIONS = qw(
 
 our @EXPORT_OK = (@HOOK_ACTIONS);
 
-our %EXPORT_TAGS;
-
+our %EXPORT_TAGS = (
+    actions => \@HOOK_ACTIONS,
+    all => \@EXPORT_OK
+    );
+}
 ## Imports
 use File::Copy; # For move
 use MFZManager;
