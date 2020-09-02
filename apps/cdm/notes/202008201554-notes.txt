@@ -1,4 +1,4 @@
-{155}  -*- text -*- 
+{168}  -*- text -*- 
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -2092,3 +2092,94 @@ try the install trigger..
 
 :154]
 
+[155:
+
+Wed Sep  2 01:45:22 2020 OK, it was super late, but t2sup#284 finally
+shipped.  I Want to Keep Up The Pace Here!
+
+TODO
+
+[161: Wed Sep  2 02:45:27 2020 For now, let's call that 
+DONE  :161] - Rough out set of actions that can be used by hook functions (and
+   eventually formalized somehow)
+
+[162: Wed Sep  2 04:15:42 2020 So slow
+DONE :162] - Action for restarting CDM
+
+[163:
+DONE :163] - Action for restarting MFMT2
+
+[164:
+DONE:164] - Action for rebooting
+
+ - Action for changing MFMT2 persistent command line arguments (or
+   specifically just what physics to run)
+
+[165: Wed Sep  2 04:56:33 2020
+DONE :165] - Have some kind of map for { cn => { hook => [ action.. ] } }
+
+[159:
+
+[166:
+DONE :166] - Add these mappings to the map
+
+    cdmd-T2-12.mfz => { RELEASE => RESTART_CDM }
+    cdmd-MFM.mfz => { RELEASE => RESTART_MFMT2 }
+
+[160:
+
+Wed Sep  2 02:44:14 2020 Damn, fell off for a youtube/twitter/gitter
+check in.  Probably cost a half hour?
+
+STOP MAKING TO-DO.  GO GO GO.  
+
+:160]
+
+  :159][156:
+
+Wed Sep  2 01:53:08 2020
+
+ - ?Create an interposition between mfm.sh and mfmt2, so that mfm.sh
+   runs the delegate, and the delegate runs the engine.
+
+ - ?Maybe cdmake could help standardize such a delegate?  (What does
+   the 'cd' in .. oh yeah, 'common data' I guess)
+
+ - ?Maybe cdmake could check that some particular file is included in
+   the packing.  Actually, we already have something like 'args.txt',
+   right?  Where does that get checked/applied?  Oh yeah, it's right
+   near cdmake in the mfzmake help:
+
+       (4) args.txt  -> mfzrun adds first line to simulator arguments
+
+   And are we going to say that mfmt2 and mfms are NECESSARILY
+   supposed to accept identical command line arguments?  That seems
+   superficially handy but very restrictive and potentially very
+   misleading.
+
+[157: Wed Sep  2 02:05:55 2020 
+   I think we should try to say that mfmt2 'does not have' (m)any
+   'mfz-settable' command line args.  That as much as possible mfmt2
+   should be a fixed target relative to physics creators.
+
+:157]
+
+:156]
+
+:155]
+[158:
+
+Wed Sep  2 02:06:43 2020 OK don't go spinning out too far ahead on
+design fantasy here.  'Return to the to-do' says the fortune teller.
+
+
+:158]
+[167:
+
+Wed Sep  2 04:56:51 2020 Committing, to make a new cdmd-T2-12.mfz and
+push it..
+
+So, just over three hours since :155: above.  Not a great run, but an
+okay run for sure.
+
+:167]
