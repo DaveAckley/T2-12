@@ -261,10 +261,11 @@ sub CDMD_T2_12_MFZ_RELEASE_HOOK {
     my $cn = $mgr->{mContentName};
     $cn eq CDMD_T2_12_MFZ or die;
     
-    return unless defined installCDMD($mgr);
+    return "DONE" unless defined installCDMD($mgr);
 
     DPSTD("RUNNING T2-12 MAKE INSTALL");
-    return unless runCommandWithSync("make -C /home/t2/T2-12 -k install","T2-12: make install: ERROR");
+    runCommandWithSync("make -C /home/t2/T2-12 -k install","T2-12: make install: ERROR");
+    return undef; # Continue with other hook actions
 }
 
 sub CDMD_MFM_MFZ_RELEASE_HOOK {
@@ -277,7 +278,9 @@ sub CDMD_MFM_MFZ_RELEASE_HOOK {
     my $cn = $mgr->{mContentName};
     $cn eq CDMD_MFM_MFZ or die;
     
-    return unless defined installCDMD($mgr);
+    return "DONE" unless defined installCDMD($mgr);
+
+    return undef; # Continue with other hook actions
 }
 
 ##CLASS METHOD
@@ -287,8 +290,7 @@ sub installHooks {
 
     ### DECLARE NEW HOOKS HERE
     $rlm->registerHookActions(HOOK_TYPE_LOAD, CDM_DELETEDS_MFZ,
-                              \&CDM_DELETEDS_MFZ_LOAD_HOOK,
-                              \&HOOK_ACTION_RESTART_CDM);
+                              \&CDM_DELETEDS_MFZ_LOAD_HOOK);
     $rlm->registerHookActions(HOOK_TYPE_RELEASE, CDMD_T2_12_MFZ,
                               \&CDMD_T2_12_MFZ_RELEASE_HOOK,
                               \&HOOK_ACTION_RESTART_CDM);
