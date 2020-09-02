@@ -41,7 +41,10 @@ my @packet = qw(
 my @fileops = qw(
     checksumWholeFile
     );
-our @EXPORT_OK = (@math, @dirs, @packet, @fileops);
+my @processops = qw(
+    runCommandWithSync
+    );
+our @EXPORT_OK = (@math, @dirs, @packet, @fileops, @processops);
 our %EXPORT_TAGS = (
     math => \@math,
     dir6s => \@dir6s,
@@ -49,6 +52,7 @@ our %EXPORT_TAGS = (
     dirs => \@dirs,
     packet => \@packet,
     fileops => \@fileops,
+    processops => \@processops,
     all => \@EXPORT_OK
     );
 
@@ -267,6 +271,18 @@ sub checksumWholeFile {
     my $hexcs = unpack("H*",$cs);
     DPVRB(" $path => $hexcs");
     return $cs;
+}
+
+##PROCESSOPS
+
+sub runCommandWithSync {
+    my ($btcmd,$errprefix) = @_;
+    DPPushPrefix($errprefix) if defined $errprefix;
+    `$btcmd && sync`; 
+    my $ret = $?;
+    DPSTD("'$btcmd' returned code $ret") if $ret;
+    DPPopPrefix() if defined $errprefix;
+    return !$ret;
 }
 
 

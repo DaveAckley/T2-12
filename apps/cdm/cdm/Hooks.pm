@@ -200,17 +200,6 @@ sub unpackToTempDir {
     return $destdir;
 }
 
-##CLASS METHOD
-sub runCommandWithSync {
-    my ($btcmd,$errprefix) = @_;
-    DPPushPrefix($errprefix) if defined $errprefix;
-    `$btcmd && sync`; 
-    my $ret = $?;
-    DPSTD("'$btcmd' returned code $ret") if $ret;
-    DPPopPrefix() if defined $errprefix;
-    return !$ret;
-}
-
 ### DEFINE HOOKS HERE
 sub CDM_DELETEDS_MFZ_LOAD_HOOK {
     my MFZManager $mgr = shift or die;
@@ -285,9 +274,12 @@ sub installHooks {
     my HookManager $rlm = $cdm->{mHookManager} or die;
 
     ### DECLARE NEW HOOKS HERE
-    $rlm->registerHook(HOOK_TYPE_LOAD, CDM_DELETEDS_MFZ, \&CDM_DELETEDS_MFZ_LOAD_HOOK);
-    $rlm->registerHook(HOOK_TYPE_RELEASE, CDMD_T2_12_MFZ, \&CDMD_T2_12_MFZ_RELEASE_HOOK);
-    
+    $rlm->registerHookActions(HOOK_TYPE_LOAD, CDM_DELETEDS_MFZ,
+                              \&CDM_DELETEDS_MFZ_LOAD_HOOK,
+                              \&HOOK_ACTION_RESTART_CDM);
+    $rlm->registerHookActions(HOOK_TYPE_RELEASE, CDMD_T2_12_MFZ,
+                              \&CDMD_T2_12_MFZ_RELEASE_HOOK,
+                              \&HOOK_ACTION_RESTART_MFMT2);
 }
 
 

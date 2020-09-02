@@ -187,7 +187,7 @@ sub considerPendingRelease {
         $dmc->takeMFZAndFile($pmgr);
         DPSTD("--------${\$self->getTag()} RELEASED $cn--------");
         my $hkm = $self->{mCDM}->{mHookManager};
-        $hkm->runHookIfAny(HOOK_TYPE_RELEASE,$pmgr); # now cmgr really
+        $hkm->runHooks(HOOK_TYPE_RELEASE,$pmgr); # now cmgr really
     }
 }
 

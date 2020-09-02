@@ -42,8 +42,8 @@ sub newContent {
     $self->insertMFZMgr($mgr);
     if ($mgr->loadCnVMFZ()) {
         my $hkm = $self->{mCDM}->{mHookManager};
-        $hkm->runHookIfAny(HOOK_TYPE_LOAD,$mgr);
-        $hkm->runHookIfAny(HOOK_TYPE_RELEASE,$mgr);
+        $hkm->runHooks(HOOK_TYPE_LOAD,$mgr);
+        $hkm->runHooks(HOOK_TYPE_RELEASE,$mgr);
         DPSTD("Managing ".$mgr->getTag());
     } else {
         DPSTD("Invalid ".$mgr->getTag());
