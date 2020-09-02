@@ -173,7 +173,7 @@ sub formatPercent {
     my $pct = shift;
     return " <0%" if $pct < 0;
     return sprintf(".%02d%%",int($pct*100)) if $pct < 1;
-    return sprintf("%3.1d%%",$pct) if $pct < 10;
+    return sprintf("%3.1f%%",$pct) if $pct < 10;
     return sprintf("%3d%%",int($pct)) if $pct < 999;
     return "1K+%";
 }
