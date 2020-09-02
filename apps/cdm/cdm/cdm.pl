@@ -17,6 +17,7 @@ $SIG{__DIE__} = sub {
     Carp::confess ;
 };
 
+STDOUT->autoflush(1);
 DPSetFlags(DEBUG_FLAG_STACK_PREFIX|DEBUG_FLAG_STANDARD);
 DPSTD("$0 start");
 
