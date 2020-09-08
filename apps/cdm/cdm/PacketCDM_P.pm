@@ -4,7 +4,6 @@ use strict;
 use base 'PacketCDM';
 use fields qw(
     mPipelineCmd
-    mTemporarilyUnparsedText
     );
 
 use Exporter qw(import);
@@ -17,15 +16,17 @@ use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
 
-BEGIN { push @Packet::PACKET_CLASSES, __PACKAGE__ }
+# PacketCDM_P is 'abstract', so we do NOT register it in PACKET_CLASSES
+#BEGIN { push @Packet::PACKET_CLASSES, __PACKAGE__ }
 
 ## Methods
 sub new {
-    my ($class) = @_;
-    my $self = fields::new($class);
+    my PacketCDM_P $self = shift;
+    unless (ref $self) {
+        $self = fields::new($self);
+    }
     $self->SUPER::new();
     $self->{mCmd} = "P";
-    $self->{mPipelineCmd} = "_";
     return $self;
 }
 
@@ -41,9 +42,8 @@ sub packFormatAndVars {
     my __PACKAGE__ $self = shift;
     my ($parentfmt,@parentvars) = $self->SUPER::packFormatAndVars();
     my ($myfmt,@myvars) =
-        ("a1 a*", 
-         \$self->{mPipelineCmd},
-         \$self->{mTemporarilyUnparsedText}
+        ("a1", 
+         \$self->{mPipelineCmd}
         );
 
     return ($parentfmt.$myfmt,
@@ -52,7 +52,7 @@ sub packFormatAndVars {
 
 ##VIRTUAL
 sub validate {
-    my $self = shift;
+    my PacketCDM_P $self = shift or die;
     my $ret = $self->SUPER::validate();
     return $ret if defined $ret;
     return "Bad P command '$self->{mCmd}'"

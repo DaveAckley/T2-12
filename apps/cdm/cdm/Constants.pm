@@ -10,6 +10,9 @@ use Cwd qw(abs_path);
 use constant PATH_CDM_SOURCE_DIRECTORY => dirname (abs_path(__FILE__));
 ####
 
+use lib "/home/t2/MFM/res/perllib";
+use MFZUtils qw(:constants);   # Pull in ANNOUNCE formats from MFZUtils (and reexport below)
+
 use constant CDM_PROTOCOL_VERSION_SRSLYNOW => 3;    # 202008260233 OO Refactor & cleanup
 use constant CDM_PROTOCOL_VERSION_PIPELINE => 2;    # 202008140223 Pipeline overlay
 use constant CDM_PROTOCOL_VERSION_ASPINNER => 1;    # Pre-version-protocol version
@@ -30,8 +33,8 @@ use constant NGB_STATE_LIVE => NGB_STATE_OPEN+1;  # Some CDM packet received rec
 use constant MFZ_STATE_INIT => 0;
 use constant MFZ_STATE_NOGO => MFZ_STATE_INIT+1;  # File is known invalid
 use constant MFZ_STATE_FILE => MFZ_STATE_NOGO+1;  # Has a (perhaps) stub file in filePath
-use constant MFZ_STATE_CIPL => MFZ_STATE_FILE+1;  # Content is in pipeline
-use constant MFZ_STATE_CCNV => MFZ_STATE_CIPL+1;  # Content is complete and verified
+use constant MFZ_STATE_CPLF => MFZ_STATE_FILE+1;  # Content configured by PF packet
+use constant MFZ_STATE_CCNV => MFZ_STATE_CPLF+1;  # Content is complete and verified
 use constant MFZ_STATE_DEAD => MFZ_STATE_CCNV+1;  # MFZManager is dead, do not use
 
 use constant MAX_CONTENT_NAME_LENGTH => 28;
@@ -56,31 +59,40 @@ use constant CDMD_MFM_MFZ =>     "cdmd-MFM.mfz";
 use constant HOOK_TYPE_LOAD => "LOAD";
 use constant HOOK_TYPE_RELEASE => "RELEASE";
 
-use constant ANNOUNCE_PACK_DATA_FORMAT =>
-    ""  # 0
-        ."CCa"        #   0 +   3 =   3 hdr
-        ."C"          #   3 +   1 =   4 announce version
-        ."N"          #   4 +   4 =   8 inner timestamp
-        ."N"          #   8 +   4 =  12 inner length
-        ."n"          #  12 +   2 =  14 regnum
-        ."a8"         #  14 +   8 =  22 inner checksum
-        ."a28"        #  22 +  28 =  50 content name
-        #  50 total length for data
-    ;
+# # Just the data members specific to packet S
+# use constant ANNOUNCE_S_PACK_DATA_FORMAT =>
+#     ""            #   0
+#     ."C"          #   0 +   1 =   1 announce version
+#     ."N"          #   1 +   4 =   5 inner timestamp
+#     ."N"          #   5 +   4 =   9 inner length
+#     ."n"          #   9 +   2 =  11 regnum
+#     ."a8"         #  11 +   8 =  19 inner checksum
+#     ."a50"        #  19 +  50 =  69 content name
+#     #  69 total length
+#     ;
 
-use constant ANNOUNCE_PACK_PACKET_FORMAT =>
-    "" # 0
-        ."a50"        #   0 +  50 =  50 data
-        ."a128"       #  50 + 128 = 178 RSA sig of bytes 0..49
-    ;
+# use constant ANNOUNCE_PACK_DATA_FORMAT =>
+#     ""            #   0
+#     ."CCa"        #   0 +   3 =   3 hdr
+#     . ANNOUNCE_S_PACK_DATA_FORMAT
+#                   #   3 +  69 = 72
+#     #  72 total length for packet w/o sig
+#     ;
+
+# use constant ANNOUNCE_PACK_PACKET_FORMAT =>
+#     "" # 0
+#         ."a72"        #   0 +  72 =  72 data
+#         ."a128"       #  72 + 128 = 200 RSA sig of bytes 0..71
+#     #  200 total length for packet w/sig
+#     ;
 
 use constant ANNOUNCE_UNPACK_OUTPUT_FORMAT =>
     "" # 0
-    . "a178"
+    . "a200"
     . "a*"
     ;
 
-use constant ANNOUNCE_PACKET_LENGTH => 178;
+# use constant ANNOUNCE_PACKET_LENGTH => 200;
 
 my @subdirs = qw(
     SUBDIR_COMMON
@@ -106,6 +118,16 @@ my @constants = qw(
 
     DIR8_SERVER
 
+    ANNOUNCE_PACK_PACKET_FORMAT
+    ANNOUNCE_S_PACK_DATA_FORMAT
+
+    ANNOUNCE_PACK_DATA_FORMAT
+    ANNOUNCE_PACKET_DATA_LENGTH
+    ANNOUNCE_PACKET_SIG_LENGTH
+    ANNOUNCE_PACKET_LENGTH
+
+    ANNOUNCE_UNPACK_OUTPUT_FORMAT
+
     NGB_STATE_INIT
     NGB_STATE_CLSD
     NGB_STATE_OPEN
@@ -114,7 +136,7 @@ my @constants = qw(
     MFZ_STATE_INIT
     MFZ_STATE_NOGO
     MFZ_STATE_FILE
-    MFZ_STATE_CIPL
+    MFZ_STATE_CPLF
     MFZ_STATE_CCNV
     MFZ_STATE_DEAD
 
@@ -122,15 +144,13 @@ my @constants = qw(
     MAX_MFZ_NAME_LENGTH
     MAX_D_TYPE_DATA_LENGTH
 
-    ANNOUNCE_PACK_DATA_FORMAT
-    ANNOUNCE_PACK_PACKET_FORMAT
-    ANNOUNCE_UNPACK_OUTPUT_FORMAT
-    ANNOUNCE_PACKET_LENGTH
-
     HOOK_TYPE_LOAD
     HOOK_TYPE_RELEASE
 
     );
+
+
+
 
 my @paths = qw(
     PATH_CDM_SOURCE_DIRECTORY

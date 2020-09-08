@@ -56,8 +56,8 @@ sub getNMIfAny {
 }
 
 sub sendVia {
-    my __PACKAGE__ $self = shift;
-    my PacketIO $pio = shift;
+    my __PACKAGE__ $self = shift or die;
+    my $pio = shift or die;
     ref $self or die "SV($self)";
 #    DPSTD("sendVia0($self)");
     my $ret = eval {
@@ -105,21 +105,36 @@ sub recognize {
     return undef;
 }
 
+##VIRTUAL METHOD
+sub prepack {
+    my Packet $self = shift or die;
+    # Base class does nothing
+}
+##VIRTUAL METHOD
+sub postunpack {  ## RUNS BEFORE VALIDATION
+    my Packet $self = shift or die;
+    # Base class does nothing
+}
+
 use Data::Dumper;
 sub unpack {
     my ($self) = @_;
     my ($fmt,@varrefs) = $self->packFormatAndVars();
     my @values = unpack($fmt,$self->{mPacketBytes});
+    DPSTD("valss ".join(",  ",@values));
     for (0 .. $#varrefs) {
         ${$varrefs[$_]} = $values[$_];
     }
-#    DPSTD("QQUNPACK($self)");
+    DPSTD("QQUNPACK($self)");
+    $self->postunpack();
     my $ret = $self->validate();
+    print Dumper(\$ret);
     die "Unpacked packet failed validation: $ret" if defined $ret;
 }
 
 sub pack {
     my __PACKAGE__ $self = shift;
+    $self->prepack();
     my ($fmt,@varrefs) = $self->packFormatAndVars();
     my @values = map { $$_ } @varrefs;
 #    print Dumper(\$fmt);
@@ -140,6 +155,19 @@ sub rawByteOfRef {
     return $byte
         unless defined($newbyte);
     substr($$pref,$idx,1) = $newbyte;
+}
+
+sub dump {
+    my Packet $self = shift;
+    my $hdl = shift;
+    $hdl =  *STDOUT unless defined $hdl;
+    unless (defined $self) {
+        print $hdl "undef\n";
+        return;
+    }
+    for my $key (sort keys %{$self}) {
+        print $hdl "  $key = ".hexEscape($self->{$key})."\n";
+    }
 }
 
 sub summarize {
@@ -179,12 +207,16 @@ sub summarizeString {
     return "$dir8name MFM + $len" if (ord($hdr)&0x20);
     return "Service + $len" if $len < 2;
     my $byte1 = rawByteOfRef(\$packet,1);
-    return "$dir8name '$byte1' flash + $len" unless (ord($byte1)&0x80);
+    return "$dir8name '$byte1' flash [$len]" unless (ord($byte1)&0x80);
     my $bulkcode = ord($byte1)&0x7f;
-    return "$dir8name bulk code $bulkcode + $len" unless ($bulkcode == 3);
-    return "$dir8name CDM + $len" if $len < 3;
+    return "$dir8name bulk code $bulkcode [$len]" unless ($bulkcode == 3);
+    return "$dir8name CDM [$len]" if $len < 3;
     my $byte2 = rawByteOfRef(\$packet,2);
-    return "$dir8name CDM '$byte2' + $len";
+    if ($len > 3 && $byte2 eq "P") {
+        my $byte3 = rawByteOfRef(\$packet,3);
+        return "$dir8name CDM_$byte2$byte3 [$len]";
+    }
+    return "$dir8name CDM_$byte2 [$len]";
 }
 
 ### CLASS METHOD
@@ -192,19 +224,25 @@ sub parse {
     my ($packet) = @_;
     my $len = length($packet);
     for my $pkg (@PACKET_CLASSES) {
+#        DPSTD("$pkg rec ");
         my $rec = $pkg->recognize($packet);
         if ($rec) {
+            DPSTD("YES $pkg");
             my $pself = $pkg->new();
             $pself->{mPacketBytes} = $packet;
             $pself->{mPacketLength} = $len;
             my $ret = eval {
+            DPSTD("YES1 $pkg");
                 $pself->unpack();
+            DPSTD("YES2 $pkg/$pself");
                 $pself;
             };
-            return $ret;
+            DPSTD("YES3 $pkg ");
+            return $ret if defined $ret;
+            return undef; # and $@ has error msg from eval failure
         }
     }
-    DPSTD("Unrecognized ".summarizeString($packet)." packet, ignored");
+    $@ = "Unrecognized ".summarizeString($packet)." packet, ignored";
     return undef;
 }
 

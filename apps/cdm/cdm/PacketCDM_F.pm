@@ -19,6 +19,7 @@ our %EXPORT_TAGS;
 use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
+use MFZManager;
 
 BEGIN { push @Packet::PACKET_CLASSES, __PACKAGE__ }
 

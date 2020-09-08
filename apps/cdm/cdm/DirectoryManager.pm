@@ -3,6 +3,7 @@ package DirectoryManager;
 use strict;
 use base 'TimeoutAble';
 use fields qw(
+    mDirsMgr
     mDirectoryName
     mDirectoryPath
     mDirectoryModTime
@@ -27,14 +28,16 @@ use DP qw(:all);
 sub new {
     my DirectoryManager $self = shift;
     my $dir = shift or die;
-    my $cdm = shift or die;
+    my CDM $cdm = shift or die;
+    my $dirsmgr = shift or die;
     unless (ref $self) {
         $self = fields::new($self); # really a class
     }
     $self->SUPER::new("DirMgr:$dir",$cdm);
 
+    $self->{mDirsMgr} = $dirsmgr;
     $self->{mDirectoryName} = $dir;
-    $self->{mDirectoryPath} = $self->{mCDM}->getPathTo($self->{mDirectoryName});
+    $self->{mDirectoryPath} = $self->{mDirsMgr}->getPathTo($self->{mDirectoryName});
     $self->{mDirectoryModTime} = -M $self->{mDirectoryPath};
     $self->{mPathsToLoad} = [];
     $self->{mMFZManagers} = {}; # Content name -> MFZManager
@@ -62,9 +65,9 @@ sub insertMFZMgr {
     my __PACKAGE__ $self = shift or die;
     my MFZManager $mfzmgr = shift or die;
     $mfzmgr->isa('MFZManager') or die;
-    die if defined $mfzmgr->{mDirectoryManager};
+    die "MFZManager is already has dm" if defined $mfzmgr->{mDirectoryManager};
     my $name = $mfzmgr->{mContentName};
-    die if defined $self->getMFZMgr($name);
+    die "Already have manager for $name" if defined $self->getMFZMgr($name);
     $self->{mMFZManagers}->{$name} = $mfzmgr;
     DPSTD("${\FUNCNAME} ${\$self->getTag()} inserted ($name)");
     $mfzmgr->{mDirectoryManager} = $self;

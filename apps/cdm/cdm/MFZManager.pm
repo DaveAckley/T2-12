@@ -29,9 +29,28 @@ our %EXPORT_TAGS;
 use DP qw(:all);
 use Constants qw(:all);
 use T2Utils qw(:math :fileops);
-use DMCommon;
+use MFZUtils qw(:all);
+
+require DMCommon;
+require PacketCDM_S;
+require PacketCDM_PF;
 
 ## PRIVATE CLASS VARS
+
+my $tagSpinner = int(rand(128)); # init 0..127
+
+## CLASS METHOD
+sub nextSpinnerValue { 
+    $tagSpinner = 1 if ++$tagSpinner >= 128;  # SKIPS ZERO AND 128..255
+    return $tagSpinner;
+}
+
+## CLASS METHOD
+sub newTag {
+    my $spin = nextSpinnerValue();
+    my $rnd = int(rand(1<<24));
+    return ($spin<<24)|$rnd;
+}
 
 ## Methods
 sub new {
@@ -41,7 +60,7 @@ sub new {
     $self->SUPER::new("MFZMgr:$name",$cdm);
 
     $self->{mContentName} = $name;
-    $self->{mDirectoryManager} = undef;
+    $self->{mDirectoryManager} = undef;  # Managed by DirectoryManager::(insert|remove)MFZMgr
     $self->{mState} = MFZ_STATE_INIT;
     $self->{mVerificationStatus} = -1; # Not tried
     $self->{mFileModificationTime} = undef;
@@ -72,6 +91,15 @@ sub createTraditionalAnnouncement {
     $pkt->{mInnerTimestamp} = $self->{mFileInnerTimestamp};
     $pkt->{mSeqno} = $seqno;
     return $pkt;
+}
+
+sub createPipelineAnnouncement {
+    my __PACKAGE__ $self = shift or die;
+    my $dir8 = shift;
+    my $pkthdrbyte = chr(0x80|($dir8&0x7));
+    my $pfpkt = $self->{mFilePipelineAnnouncePacket} or die;
+    $pfpkt->setDir8($dir8);
+    return $pfpkt;
 }
 
 sub mfzState {
@@ -125,7 +153,8 @@ sub loadCnVMFZ {
 
     $self->{mVerificationStatus} = -1; # Forget whatever we might have known
 
-    my $basedir = $self->{mCDM}->getBaseDirectory();
+    my $cdm = $self->{mCDM};
+    my $basedir = $cdm->getBaseDirectory();
     my $mfzpath = $self->getPathToFile();
     return DPSTD("$mfzpath: Bad path")
         unless -r $mfzpath && -f $mfzpath;
@@ -133,36 +162,107 @@ sub loadCnVMFZ {
     $self->{mFileModificationTime} = -M $mfzpath;
 
     my $totallength = -s $mfzpath;
-    my $cmd = "echo Q | ".PATH_PROG_MFZRUN." -kd $basedir $mfzpath ANNOUNCE";
-    DPSTD("DO '$cmd'");
-    my $output = `$cmd`;
-    my ($packet,$verifoutput) = unpack(ANNOUNCE_UNPACK_OUTPUT_FORMAT,$output);
+    my $packetstring;
+    my $mfzSigningHandle; 
+    my $USE_MFZUTILS = 1;
+    if (!$USE_MFZUTILS) {
+        my $cmd = "echo Q | ".PATH_PROG_MFZRUN." -kd $basedir $mfzpath ANNOUNCE";
+        DPSTD("DO '$cmd'");
+        my $output = `$cmd`;
+        my $verifoutput;
+        ($packetstring,$verifoutput) = unpack(ANNOUNCE_UNPACK_OUTPUT_FORMAT,$output);
 
-    return DPSTD("$mfzpath: Bad announcement length ".length($packet))
-        unless length($packet) == ANNOUNCE_PACKET_LENGTH;
+        return DPSTD("Handle of $mfzpath not found in '$verifoutput'")
+            unless $verifoutput =~ s/^SIGNING_HANDLE \[(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})\]//m;
+        $mfzSigningHandle = $1;
 
-    my (undef, undef, undef,
-        $version,$innertime,$innerlength,$regnum,$innerchecksum,$contentname)
-        = unpack(ANNOUNCE_PACK_DATA_FORMAT, $packet);
-    $contentname =~ s/\x00+$//;
-    my $filestem = $self->{mContentName};
+    } else {
+        my $outer = LoadOuterMFZToMemory($mfzpath); 
+        return DPSTD($@) unless defined $outer;
+        my $inner = LoadInnerMFZToMemory($outer); ## COUNTS ON SetKeyDir($basedir) ALREADY DONE
+        return DPSTD($@) unless defined $inner;   
+        ## MFZ_PUBKEY_NAME handle is locally known valid as of now
+        $mfzSigningHandle = $inner->[3];
+
+        my (undef,undef,undef,$announcedata) = FindName($outer->[1],CDM_ANNOUNCE_NAME);
+        return DPSTD("${\CDM_ANNOUNCE_NAME} not found in $mfzpath")
+            unless defined $announcedata;
+        $packetstring = $announcedata;
+    }
+
+    my $spkt = Packet::parse($packetstring);
+    return DPSTD("$mfzpath: Bad announcement: $@ ")
+        unless defined $spkt;
+    return DPSTD("$mfzpath: Not S packet ".$spkt->summarize())
+        unless $spkt->isa('PacketCDM_S');
+    return DPSTD("$mfzpath: Unverified S packet")
+        unless $spkt->verifySignature($cdm);
+    # my (undef, undef, undef,
+    #     $version,$innertime,$innerlength,$regnum,$innerchecksum,$contentname)
+    #     = unpack(ANNOUNCE_PACK_DATA_FORMAT, $packetstring);
+    # $contentname =~ s/\x00+$//;
+
+    my $announcehandle = GetHandleIfLegalRegnum($spkt->{mRegnum});
+    return DPSTD("Bad regnum: !@") unless defined $announcehandle;
+
+    return DPSTD("Handle mismatch '$announcehandle' vs '$mfzSigningHandle'")
+        unless $announcehandle eq $mfzSigningHandle;
+
+    my $contentname =  $self->{mContentName};
+    my $filestem =  $contentname;
     $filestem =~ s/[.]mfz$//;
     return DPSTD("Mismatched names (internal) $contentname vs (external) $filestem")
-        unless $contentname eq $filestem;
+        unless $filestem eq $spkt->{mContentStem};
     $self->{mAnnouncedContentName} = $contentname;
-    return DPSTD("Inconsistent lengths (internal) $innerlength vs (external) $totallength")
-        unless $totallength > $innerlength;
+    return DPSTD("Inconsistent lengths (internal) $spkt->{mInnerLength} vs (external) $totallength")
+        unless $totallength > $spkt->{mInnerLength};
     $self->{mFileTotalLength} = $totallength;
     $self->{mFileTotalChecksum} = checksumWholeFile($mfzpath);
-    $self->{mFileInnerLength} = $innerlength;
-    $self->{mFileInnerTimestamp} = $innertime;
-    $self->{mFileInnerChecksum} = $innerchecksum;
-    $self->{mFilePipelineAnnouncePacket} = $packet;
+    $self->{mFileInnerLength} = $spkt->{mInnerLength};
+    $self->{mFileInnerTimestamp} = $spkt->{mInnerTimestamp};
+    $self->{mFileInnerChecksum} = $spkt->{mInnerChecksumPrefix};
+
+    # Create the pipelined file announcement packet
+    my $pfpkt = PacketCDM_PF->new($spkt);
+    $pfpkt->{mOutboundTag} = newTag();
+    $pfpkt->{mFileTotalLength} = $self->{mFileTotalLength};
+    $pfpkt->{mFileTotalChecksum} = $self->{mFileTotalChecksum};
+    $pfpkt->{mSPacketBytes} = $spkt->{mPacketBytes};
+    $pfpkt->{mSPacket} = $spkt;
+    
+    $self->{mFilePipelineAnnouncePacket} = $pfpkt;
     $self->buildXsumMap();
-    DPSTD("loadCnVMFZ ".$self->getTag()." ($version,$innertime,$totallength,$innerlength,$regnum,$contentname)");
+    DPSTD("loadCnVMFZ (".$self->getTag().
+          $spkt->{mAnnounceVersion}.", ".
+          $spkt->{mInnerTimestamp}.", ".
+          $pfpkt->{mFileTotalLength}.", ".
+          $spkt->{mInnerLength}.", ".
+          $spkt->{mRegnum}.", ".
+          $contentname.")");
+
     $self->mfzState(MFZ_STATE_CCNV);
     $self->{mVerificationStatus} = 1; # We like
     return 1;
+}
+
+sub configureFromPFPacket {
+    my __PACKAGE__ $self = shift or die;
+    my PacketCDM_PF $pfpkt = shift or die;
+    my PacketCDM_S $spkt = $pfpkt->{mSPacket} or die;
+
+    my $anname = $spkt->getContentName();;
+    die unless $self->{mContentName} eq $anname; # That field must be already set
+    $self->{mAnnouncedContentName} = $anname;
+    $self->{mFileTotalLength} = $pfpkt->{mFileTotalLength};
+    $self->{mFileTotalChecksum} = $pfpkt->{mFileTotalChecksum};
+    $self->{mFileInnerTimestamp} = $spkt->{mInnerTimestamp};
+    $self->{mFileInnerChecksum} = $spkt->{mInnerChecksumPrefix};
+    $self->{mFileInnerLength} = $spkt->{mInnerLength};
+    $self->{mFilePipelineAnnouncePacket} = $pfpkt;
+
+    $self->mfzState(MFZ_STATE_CPLF); # Configured from PF packet
+    $self->{mVerificationStatus} = 0; 
+    return $self;
 }
 
 sub indexOfLowestAtLeast {
@@ -226,8 +326,6 @@ sub findXsumInRange {
     return ($loidx != $hiidx) ? ($aref->[2*$loidx], $aref->[2*$loidx+1]) : undef;
 }
 
-use Data::Dumper;
-
 sub buildXsumMap {
     my ($self) = @_;
     $self->{mXsumMap} = [];
@@ -266,9 +364,11 @@ sub createEmptyFile {
         DPSTD("CAN'T INIT $path: $!");
         return undef;
     }
+    $self->{mFileModificationTime} = -M HDL;
     close HDL or die "Can't close $path:$!";
     $self->mfzState(MFZ_STATE_FILE)
         if $self->mfzState() < MFZ_STATE_FILE;
+    
     return 1;
 }
 

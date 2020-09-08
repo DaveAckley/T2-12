@@ -2,18 +2,16 @@
 package CDM;
 use strict;
 use fields qw(
-    mBaseDirectory
     mPrograms 
     mTimeQueue 
-    mCompleteAndVerifiedContent
-    mPendingContent
-    mInPipelineContent
     mPacketIO
+    mDirectoriesManager
     mNeighborhoodManager
     mTraditionalManager
     mPipelineManager
     mHookManager
     mStatusReporter
+    mCryptoManager
 );
 
 use Exporter qw(import);
@@ -26,8 +24,10 @@ our %EXPORT_TAGS;
 use Constants qw(:all);
 use T2Utils qw(:all);
 use DP qw(:functions :flags);
+
 use MFZManager;
 use TimeQueue;
+use DirectoriesManager;
 use DMCommon;
 use DMPending;
 use DMPipeline;
@@ -37,29 +37,15 @@ use TMTraditional;
 use TMPipeline;
 use HookManager;
 use StatusReporter;
+use CryptoManager;
 
 # Other imports
 use Fcntl;
-use File::Path qw(make_path remove_tree);
-use File::Basename;
-use File::Copy qw(move copy);
 use Errno qw(EAGAIN);
 use Time::HiRes qw(sleep);
 use List::Util qw/shuffle/;
 use Digest::SHA qw(sha512_hex);
 use DateTime::Format::Strptime;
-
-my @subdirs = (
-    SUBDIR_COMMON,
-    SUBDIR_LOG,
-    SUBDIR_PENDING,
-    SUBDIR_PIPELINE,
-    SUBDIR_PUBKEY
-    );
-my @tmpsubdirs = (
-    SUBDIR_PENDING,
-    SUBDIR_PIPELINE,
-    );
 
 sub new {
     my CDM $self = shift;
@@ -68,14 +54,11 @@ sub new {
     unless (ref $self) {
         $self = fields::new($self);
     }
-    $self->{mBaseDirectory} = $base;
     $self->{mPrograms} = {
         mMfzrun => "/home/t2/MFM/bin/mfzrun"        
     };
     $self->{mTimeQueue} = TimeQueue->new();
-    $self->{mCompleteAndVerifiedContent} = DMCommon->new($self);
-    $self->{mPendingContent} = DMPending->new($self);
-    $self->{mInPipelineContent} = DMPipeline->new($self);
+    $self->{mDirectoriesManager} = DirectoriesManager->new($self,$base);
     $self->{mHookManager} = HookManager->new($self);
     return $self;
 }
@@ -85,31 +68,13 @@ sub getTQ {
     return $self->{mTimeQueue};
 }
 
-sub getDMCommon {
-    my __PACKAGE__ $self = shift;
-    return $self->{mCompleteAndVerifiedContent};
+sub getBaseDirectory {
+    return shift->getDirectoriesManager()->getBaseDirectory();
 }
 
-sub getDMPending {
-    my __PACKAGE__ $self = shift;
-    return $self->{mPendingContent};
-}
-
-sub getDMPipeline {
-    my __PACKAGE__ $self = shift;
-    return $self->{mInPipelineContent};
-}
-
-sub getMFZManagerCNV {
-    my ($self,$contentName) = @_;
-    my $ret = $self->{mCompleteAndVerifiedContent}->{$contentName};
-    return $ret;
-}
-
-sub getMFZManagerIPL {
-    my ($self,$contentName) = @_;
-    my $ret = $self->{mInPipelineContent}->{$contentName};
-    return $ret;
+sub getDirectoriesManager {
+    my __PACKAGE__ $self = shift or die;
+    return $self->{mDirectoriesManager};
 }
 
 sub schedule {
@@ -126,96 +91,12 @@ sub eventLoop {
     }
 }
 
-sub flushTempDirectories {
-    my ($self) = @_;
-    for my $tmp (@tmpsubdirs) {
-        my $path = $self->getPathTo($tmp);
-        my $count = remove_tree($path);
-        DPSTD("Flushed $count $path files")
-            if $count > 1;
-    }
-
-}
-
-sub checkInitDirectory {
-    my ($self,$dir) = @_;
-    if (-d $dir) {
-        DPSTD("Found $dir");
-        return 1;
-    }
-    if (-e $dir) {
-        DPSTD("$dir exists but is not a directory");
-        return 0;
-    }
-    if (make_path($dir)) {
-        DPSTD("Made $dir");
-        return 1;
-    }
-    return 0;
-}
-
-sub checkInitDirectories {
-    my ($self,$dir) = @_;
-
-    foreach my $sub (@subdirs) {
-        my $path = $self->getPathTo($sub);
-        if (!$self->checkInitDirectory($path)) {
-            die "Problem with '$path'";
-        }
-    }
-
-    # Ensure our base key is in there
-    my $keyPath = $self->getPathTo(SUBDIR_PUBKEY)."/t2%2dkeymaster%2drelease%2d10.pub";
-    if (!(-e $keyPath)) {
-        DPSTD("Initting $keyPath");;
-        open HDL,">",$keyPath or die "Can't write $keyPath: $!";
-        print HDL <<'EOF';
-[MFM-Handle:t2-keymaster-release-10]
------BEGIN RSA PUBLIC KEY-----
-MIGJAoGBAMUbUl/GDrkKYB3ORkeetZEkKisfgiwl6TgoqAB7dfK1gGN3bzDyz/+A
-LisTyW0b+64ePqv1liBxJEBOd2eX9+hTnngasOrb8RIQN6vTPg6+3WGAmgtez3kg
-5KSeBLlgMaEbKkeOXZU+pbAaUzL6EGr/O/ESdTE6Lh6azq2DR3P7AgMBAAE=
------END RSA PUBLIC KEY-----
-EOF
-      close HDL or die "Close $keyPath: $!";
-    }
-}
-
-#    shift if ref $_[0] eq CDM;
-sub getPathToCommon { shift->getPathTo(SUBDIR_COMMON); }
-sub getPathToLog { shift->getPathTo(SUBDIR_LOG); }
-sub getPathToPending { shift->getPathTo(SUBDIR_PENDING); }
-sub getPathToPipeline { shift->getPathTo(SUBDIR_PIPELINE); }
-sub getPathToPubkey { shift->getPathTo(SUBDIR_PUBKEY); }
-
-sub getBaseDirectory {
-    shift->{mBaseDirectory};
-}
-
-sub getPathTo {
-    my ($self,$sub) = @_;
-    defined $sub or die;
-    return $self->getBaseDirectory()."/".$sub;
-}
-
 sub init {
-    my ($self) = @_;
-    $self->checkInitDirectory($self->{mBaseDirectory}) or die;
-    $self->flushTempDirectories();
-    $self->checkInitDirectories();
-    $self->createTasks();
-}
+    my __PACKAGE__ $self = shift or die;
+    $self->{mDirectoriesManager}->init();
+    Hooks::installHooks($self);
 
-sub loadCommon {
-    my ($self) = @_;
-    my $commonPath = $self->getPathToCommon();
-    if (!opendir(COMMON, $commonPath)) {
-        DPSTD("WARNING: Can't load $commonPath: $!");
-        return;
-    }
-    my @pathsToLoad = grep { /[.]mfz$/ } shuffle readdir COMMON;
-    closedir COMMON or die "Can't close $commonPath: $!\n";
-    
+    $self->createTasks();
 }
 
 sub getPIO {
@@ -226,6 +107,10 @@ sub getPIO {
 
 sub createTasks {
     my ($self) = @_;
+
+    die if defined $self->{mCryptoManager};
+    $self->{mCryptoManager} = CryptoManager->new($self,undef); # default -kd
+    $self->{mCryptoManager}->init();
 
     die if defined $self->{mPacketIO};
     $self->{mPacketIO} = PacketIO->new($self);
@@ -246,24 +131,25 @@ sub createTasks {
     die if defined $self->{mStatusReporter};
     $self->{mStatusReporter} = StatusReporter->new($self);
     $self->{mStatusReporter}->init();
+
 #    my $demo = MFZManager->new("DEMO",$self);
 #    $self->{mInPipelineContent}->insertMFZMgr($demo);
 }
 
-sub checkCommonFile {
-    my ($self, $announce) = @_;
-    die;
-}
+# sub checkCommonFile {
+#     my ($self, $announce) = @_;
+#     die;
+# }
 
-sub preinitCommon {
-    my ($self) = @_;
-    DPSTD("Preloading common");
-    my $count = 0;
-    while ($self->checkCommonFile(0)) {
-        ++$count; 
-    }
-    DPVRB("Preload complete after $count steps");
-}
+# sub preinitCommon {
+#     my ($self) = @_;
+#     DPSTD("Preloading common");
+#     my $count = 0;
+#     while ($self->checkCommonFile(0)) {
+#         ++$count; 
+#     }
+#     DPVRB("Preload complete after $count steps");
+# }
 
 # sub getITCDirNames {
 #     return sort { $ITCDirs{$a} <=> $ITCDirs{$b} } keys %ITCDirs;

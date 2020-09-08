@@ -16,10 +16,10 @@ use DP qw(:all);
 
 ## Methods
 sub new {
-    my ($class,$cdm) = @_;
+    my ($class,$cdm,$dirsmgr) = @_;
     defined $cdm or die;
     my $self = fields::new($class);
-    $self->SUPER::new(SUBDIR_PENDING,$cdm);
+    $self->SUPER::new(SUBDIR_PENDING,$cdm,$dirsmgr);
     DPSTD("${\FUNCNAME} $self dp($self->{mDirectoryPath})");
 
     return $self;

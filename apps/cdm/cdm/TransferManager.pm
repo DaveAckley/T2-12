@@ -17,7 +17,7 @@ use List::Util qw(shuffle);
 
 use DP qw(:all);
 use Constants qw(DIR8_SERVER);
-use T2Utils qw(:dirs);
+use T2Utils qw(:math :dirs);
 
 ## Methods
 sub new {
@@ -53,10 +53,16 @@ sub handleAnnouncement {
 }
 
 sub selectPair {
-    my ($self) = @_;
+    my ($self,@dms) = @_;
     my $cdm = $self->getCDM() or die;
     my $hm = $cdm->{mNeighborhoodManager} or die;
-    my $dm = $self->{mDirMgr} or die;
+    # We're picking uniformly over supplied dirmgrs, not uniformly
+    # over announceable files.  This will over-emphasize the files of
+    # the smaller dirmgrs, such as, we expect, pipeline/ vs common/,
+    # which we suspect is A Good Thing.
+    my $dm = @dms ? pickOne(@dms) : $self->{mDirMgr};
+
+    die "Need dirmgr" unless defined $dm;
     my $mfzmgr = $dm->getRandomMFZMgr();
     my $ngbmgr = $hm->getRandomOpenNgbMgr();
     return undef unless defined($mfzmgr) && defined($ngbmgr);

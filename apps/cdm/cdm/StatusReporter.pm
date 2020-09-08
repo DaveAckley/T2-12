@@ -101,18 +101,24 @@ sub writeBulkIOStats {
     my __PACKAGE__ $self = shift or die;
     my $uptime = $self->{mLastSampleTime} - $self->{mInitTime};
     my $basedir = $self->{mCDM}->{mBaseDirectory};
+    my $hoodmgr = $self->{mCDM}->{mNeighborhoodManager} or die;
     my $path = "$basedir/${\PATH_BASEDIR_REPORT_IOSTATS}";
     open HDL, ">", $path or die "Can't write $path: $!";
     print HDL "CDM UPTIME ".formatSeconds($uptime)."\n";
     for my $dir6 (getDir6s()) {
+        next unless $hoodmgr->ngbMgr($dir6)->state() == NGB_STATE_OPEN;
         my $dir8 = mapDir6ToDir8($dir6);
         my $rec = $self->{mRatesDir8}->{$dir8};
         my ($infast,$inslow,$outfast,$outslow) =
-            (int($rec->[REC_FASTIN]+.5), int($rec->[REC_SLOWIN]+.5),
-             int($rec->[REC_FASTOUT]+.5), int($rec->[REC_SLOWOUT]+.5));
+            ($rec->[REC_FASTIN], $rec->[REC_SLOWIN],
+             $rec->[REC_FASTOUT], $rec->[REC_SLOWOUT]);
         next if $infast==0 && $inslow==0 && $outfast==0 && $outslow==0;
-        printf(HDL " %s i[%4d %4d] o[%4d %4d]\n",
-               getDir8Name($dir8),$infast,$inslow,$outfast,$outslow
+        printf(HDL " %s i[%s %s] o[%s %s]\n",
+               getDir8Name($dir8),
+               formatSize($infast),
+               formatSize($inslow),
+               formatSize($outfast),
+               formatSize($outslow)
             );
     }
 

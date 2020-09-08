@@ -23,10 +23,11 @@ my $seqno = 0;
 sub new {
     my ($class,$cdm) = @_;
     defined $cdm or die;
+    my $dirsmgr = $cdm->getDirectoriesManager();
     my $self = fields::new($class);
     $self->SUPER::new("trad",$cdm);
     $self->defaultInterval(-20); # Run about every 10 seconds if nothing happening
-    $self->{mDirMgr} = $cdm->{mCompleteAndVerifiedContent} or die;
+    $self->{mDirMgr} = $dirsmgr->{mCompleteAndVerifiedContent} or die;
 
     return $self;
 }

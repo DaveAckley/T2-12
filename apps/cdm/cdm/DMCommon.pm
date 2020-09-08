@@ -18,10 +18,10 @@ use HookManager;
 
 ## Methods
 sub new {
-    my ($class,$cdm) = @_;
+    my ($class,$cdm,$dirsmgr) = @_;
     defined $cdm or die;
     my $self = fields::new($class);
-    $self->SUPER::new(SUBDIR_COMMON,$cdm);
+    $self->SUPER::new(SUBDIR_COMMON,$cdm,$dirsmgr);
     $self->{mDeletedsMap} = { }; # { cn -> [ cn len cksum innerts ] }
     return $self;
 }

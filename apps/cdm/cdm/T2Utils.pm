@@ -157,7 +157,9 @@ sub formatSize {
     return " <0 " if $size < 0;
     for my $unit (@kunits) {
         if ($size < 1000) {
-            if ($size > 10 || int($size) == $size) {
+            if ($size < 1) {
+                $ret = sprintf(".%02d%s",int($size*100),$unit);
+            } elsif ($size > 10 || int($size) == $size) {
                 $ret = sprintf("%3d%s", $size,$unit);
             } else {
                 $ret = sprintf("%3.1f%s",$size,$unit);
