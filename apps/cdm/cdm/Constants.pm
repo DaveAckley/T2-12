@@ -10,7 +10,7 @@ use Cwd qw(abs_path);
 use constant PATH_CDM_SOURCE_DIRECTORY => dirname (abs_path(__FILE__));
 ####
 
-use lib "/home/t2/MFM/res/perllib";
+#use lib "/home/t2/MFM/res/perllib";
 use MFZUtils qw(:constants);   # Pull in ANNOUNCE formats from MFZUtils (and reexport below)
 
 use constant CDM_PROTOCOL_VERSION_SRSLYNOW => 3;    # 202008260233 OO Refactor & cleanup

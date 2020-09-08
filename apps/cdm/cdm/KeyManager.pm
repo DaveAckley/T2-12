@@ -19,7 +19,7 @@ use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
 
-use lib "/home/t2/MFM/res/perllib";
+#use lib "/home/t2/MFM/res/perllib";
 use MFZUtils qw(:all);
 
 ## PRIVATE CLASS DATA

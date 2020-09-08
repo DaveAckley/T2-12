@@ -3,7 +3,7 @@ use strict;
 use File::Basename;
 use Cwd qw(abs_path);
 use lib dirname (abs_path(__FILE__));
-use lib "/home/t2/MFM/res/perllib";
+#use lib "/home/t2/MFM/res/perllib";
 
 use MFZUtils qw(:all);
 use Constants qw(:all);
@@ -28,12 +28,12 @@ sub main {
     DPSetFlags(DEBUG_FLAG_STACK_PREFIX|DEBUG_FLAG_STANDARD);
     DPSTD("$0 start");
 
-    my $cdm = CDM->new("./cdmDEBUG");
-    #my $cdm = CDM->new("/cdm"); # Go live
+#    my $cdm = CDM->new("./cdmDEBUG");
+    my $cdm = CDM->new("/cdm"); # Go live
     $cdm->init();
 
-    DO_DEBUG_THING($cdm);
-    exit 1;
+#    DO_DEBUG_THING($cdm);
+#    exit 1;
 
     my $dirsmgr = $cdm->getDirectoriesManager();
     my $dmc = $dirsmgr->getDMCommon();
