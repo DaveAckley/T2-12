@@ -1,4 +1,4 @@
-{250}  -*- text -*-
+{257}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -2206,7 +2206,8 @@ DONE :220] - Review current protocol exchanges for pipeline
  - Think briefly about whether we announce both traditional and
    pipeline, where possibly, and how we respond to that if so.
 
- - Start fleshing out TMPipeline following 'best practices' such as
+[252: Tue Sep  8 15:43:35 2020
+DONE :252] - Start fleshing out TMPipeline following 'best practices' such as
    they emerged from TMTraditional.
 
  - Report back in about sticking points encountered.
@@ -2638,7 +2639,8 @@ DONE :224] - Modify MFZManager::loadCnVMFZ to parse and verify the announce
    packet.  Store the S packet.  Use $spkt->{mPacketBytes} as future
    source of the data.
 
- - Create TMPipeline::handleAnnouncement, following TMTraditional
+[251: Tue Sep  8 15:43:24 2020
+DONE :251] - Create TMPipeline::handleAnnouncement, following TMTraditional
 
 :215]
 
@@ -2973,3 +2975,45 @@ while.  (Though we've been rsyncing ~t2/ to the laptop also.)
 
 :248]
 :247]
+[250:
+
+Tue Sep  8 15:37:26 2020 OK.  So is there a cheap way that I could run
+two instances of cdm.pl on the same machine and have them communicate
+through like pipes?  I guess not really, since I'm counting on
+receiving a single packet in each read.  Could create some kind of
+FUSE thing I suppose but that's way too much a pain from where I am.
+
+Thing is we're getting to the end of what we can spike test easily,
+and I'm afraid of debugging costs across tiles.
+
+Screw it.  Let's go two just two tiles.  Just get going.  We can still
+run the perl debugger on each tile..
+
+:250]
+[253:
+
+Tue Sep  8 15:46:39 2020 I guess we should get a fresh cdmd-T2-12.mfz
+ready to go..[254:
+
+Tue Sep  8 16:00:53 2020 And we're going to need a fresh cdmd-MFM.mfz
+too, of course, since it's got a bogus F-packet in ANNOUNCE.PKT..
+
+:254]
+
+:253]
+[255:
+
+Tue Sep  8 16:45:41 2020 Well, working through all kinds of random
+problems.  Current issue is (once again) the chicken-and-egg between
+T2-12 and MFM over the availability of MFM/res/perllib/MFZUtils.pm.
+Didn't we reach a copy-on-make-T2-12 conclusion, that doesn't appear
+to be implemented here?
+[256:
+
+Tue Sep  8 16:49:32 2020 Well all I see is :208: above.  And I think
+I'm foggen just going to move MFZUtils.pm into the foggen T2-12 tree.
+
+Chips Fall Where They May.
+
+:256]
+:255]
