@@ -35,7 +35,8 @@ sub main {
     DO_DEBUG_THING($cdm);
     exit 1;
 
-    my $dmc = $cdm->{mCompleteAndVerifiedContent};
+    my $dirsmgr = $cdm->getDirectoriesManager();
+    my $dmc = $dirsmgr->getDMCommon();
     DPPushPrefix("Preloading $dmc->{mDirectoryName}");
     $dmc->loadAll();
     DPPopPrefix();

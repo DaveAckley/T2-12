@@ -116,7 +116,8 @@ sub makeAnnouncement {
 sub maybeMakeAnnouncement {
     my __PACKAGE__ $self = shift or die;
     my $cdm = $self->{mCDM};
-    my @dms = ($cdm->{mCompleteAndVerifiedContent}, $cdm->{mInPipelineContent});
+    my $dirsmgr = $cdm->getDirectoriesManager();
+    my @dms = ($dirsmgr->getDMCommon(), $dirsmgr->getDMPipeline());
     my ($mfzmgr,$ngbmgr) = $self->selectPair(@dms);  # Weighted however..
     return 0 unless defined $mfzmgr and defined $ngbmgr;
     return $self->makeAnnouncement($mfzmgr,$ngbmgr);

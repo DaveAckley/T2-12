@@ -27,7 +27,7 @@ sub new {
     my $self = fields::new($class);
     $self->SUPER::new("trad",$cdm);
     $self->defaultInterval(-20); # Run about every 10 seconds if nothing happening
-    $self->{mDirMgr} = $dirsmgr->{mCompleteAndVerifiedContent} or die;
+    $self->{mDirMgr} = $dirsmgr->getDMCommon() or die;
 
     return $self;
 }
@@ -39,11 +39,12 @@ sub handleAnnouncement {
     my __PACKAGE__ $self = shift;
     my PacketCDM_F $pkt = PacketCDM_F->assertValid(shift);
     my CDM $cdm = $self->{mCDM} or die;
+    my $dirsmgr = $cdm->getDirectoriesManager();
 
     my $contentName = $pkt->{mName};
 
     ## STEP 0: Check if exact match in common
-    my DMCommon $dmc = $cdm->getDMCommon() or die;
+    my DMCommon $dmc = $dirsmgr->getDMCommon() or die;
     my MFZManager $cmgr = $dmc->getMFZMgr($contentName); # or undef
     if (defined $cmgr) {
         if ($pkt->matchesMFZ($cmgr)) {
@@ -159,7 +160,8 @@ sub considerPendingRelease {
     my __PACKAGE__ $self = shift or die;
     my MFZManager $pmgr = shift or die;
     my $cn = $pmgr->{mContentName};
-    my DMCommon $dmc = $self->getCDM()->{mCompleteAndVerifiedContent};
+    my $dirsmgr = $self->getCDM()->getDirectoriesManager();
+    my DMCommon $dmc = $dirsmgr->getDMCommon();
     my MFZManager $cmgr = $dmc->getMFZMgr($cn);
 
     my $existing = defined($cmgr);

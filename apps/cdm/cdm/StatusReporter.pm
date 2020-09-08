@@ -100,7 +100,8 @@ sub init {
 sub writeBulkIOStats {
     my __PACKAGE__ $self = shift or die;
     my $uptime = $self->{mLastSampleTime} - $self->{mInitTime};
-    my $basedir = $self->{mCDM}->{mBaseDirectory};
+    my $dirsmgr = $self->{mCDM}->getDirectoriesManager();
+    my $basedir = $dirsmgr->getBaseDirectory();
     my $hoodmgr = $self->{mCDM}->{mNeighborhoodManager} or die;
     my $path = "$basedir/${\PATH_BASEDIR_REPORT_IOSTATS}";
     open HDL, ">", $path or die "Can't write $path: $!";
@@ -122,13 +123,13 @@ sub writeBulkIOStats {
             );
     }
 
-    my $dmpipe =  $self->{mCDM}->{mInPipelineContent};
+    my $dmpipe =  $dirsmgr->getDMPipeline();
     my @pipeline = $dmpipe->reportMFZStats();
     for my $pipe (@pipeline) {
         printf(HDL " pipe %s", $pipe);
     }
 
-    my $dmp = $self->{mCDM}->{mPendingContent};
+    my $dmp = $dirsmgr->getDMPending();
     my @pending = $dmp->reportMFZStats();
     for my $pend (@pending) {
         printf(HDL " trad %s", $pend);

@@ -79,8 +79,9 @@ sub installSetup {
 sub installUnpack {
     my ($cdm, $fname, $baseName, $dirName, $tagFileName, $innerTimestamp) = @_;
 
-    my $baseDir = $cdm->{mBaseDirectory};
-    my DMCommon $dmc = $cdm->{mCompleteAndVerifiedContent};
+    my $dirsmgr = $cdm->getDirectoriesManager();
+    my $baseDir = $dirsmgr->getBaseDirectory();
+    my DMCommon $dmc = $dirsmgr->getDMCommon();
     my $commonPath = $dmc->{mDirectoryPath};
 
     DPSTD("${\FUNCNAME} bd $baseDir cp $commonPath");
@@ -240,7 +241,8 @@ sub CDM_DELETEDS_MFZ_LOAD_HOOK {
     close(HDL) or die "Closing $deletedsFilePath: $!";
     ## OK they all came in.  Update DMCommon
     my $cdm = $mgr->getCDM();
-    my $dmc = $cdm->{mCompleteAndVerifiedContent};
+    my $dirsmgr = $cdm->getDirectoriesManager();
+    my $dmc = $dirsmgr->getDMCommon();
 
     ## FLUSH EXISTING MAP
     $dmc->{mDeletedsMap} = { };
