@@ -134,8 +134,8 @@ sub closePackets {
     close(PKTS) or die "Can't close $pktdev: $!";
 }
 
-#my $baseDir = "./cdmDEBUG";
-my $baseDir = "/cdm";
+my $baseDir = "./cdmDEBUG";
+#my $baseDir = "/cdm";
 my $commonSubdir = "common";
 my $pendingSubdir = "pending";
 my $logSubdir = "log";
