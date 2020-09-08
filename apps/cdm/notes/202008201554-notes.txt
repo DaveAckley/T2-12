@@ -1,4 +1,4 @@
-{168}  -*- text -*- 
+{250}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -130,7 +130,7 @@ announcement:
   filename: 40 bytes?
   inner timestamp in binary: 4 bytes
   inner length: 4 bytes
-sig: 172  
+sig: 172
 
 3 + 40 + 4 + 4 + 172 == 223
 
@@ -152,7 +152,7 @@ files?  Could we go to version 2 and pack this announcement in the
 outer mfz as ANNOUNCE.PKT or something?[11:
 
 Fri Aug 21 14:33:51 2020 Right now mfzrun horks unless the version is
-exact 
+exact
 
  ..
     sub VERSION { "1.0" }
@@ -160,7 +160,7 @@ exact
  ..
     die "Bad .mfz header in '$progname'"
         unless defined $firstLine and $firstLine eq MFZRUN_HEADER;
-     
+
 But it really kind of looks like we could just go ahead and pack
 ANNOUNCE.PKT into the outer zip and the existing mfzrun code would
 completely ignore it.  It does FindName for the two files it cares
@@ -298,7 +298,7 @@ really want to include the packet header?
  + Makes file length == packet length for budgetary purposes
  - Would have to be checked anyway by code before putting on the wire
  + Would have to be checked anyway by code before putting on the wire
- 
+
 Maybe it's okay.  If necessary, down the road, we can add our own
 header and nest this whole thing inside another packet -- after all,
 we still have 55 bytes to give.
@@ -438,7 +438,7 @@ from 'data that we have'.  Call them..  MetaData and Data?  MetaMFZ
 and MFZContent?  MFZMetadata vs MFZContent?  MFZMetadata vs
 MFZContentManager?  MFZMetadata vs MFZManager?
 
-And a class for the container(s)?  Maybe not yet.  Skeleton first. 
+And a class for the container(s)?  Maybe not yet.  Skeleton first.
 
 :27]
 :26]
@@ -625,7 +625,7 @@ mfzrun all the time.
 
 But come on.  Stop expanding the hack.  You just added 'mfzrun
 announce' so that cdm (still) doesn't _need_ to muck inside MFZs
-itself. 
+itself.
 [45:
 
 Mon Aug 24 04:50:36 2020 So how about we get cdm.pl to load
@@ -696,7 +696,7 @@ be the starting point:
    which leads to the .mfz being reloaded.
 
  - We load .mfz files and use 'mfzrun ANNOUNCE' to get and check their
-   metadata, 
+   metadata,
 
  - We have a start at PacketListener isa TimeoutAble.  We're flushing
    packets at startup, and reading them (but not yet dispatching).
@@ -767,12 +767,12 @@ P Pipeline operation (with subtypes)
    F File announcement
    A prefix Availability
    R content Request
-   D Data reply 
+   D Data reply
 
 So for inbound packets maybe NeighborManager:
 
  - should always process As.
- 
+
  - should consume Ps unless theirVersion >= 3 ?
 
  - should consume Fs, Cs ,Ds unless theirVersion >= 1
@@ -876,7 +876,7 @@ and the outbound tag in the (less) old $plinfos.
           SourceRecord (? which doesn't exist yet) for it.  Drop if
           uninteresting, else create a SourceRecord
 
-    
+
 
 :61]
 [62:
@@ -1057,7 +1057,7 @@ which at the moment produces output like this:
               -127
             ];
     Packed packet failed validation: Missing seqno at /home/t2/T2-12/apps/cdm/cdm/Packet.pm line 90.
-    t2@beaglebone:~/T2-12/apps/cdm/cdm$ 
+    t2@beaglebone:~/T2-12/apps/cdm/cdm$
 
 (where that validation failure at the end is the 'purpose' of the test..)
 
@@ -1088,10 +1088,10 @@ and for sending them looks like this:
     cdm.pl ==>
      $CDM->eventLoop ==>
       $TimeQueue->runExpired ==>
-       $NeighborManager->onTimeout ==>        
-        $NeighborManager->update ==>        
-*        $NeighborManager->considerSendingVersion ==>        
-*         $NeighborManager->sendVersion ==>        
+       $NeighborManager->onTimeout ==>
+        $NeighborManager->update ==>
+*        $NeighborManager->considerSendingVersion ==>
+*         $NeighborManager->sendVersion ==>
            $PacketIO->writePacket
 
 and I'm thinking we want to rework the starred lines.
@@ -1117,7 +1117,7 @@ I think, and say:
   Packet::parse may or may not print an error message, but will
   certainly return undef, if there's a problem.  Otherwise it returns
   a (subclass of) Packet.
-  
+
 :79]
 
 :78]
@@ -1190,7 +1190,7 @@ thing that's got the
 data members.  The former a DMCommon and the latter a DMPipeline.
 
 But we have no DMPending.  Shouldn't we?  At some point earlier we
-were talking about transfer managers, no?  
+were talking about transfer managers, no?
 [85:
 
 Fri Aug 28 03:06:38 2020 Yes, :61: above.  (Which is way back when 27
@@ -1341,7 +1341,7 @@ cdm.pl-old do?  [95:
 Fri Aug 28 14:39:20 2020 It does
 
   $seqno = ++$globalCheckedFilesCount;
-  
+
 in 'assignSeqnoForFilename', which happens in checkCommonFile (like
 our loadCnVMFZ), plus perhaps elsewhere.
 
@@ -1467,7 +1467,7 @@ to -1 in MFZM::new.  So when does it get set properly?[110:
 Sat Aug 29 04:15:32 2020 It gets set in MFZM::loadCnVMFZ (naturally).
 So we should make sure mfzState() >= MFZ_STATE_CCNV before building an
 announcement.  Do we want to check that in selectPair, possibly?  No,
-because TMPipeline won't have that restriction.  
+because TMPipeline won't have that restriction.
 
 :110]
 
@@ -1614,7 +1614,7 @@ DMCommon and ask it about $pkt->{mName}.  Our grubby mitts, I mean.
 
 Sat Aug 29 08:07:40 2020 OK, so we've made quite a bit of plain
 procedural flow here, in TMTraditional::handleAnnouncement and now
-TMTraditional::requestChunkFrom, and we're starting to hit 
+TMTraditional::requestChunkFrom, and we're starting to hit
 off-main-line cases like this:
 
      at ./cdm.pl line 16, <__ANONIO__> line 2.
@@ -1767,7 +1767,7 @@ Ahh hmmmmmm
 
     9.43:PacketIO#3: MFZManager::getPathToFile MFZManager=HASH(0x2336340) HASH(0x233bd08)
      at ./cdm.pl line 16, <__ANONIO__> line 1.
-            main::__ANON__("Died at /home/t2/T2-12/apps/cdm/cdm/MFZManager.pm line 261, <"...) called at /home/t2/T2-12/apps/cdm/cdm/MFZManager.pm line 
+            main::__ANON__("Died at /home/t2/T2-12/apps/cdm/cdm/MFZManager.pm line 261, <"...) called at /home/t2/T2-12/apps/cdm/cdm/MFZManager.pm line
 261
 
 and we're dead..  So, that 'deleting mgr' now catches the eye AY WAT?
@@ -1793,7 +1793,7 @@ mfzState() is CnV?[129:
 
 Sat Aug 29 22:18:46 2020 Well, trying that for now:
 
-    # If we're CnV, we shouldn't change: Start over on modtime changes 
+    # If we're CnV, we shouldn't change: Start over on modtime changes
     if ($self->mfzState() == MFZ_STATE_CCNV &&
         defined($self->{mFileModificationTime}) &&
         -M $filepath != $self->{mFileModificationTime}) {
@@ -1859,7 +1859,7 @@ THINK should happen when the last of a pending .mfz comes in?
  - FOO.mfz on disk should be checked by mfzrun VERIFY.  If
    verification fails the file should be deleted, and the MFZManager
    either deleted ("easier") or marked as "unverifiable" (just delete
-   it). 
+   it).
 
  - FOO.mfz on disk should be moved from pending/ to common/.
 
@@ -2036,7 +2036,7 @@ that reloads that map.[147:
 
 Sun Aug 30 17:12:24 2020 Have to stop now, but: We'll provide a
 DMCommon::isDeleted($cn,$its) method, and check that in newContent or
-thereabouts. 
+thereabouts.
 
 :147]
 
@@ -2081,7 +2081,7 @@ while?
 [153:
 
 Mon Aug 31 10:53:28 2020 Well, putting it in /home/t2/T2-12-repo, for
-now.  
+now.
 
 :153]
 :152]
@@ -2099,7 +2099,7 @@ shipped.  I Want to Keep Up The Pace Here!
 
 TODO
 
-[161: Wed Sep  2 02:45:27 2020 For now, let's call that 
+[161: Wed Sep  2 02:45:27 2020 For now, let's call that
 DONE  :161] - Rough out set of actions that can be used by hook functions (and
    eventually formalized somehow)
 
@@ -2131,7 +2131,7 @@ DONE :166] - Add these mappings to the map
 Wed Sep  2 02:44:14 2020 Damn, fell off for a youtube/twitter/gitter
 check in.  Probably cost a half hour?
 
-STOP MAKING TO-DO.  GO GO GO.  
+STOP MAKING TO-DO.  GO GO GO.
 
 :160]
 
@@ -2157,7 +2157,7 @@ Wed Sep  2 01:53:08 2020
    superficially handy but very restrictive and potentially very
    misleading.
 
-[157: Wed Sep  2 02:05:55 2020 
+[157: Wed Sep  2 02:05:55 2020
    I think we should try to say that mfmt2 'does not have' (m)any
    'mfz-settable' command line args.  That as much as possible mfmt2
    should be a fixed target relative to physics creators.
@@ -2183,3 +2183,793 @@ So, just over three hours since :155: above.  Not a great run, but an
 okay run for sure.
 
 :167]
+[168:
+
+Thu Sep  3 06:20:31 2020 Did a test run with cdmd-MFM.mfz going two
+ways at once -- it was like five hours, gah.  I did slow the packet
+handling down because cdm was really eating the machine.  CDM can do
+like 7-8K in two directions taking like 35+% of the CPU.  Slowed-down
+it was doing like 4.5K in two directions using <10% of the CPU (idling
+right now it's like ~2-3%.)
+
+:168]
+[169:
+
+Thu Sep  3 06:29:48 2020 So today is a bit crowded but it's about time
+to think about pipelining again right?
+
+TODO
+
+[220: Sun Sep  6 11:22:12 2020
+DONE :220] - Review current protocol exchanges for pipeline
+
+ - Think briefly about whether we announce both traditional and
+   pipeline, where possibly, and how we respond to that if so.
+
+ - Start fleshing out TMPipeline following 'best practices' such as
+   they emerged from TMTraditional.
+
+ - Report back in about sticking points encountered.
+
+:169]
+[170:
+
+Thu Sep  3 06:35:38 2020 About time for a nap.
+
+:170]
+[171:
+
+Thu Sep  3 16:16:02 2020 Moving the flag.
+
+:171]
+[172:
+
+Thu Sep  3 23:09:09 2020 OK let's book three hours here and get
+pipelining NG *significantly advanced*!  START THE CLOCK GO GO GO
+
+:172]
+[173:
+
+Thu Sep  3 23:10:28 2020 Current status of TMPipeline?  -> Super
+empty, just new() and update()!
+
+Let's init from TMTraditional?[174:
+
+Thu Sep  3 23:13:02 2020 Let's not do that whole-hog.  Let's go
+function by function and review as we go.[175:
+
+Thu Sep  3 23:14:26 2020 Hey, we're going to need need CDMPACKET_*
+files!  That could be a good place to warm up.[176:
+
+Thu Sep  3 23:17:33 2020 The pipeline format uses subtypes under the
+CMD P packet.  Do we want separate .pm's for each subtype?
+
+Do we have subclassing going on in CDM packet land?  Of course we do!
+So we want a stub-ish CDMPacket_P.pm, and then yes, CDMPacket_PF.pm
+and so on.  Do it.[177:
+
+Thu Sep  3 23:20:47 2020 Ah oops! :) We already have PacketCDM_P.pm!
+And it's already partially parsing P packets, in to
+
+    use fields qw(
+        mPipelineCmd
+        mTemporarilyUnparsedText
+        );
+
+so we should take away mTemporarilyUnparsedText, and get, say
+PacketCDM_PF.pm going.
+
+[178:
+
+Thu Sep  3 23:30:40 2020 Yikes, I picked PF to, 'say', start with --
+but that's the pipeline file announcement!  Which is the MOST SPECIAL
+PACKET OF THEM ALL -- it's the one that shows up in ANNOUNCE.PKT.  The
+old cdm.pl doesn't even know how to parse those packets!
+
+Off to mfzmake, I guess?[179:
+
+Thu Sep  3 23:33:24 2020 Yes, here in 'MakeAnnouncement' in
+mfzmake.tmpl, stuff like:
+
+    my $packetdata =
+        pack(ANNOUNCE_PACK_DATA_FORMAT
+             ,0x80, 0x83, "F"
+             ,1
+             ,$innertime
+             ,length($inner)
+             ,$regnum
+             ,$checksum
+             ,$contentname
+        );
+
+aaaand... am I given to understand.. that.. ANNOUNCE.PKT contains a
+packet that claims to be a CDM "F" packet?  Which Of Course Already
+Exists It's The Traditional File Announcement That Has A Completely
+Different FORMAT THAN THIS FOGGEN F PACKET HERE WHAT THE HAIL?
+
+[180:
+
+Thu Sep  3 23:45:32 2020 GRRRR!
+
+(Not to mention that :56: above explicitly says
+  ..
+    The documented CDM packet types are:
+  ..
+    F File announcement (traditional)
+                         ^^^^^^^^^^^
+
+DUR DUR)
+
+:180]
+
+:179]
+
+:178]
+:177]
+
+:176]
+
+:175]
+
+:174]
+
+:173]
+[181:
+
+Thu Sep  3 23:48:08 2020 So, OPTIONS!  PEOPLE, I NEED OPTIONS, HERE!
+
+OPTIONS
+
+1. Change the ANNOUNCE.PKT packet type to something else.  'S' for
+   Signed?  'M' for 'M'etadata?  [187: 'S' for Summary?  :187][183: 
+   Pro:
+    + Cleanest solution according to existing design
+   Con:
+    x Invalidates all existing cdmd ANNOUNCE.PKTs
+
+:183]
+
+2. Wrap the contents of ANNOUNCE.PKT in some whole other PF
+   packet[184:
+   Pro:
+    + Existing ANNOUNCE.PKT format can be preserved
+    + MFM tree unaffected
+    + Minimal CDM redesign required
+   Con:
+    x Existing (nearly new) ANNOUNCE.PKT format contains misleading
+      garbage -- its packet header -- that will never be used
+
+:184]
+ 
+ - [Try to distinguish the two types of F on the fly] (DESK REJECT)
+
+3. Redo ANNOUNCE.PKT more substantially -- it doesn't really HAVE to
+   contain a full-on-real packet at the time it's signed.  It just
+   needs to be a payload we can recognize in a larger context.[185:
+
+   Pro:
+    + Better separation of concerns.  mfzmake no care about packets
+    + Can decide appropriate packet header formats elsewhere
+    + Could use the payload in other packet types without shame
+   Con:
+    x Invalidates all existing cdmd ANNOUNCE.PKTs
+    x Why is file extension 'PKT'?
+    x Requires non-neglible redesign
+
+:185]
+   
+[182:
+
+Thu Sep  3 23:54:49 2020 PROS AND CONS THEN.
+
+:182]
+:181]
+[186:
+
+Fri Sep  4 00:14:47 2020 Well, I'm leaning toward some version of
+option 3 I guess.  With details like:
+
+ - Change name to perhaps SUMMARY.DAT
+ - Don't have a packet header inside it
+ - Keep the announcement version but make it 2
+ 
+[188:
+
+Fri Sep  4 00:19:12 2020 And once I say that, I immediately start
+leaning toward option 1 instead.
+
+ - Change third byte of ANNOUNCE.PKT from 'F' to 'S'.
+ - Change fourth byte from 0x01 to 0x02 (in sympathy)
+ - Regenerate all existing cdmds before trusting their ANNOUNCE.PKTs
+
+[189:
+
+Fri Sep  4 00:21:40 2020 OK, mandatory look-away break before making
+decision.  FIFTEEN MINUTES PEOPLE.  BE BACK AT TWENTY OF.[190:
+
+Fri Sep  4 00:57:41 2020 Well forty minutes then.
+
+Sticking with option 1?
+
+Sticking with option 1.[191: Fri Sep  4 01:01:49 2020 DONE  :191]
+
+GO GO GO
+
+:190]
+
+:189]
+
+:188]
+
+
+:186]
+[192:
+
+Fri Sep  4 01:03:53 2020 OK, for the record, the ANNOUNCE.PKT format
+is (now) this:
+
+  3   hdr                   0x80.0x83.'S'
+  1   announcement version  0x02
+  4   big-endian inner timestamp
+  4   big-endian inner length
+  2   big-endian regnum
+  8   inner checksum substr
+ 50   content stem (filename without '.mfz')
+===
+ 72
+128   RSA sig
+===
+200
+
+[193:
+
+Fri Sep  4 01:06:07 2020 And we need a whole separate PacketCDM_S.pm
+for it!
+
+:193]
+
+:192]
+[194:
+
+Fri Sep  4 02:15:20 2020 Urgh fell off a couple more times.
+
+One issue in restarting low-level development here is how do we get
+back to spike testing instead of watching the whole system..  At
+least, we need to get cdmDEBUG going again, and a loopback, and maybe
+shut down the neighbors for a while..
+
+:194]
+[195:
+
+Fri Sep  4 02:26:47 2020 (Working back to spike access.  Currently
+only using loopback.  Changed StatusReporter to only include dirs that
+are NGB_STATE_OPEN.)
+
+:195]
+[196:
+
+Fri Sep  4 03:47:47 2020 OK so we're finally parsing 'S' packets
+plausibly.  How do we actually check the signature?  Is that yet
+another mfzrun function we're supposed to process out for?  Do we want
+to think about doing the common.pl.inc -> .pm thing and making it
+available to MFM and T2-12?
+
+:196]
+[197:
+
+Fri Sep  4 04:14:19 2020 All right, we're well over three hours from
+:172: above and I've lost focus.  We've got pipelining *slightly*
+advanced rather than significantly, buuuut it's a start.
+
+Let's go for second sleep and pick up.. where?
+
+ - common.pl.inc -> .pm
+
+ - but, who owns it?  MFM and T2-12 both make good claims:
+
+   = MFM: I need it for mfms workflows utterly separate from T2-12!
+
+   = T2-12: I need it to ship the MFM source code between tiles!
+
+[198:
+
+Fri Sep  4 04:21:50 2020 I think MFM's claim might still be better.
+T2-12's claim is a chicken-and-egg thing that's a temporary concern
+only when mfmzrun (say) actually changes.  MFM's needs never go away.
+
+We could have the cdm Makefile try to pull a copy of the mfz libs from
+the MFM tree, then use it locally?  That might not be awful.
+
+:198]
+
+:197]
+[199:
+
+Fri Sep  4 11:58:35 2020 OK starting up.  The issue I remembered about
+.pm in the MFM tree is ensuring the .pms can be found reliably under
+all the various packaging and installation scenarios.[200:
+
+Fri Sep  4 12:06:24 2020 Well, so there's like this:
+
+    DEB_MFM_BINDIR := $(DESTDIR)/usr/bin
+    DEB_MFM_RESDIR := $(DESTDIR)/usr/share/mfm/res
+ ..
+            mkdir -p $(DEB_MFM_RESDIR)
+            cp -r res/fonts $(DEB_MFM_RESDIR)
+            cp -r res/images $(DEB_MFM_RESDIR)
+ ..
+
+in MFM/config/Makedebian.mk.  We suspect we could add something like a
+res/perl or res/lib or res/perllib in the [201: Fri Sep  4 12:18:38
+2020 tree, yeah, in the tree.  Jeez I have to keep reminding myself
+the .pms, if we make them, will NOT BE GENERATED CODE (unlike mfzmake
+and mfzrun currently are).  So there won't be any issue of putting
+generated code into res/ -- they will live their whole source tree
+lives in res/perl, and we will edit them in res/perl, not in
+src/drivers/mfzmake or whatever.  So
+
+ - MFM/src/drivers/mfzrun/Makefile would get simpler
+
+ - src/drivers/mfzrun/mfz*.tmpl would become mfz* and
+
+ - we'd copy them intact to MFM/bin/ and chmod a+rx
+
+ - they'd have some BEGIN code to ensure the 'right' path(s) are in
+   %INC ?  That's the whole issue..
+
+:201]
+           
+:200]
+
+:199]
+[202:
+
+Fri Sep  4 13:06:08 2020 HOLY CRAB THE PERL DEBUGGER EXISTS AND WORKS
+AND IS GREAT!  AND ITS EMACS INTEGRATION WORKS ON THE TILES!
+
+:202]
+[203:
+
+Fri Sep  4 13:14:46 2020 But, tearing up the MFM tree to try
+res/perllib, I guess..  Back to actual perl debugging later.
+
+:203]
+[204:
+
+Fri Sep  4 14:55:42 2020 Urgh.  So it's not just a matter of turning
+common.pl.inc into a module.  mfzrun/Makefile ALSO slugs in values for
+things like '@DEBIAN_PACKAGE_NAME@' at build time.
+
+Do we really want to be fogging with this?
+
+[205:
+
+Fri Sep  4 15:13:22 2020 Ugh, taking a break.  Gonna think HSA awhile.
+[206:
+
+Sat Sep  5 00:00:02 2020 First night run.
+
+Screw it.  For now I'm going to do this:
+
+ - Leave common.pl.inc alone
+
+[207: Sat Sep  5 00:05:28 2020 Hey.  Why don't we go the sdl-config
+route?  Call it mfm-config, and have it end up in MFM_INSTALL_DIR/bin
+or whatever it's called, just like mfzmake and mfms and so on.  Have
+it print out whatever varieties of configuration is needed.  Main
+point is to figure out how to get the properly authoritative
+information into mfm-config in all the different build scenarios.   :207]
+
+:206]
+:205]
+
+:204]
+[208:
+
+Sat Sep  5 06:09:01 2020 Well I pretty much wasted this run, as far as
+hacking goes.  I did a mfm-config thing, but on the one hand, it's not
+immediately useful on the MFM tree side, while on the other hand, the
+T2-12 side really doesn't need it, because it knows where all the
+bodies are buried on the tile.
+
+So, without taking a position, yet, on tearing all that out, I think
+the idea here is to make MFM/res/perllib/MFZUtils.pm, but -- for the
+moment at least -- only use it from the T2-12 side.  Let
+mfzmake/mfzrun continue to use common.pl.inc, and thus not have to
+deal with finding .pms across different installation options.
+
+:208]
+[209:
+
+Sat Sep  5 23:48:56 2020 GO GOG O
+
+:209]
+[210:
+
+Sun Sep  6 01:59:27 2020 OK, so good progress so far.
+
+ - Have CryptoManager.pm, for handle and regnum services, existing and
+   accessible from CDM::{mCryptoManager}
+
+ - Have KeyManager, for signature checking and verification services,
+   existing and accessible from CryptoManager
+
+ - We have PacketCDM_S::verifySignature($cdm) which successfully
+   verifies an announce packet (i.e., itself) using the whole RSA
+   pubkey business -- all internally, without shelling out to mfzrun
+
+   It also successfully detects deliberately corrupted packets (for
+   ONE (1) whole instance of corruption), and successfuly detects the
+   repaired package afterward.
+
+At present we are NOT automatically verifying the signature during
+initial packet parsing.  That was awkward because the Packet::validate
+method had no easy way to get to the CryptoManager, but also because
+we were afraid of burying the crypto that early in packet
+processing.[216:
+
+Sun Sep  6 02:37:22 2020 Yes: And Really Of Course Because: When the
+packet first gets parsed off the wire, it will have the source
+direction in the packet header, which would cause it to fail
+verification.  But saying it aloud now, it's clear we could and
+probably should work around that in verifySignature, though..  [217:
+Sun Sep  6 02:42:34 2020 DONE   :217]So it's
+not such a compelling argument..
+
+:216]
+The risk this way is that calling PacketCDM_S::verifySignature might
+get overlooked.
+
+We shall see.
+
+[211:
+
+Sun Sep  6 02:24:37 2020 Anyway, so I think perhaps we need more
+
+TODO
+
+[212: DONE :212] - Check for previous to-do, for clearance or action
+[213: Sun Sep  6 02:25:40 2020 
+
+ - Work on to-do at :169: above doh. [215: Sun Sep  6 02:28:57 2020
+
+[224: Mon Sep  7 01:30:54 2020
+DONE :224] - Modify MFZManager::loadCnVMFZ to parse and verify the announce
+   packet.  Store the S packet.  Use $spkt->{mPacketBytes} as future
+   source of the data.
+
+ - Create TMPipeline::handleAnnouncement, following TMTraditional
+
+:215]
+
+:213]
+
+
+:211]
+
+:210]
+[214:
+
+Sun Sep  6 02:26:16 2020 So, review pipeline protocol
+
+SERVER PIPELINE ANNOUNCEMENT: 
+(1SA) Decide to send a pipeline announcement for a file we have in
+      common/ or pipeline/.  Get its $mfzmgr.
+(2SA) Pick a plausible $ngbmgr to send it to
+(3SA) Get a $outboundspkt copy of the verified ANNOUNCE.PKT S packet, via
+      $mfzmgr->{mVerifiedSPacket}
+(4SA) Modify $outboundspkt to set the direction of $ngbmgr
+(5SA) Send the packet
+(6SA) Record the time or something?
+
+CLIENT RECEIVE PIPELINE ANNOUNCEMENT
+(1CA) Verify the S packet or toss it
+(2CA) See if contents of common/ dominate the S packet, discard if so
+      (but consider replying with an S packet of our own?)
+(3CA) Check if deleted, discard if so (and consider announcing our
+      cdm-deleteds to the source?)
+(4CA) Check if contents of pipeline/ dominate the S packet, as in CA.
+(5CA) If all seems right, initialize a file in pipeline/ and set up an
+      appropriate(?) metadata record.
+(6CA) Request the first chunk from the pipeline source (or anyone we know
+      offering it.)      
+
+:214]
+[218:
+
+Sun Sep  6 04:12:28 2020 Second sleep.
+
+:218]
+[219:
+
+Sun Sep  6 11:21:46 2020 On.
+
+:219]
+[221:
+
+Sun Sep  6 13:33:28 2020 OK so we've made a lot of progress on
+switching loadCnVMFZ over to MFZUtils internal routines.
+
+Need to take a break to finally push out the overdue Computing Up.
+
+Current status to pick back up here:
+
+[223: Mon Sep  7 01:30:06 2020
+DONE :223] - Deal with ensuring .mfz-internal pubkey matches an existing
+   external pubkey before trusting the guts.
+
+:221]
+[222:
+
+Mon Sep  7 00:38:21 2020 GO GO GO
+
+:222]
+[225:
+
+Mon Sep  7 01:31:40 2020 On to SERVER PIPELINE ANNOUNCEMENT a la :214: above.
+
+:225]
+[226:
+
+Mon Sep  7 02:56:40 2020 OK, well it's a bit of a pain to test -- I
+faked an open NeighborManager in the debugger -- but we are now doing
+(1SA) through (5SA) from :214: above in
+TMPipeline::maybeMakeAnnouncement and down. 
+
+2.5 hours in.
+
+Let's push on to receiving an S and see how far we can get.
+
+:226]
+[227:
+
+Mon Sep  7 03:55:18 2020 OK, starting to slow down here, but have
+gotten as far as TMPipeline::handleAnnouncement getting called.  Is
+step (1CA) moot by the time we get there?  Maybe not.[228:
+
+Mon Sep  7 04:10:32 2020 OK, now we're definitely up to (2CA).  We do
+(I think) need to call verifySignature() as part of (1CA), and now we
+are.
+
+So I'm going to declare victory in this run and stop here, at about
+3.5 hours.
+
+Thinking ahead:
+
+ - What does .mfz domination really mean?
+
+ - When do we actually delete a dominated file?  Is that something we
+   could do in an MFZManager::update?  How would we know then?  We
+   need the place where different DirectoryManagers come together,
+   like we have NeighborhoodManager to own all the NeigborManagers.
+
+   Right now we just have the DirectoryManagers all laying
+   independently in CDM:
+
+        $self->{mCompleteAndVerifiedContent} = DMCommon->new($self);
+        $self->{mPendingContent} = DMPending->new($self);
+        $self->{mInPipelineContent} = DMPipeline->new($self);
+
+   but for dominance purposes it would be 'more correct' to have some
+   kind of ContentLocationsManager that owned the all
+   DirectoryManagers.
+
+   ContentLocationsManager::update could perhaps be a place to at
+   least to spot checks for dominance
+
+   Without keeping modfication times on everything, it's pretty hard
+   to justify a random update method actually changing much stuff.
+
+   We need stuff to age unless refreshed; mod times are one way to get
+   at that.  Once stuff is aging with disuse, we can justify reaping
+   the sufficiently old with no more reason than their age.
+
+   Even 'immortal' stuff like the contents of common/ we could say
+   that's 'used' when we reload it, so if that doesn't happen for some
+   reason, we could flush common/ stuff.  [229:
+
+Mon Sep  7 04:31:31 2020 All for now.
+
+:229]
+   
+
+:228]
+
+:227]
+[230:
+
+Mon Sep  7 11:27:57 2020 On.  ContentLocationsManager?
+DirectoriesManager?  FileLocationsManager?  LocationsManager?
+SuperDirectoryManager?  SuperSudsyBomb?  DirsManager?
+
+DirectoriesManager I guess.  Start by moving stuff from CDM.pm [231:
+
+Mon Sep  7 12:30:25 2020 OK geez that took an hour just to settle the
+relocation of stuff from CDM to DirectoriesManager?  Poop that's a
+third of my nominal foggen window here.
+
+But anyway we are back to TMPipeline, handling an inbound S packet,
+and domination.  Now, I guess it would be sensible to ask
+DirectoriesManager 'Which DirectoryManager, if any, is currently
+dominant for CONTENTNAME?'[232:
+
+Mon Sep  7 12:49:35 2020 OK, so DirectoriesManager::getDominantDM does
+what?
+
+ - It's given a contentname.
+
+ - It scans all its DMs for that cn.  For each hit, it captures their
+   fileInnerTimestamp and computes set of DMs that are tied for
+   newest.  (We'd like the hits we consider to either be CnV or
+   reasonably fresh, but who knows how to do that latter reasonably.)
+
+ - Break ties among the newest by directory.  I guess it's common/CnV
+   > pipeline > pending.
+
+ - Return the dominant newest DM if any.
+
+:232]
+
+:231]
+
+:230]
+[233:
+
+Mon Sep  7 13:23:17 2020 Have a cut at
+DirectoriesManager::getDominantDM but it's a bit of a pain setting up
+a case where there's actually any competition..  Maybe better to push
+on and (try to remember to) circle back once we create a pipeline MFZ
+in response to the S.
+
+:233]
+[234:
+
+Mon Sep  7 13:54:18 2020 So, umm, ummm: The S packet appears to
+contain {mInnerLength}, but nothing like {mTotalLength}.  How are we
+supposed to know when we've received the whole file?
+
+Why, exactly, does the S packet contain mInnerLength rather than
+mTotalLength?? [235:
+
+Mon Sep  7 14:16:19 2020 Oh fog.  Now I remember.  Because the total
+file length doesn't AND CAN'T exist until after the ANNOUNCE.PKT has
+already been created and packed.
+
+Now what Batman?
+
+Now what, Mr Coder, Mr Super Genius?
+[236:
+
+Mon Sep  7 14:18:44 2020 Well, there are packets that come
+afterwards.  The pipeline data chunks.  We could put the real file
+length in them, if it isn't already.[237:
+
+Mon Sep  7 14:36:08 2020 The PA packet.  Pipeline prefix
+availability.  Right now in the old code it's:
+
+    my $pipelineOperationsCode = "P";
+    my $fileAnnouncementCode = "A";
+    my $pkt = chr(0x80+$aliveNgb->{dir}).chr($CDM_PKT_TYPE).$pipelineOperationsCode.$fileAnnouncementCode;
+    $pkt = plAddTagTo($pkt,$plinfo->{outboundTag});
+    $pkt = addLenArgTo($pkt,$plinfo->{prefixLengthAvailable});
+
+but we could add the total file length to it (so long as we're not
+crossing versions 2 and 3 as far as pipelining.)
+
+Or we could just make a separate PL packet that supplies the final
+length, and just send it once.
+
+No matter how we slice it, we'll still have to check the final inner
+length against the S packet claim when we get to it.
+
+[238:
+
+Mon Sep  7 15:05:27 2020 Orrrrrr, we could nest the S inside a bigger
+packet containing the final file length.  That way we'd get it all at
+once, at the cost of packing issues and sadness over finally giving up
+on our cherished if doomed Here's A Signed Packet Just Send It idea.
+
+:238]
+
+:237]
+
+:236]
+:235]
+
+:234]
+[239:
+
+Mon Sep  7 15:08:49 2020 Well, it's dangerous because we're over three
+hours since :230: above, but I think we're going with PL to send the
+total length.  That means DMPipeline::newContentStub won't set up
+mFileTotalLength and we'll do more configuration when the PL arrives.
+[240:
+
+Mon Sep  7 15:27:38 2020 Yep, I should have stopped.
+
+It's really looking like we pretty much HAVE to embed the contents of
+ANNOUNCE.PKT in a bigger packet.
+
+REASON #1: So we can provide the mFileTotalLength at a sane time
+REASON #2: So we can provide the outbound tag for the whole transfer
+
+and we really do need to provide the fogging outbound tag for the
+whole transfer.  The whole ANNOUNCE.PKT idea IS FUNDAMENTALLY BROKEN
+because we absolutely need information THAT DOESN'T EXIST AT THE TIME
+ANNOUNCE.PKT must be finalized.
+
+So, I guess, we're going to embed the S packet inside the PF packet,
+and watch our byte count on the latter..
+
+:240]
+:239]
+[241:
+
+Mon Sep  7 23:41:15 2020 ON.
+
+:241]
+[242:
+
+Mon Sep  7 23:44:17 2020 I considered redoing the whole format of the
+thing -- so it's not even a packet, for example --  but it would only
+save like three bytes so screw it.  Let's live with it as a
+packet-within-a-packet. 
+
+:242]
+[243:
+
+Mon Sep  7 23:47:51 2020 So I guess it's going to be just:
+
+0x80, 0x83, 'P', 'F',    #   0 +   4 =   4 header bytes
+ N                       #   4 +   4 =   8 outbound tag
+ N                       #   8 +   4 =  12 file total length
+ a200                    #  12 + 200 = 212 S packet
+
+and we'll break down the S separately, to keep the crypto clean and
+whatever. 
+
+:243]
+[244:
+
+Tue Sep  8 00:27:23 2020 Struggling back to runnability after tearing
+up for embedding S inside PF.  Current issue: We ALSO have untested
+new code about DirectoriesManager to integrate....[245: Tue Sep  8
+00:30:16 2020 Actually I guess that was mostly outdated stub code, and
+we're maybe not in such bad shape on the dirsmgr.  :245]
+
+:244]
+[246:
+
+Tue Sep  8 02:47:34 2020 OK, we're in
+MFZManager::configureFromPFPacket and wishing the PF packet had the
+{mFileTotalChecksum} in it too.  If I read T2Utils::checksumWholeFile,
+that would mean another 16 bytes.  Which we still can afford, although
+I think PF would now be the biggest packet in CDMland.
+
+:246]
+[247:
+
+Tue Sep  8 05:40:33 2020 Who, Ray.  I think we're actually about it to
+generating the first pipeline chunk request of 'the New Era'.
+
+(Way past three hours; fell off for a twitter/wapo/yt chunk in the
+middle there.  Oh well.  The ball is still moving downfield a little.)
+[248:
+
+Tue Sep  8 05:43:32 2020 So I think that means it's time to flesh out
+PacketCDM_PR.pm..[249:
+
+Tue Sep  8 07:01:15 2020 OK well I think we just sent out first PR
+pipeline request packet.  To an unconnected neighbor.  Because I
+messed with the timestamps in the debugger to make it look like our
+mfz was obsolete.  So That's Progress.
+
+So really REALLY should stop now; we're at 6.5 hours on the run.
+
+Actually, maybe we should think about committing here.  It's been a
+while.  (Though we've been rsyncing ~t2/ to the laptop also.)
+
+:249]
+
+:248]
+:247]
