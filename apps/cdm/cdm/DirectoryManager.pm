@@ -183,6 +183,13 @@ sub reportMFZStats {
 }
 
 ## VIRTUAL
+sub notifyTransferManagers {
+    my __PACKAGE__ $self = shift or die;
+    my MFZManager $mgr = shift or die;
+    ## BASE CLASS DOES NOTHING
+}
+
+## VIRTUAL
 sub newContent {
     my __PACKAGE__ $self = shift;
     my $cname = shift or die;

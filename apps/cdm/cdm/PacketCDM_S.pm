@@ -68,8 +68,8 @@ sub packFormatAndVars {
 
     my $fmt = $parentfmt.$myfmt;
     my @vars = (@parentvars, @myvars);
-    DPSTD("FMT $fmt");
-    DPSTD("VARS ".join(", ",@vars));
+    #DPSTD("FMT $fmt");
+    #DPSTD("VARS ".join(", ",@vars));
     
     return ($fmt, @vars);
 }

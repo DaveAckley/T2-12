@@ -35,6 +35,16 @@ sub isDeleted {
     return $innertimestamp <= $rec->[3];
 }
 
+##OVERRIDE
+sub notifyTransferManagers {
+    my __PACKAGE__ $self = shift or die;
+    my MFZManager $mgr = shift or die;
+    ##DMCommon notifies both TMTrad and TMPipe
+    my $cdm = $self->{mCDM};
+    $cdm->{mTraditionalManager}->setupMetadata(DIR8_SERVER, $mgr);
+    $cdm->{mPipelineManager}->setupMetadata(DIR8_SERVER, $mgr);
+}
+
 #@Override
 sub newContent {
     my ($self,$nextname) = @_;
@@ -55,5 +65,6 @@ sub update {
     return 1 if $self->SUPER::update();
     DPSTD(FUNCNAME);
 }
+
 
 1;

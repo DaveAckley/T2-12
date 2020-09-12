@@ -52,6 +52,7 @@ sub handleAnnouncement {
     DPSTD(__PACKAGE__." handleAnnouncement not overriden for ".$pkt->summarize());
 }
 
+
 sub selectPair {
     my ($self,@dms) = @_;
     my $cdm = $self->getCDM() or die;
@@ -138,6 +139,14 @@ sub forgetMFZMgr {
     }
 }
 
+## PURE VIRTUAL
+sub refreshServerMetadata {
+    my __PACKAGE__ $self = shift or die;
+    my MFZManager $mgr = shift or die;
+
+    die "NOT OVERRIDDEN";
+}
+
 sub storeMetadata {
     my __PACKAGE__ $self = shift or die;
     my $rec = assertMetadataRec(shift);
@@ -157,6 +166,7 @@ sub storeMetadata {
     my $ref2 = $self->_getK2MapByD9($d9);
     $ref2->{$k2} = $cn;
     $self->getMetadata($d9,$cn);
+    DPSTD($self->getTag()." storeMetadata($d9,$cn,$k2)");
     return $rec;
 }
 

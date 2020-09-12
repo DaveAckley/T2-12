@@ -125,7 +125,7 @@ sub unpack {
     for (0 .. $#varrefs) {
         ${$varrefs[$_]} = $values[$_];
     }
-    DPSTD("QQUNPACK($self)");
+#    DPSTD("QQUNPACK($self)");
     $self->postunpack();
     my $ret = $self->validate();
     print Dumper(\$ret);
@@ -227,14 +227,14 @@ sub parse {
 #        DPSTD("$pkg rec ");
         my $rec = $pkg->recognize($packet);
         if ($rec) {
-            DPSTD("YES $pkg");
+            #DPSTD("YES $pkg");
             my $pself = $pkg->new();
             $pself->{mPacketBytes} = $packet;
             $pself->{mPacketLength} = $len;
             my $ret = eval {
-            DPSTD("YES1 $pkg");
+            #DPSTD("YES1 $pkg");
                 $pself->unpack();
-            DPSTD("YES2 $pkg/$pself");
+            #DPSTD("YES2 $pkg/$pself");
                 $pself;
             };
             DPSTD("YES3 $pkg ");

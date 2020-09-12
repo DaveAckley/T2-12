@@ -49,9 +49,9 @@ sub new {
     $self->SUPER::new("DirsMgr",$cdm);
 
     $self->{mBaseDirectory} = $basedir;
-    $self->{mCompleteAndVerifiedContent} = DMCommon->new($cdm,$self);
-    $self->{mPendingContent} = DMPending->new($cdm,$self);
-    $self->{mInPipelineContent} = DMPipeline->new($cdm,$self);
+    $self->{mCompleteAndVerifiedContent} = undef;
+    $self->{mPendingContent} = undef;
+    $self->{mInPipelineContent} = undef;
 
     $self->{mCDM}->getTQ()->schedule($self);
     $self->defaultInterval(-20); # Run about every 10 seconds if nothing happening
@@ -61,9 +61,14 @@ sub new {
 
 sub init {
     my __PACKAGE__ $self = shift or die;
+    my CDM $cdm = $self->{mCDM};
     $self->checkInitDirectory($self->{mBaseDirectory}) or die;
     $self->flushTempDirectories();
     $self->checkInitDirectories();
+
+    $self->{mCompleteAndVerifiedContent} = DMCommon->new($cdm,$self);
+    $self->{mPendingContent} = DMPending->new($cdm,$self);
+    $self->{mInPipelineContent} = DMPipeline->new($cdm,$self);
 }
 
 sub flushTempDirectories {

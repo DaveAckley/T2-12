@@ -156,6 +156,8 @@ sub loadCnVMFZ {
     my $cdm = $self->{mCDM};
     my $basedir = $cdm->getBaseDirectory();
     my $mfzpath = $self->getPathToFile();
+
+    DPSTD(FUNCNAME.": ".$mfzpath);
     return DPSTD("$mfzpath: Bad path")
         unless -r $mfzpath && -f $mfzpath;
 
@@ -233,6 +235,7 @@ sub loadCnVMFZ {
     $self->{mFilePipelineAnnouncePacket} = $pfpkt;
     $self->buildXsumMap();
     DPSTD("loadCnVMFZ (".$self->getTag().
+          $spkt->{mOutboundTag}.", ".
           $spkt->{mAnnounceVersion}.", ".
           $spkt->{mInnerTimestamp}.", ".
           $pfpkt->{mFileTotalLength}.", ".
@@ -242,6 +245,8 @@ sub loadCnVMFZ {
 
     $self->mfzState(MFZ_STATE_CCNV);
     $self->{mVerificationStatus} = 1; # We like
+
+    $self->{mDirectoryManager}->notifyTransferManagers($self);
     return 1;
 }
 
@@ -265,6 +270,7 @@ sub configureFromPFPacket {
     return $self;
 }
 
+##CLASS METHOD
 sub indexOfLowestAtLeast {
     my ($mapref, $value) = @_;
     my $pairlen = scalar(@{$mapref});
@@ -429,6 +435,24 @@ sub getPathToFile {
     my $cname = $self->{mContentName};
     my $filepath = "$path/$cname";
     return $filepath;
+}
+
+sub getPipelineChunkAt {
+    my __PACKAGE__ $self = assertMFZLive(shift);
+    my $startidx = shift;
+    defined $startidx or die;
+
+    my $chunklen = 180;
+    my ($markpos,$xsum) = $self->findXsumInRange($startidx, $startidx+$chunklen);
+
+    if (defined $xsum) {
+        if ($markpos > $startidx) {
+            $xsum = undef; # Don't return xsum til it's first in chunk
+            $chunklen = $markpos - $startidx;   # but change length so that it will be first next time
+        }
+    }
+    my $chunk = $self->readDataFrom($startidx, $chunklen);
+    return ($chunk, $xsum);
 }
 
 ##CLASS METHOD

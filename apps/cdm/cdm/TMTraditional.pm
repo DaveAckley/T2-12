@@ -61,7 +61,7 @@ sub handleAnnouncement {
         if $dmc->isDeleted($contentName,$pkt->{mInnerTimestamp});
 
     ## STEP 1: Check if already in pending
-    my DMPending $dmp = $cdm->getDMPending() or die;
+    my DMPending $dmp = $dirsmgr->getDMPending() or die;
     my MFZManager $pmgr = $dmp->getMFZMgr($contentName); # or undef
     if (defined $pmgr) {
         if ($pkt->matchesMFZ($pmgr)) {
@@ -191,6 +191,7 @@ sub considerPendingRelease {
         DPSTD("--------${\$self->getTag()} RELEASED $cn--------");
         my $hkm = $self->{mCDM}->{mHookManager};
         $hkm->runHooks(HOOK_TYPE_RELEASE,$pmgr); # now cmgr really
+        $hkm->runHooks(HOOK_TYPE_LOAD,$pmgr);    # delayed from loadCnVMFZ above
     }
 }
 
@@ -210,6 +211,28 @@ sub requestChunkFrom {
     return $pkt->sendVia($pio);
 }
 
+##OVERRIDE
+sub refreshMetadata {
+    my __PACKAGE__ $self = shift or die;
+    my $dir8 = shift;
+    my MFZManager $mfzmgr = shift or die;
+
+    my $contentname = $mfzmgr->{mContentName};
+
+    #TMTraditional supports SERVER METADATA ONLY
+    ## SERVER METADATA IS [8 cn sku mgr tradannouncepkt];
+    my $od = $self->getMetadata($dir8,$contentname); 
+    return if defined($od) && $od->[3] == $mfzmgr;
+    
+    # Need to (re)build od if possible
+    my $thisseqno = ++$seqno;
+    my $sku = $mfzmgr->generateSKU($thisseqno);
+
+    my $announce = $mfzmgr->createTraditionalAnnouncement($thisseqno);
+    $od = TransferManager::createMetadataRec(DIR8_SERVER, $contentname, $sku, $mfzmgr, $announce);
+    return;
+}
+
 sub update {
     my ($self) = @_;
     return 1 if $self->SUPER::update();
@@ -217,21 +240,30 @@ sub update {
     my ($mfzmgr,$ngbmgr) = $self->selectPair();  # Weighted however..
     return 0 unless defined $mfzmgr and defined $ngbmgr;
 
+    # Don't send traditional unless they don't talk our pipeline
+    return 0
+        unless $ngbmgr->theirVersion() > CDM_PROTOCOL_VERSION_UNKNOWN
+        and $ngbmgr->theirVersion() < CDM_PROTOCOL_VERSION_SRSLYNOW;
+
     my $contentname = $mfzmgr->{mContentName};
 
+    return 0 unless $mfzmgr->mfzState() >= MFZ_STATE_CCNV; # not ready yet
+    $self->refreshMetadata(DIR8_SERVER, $mfzmgr);
+    
     ## SERVER METADATA IS [8 cn sku mgr tradannouncepkt];
     my $od = $self->getMetadata(DIR8_SERVER,$contentname); 
-    if (!defined($od) || $od->[3] != $mfzmgr) {
-        # Need to (re)build od if possible
-        return 0 unless $mfzmgr->mfzState() >= MFZ_STATE_CCNV; # not ready yet
-        my $thisseqno = ++$seqno;
-        my $sku = $mfzmgr->generateSKU($thisseqno);
+    die unless defined $od && $od->[3] == $mfzmgr; # We just refreshed the metadata to ensure this
+    # if (!defined($od) || $od->[3] != $mfzmgr) {
+    #     # Need to (re)build od if possible
+    #     return 0 unless $mfzmgr->mfzState() >= MFZ_STATE_CCNV; # not ready yet
+    #     my $thisseqno = ++$seqno;
+    #     my $sku = $mfzmgr->generateSKU($thisseqno);
 
-        my $announce = $mfzmgr->createTraditionalAnnouncement($thisseqno);
-        $od = TransferManager::createMetadataRec(DIR8_SERVER, $contentname, $sku, $mfzmgr, $announce);
-        DPSTD("${\FUNCNAME} rec [".join(", ",@{$od})."] DDAND SKU($sku)");
-        $self->storeMetadata($od);
-    }
+    #     my $announce = $mfzmgr->createTraditionalAnnouncement($thisseqno);
+    #     $od = TransferManager::createMetadataRec(DIR8_SERVER, $contentname, $sku, $mfzmgr, $announce);
+    #     DPSTD("${\FUNCNAME} rec [".join(", ",@{$od})."] DDAND SKU($sku)");
+    #     $self->storeMetadata($od);
+    # }
     my $pkt = $od->[4];
     $pkt->setDir8($ngbmgr->{mDir8}); # Modifies stored packet but we always do before use
     my $pio = $ngbmgr->getPIO();
