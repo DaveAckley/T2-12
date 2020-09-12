@@ -1,4 +1,4 @@
-{257}  -*- text -*-
+{289}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -2322,7 +2322,7 @@ Thu Sep  3 23:48:08 2020 So, OPTIONS!  PEOPLE, I NEED OPTIONS, HERE!
 OPTIONS
 
 1. Change the ANNOUNCE.PKT packet type to something else.  'S' for
-   Signed?  'M' for 'M'etadata?  [187: 'S' for Summary?  :187][183: 
+   Signed?  'M' for 'M'etadata?  [187: 'S' for Summary?  :187][183:
    Pro:
     + Cleanest solution according to existing design
    Con:
@@ -2341,7 +2341,7 @@ OPTIONS
       garbage -- its packet header -- that will never be used
 
 :184]
- 
+
  - [Try to distinguish the two types of F on the fly] (DESK REJECT)
 
 3. Redo ANNOUNCE.PKT more substantially -- it doesn't really HAVE to
@@ -2358,7 +2358,7 @@ OPTIONS
     x Requires non-neglible redesign
 
 :185]
-   
+
 [182:
 
 Thu Sep  3 23:54:49 2020 PROS AND CONS THEN.
@@ -2373,7 +2373,7 @@ option 3 I guess.  With details like:
  - Change name to perhaps SUMMARY.DAT
  - Don't have a packet header inside it
  - Keep the announcement version but make it 2
- 
+
 [188:
 
 Fri Sep  4 00:19:12 2020 And once I say that, I immediately start
@@ -2519,7 +2519,7 @@ src/drivers/mfzmake or whatever.  So
    %INC ?  That's the whole issue..
 
 :201]
-           
+
 :200]
 
 :199]
@@ -2630,7 +2630,7 @@ Sun Sep  6 02:24:37 2020 Anyway, so I think perhaps we need more
 TODO
 
 [212: DONE :212] - Check for previous to-do, for clearance or action
-[213: Sun Sep  6 02:25:40 2020 
+[213: Sun Sep  6 02:25:40 2020
 
  - Work on to-do at :169: above doh. [215: Sun Sep  6 02:28:57 2020
 
@@ -2654,7 +2654,7 @@ DONE :251] - Create TMPipeline::handleAnnouncement, following TMTraditional
 
 Sun Sep  6 02:26:16 2020 So, review pipeline protocol
 
-SERVER PIPELINE ANNOUNCEMENT: 
+SERVER PIPELINE ANNOUNCEMENT:
 (1SA) Decide to send a pipeline announcement for a file we have in
       common/ or pipeline/.  Get its $mfzmgr.
 (2SA) Pick a plausible $ngbmgr to send it to
@@ -2674,7 +2674,7 @@ CLIENT RECEIVE PIPELINE ANNOUNCEMENT
 (5CA) If all seems right, initialize a file in pipeline/ and set up an
       appropriate(?) metadata record.
 (6CA) Request the first chunk from the pipeline source (or anyone we know
-      offering it.)      
+      offering it.)
 
 :214]
 [218:
@@ -2716,7 +2716,7 @@ Mon Sep  7 01:31:40 2020 On to SERVER PIPELINE ANNOUNCEMENT a la :214: above.
 Mon Sep  7 02:56:40 2020 OK, well it's a bit of a pain to test -- I
 faked an open NeighborManager in the debugger -- but we are now doing
 (1SA) through (5SA) from :214: above in
-TMPipeline::maybeMakeAnnouncement and down. 
+TMPipeline::maybeMakeAnnouncement and down.
 
 2.5 hours in.
 
@@ -2773,7 +2773,7 @@ Thinking ahead:
 Mon Sep  7 04:31:31 2020 All for now.
 
 :229]
-   
+
 
 :228]
 
@@ -2915,7 +2915,7 @@ Mon Sep  7 23:41:15 2020 ON.
 Mon Sep  7 23:44:17 2020 I considered redoing the whole format of the
 thing -- so it's not even a packet, for example --  but it would only
 save like three bytes so screw it.  Let's live with it as a
-packet-within-a-packet. 
+packet-within-a-packet.
 
 :242]
 [243:
@@ -2928,7 +2928,7 @@ Mon Sep  7 23:47:51 2020 So I guess it's going to be just:
  a200                    #  12 + 200 = 212 S packet
 
 and we'll break down the S separately, to keep the crypto clean and
-whatever. 
+whatever.
 
 :243]
 [244:
@@ -3017,3 +3017,500 @@ Chips Fall Where They May.
 
 :256]
 :255]
+[257:
+
+Tue Sep  8 23:19:14 2020 GO GO GO
+
+:257]
+[258:
+
+Tue Sep  8 23:42:17 2020 OK so we're working back and forth between
+two tiles, shamefully counting on having ethernet to both of them to
+accelerate distributing code changes between them.
+
+Two current issues:
+
+ - We appear to be generating pipeline announcements even for
+   destinations that we think are version 1
+
+ - TMPipeline::handlePipelineChunkRequest doesn't yet exist.  (It
+   shouldn't have been getting called, but for issue 1..)
+
+:258]
+[259:
+
+Wed Sep  9 02:48:10 2020 OK so we're having confusion about
+maintaining transfer manager metadata, particularly when moving
+MFZManagers between different DirectoryManagers.
+
+ - Where should TransferManagers be notified when a file moves?
+
+ - Well, when a file moves where, specifically?
+
+   = ..is newly found in DMCommon?  Then TMTraditional and TMPipeline
+     should both be notified to create server metadata for it
+
+   = ..is released from DMPending to DMCommon?  Then TMTraditional
+     should flush its client metadata.  Also do the newly-found common
+     steps above.
+
+   = ..is released from DMPipeline to DMCommon?  Then TMPipeline
+     should flush its client metadata, and do the common steps.
+
+   = ..is found deleted from common (by obsolescence or whatever)?
+     Notify TMs for server flush
+
+:259]
+[260:
+
+Wed Sep  9 04:39:35 2020 So OK, we want TMPipeline transfers to
+support server metadata and client metadata separately, right?  That's
+the whole pipeline idea.  In particular, we want two different
+outbound tags for them.  The client otag was chosen by ngb and sent to
+us, and we use it to get more content from them.  The server otag was
+created by us and sent out in PF packets, and others use it to request
+content from us.
+
+So, if there's only one MFZManager for a growing .mfz in pipeline/,
+what goes in MFZManager::mOutboundTag ?  It would have to be our
+outboundtag, I'd think you'd think, right?  Because it's only when
+we're a server that the content is actually outbound.  So where does
+the(ir outbound our) inbound tag go?
+
+Only in the client metadata record, I guess.  And there really isn't
+any obligation for client and server metadata records to have the same
+structure beyond the first two keys.
+
+:260]
+[261:
+
+Wed Sep  9 06:39:22 2020 Well, overdue for second sleep, and the
+MFZMgr <-> TMgr <-> DirMgr metadata relationships are still confusing
+and in flux.
+
+:261]
+[262:
+
+Wed Sep  9 12:56:00 2020 Have to start long cook soon, but thinking
+about goals and implementations.
+
+ - Yes it's right for the (client) 'inbound otag' to be in the client
+   metadata rec, because we want to associate multiple 'inbound otag's
+   with the same mfzmgr.
+
+ - We also want the client prefix length available to be the client
+   metadata rec, because we'll have different values for that as well.
+
+ - We can very sensibly view the 'client metadata rec' as simply being
+   the neighbor's server metadata rec..
+
+ - I guess on that view we could think about taking the
+   prefixlengthavailable out of the mfzmgr itself and putting it in
+   the pipeline server metadata.
+
+ - But I really think in the spirit of squeakiness we have to ditch
+   the metadata-as-anonymous-arrays and make at least one class for
+   the (serverish) metadata.
+
+[263:
+
+Wed Sep  9 13:08:15 2020 And the name of this class is?  Well, the
+low-order point of this class is?
+
+[264:
+
+Wed Sep  9 23:49:43 2020 TransferMetadata.pm[266: PipelineMetadata.pm?
+ It's unique faster, compared to TransferM(etadata|anager).. :266]
+
+GO GO GO
+
+:264]
+
+:263]
+
+:262]
+[265:
+
+Wed Sep  9 23:52:18 2020 I'm really tempted to make it a packet
+though...  NO STOP STOP STOP GO GO GO
+
+:265]
+[267:
+
+Thu Sep 10 00:38:05 2020 So the point of the whole 'K2' thing is to be
+able to access a metadata record either by 'dir9' (==dir8|DIR8_SERVER)
+or by a second key 'K2'.  Which was seqno in the case of traditional
+transfers, and otag in the case of pipeline transfers.
+
+When we handle a chunk request, we look up the metadata by the K2.  When
+we create a chunk request, we look up the metadata by the
+contentname.  (And in fact when we look up by K2, we use a second map
+to find the contentname from the K2 and then actually look up by
+contentname.)
+
+And we note that even though we're making classes for this metadata,
+most of the work is still going to be done by TransferManager, since
+that's were the maps of the K2Ms are located.[268:
+
+Thu Sep 10 00:48:41 2020 So, um, I'm still hating this metadata
+story.  For one thing, ATM it appears we have different metadata for
+trad-server vs trad-client vs pipe-server.  Which is a mess.
+
+Restate fundamentals.
+
+ - We want to use a short fixed-size 'key' in data request/reply
+   packets because using the full content name all the time would eat
+   a signficant portion of our packet budget.
+
+ - We want that key to be associated not just with a contentname but
+   also with its innertimestamp, so that if the content associated
+   with a contentname is updated, the key will change as well, and
+   previously advertised key(s) for that cn will no longer work.
+
+ - NEW keys are CREATED only when we are setting up structures to
+   SERVE content.  That happens at two times: (1) When an MFZMgr is
+   released to common/, and (2) When an empty file is created in
+   pipeline/ as a result of a ngb pipeline announcement.
+
+ - EXISTING keys are COPIED and STORED to enable RECEIVING content.
+   That happens at two times: (1) When an empty file is created in
+   pending/ in response to a ngb traditional announcement, and (2)
+   When an empty file is created in pipeline/ as a result of a ngb
+   pipeline announcement.
+
+[269:
+
+Thu Sep 10 01:28:06 2020 And it really seems like we should somehow be
+able to exploit the symmetry -- that OUR existing keys are our ngbs NEW
+keys -- to simplify this structure.
+
+But what is the relationship between client metadata and server
+metadata?
+
+Use cases:
+
+[UC1] Find a neighbor that recently claimed to serve this chunk I want.
+
+[UC2] Find a neighbor that hasn't recently heard about what I can serve
+
+[UC3] Change my ability to serve -- I have more chunks available
+
+[UC4] Change my ability to serve -- this key is obsoleted
+
+[270:
+
+Thu Sep 10 01:51:33 2020 And let's make up lame-o-but-specific data
+structures for those use cases:
+
+[UC1] { cn -> { d8 -> [ pfxlen whenheardfrom key ] } }
+
+      Select by cn, iterate over d8s, filter by pfxlen, weight by
+      K/max(K,now-whenheardfrom), random pick.
+
+      whenheardfrom updates on announcements and data chunks received.
+
+      Larger K (in seconds) distributes requests more broadly; smaller
+      K focuses on most recent relevant activity.
+
+[UC2] { cn -> [ whensentto x d8 ] }
+
+        subroutine pickD8ByAge(cn): Select by cn, iterate over d8 array,
+        weight by age=now-whensento, random pick, return (d8,age)
+
+      Iterate over cn, get (d8,age) for each, filter age by K, weight
+      by age, random pick, if any.  (And announce cn to d8.)
+
+      whensentto updates on announcements and data chunks sent.
+
+      K sets minimum delay for announcement.  Could do it in the sub.
+
+[UC3] (Same data structure as [UC2])
+
+      Given cn (MFZMgr) and new pfxlen.
+
+      Select by cn, iterate over d8s, set whensentto to 'long ago'.
+
+      Kick whoever does the [UC2] processing
+
+[UC4] Do the same as [UC3]?
+[272:
+
+Thu Sep 10 03:09:19 2020 So, that seems vaguely plausible as far as it
+goes.  I don't really like iterating over (all cn x all d8) for the
+[UC2] case.  Could just pick M random cns and weighted pick among
+them.
+
+But it's not clear how really much better all that is than just doing
+fully random announcements.  Except for the UC1 'filter' step, which
+we actually need.
+
+And how does this help us settle the metadata design, exactly?
+
+:272]
+[271:
+
+Thu Sep 10 03:08:19 2020 (Broke to do 'forensic' work in hopes of
+recovering the now-extremely-long-lost robust.cs.unm.edu data grrr.)
+
+:271]
+
+
+:270]
+
+:269]
+
+:268]
+
+:267]
+[273:
+
+Thu Sep 10 03:24:28 2020 I guess I want to try again with the needed
+functionality, and see if we can come up with a more monolithic
+approach that would cover them with a bit less total hair..
+
+[SIT10] Receive traditional announcement
+[SIT11] Receive pipeline announcement
+[SIT12] Consider sending announcements
+[SIT13] Send pipeline chunk request
+[SIT14] Recv pipeline chunk request
+[SIT15] Send traditional chunk request
+[SIT16] Recv traditional chunk request
+[SIT17] Send pipeline data chunk
+[SIT18] Recv pipeline data chunk
+[SIT19] Send trad data chunk
+[SIT210] Recv trad data chunk
+[SIT211] Discover new file in common
+[SIT212] Discover file missing in common
+[SIT213] Discover file missing in pending
+[SIT214] Discover file missing in pipeline
+[SIT215] Receive last of file in pending
+[SIT216] Receive last of file in pipeline
+
+[274:
+
+Thu Sep 10 07:11:11 2020 Aieee wasted much time.
+
+Suppose there was a single TransferManager in charge of all
+information about data movement between CDMs -- trad and pipe,
+outbound and inbound.  We want to see what involvement this TM would
+have in all those situations.
+
+[SIT10] Receive traditional announcement
+          TM->refreshInbound(fpkt)
+[SIT11] Receive pipeline announcement
+          TM->refreshInbound(pfpkt)
+[SIT12] Consider sending announcements
+          TM->selectOutbound(\&filteredby,\&weightedby)
+[SIT13] Send pipeline chunk request
+          TM->refreshInbound(prpkt)
+[SIT14] Recv pipeline chunk request
+          TM->
+
+:274]
+
+:273]
+[275:
+
+Thu Sep 10 07:16:21 2020 TM methods
+
+TM::refreshInbound($pkt)
+  - handle multiple packet types appropriately
+    $fpkt  - d8 has all of cn/inrts as of now
+    $pfpkt - d8 has at least some of cn/inrts as of now
+
+[276:
+
+Thu Sep 10 07:45:00 2020 Or refreshThem vs refreshUs, instead of
+inbound/outbound?
+
+TM::refreshThemOnRecv($pkt)
+  - handle multiple inbound packet types appropriately
+    $fpkt  - d8 has all of cn/inrts as of now
+    $pfpkt - d8 knows something about cn/inrts as of now
+    $dpkt  - d8 has all of cn/inrts (as implied by sku) as of now
+    $prpkt - d8 asked us for cn/inrts (by otag) as of now
+
+TM::refreshUsOnSend($pkt)
+  - handle multiple outbound packet types appropriately
+    $fpkt  - we told d8 we have all of cn/inrts as of now
+    $pfpkt - we told d8 we know about cn/inrts as of now
+    $dpkt  - we sent d8 some data
+
+..but this is just restating basically all of the packet semantics.
+What is the consolidated state TM manages?
+
+  [d9 cninrts k2 lastout lastin mfzgmr pfxlen]
+
+
+
+:276]
+:275]
+[277:
+
+Thu Sep 10 14:07:16 2020 Time to move the flag.  How are we going to
+clean this design up?
+
+:277]
+[278:
+
+Fri Sep 11 05:22:30 2020 So ugh.  Did other stuff yesterday and yet
+magically nothing has changed here.
+
+I guess the most inside track I can think of at the moment is to say:
+
+How about let's ditch the traditional/pipeline distinction?  Let's
+just implement a single underlying pipeline-capable MFZ+transfer
+model, and use it for everything.
+
+Storage manager:
+ - Here's a believable description of some content, set up for it
+ - Here's somebody who says they now have this much of that content
+
+{ cninrts
+
+:278]
+[279:
+
+Sat Sep 12 00:26:46 2020 Geez, another day of 'other stuff' let's say.
+
+Nothing looks good here.
+
+What I want to do is try a branch where we abandon backwards
+compatibility and try to simply things as much as we possibly can
+convince ourselves.
+
+Example Extreme Simplifications:
+
+ - Pipeline only.  Ditch 'traditional' one-hop transfer entirely.
+   (One-hop behavior could be laid back on top of pipeline without
+   much trouble if desired, if we don't need backwards compatibility.)
+
+ - 'Content slots' rather than file names.  Have a hard limit of, say,
+   250 .mfzs to be managed.  HARDCODE THEIR NAMES INTO cdm.pl, just
+   like we are currently hardcoding the regnum space.
+
+ - Go with much lower res timestamps -- like 5 minute granularity --
+   and 24 bits of range.  That produces ~160 years of timestamps,
+   which may sound pretty finite, in the big picture.  But then, what
+   we have now is 32 bits of one second granularity, which provides
+   only ~136 years of timestamps.  Ten minute granularity would push
+   the range well over 300 years while, we'd think, very rarely
+   crimping any reasonable development and grid deployment
+   workflow.[283: Sat Sep 12 06:06:14 2020 Given how long propagation
+   will still take even with smaller .MFZs  :283]
+
+ - Use 8-bit 'content slot' + 24-bit 'coarse timestamp' as a 32 bit
+   object name, a 'slotstamp' if you will, and use it directly in all
+   data chunks requests and replies.
+
+ - Then we get to ditch BOTH the traditional 'SKUs' AND the pipeline
+   'otags' and just refer directly to the slotstamp whenever referring
+   to a data object.
+
+ - Then we modify 'mfzmake cdmake' to take the slotnum as well as the
+   regnum, and we build out our master list of slot assignments.[284:
+   Perhaps even autonaming the files cdmss-01-f00ba5.mfz, (cdmss-SLOT02x-STAMP06x)  :284]
+
+ - While we're fantasizing here, we should also redo (at least) the
+   T2-12 Makefile design to make smaller cdmds, instead of
+   cdmd-T2-12.
+
+[280:
+
+Sat Sep 12 02:27:48 2020 For example, we could break it down one
+level, and register like these four dirs separately.
+
+      /home/t2/T2-12:
+      total used in directory 76 available 318912
+      drwxr-xr-x  8 t2 t2 4096 Aug 31 19:38 apps
+      drwxr-xr-x  8 t2 t2 4096 Aug 31 19:38 files
+      drwxr-xr-x  6 t2 t2 4096 Aug 31 19:38 lkms
+      drwxr-xr-x  5 t2 t2 4096 Aug 31 19:39 pru
+
+and we could reorg a bit to like move all the other ones into 'other'
+or something, and register that.  And maybe stuff like notes/ doesn't
+even end up in any slot?
+
+Finer granularity allows both smaller .mfzs and rarer use of
+destructive hook actions like reboot.
+
+[281:
+
+Sat Sep 12 02:34:10 2020 Starting a branch and redoing the make stuff
+would be a good place to begin.
+
+If we're really going to do this..
+
+:281]
+:280]
+
+
+:279]
+[282:
+
+Sat Sep 12 05:06:47 2020 So one issue is where does the checksum map
+live, or does it always have to be redistributed from sources that
+have the content CnV?
+
+If we also ditch the announcement packet being a packet, we could make
+it a mini description file, and sign that instead.  Except we can't
+because we're still inside the zip file.
+
+The problem is where does the inner zip file start in the overall.
+
+What if we just appended the map after the outer zip file?  Could we
+even do that?  Why not, it's an MFZ file.  'cdmake' could even make a
+v2 .mfz file, that has that map appended.  How big would the map be?
+How about 4096 bytes.  What
+
+[285:
+
+Sat Sep 12 06:12:24 2020 Seeming like 2048 would be plenty.  Budgets
+like
+  5 magic 'C' 'D' 'M' '1' '\n' #   0 +   5  ==    5
+ 14 label                      #   5 +  14  ==   19
+  1 regnum                     #  19 +   1  ==   20
+  1 slot                       #  20 +   1  ==   21
+  3 stamp                      #  21 +   3  ==   24
+  4 mapped file len            #  24 +   4  ==   28
+  4 block size                 #  28 +   4  ==   32
+ 64 mapped file full sha512    #  32 +  64  ==   96
+800 100*8 byte xsum            #  96 + 800  ==  896
+128 sig                        # 896 + 128  == 1024
+<mapped file data starts here: 'MFZ(1.0)' etc..>
+
+[286:
+
+Sat Sep 12 07:24:09 2020 Well, this seems kind of do-able, from this
+distance anyway.
+
+And the beauty of it is we don't have to do (much of) anything special
+to distribute the map.  We just start shipping the CDM1 file data, and
+once the recipient has the first 1KB, they can check the CDM1 sig and
+start redistributing that.
+
+And then we can pick up in-progress transfers by checking the running
+checksums and cutting the file back to the last one that checks.[287:
+
+Sat Sep 12 07:36:22 2020 And if we count on/enforce/trust the filename
+formatting, we can determine who dominates who just by reading the
+directory entries.  We can have allegedly obsolete old version CnV
+content and allegedly new version in progress files for the same slot
+num in the same directory.  I guess we could even serve from the
+former until the latter officially bumps it off, although it seems
+wasteful.  I guess really instead of serving from the old we should
+respond with a tiny 'trust me' courtesy announcement of the new
+version.
+
+
+
+:287]
+
+:286]:285]
+
+:282]
+[288:
+
+Sat Sep 12 12:48:09 2020 GO GO GO
+
+:288]
