@@ -11,7 +11,7 @@ use constant PATH_CDM_SOURCE_DIRECTORY => dirname (abs_path(__FILE__));
 ####
 
 #use lib "/home/t2/MFM/res/perllib";
-use MFZUtils qw(:constants);   # Pull in ANNOUNCE formats from MFZUtils (and reexport below)
+use MFZUtils qw(:constants);   # Pull in packing formats from MFZUtils (and reexport below)
 
 use constant CDM_PROTOCOL_VERSION_SRSLYNOW => 3;    # 202008260233 OO Refactor & cleanup
 use constant CDM_PROTOCOL_VERSION_PIPELINE => 2;    # 202008140223 Pipeline overlay
@@ -59,41 +59,6 @@ use constant CDMD_MFM_MFZ =>     "cdmd-MFM.mfz";
 use constant HOOK_TYPE_LOAD => "LOAD";
 use constant HOOK_TYPE_RELEASE => "RELEASE";
 
-# # Just the data members specific to packet S
-# use constant ANNOUNCE_S_PACK_DATA_FORMAT =>
-#     ""            #   0
-#     ."C"          #   0 +   1 =   1 announce version
-#     ."N"          #   1 +   4 =   5 inner timestamp
-#     ."N"          #   5 +   4 =   9 inner length
-#     ."n"          #   9 +   2 =  11 regnum
-#     ."a8"         #  11 +   8 =  19 inner checksum
-#     ."a50"        #  19 +  50 =  69 content name
-#     #  69 total length
-#     ;
-
-# use constant ANNOUNCE_PACK_DATA_FORMAT =>
-#     ""            #   0
-#     ."CCa"        #   0 +   3 =   3 hdr
-#     . ANNOUNCE_S_PACK_DATA_FORMAT
-#                   #   3 +  69 = 72
-#     #  72 total length for packet w/o sig
-#     ;
-
-# use constant ANNOUNCE_PACK_PACKET_FORMAT =>
-#     "" # 0
-#         ."a72"        #   0 +  72 =  72 data
-#         ."a128"       #  72 + 128 = 200 RSA sig of bytes 0..71
-#     #  200 total length for packet w/sig
-#     ;
-
-use constant ANNOUNCE_UNPACK_OUTPUT_FORMAT =>
-    "" # 0
-    . "a200"
-    . "a*"
-    ;
-
-# use constant ANNOUNCE_PACKET_LENGTH => 200;
-
 my @subdirs = qw(
     SUBDIR_COMMON
     SUBDIR_LOG
@@ -118,15 +83,12 @@ my @constants = qw(
 
     DIR8_SERVER
 
-    ANNOUNCE_PACK_PACKET_FORMAT
-    ANNOUNCE_S_PACK_DATA_FORMAT
+    CDM_FORMAT_MAGIC
+    CDM_FORMAT_VERSION_MAJOR
+    CDM_FORMAT_VERSION_MINOR
 
-    ANNOUNCE_PACK_DATA_FORMAT
-    ANNOUNCE_PACKET_DATA_LENGTH
-    ANNOUNCE_PACKET_SIG_LENGTH
-    ANNOUNCE_PACKET_LENGTH
-
-    ANNOUNCE_UNPACK_OUTPUT_FORMAT
+    CDM10_PACK_SIGNED_DATA_FORMAT
+    CDM10_PACK_FULL_FILE_FORMAT
 
     NGB_STATE_INIT
     NGB_STATE_CLSD

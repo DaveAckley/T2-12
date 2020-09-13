@@ -21,40 +21,29 @@ use constant MFZ_PUBKEY_NAME => "MFZPUBKEY.DAT";
 use constant MFZ_FILE_NAME => "MFZNAME.DAT";
 use constant MFZ_SIG_NAME => "MFZSIG.DAT";
 use constant MFZ_ZIP_NAME =>  "MFZ.ZIP";
-use constant CDM_ANNOUNCE_NAME => "ANNOUNCE.PKT";
-use constant CDM_ANNOUNCE_VERSION => 1;
+use constant CDM_FORMAT_MAGIC => "CDM";
+use constant CDM_FORMAT_VERSION_MAJOR => "1";
+use constant CDM_FORMAT_VERSION_MINOR => "0";
 
-# Just the data members specific to packet S
-use constant ANNOUNCE_S_PACK_DATA_FORMAT =>
+use constant CDM10_PACK_SIGNED_DATA_FORMAT =>
     ""            #   0
-    ."C"          #   0 +   1 =   1 announce version
-    ."N"          #   1 +   4 =   5 inner timestamp
-    ."N"          #   5 +   4 =   9 inner length
-    ."n"          #   9 +   2 =  11 regnum
-    ."a8"         #  11 +   8 =  19 inner checksum
-    ."a50"        #  19 +  50 =  69 content name
-    #  69 total length
+    ."a6"         #   0 +   6 =    6 magic + maj + min + \n
+    ."C1"         #   6 +   1 =    7 bits in block size
+    ."C1"         #   7 +   1 =    8 regnum
+    ."N"          #   8 +   4 =   12 slotstamp
+    ."N"          #  12 +   4 =   16 mapped file length
+    ."a16"        #  16 +  16 =   32 label
+    ."a64"        #  32 +  64 =   96 sha512 mapped file checksum
+    ."(a8)100"    #  96 + 800 =  896 100*8 byte xsum map
+    #  896 total length
     ;
 
-use constant ANNOUNCE_PACK_DATA_FORMAT =>
+use constant CDM10_PACK_FULL_FILE_FORMAT =>
     ""            #   0
-    ."CCa"        #   0 +   3 =   3 hdr
-    . ANNOUNCE_S_PACK_DATA_FORMAT
-                  #   3 +  69 = 72
-    #  72 total length for packet w/o sig
+    ."a896"       #   0 + 896 =  896 as from CDM10_PACK_SIGNED_DATA_FORMAT
+    ."a128"       # 896 + 128 = 1024 RSA sig by regnum of bytes 0..895
+    # 1024 total length
     ;
-
-use constant ANNOUNCE_PACKET_DATA_LENGTH => 72;
-use constant ANNOUNCE_PACKET_SIG_LENGTH => 128;
-
-use constant ANNOUNCE_PACK_PACKET_FORMAT =>
-    "" # 0
-        ."a${\ANNOUNCE_PACKET_DATA_LENGTH}"        #   0 +  72 =  72 data
-        ."a${\ANNOUNCE_PACKET_SIG_LENGTH}"         #  72 + 128 = 200 RSA sig of bytes 0..71
-    #  200 total length for packet w/sig
-    ;
-
-use constant ANNOUNCE_PACKET_LENGTH => 200;
 
 my @constants = qw(
     MFZ_VERSION
@@ -63,15 +52,12 @@ my @constants = qw(
     MFZ_SIG_NAME
     MFZ_ZIP_NAME
 
-    CDM_ANNOUNCE_NAME
-    CDM_ANNOUNCE_VERSION
+    CDM_FORMAT_MAGIC
+    CDM_FORMAT_VERSION_MAJOR
+    CDM_FORMAT_VERSION_MINOR
 
-    ANNOUNCE_S_PACK_DATA_FORMAT
-    ANNOUNCE_PACK_DATA_FORMAT
-    ANNOUNCE_PACK_PACKET_FORMAT
-    ANNOUNCE_PACKET_DATA_LENGTH
-    ANNOUNCE_PACKET_SIG_LENGTH
-    ANNOUNCE_PACKET_LENGTH
+    CDM10_PACK_SIGNED_DATA_FORMAT
+    CDM10_PACK_FULL_FILE_FORMAT
     );
 
 my @functions = qw(
@@ -353,11 +339,11 @@ sub KDGetVerb {
     my $kdir;
     if (defined($verb) && $verb eq "-kd") {
         $kdir = NextArg();
-        UDie("Missing argument to '-kd' switch") 
+        UDie("Missing argument to '-kd' switch")
             unless defined $kdir;
         $verb = NextArg();
         NoVerb() if $mustExist && !defined $verb;
-    } 
+    }
 
     SetKeyDir($kdir);
 
@@ -639,7 +625,7 @@ sub LoadInnerMFZToMemory {
     my ($pubhandle, $pubkey) = SplitHandleFromKey($fullpubstring);
     return SetError("Bad format public key")
         unless defined($pubhandle);
-    
+
     my $rsapub = Crypt::OpenSSL::RSA->new_public_key($pubkey);
     $rsapub->use_pkcs1_padding();
     $rsapub->use_sha512_hash();
@@ -649,7 +635,7 @@ sub LoadInnerMFZToMemory {
         unless $rsapub->verify($zipdata, $sig);
 
     return $@ unless ValidPubKey($pubhandle,$pubkey);
-    
+
     return [$mfzpath, \@outerpaths, \@innerpaths, $pubhandle];
 }
 
