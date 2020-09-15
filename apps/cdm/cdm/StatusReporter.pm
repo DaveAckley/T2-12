@@ -49,16 +49,15 @@ sub new {
     $self->{mRatesDir8} = { }; #  { dir8 -> [dir8 totin totout fastin fastout slowin slowout] }
 
     $self->{mCDM}->getTQ()->schedule($self);
-    $self->defaultInterval(5); # Run about every 10 seconds if nothing happening
+    $self->defaultInterval(5); # Run every 5 seconds modulo jitter
 
     return $self;
 }
 
 sub captureBulkIOStats {
     my __PACKAGE__ $self = shift or die;
-    $self->{mLastSampleTime} = now() - 1 unless defined;
-    my $diffsec = 0;
     my $now = now();
+    my $diffsec = 1;
     $diffsec = $now - $self->{mLastSampleTime} if defined $self->{mLastSampleTime};
     $self->{mLastSampleTime} = $now;
 
@@ -80,10 +79,14 @@ sub captureBulkIOStats {
             if ($diffsec > 0) {
                 my $insample = $diffin / $diffsec;
                 my $outsample = $diffout / $diffsec;
-                $rec->[REC_FASTIN] = defined($rec->[REC_FASTIN]) ? FAST_FRAC_OLD * $rec->[REC_FASTIN] + FAST_FRAC_NEW * $insample : $insample;
-                $rec->[REC_SLOWIN] = defined($rec->[REC_SLOWIN]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWIN] + SLOW_FRAC_NEW * $insample : $insample;
-                $rec->[REC_FASTOUT] = defined($rec->[REC_FASTOUT]) ? FAST_FRAC_OLD * $rec->[REC_FASTOUT] + FAST_FRAC_NEW * $outsample : $outsample;
-                $rec->[REC_SLOWOUT] = defined($rec->[REC_SLOWOUT]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWOUT] + SLOW_FRAC_NEW * $outsample : $outsample;
+                $rec->[REC_FASTIN] =
+                    defined($rec->[REC_FASTIN]) ? FAST_FRAC_OLD * $rec->[REC_FASTIN] + FAST_FRAC_NEW * $insample : $insample;
+                $rec->[REC_SLOWIN] =
+                    defined($rec->[REC_SLOWIN]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWIN] + SLOW_FRAC_NEW * $insample : $insample;
+                $rec->[REC_FASTOUT] =
+                    defined($rec->[REC_FASTOUT]) ? FAST_FRAC_OLD * $rec->[REC_FASTOUT] + FAST_FRAC_NEW * $outsample : $outsample;
+                $rec->[REC_SLOWOUT] =
+                    defined($rec->[REC_SLOWOUT]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWOUT] + SLOW_FRAC_NEW * $outsample : $outsample;
             }
         }
     }
