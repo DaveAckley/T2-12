@@ -39,15 +39,19 @@ TAR_SWITCHES+=--exclude=extra
 TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
 TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 
 
+REGNUM:=0
+SLOTNUM:=02
 cdmd:	FORCE
 	MPWD=`pwd`;BASE=`basename $$MPWD`; \
 	echo $$MPWD for $$BASE; \
 	pushd ..;tar cvzf $$BASE-built.tgz $(TAR_SWITCHES) $$BASE; \
 	cp -f $$BASE-built.tgz /home/debian/CDMSAVE/TGZS/; \
-	/home/t2/MFM/bin/mfzmake cdmake 0 cdmd-$$BASE.mfz $$BASE-built.tgz; \
-	/home/t2/MFM/bin/mfzrun -kd /cdm ./cdmd-$$BASE.mfz VERIFY | \
+	FN=`/home/t2/MFM/bin/mfzmake cdmake $(REGNUM) $(SLOTNUM) $$BASE $$BASE-built.tgz | \
+            perl -e "while(<>) {/'([^']+)'/ && print "'$$1}'`; \
+	echo "Got $$FN for $$BASE"; \
+	/home/t2/MFM/bin/mfzrun -kd /cdm $$FN VERIFY | \
 	perl -ne 'print $$1 if /INNER_TIMESTAMP \[(\d+)\]/' > ./cdmd-$$BASE.mfz-cdm-install-tag.dat; \
-	cp -f cdmd-$$BASE.mfz /home/debian/CDMSAVE/CDMDS/; \
+	cp -f $$FN /home/debian/CDMSAVE/CDMDS/; \
 	popd
 
 $(SUBDIRS):	FORCE
