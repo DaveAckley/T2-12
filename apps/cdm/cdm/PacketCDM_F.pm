@@ -41,7 +41,6 @@ sub makeFromMFZModel {
     my $fpkt = $class->new();
     $fpkt->{mSlotStamp} = $model->{mSlotStamp};
     $fpkt->{mAvailableLength} = $available;
-    $fpkt->{mChecksum} = $fpkt->{mSlotStamp} ^ $fpkt->{mAvailableLength};
     $fpkt->pack();
     return $fpkt;
 }
@@ -51,6 +50,12 @@ sub recognize {
     my ($class,$packet) = @_;
     return $class->SUPER::recognize($packet)
         && $packet =~ /^..F/;
+}
+
+##VIRTUAL
+sub prepack {
+    my __PACKAGE__ $self = shift or die;
+    $self->{mChecksum} = $self->{mSlotStamp} ^ $self->{mAvailableLength};
 }
 
 ##VIRTUAL
