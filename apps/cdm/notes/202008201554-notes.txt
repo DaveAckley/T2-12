@@ -1,4 +1,4 @@
-{289}  -*- text -*-
+{348}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -3467,13 +3467,13 @@ How about 4096 bytes.  What
 
 Sat Sep 12 06:12:24 2020 Seeming like 2048 would be plenty.  Budgets
 like
-  5 magic 'C' 'D' 'M' '1' '\n' #   0 +   5  ==    5
- 14 label                      #   5 +  14  ==   19
-  1 regnum                     #  19 +   1  ==   20
-  1 slot                       #  20 +   1  ==   21
-  3 stamp                      #  21 +   3  ==   24
-  4 mapped file len            #  24 +   4  ==   28
-  4 block size                 #  28 +   4  ==   32
+  6 'C' 'D' 'M' '1' '0' '\n'   #   0 +   6  ==    6
+  1 block size bits            #   6 +   1  ==    7
+  1 regnum                     #   7 +   1  ==    8
+  1 slot                       #   8 +   1  ==    9
+  3 stamp                      #   8 +   3  ==   12
+  4 mapped file len            #  12 +   4  ==   16
+ 16 label                      #  16 +  16  ==   32
  64 mapped file full sha512    #  32 +  64  ==   96
 800 100*8 byte xsum            #  96 + 800  ==  896
 128 sig                        # 896 + 128  == 1024
@@ -3514,3 +3514,594 @@ version.
 Sat Sep 12 12:48:09 2020 GO GO GO
 
 :288]
+[289:
+
+Sat Sep 12 13:00:11 2020 Created branch cdm-simplex.
+
+TODO
+
+[293: Sun Sep 13 01:07:27 2020
+DONE :293] - Redo mfzmake cdmake to generate CDM10 files
+
+[294: DONE  :294] - Redo mfzrun to detect and handle CDM10 files
+
+[295: Sun Sep 13 01:21:17 2020 Call it for now
+DONE :295] - Resynchronize MFZUtils.pm with common.pl.inc
+
+[301: Sun Sep 13 03:51:26 2020 Tried, undone, and
+DEFERRED :301] - Reorganize T2-12 top subdirs for cdmd alignment
+
+[290: Sat Sep 12 13:11:16 2020
+
+ - Ditch ANNOUNCE and S packet stuff in favor of CDM10 stuff as in
+   :285: above
+
+:290]
+
+:289]
+[291:
+
+Sat Sep 12 15:43:29 2020 Well, stop the clock, I guess.  Looks like we
+kind of have 'CDM10' format mfz files 'working', in the sense that
+'mfzmake cdmake' now generates them, and 'mfzrun cdmss-01-51609e.mfz
+verify' (and similar commands) recognizes and skips the 1KB CDM10
+prefix, and the rest of the unpacking appears to run transparently.
+
+We do have duplication of constants (for e.g. magic numbers) between
+T2-12/app/cdm/cdm/MFZUtils.pm and MFM/src/drivers/mfzrun/common.pl.inc
+but other than that we're doing not terribly I think.
+
+We don't have any code written to process the CDM10 header yet, but it
+looks plausible, up to crypto schmutz, in emacs.
+
+Committing this on the MFM side, I think.[296: Sun Sep 13 01:30:39
+2020 Done :296]
+
+:291]
+[292:
+
+Sun Sep 13 01:07:06 2020 GO GO GO.  Run til 5am COME ON.
+
+:292]
+[297:
+
+Sun Sep 13 03:06:44 2020 Damn got sucked down a rabbit hole trying to
+get arc-mfz.el to work on the tiles.  But no.  The newer version of
+unzip on the tiles rejects the slightly-crappy input that my
+workstation version of unzip grumpily but successfully processes.
+
+GRRRRRRRRR.
+
+POP POP POP
+
+:297]
+[298:
+
+Sun Sep 13 03:16:00 2020 Trying to reconfigure the T2-12 top-level
+subdirs now is a mistake.  It's going to impact stuff all the way back
+to the tile-disk-image creation process and forward again.
+
+[299:
+
+Sun Sep 13 03:49:33 2020 OK well I bailed out of that with a
+
+  'git reset --hard HEAD~='
+
+and that seemed to work (surrounded by a git stash/apply for
+untracked/uncommitted stuff I wanted, like these notes).
+[300:
+
+Sun Sep 13 03:50:52 2020 So, where are we really?
+
+WE HAVE JUST ONE MORE HOUR ON THIS RUN.
+
+[302:
+
+Sun Sep 13 03:52:16 2020 I guess we're supposed to start tearing the
+fog out of apps/cdm/cdm, with all this 'simplification' that we're
+going to achieve here in no time flat.
+
+TEAR-OUT TODO
+
+ - Move it all to cdm/cdm-hold/ and start fresh
+
+ - Pull in cdm.pl and start working from the front, ditching 
+
+:302]
+
+
+
+:300]
+
+:299]
+
+:298]
+[303:
+
+Sun Sep 13 03:56:54 2020 Pulling files in in
+compilation-failure-inspections order.  First one to think about at
+all: MFZManager.pm.
+
+Can we do any quick work thinning out any of these:
+
+    mContentName           => mSlotNum
+    mDirectoryManager
+    mState
+    mVerificationStatus
+    mFileModificationTime
+    mFileTotalLength
+    mFileTotalChecksum
+    mFileInnerLength
+    mFileInnerTimestamp
+    mFileInnerChecksum
+    mFilePipelineAnnouncePacket
+    mAnnouncedContentName
+    mPrefixLengthAvailable
+    mXsumMap
+    mXsumDigester
+
+[304:
+
+Sun Sep 13 03:59:17 2020 What's the big picture here?
+
+CDM DIRECTORIES:
+
+  /cdm/common    CnV only, and non-(completely)-dominated
+  /cdm/pipeline  All other .mfzs
+  /cdm/log,private_keys,public_keys
+                 As before
+
+:304]
+:303]
+[305:
+
+Sun Sep 13 05:40:07 2020 OK past end of run, here, have to break.
+
+Current status: Working from the front again using DO_DEBUG_TASK stubs
+
+Next steps: Keep doing that.
+
+:305]
+[306:
+
+Mon Sep 14 01:00:35 2020 OK one more solid quick run.  Let's claim the
+next four hours, til 5:00:00.
+
+TODO
+
+[336: Mon Sep 14 12:56:38 2020 Yah man,
+DONE :336] - Make MFZModel fully incremental.
+
+[337:
+DONE  :337] - Make a routine that accepts (filepos, bytes), and appends them iff
+   the '-s file' currently matches the filepos.
+
+[338:
+DONE :338] - As part of doing that appending, the routine watches for three key
+   categories of file lengths:
+   [(0) Zero length file (or non-existent?) handled by separate routine(s)]
+   (1) Reaching the first 1KB
+   (2) Reaching the next block boundary
+   (3) Reaching the end of the file
+
+[339:
+DONE :339] - As part of doing that appending, the routine splits chunks being
+   added so that it reaches the next key length exactly, performs
+   special functions, and then moves on.
+
+ - The special functions are:
+   [(0) Init RW file handle to file name derived from SS.  Use '-s
+        $fh' to determine the ongoing size of the file, do not have a
+        separate current length member.]
+
+   (1) Parse and validate the CDMap headers.  If validation fails,
+       unlink $fh and close it, remove self from 'content manager'.
+       Otherwise, acquire target file length and block boundaries.
+       Init mapped file digester.  Bump announcer.
+
+   (2) Validate the prefix to the block boundary via the digester.  Do
+       like (1) if validation fails.
+
+   (3) Validate file against full file checksum, handle as (1) if
+       fails.  Otherwise, run release hooks.
+
+[307:
+
+Mon Sep 14 01:48:50 2020 Should we maybe buffer blocks in memory
+between boundaries, and only write stuff to the disk that we believe
+in?  Seems clean-ish.  And only announce/serve to others once the disk
+file is greater than 1KB, since that means it's validated.
+
+:307]
+
+:306]
+[308:
+
+Mon Sep 14 04:25:45 2020 OK, so our all-dancing MFZModel::addChunkAt
+is working at least on non-error cases.  Now we need surrounding
+infrastructure for two case:
+
+(1) Checking and synchronizing a perhaps incomplete .mfz at startup
+(2) Initiating a new .mfz in response to an announcement.  Needs to
+    happen in a separate directory (i.e., pipeline/) so we won't touch
+    any existing files until we've gotten and validated the CDMap.
+
+[313:
+
+Mon Sep 14 04:57:31 2020 So, back to (1) and (2) here.
+
+(1) MFZModel::tryLoad($path) returns MFZModel or undef and sets $@
+[314: Mon Sep 14 05:21:38 2020 Done :314]
+(2) Still need to deal with announcements and who has what confirmed
+    length.. 
+   
+
+
+:313]
+
+For (1), let's make (update) MFZModel::newFromPath($path..[309:
+
+Mon Sep 14 04:31:46 2020 Actually we can make what we've got better.
+We shouldn't even look at the disk until we've accumulated and
+validated the entire CDM10 header.  All we need to know is the
+directory that we should-eventually-create the content in, if we get
+that file.  Yes.  We don't even need a slotstamp in MFZModel->new()
+which solves that chicken-and-egg problem..[310:
+
+Mon Sep 14 04:33:49 2020 (Except we don't get as nice a getTag()
+without an upfront SS.  Live with it.[311:
+
+Mon Sep 14 04:37:54 2020 Well now wait though.  In both cases above,
+we do have some clue what we expect the SS to be.  In (1) based on the
+filename, in (2) in the announcement.  And we really would like to
+check that the delivered CDMap lives up to the advertised SS.  So I
+think we SHOULD require an SS and MFZModel->new() time, even though we
+won't make go to the disk with a path based on the SS until the CDMap
+is validated.
+[312:
+
+Mon Sep 14 04:56:35 2020 OK, so did that.  We take an SS at new()
+time, and check it when the CDMap is complete.  NOTE I THINK WE ARE
+NOT YET ACTUALLY DOING THE CRYPTO CHECK ON THE CDMAP DATA!
+
+:312]
+:311])
+
+:310]
+
+:309]
+
+:308]
+[315:
+
+Mon Sep 14 05:21:56 2020 OK so about break time, but we're doing well
+here.
+
+TODO
+
+[319: Mon Sep 14 08:09:55 2020 Made PacketCDM_F::makeFromMFZModel($model)
+DONE :319] - MFZModel::makeAnnouncement: Return a newstal CDM_F packet
+   representing what we have available from this MFZModel, or undef if
+   we have nothing servable yet.
+
+[318: Mon Sep 14 08:09:25 2020
+DONE :318] - MFZModel::servableLength: Return length of disk file or 0 if none
+   yet
+
+[316:
+
+Mon Sep 14 05:25:05 2020 We're thinking of going with just two
+(mfz) directories, common/ and pipeline/.
+
+How do we store neighbor availability?  Keep their latest F packets
+somewhere, they're small.  Where?  Possibly in the MFZModel somewhere?
+Seems like mission creep, but whereever we keep them they depend on an
+MFZMOdel..
+
+At first blush it's just
+
+ { d8 -> fpacket }
+
+but we'll eventually need some way to refresh that info.
+
+What if we just kept the latest F packet we heard of that's got more
+than we have?  Or played king of the hill as they came in?  That
+forces things to refresh naturally.  And since F packets are so small
+we send them with some frequency without feeling bad.
+
+Seems in the stigmergic spirit.
+
+We need to map from SS to MFZModel for it, and we need to map from
+just a slotnum to our currently dominant SS for it.  Where's all that
+happen?
+
+Why do we need pipeline/ separate from common/, again?  If it's an
+obsoleteing announcement it'll be in a different filename anyway.  If
+it's the same SS we don't want to have two files for it.  We just want
+to extend the one we've got until its done and good, or done and bad
+and deleted.
+[317:
+
+Mon Sep 14 06:22:02 2020 Let's spike a thing that only looks at
+common/, verifies everything good on startup, and nukes everything
+bad, and see what that looks like.  Then feed in some stuff from orbit
+as if from neighbors, and see what that looks like.
+
+:317]
+:316]
+
+:315]
+[320:
+
+Mon Sep 14 08:10:24 2020 So trying to do directory loading
+incrementally is a pain because we might end up announcing dominated
+stuff until a later file is checked.
+
+It feels easier to deal with if we did it atomically, but we're still
+going to have to deal with new dominations arising as content comes
+in.
+
+Maybe we should focus on that latter: How to atomically update
+dominations when some MFZModel changes state.
+
+First, let's review/consolidate what domination means:
+
+ - Domination applies between two MFZModels
+
+ - If either has servableLength == 0, there is no domination either way
+
+So both have mFileHandles and trustable mSSs.
+
+ - If SSSlot(m1->{mSS}) != SSSlot(m2->{mSS}), there is no domination
+   either way
+
+So both refer to the same slotnum.
+
+ - If SSStamp(m1->{mSS}) > SSStamp(m2->{mSS}), then m1 dominates m2.
+ - If SSStamp(m1->{mSS}) < SSStamp(m2->{mSS}), then m2 dominates m1.
+
+[321:
+
+Mon Sep 14 08:23:27 2020 And now what.  Do we allow for multiple
+distinct MFZModels with the same mSS?  Even temporarily?
+
+Maybe not.  If it even comes up, maybe such situations are supposed to
+be resolved on some basis other than whatever domination exactly
+means.
+
+[322:
+
+Mon Sep 14 08:26:00 2020 What we wanted domination to mean was:
+
+ (DOM1) We should only announce and grow undominated MFZmodels.
+
+ (DOM2) Once a MFZModel is complete, we should forget any MFZModels it
+        dominates, deleting their files.
+
+So how do we implement just those two principles.
+
+(DOM1) Whenever ContentManager creates an MFZModel $model, it does
+       something like:
+
+    if (defined($self->{mSSMap}->{$model->{mSS}})) {
+      - $model and $self->{mSSMap}->{$model->{mSS}} fight it out.  Bigger
+        servable length wins, flip a coin (?) on ties.  Assign winner
+        to $model
+    }
+    $self->{mSSMap}->{$model->{mSS}} = $model;
+
+[323:
+
+Mon Sep 14 08:37:37 2020 OK and what if we have a complete older
+timestamp and a zero-length newer timestamp on the same slotnum?  Who
+dominates?  The older.  And if it's a 1K-length newer timestamp?  Then
+it's the newer?  So how do we arrange for that dominance change to
+happen?
+
+What if we recorded { slotnum -> { ts -> model } } ?
+
+with model->{mSS} === SSSMake(slotnum, ts)
+
+Then
+
+  keys %{$models->{$slotnum}}
+
+are the things that might dominate each other.
+
+Task0: Get the existing MFZModel for $ss if any
+
+    my $ss = shift || die;
+    my $slot = SSSlot($ss);
+    my $ts = SSStamp($ss);
+    my $map = $models->{$ss};
+    return undef unless defined $map;
+    return $map->{$ts};
+
+Task1: Pick a random undominated MFZModel to announce or perhaps grow
+
+    my $sn = pickOne(keys %{$models})
+    my $dom;
+    for my $ts (sort { decreasing } keys %{$models->{$sn}}) {
+      my $mdl = $models->{$sn}->{$ts};
+      next if $mdl->servableLength() == 0;
+      $dom = $mdl;
+      last;
+    }
+    return $dom;
+
+Task2: Insert this here MFZModel $mdl in yo data structure
+
+    my $map = $models->{SSSlot($mdl->{mSS})};
+    unless (defined($map)) {
+      $map = { };
+      $models->{SSSlot($mdl->{mSS})} = $map;
+    }
+    my $omdl = $map->{SSStamp($mdl->{mSS})};
+    if (defined($omdl)) {
+       my $len = $mdl->servableLength();
+       my $olen = $omdl->servableLength();
+       return SetError("Already have a better one")
+          if $olen > $len || (($len == $olen) && oneIn(2));
+       DPSTD("Replacing $omdl"..);
+    }
+    $map->{SSStamp($mdl->{mSS})} = $mdl;
+    return $mdl;
+
+Task3: Reap any slotnum $sn MFZModels that are dominated by other
+       completed slotnum models
+
+    my $sn = shift || die;
+    my $count = -1;
+    for my $ts (sort { decreasing } keys %{$models->{$sn}}) {
+      my $mdl = $models->{$sn}->{$ts};
+      if ($count >= 0) {
+        ++$count;
+        $mdl->deleteFile();
+        delete $models->{$sn}->{$ts};
+      } elsif ($mdl->isComplete()) {
+        $count = 0;
+      }
+    }
+    return $count;
+
+Task4: Garbage-collect $models
+
+     for my $sn (keys %{$models}) {
+       Task3($sn);
+     }
+     
+Task5: Find or create the MFZModel for this $ss
+
+     my $ss = shift || die;
+
+     my $mdl = Task0($ss); # get existing
+     unless (defined($mdl)) {
+       $mdl = MFZModel->new($self->{mCDM},$ss,SUBDIR_COMMON);
+     }
+     return $mdl;
+
+Task6: Update MFZModel availability based on this $fpkt
+
+     my PacketCDM_F $fpkt = shift || die;
+     my $d8 = $fpkt->getDir8();   # source of announcement
+     my $ss = $fpkt->{mSlotStamp};
+     my $mdl = Task5($ss);
+
+     my $ngbf = $mdl->{mNeighborFPacket};
+     $mdl->{mNeighborFPacket} = $fpkt
+       if !defined($ngbf) ||
+          ($ngbf->{mAvailableLength} < $fpkt->{mAvailableLength}) ||
+          ($fpkt->{mAvailableLength} > $mdl->servableLength() && oneIn(4));
+
+:323]
+
+:322]
+
+:321]
+:320]
+[324:
+
+Mon Sep 14 10:01:26 2020 Well, those tasks 0..6 for ContentManager
+look quite plausible sitting, but I am out of gas for now so they'll
+all have to wait.
+
+TODO
+
+[327: Mon Sep 14 12:25:14 2020 First cuts throughout, with some testing
+DONE :327] - Implement Task0
+
+[328: DONE  :328] - Implement Task1
+
+[329: DONE  :329] - Implement Task2
+
+[330: DONE  :330] - Implement Task3
+
+[331: DONE  :331] - Implement Task4
+
+[332: DONE  :332] - Implement Task5
+
+[333: DONE  :333] - Implement Task6
+
+ - Spike test them
+
+ - Start shipping F,C,D packets!
+
+:324]
+[325:
+
+Mon Sep 14 10:11:30 2020 And I hit the fogging Off button instead of
+the X button.  Genius.  Had just backed up, though so.
+
+Sleep now.
+[326:
+
+Mon Sep 14 11:18:45 2020 Well, perhaps sleep later.  Oh well.
+
+:326]
+:325]
+[334:
+
+Mon Sep 14 12:25:59 2020 So we need more testing.  In particular, we
+need a dominance situation, and a garbage collection.[335:
+
+Mon Sep 14 12:45:52 2020 Well, faked it a little, but.. Stigmergy Is
+Hard To Fake.
+
+:335]
+
+:334]
+[340:
+
+Mon Sep 14 12:58:43 2020 OK let's reexamine C and D packets, and then
+try to move towards shipping them..
+
+:340]
+[341:
+
+Mon Sep 14 13:03:17 2020 OK, we're putting our new ContentManager onto
+a CDM data member.
+
+:341]
+[342:
+
+Mon Sep 14 16:24:06 2020 Well, I haven't really slept yet and that has
+to kick in soon, but, are we shipping F packets yet?[343:
+
+Mon Sep 14 16:25:05 2020 I don't think so.  Let's try to do it on
+timeout ContentManager.[344:
+
+Mon Sep 14 21:31:57 2020 OK, slept.  We started shipping Fs but hadn't
+demonstrated any case where that mattered, since it was all loopback.
+
+Let's see about initiating a C.
+
+:344]
+
+:343]
+
+:342]
+[345:
+
+Tue Sep 15 01:45:11 2020 OK, well, running very out of time here, but
+making progress -- at dealing with some error cases even:
+
+ - We're verifying the CDM10 map signature successfully
+
+ - We rename files to cdmss-foo.mfz.bad if the signature check fails
+
+ - If incremental xsum fails, we dump the current buffer and reload.
+   
+[346:
+
+Tue Sep 15 01:48:23 2020 I think we have to try this guy on two tiles
+like, right now.
+
+So I guess we're committing?  On our cdm-simplex branch?[347:
+
+Tue Sep 15 02:17:19 2020 Yeah.  Committing.
+
+:347]
+
+:346]
+
+:345]
