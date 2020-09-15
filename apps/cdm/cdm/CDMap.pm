@@ -32,6 +32,11 @@ sub recognize {
         && $pk =~ /^CDM1.\n/;
 }
 
+sub getTotalLength {
+    my __PACKAGE__ $self = shift;
+    return $self->{mMappedFileLength} + CDM10_FULL_MAP_LENGTH;
+}
+
 # return undef and set $@ if map sig bad, else return successful handle
 sub verifySignature {
     my __PACKAGE__ $self = shift;
