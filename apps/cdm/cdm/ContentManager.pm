@@ -136,6 +136,7 @@ sub getMFZModelForSS {
     my $model = $self->getMFZModelForSSIfAny($ss);
     unless (defined($model)) {
         $model = MFZModel->new($self->{mCDM}, $ss, SUBDIR_COMMON);
+        $self->insertMFZModel($model);
     }
     return $model;
 }
@@ -222,7 +223,7 @@ sub reportMFZStats {
             my $m = $self->{mSSMap}->{$slot}->{$ts};
             unless ($m->isComplete()) {
                 my $len = $m->pendingLength();
-                my $totlen = $m->totalLength();
+                my $totlen = $m->totalLength() || 0;  # Undef if no map yet
                 my $label = $m->getLabelIfAvailable();
                 $label ||= "--";
                 push @ret,
