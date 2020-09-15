@@ -164,6 +164,8 @@ sub addChunkAt {
             unless $finalxsum eq $cdmap->{mMappedFileChecksum};
 
         # Advance the file to its end
+        seek($self->{mFileHandle},0,2)   # Seek to eof
+            or die "Why does seek die? $!";
         print {$self->{mFileHandle}} $self->{mBufferedData};
         print {$self->{mFileHandle}} $chunk;
         $self->{mBufferedData} = "";
@@ -210,6 +212,8 @@ sub addChunkAt {
         }
 
         # Advance the disk by a block
+        seek($self->{mFileHandle},0,2)   # Seek to eof
+            or die "Why does seek die? $!";
         print {$self->{mFileHandle}} $self->{mBufferedData};
         $self->{mBufferedData} = "";
     }
