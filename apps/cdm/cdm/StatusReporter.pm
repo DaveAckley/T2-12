@@ -19,7 +19,6 @@ use List::Util qw(shuffle);
 use DP qw(:all);
 use Constants qw(:all);
 use T2Utils qw(:all);
-use TimeQueue qw(now);
 
 use constant REC_DIR8 => 0;
 use constant REC_TOTIN => REC_DIR8+1;
@@ -100,8 +99,7 @@ sub init {
 sub writeBulkIOStats {
     my __PACKAGE__ $self = shift or die;
     my $uptime = $self->{mLastSampleTime} - $self->{mInitTime};
-    my $dirsmgr = $self->{mCDM}->getDirectoriesManager();
-    my $basedir = $dirsmgr->getBaseDirectory();
+    my $basedir = $self->{mCDM}->getBaseDirectory();
     my $hoodmgr = $self->{mCDM}->{mNeighborhoodManager} or die;
     my $path = "$basedir/${\PATH_BASEDIR_REPORT_IOSTATS}";
     open HDL, ">", $path or die "Can't write $path: $!";
@@ -123,17 +121,23 @@ sub writeBulkIOStats {
             );
     }
 
-    my $dmpipe =  $dirsmgr->getDMPipeline();
-    my @pipeline = $dmpipe->reportMFZStats();
-    for my $pipe (@pipeline) {
-        printf(HDL " pipe %s", $pipe);
+    my $cmgr = $self->{mCDM}->{mContentManager};
+    my @progress = $cmgr->reportMFZStats();
+    for my $mfz (@progress) {
+        printf(HDL "%s",$mfz);
     }
 
-    my $dmp = $dirsmgr->getDMPending();
-    my @pending = $dmp->reportMFZStats();
-    for my $pend (@pending) {
-        printf(HDL " trad %s", $pend);
-    }
+    # my $dmpipe =  $dirsmgr->getDMPipeline();
+    # my @pipeline = $dmpipe->reportMFZStats();
+    # for my $pipe (@pipeline) {
+    #     printf(HDL " pipe %s", $pipe);
+    # }
+
+    # my $dmp = $dirsmgr->getDMPending();
+    # my @pending = $dmp->reportMFZStats();
+    # for my $pend (@pending) {
+    #     printf(HDL " trad %s", $pend);
+    # }
 
     print HDL "\n"x12;
 

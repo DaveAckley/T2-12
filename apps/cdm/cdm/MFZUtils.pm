@@ -45,6 +45,15 @@ use constant CDM10_PACK_FULL_FILE_FORMAT =>
     # 1024 total length
     ;
 
+use constant CDM10_FULL_MAP_LENGTH => 1024;
+
+use constant SS_SLOT_BITS => 8;
+use constant SS_SLOT_MASK => (1<<SS_SLOT_BITS)-1;
+use constant SS_STAMP_BITS => 24;
+use constant SS_STAMP_MASK => (1<<SS_STAMP_BITS)-1;
+
+use constant SS_SECS_PER_STAMP => 60*5; # Five minute slotstamp time granularity
+
 my @constants = qw(
     MFZ_VERSION
     MFZRUN_HEADER
@@ -58,6 +67,14 @@ my @constants = qw(
 
     CDM10_PACK_SIGNED_DATA_FORMAT
     CDM10_PACK_FULL_FILE_FORMAT
+    CDM10_FULL_MAP_LENGTH
+
+    SS_SLOT_BITS
+    SS_SLOT_MASK
+    SS_STAMP_BITS
+    SS_STAMP_MASK
+    SS_SECS_PER_STAMP
+
     );
 
 my @functions = qw(
@@ -93,6 +110,15 @@ my @functions = qw(
     ReadWholeFile
     ReadableFileOrDie
     RestOfArgs
+    SSDominatesSS
+    SSFromPath
+    SSMake
+    SSSlot
+    SSStamp
+    SSStampFromTime
+    SSToFileName
+    SSToTag
+    SetError
     SetKeyDir
     SetProgramName
     SetUDieMsg
@@ -106,6 +132,7 @@ my @functions = qw(
     VersionExit
     WritableFileOrDie
     WriteWholeFile
+
     );
 
 our @EXPORT_OK = (@constants, @functions);
@@ -569,9 +596,10 @@ sub CheckForPubKey {
     return ($path);
 }
 
+# First arg is message.  Second arg if any is value to return
 sub SetError {
     $@ = shift;
-    undef;
+    shift
 }
 
 # Returns [$mfzpath \@outerpaths] on success, or undef and sets $@ on error
@@ -651,5 +679,93 @@ sub ValidPubKey {
         unless $pubstring eq $knownpub;
     return 1;
 }
+
+sub SSStampFromTime {
+    my $sec = shift || time();
+    return int($sec/SS_SECS_PER_STAMP);
+}
+
+sub SSMake {
+    my ($slot,$stamp) = @_;
+    die unless defined($slot);
+    $stamp = SSStampFromTime() unless defined $stamp;
+    my $ss = 0;
+    SSSlot(\$ss,$slot);
+    SSStamp(\$ss,$stamp);
+    return $ss
+}
+
+sub SSToTag {
+    my $ss = shift || die;
+    my $tag = sprintf("%02x-%06x",SSSlot($ss),SSStamp($ss));
+    return $tag;
+}
+
+sub SSToFileName {
+    my $ss = shift || die;
+    my $name = "cdmss-".SSToTag($ss).".mfz";
+    return $name;
+}
+
+# returns 1 if ls dominates rs, 0 if rs dominates ls, undef if neither dominates the other
+sub SSDominatesSS {
+    my $ls = shift || die;
+    my $rs = shift || die;
+    my $lslot = SSSlot($ls);
+    my $rslot = SSSlot($rs);
+    return undef unless $lslot == $rslot;
+    my $lstmp = SSStamp($ls);
+    my $rstmp = SSStamp($rs);
+    return 1 if $lstmp > $rstmp;
+    return 0 if $lstmp < $rstmp;
+    return undef;
+}
+
+# returns 1 if ls dominates rs or has lower sn, -1 if rs dominates ls
+# or has lower sn, or 0 if identical
+sub SScmpSS {
+    my $ls = shift || die;
+    my $rs = shift || die;
+    my $dom = SSDominatesSS($ls,$rs);
+    if (defined($dom)) {
+        return $dom ? 1 : -1;
+    }
+    return  1 if SSSlot($ls) < SSSlot($rs);
+    return -1 if SSSlot($ls) > SSSlot($rs);
+    return 0;
+}
+
+sub SSFromPath {
+    my $path = shift || die;
+    return undef unless $path =~ m!^(.*?/)?cdmss-([[:xdigit:]]{2})-([[:xdigit:]]{6})[.]mfz$!;
+    return SSMake(hex($2),hex($3));
+}
+
+sub SSSlot {
+    my $sref = shift;
+    my $sval = $sref;
+    if (defined $_[0]) {
+        die "Need scalar ref" unless ref($sref) eq 'SCALAR';
+        my $new = shift;
+        die unless $new > 0 && $new <= SS_SLOT_MASK;
+        $$sref = ($new<<SS_STAMP_BITS)|($$sref&SS_STAMP_MASK);
+        $sval = $$sref;
+    }
+    return ($sval >> SS_STAMP_BITS) & SS_SLOT_MASK;
+}
+
+sub SSStamp {
+    my $sref = shift;
+    my $sval = $sref;
+    if (defined $_[0]) {
+        die "Need scalar ref" unless ref($sref) eq 'SCALAR';
+        my $new = shift;
+        die unless $new >= 0 && $new <= SS_STAMP_MASK;
+        $$sref = (($$sref&~SS_STAMP_MASK)|$new);
+        $sval = $$sref;
+    }
+    return $sval & SS_STAMP_MASK;
+}
+
 
 1;

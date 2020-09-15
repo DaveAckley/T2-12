@@ -1,15 +1,14 @@
 ## Module stuff
 package Packet;
 use strict;
+use base 'Packable';
 use fields qw(
-    mPacketBytes
-    mPacketLength
     mPacketHeader
     );
 
 use Exporter qw(import);
 
-our @EXPORT_OK = qw(parse summarizeString validateAsClass);
+our @EXPORT_OK = qw(summarizeString);
 our %EXPORT_TAGS;
 
 ## Imports
@@ -17,14 +16,13 @@ use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
 
-our @PACKET_CLASSES = qw();
-
 ## Methods
 sub new {
     my Packet $self = shift;
     unless (ref $self) {
         $self = fields::new($self);
     }
+    $self->SUPER::new();
     $self->{mPacketHeader} = 0x80; # std no errors (dir == NT, but whatever)
     return $self;
 }
@@ -78,73 +76,19 @@ sub sendVia {
 ##VIRTUAL
 sub packFormatAndVars {
     my ($self) = @_;
-    return ("C1",\$self->{mPacketHeader});
-}
-
-##VIRTUAL
-sub validate {
-    my __PACKAGE__ $self = shift;
-    ## return undef if all is valid, else an error message
-    ## subclasses do something like
-    ##   my $ret = $self->SUPER::validate();
-    ##   return $ret if defined $ret;
-    ##   # per-class checks here
-    ##   return undef;  # if all is okay
-    return undef;
+    my ($parentfmt,@parentvars) = $self->SUPER::packFormatAndVars();
+    my ($myfmt,@myvars) =
+        ("C1",
+         \$self->{mPacketHeader}
+        );
+    return ($parentfmt.$myfmt,
+            @parentvars, @myvars);
 }
 
 ##VIRTUAL
 sub handleInbound {  # Respond to this packet via side effects
     my ($self,$cdm) = @_;
     return DPSTD("No inbound handler for ".$self->summarize());
-}
-
-##CLASS: Return true to declare this packet is yours
-sub recognize {
-    my ($class,$packet) = @_;
-    return undef;
-}
-
-##VIRTUAL METHOD
-sub prepack {
-    my Packet $self = shift or die;
-    # Base class does nothing
-}
-##VIRTUAL METHOD
-sub postunpack {  ## RUNS BEFORE VALIDATION
-    my Packet $self = shift or die;
-    # Base class does nothing
-}
-
-use Data::Dumper;
-sub unpack {
-    my ($self) = @_;
-    my ($fmt,@varrefs) = $self->packFormatAndVars();
-    my @values = unpack($fmt,$self->{mPacketBytes});
-    DPSTD("valss ".join(",  ",@values));
-    for (0 .. $#varrefs) {
-        ${$varrefs[$_]} = $values[$_];
-    }
-#    DPSTD("QQUNPACK($self)");
-    $self->postunpack();
-    my $ret = $self->validate();
-    print Dumper(\$ret);
-    die "Unpacked packet failed validation: $ret" if defined $ret;
-}
-
-sub pack {
-    my __PACKAGE__ $self = shift;
-    $self->prepack();
-    my ($fmt,@varrefs) = $self->packFormatAndVars();
-    my @values = map { $$_ } @varrefs;
-#    print Dumper(\$fmt);
-#    print Dumper(\@varrefs);
-#    print Dumper(\@values);
-    $self->{mPacketBytes} = pack($fmt, @values);
-    $self->{mPacketLength} = length($self->{mPacketBytes});
-#    DPSTD("QQPACK($self)");
-    my $ret = $self->validate();
-    die "Packed packet failed validation: $ret" if defined $ret;
 }
 
 ### CLASS METHOD
@@ -157,41 +101,10 @@ sub rawByteOfRef {
     substr($$pref,$idx,1) = $newbyte;
 }
 
-sub dump {
-    my Packet $self = shift;
-    my $hdl = shift;
-    $hdl =  *STDOUT unless defined $hdl;
-    unless (defined $self) {
-        print $hdl "undef\n";
-        return;
-    }
-    for my $key (sort keys %{$self}) {
-        print $hdl "  $key = ".hexEscape($self->{$key})."\n";
-    }
-}
-
+##OVERRIDE METHOD
 sub summarize {
     my ($self) = @_;
     return summarizeString($self->{mPacketBytes});
-}
-
-### CLASS METHOD
-sub validateAsClass {
-    my $class = shift;
-    my Packet $pkt = shift;
-    return ($@ = "Undefined class", undef)  unless defined $class;
-    return ($@ = "Undefined packet", undef) unless defined $pkt;
-    return ($@ = "Not a $class", undef)     unless $pkt->isa($class);
-    my $ret = $pkt->validate();
-    return ($@ = $ret, undef)               if defined $ret;
-    return $pkt;
-}
-
-### CLASS METHOD
-sub assertValid {
-    my ($class,$pkt) = @_;
-    die "Invalid $class: $@" unless $class->validateAsClass($pkt);
-    return $pkt;
 }
 
 ### CLASS METHOD
@@ -217,33 +130,6 @@ sub summarizeString {
         return "$dir8name CDM_$byte2$byte3 [$len]";
     }
     return "$dir8name CDM_$byte2 [$len]";
-}
-
-### CLASS METHOD
-sub parse {
-    my ($packet) = @_;
-    my $len = length($packet);
-    for my $pkg (@PACKET_CLASSES) {
-#        DPSTD("$pkg rec ");
-        my $rec = $pkg->recognize($packet);
-        if ($rec) {
-            #DPSTD("YES $pkg");
-            my $pself = $pkg->new();
-            $pself->{mPacketBytes} = $packet;
-            $pself->{mPacketLength} = $len;
-            my $ret = eval {
-            #DPSTD("YES1 $pkg");
-                $pself->unpack();
-            #DPSTD("YES2 $pkg/$pself");
-                $pself;
-            };
-            DPSTD("YES3 $pkg ");
-            return $ret if defined $ret;
-            return undef; # and $@ has error msg from eval failure
-        }
-    }
-    $@ = "Unrecognized ".summarizeString($packet)." packet, ignored";
-    return undef;
 }
 
 1;

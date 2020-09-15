@@ -5,7 +5,6 @@ use base 'TimeoutAble';
 use fields qw(
     mBaseDirectory
     mCompleteAndVerifiedContent
-    mPendingContent
     mInPipelineContent
     );
 
@@ -25,20 +24,17 @@ use File::Copy qw(move copy);
 use DP qw(:all);
 use T2Utils qw(:all);
 use Constants qw(:all);
-use DMCommon;
-use DMPending;
-use DMPipeline;
+#use DMCommon;
+#use DMPending;
+#use DMPipeline;
 
 my @subdirs = (
     SUBDIR_COMMON,
     SUBDIR_LOG,
-    SUBDIR_PENDING,
     SUBDIR_PIPELINE,
     SUBDIR_PUBKEY
     );
 my @tmpsubdirs = (
-    SUBDIR_PENDING,
-    SUBDIR_PIPELINE,
     );
 
 ## Methods
@@ -50,7 +46,6 @@ sub new {
 
     $self->{mBaseDirectory} = $basedir;
     $self->{mCompleteAndVerifiedContent} = undef;
-    $self->{mPendingContent} = undef;
     $self->{mInPipelineContent} = undef;
 
     $self->{mCDM}->getTQ()->schedule($self);
@@ -66,9 +61,8 @@ sub init {
     $self->flushTempDirectories();
     $self->checkInitDirectories();
 
-    $self->{mCompleteAndVerifiedContent} = DMCommon->new($cdm,$self);
-    $self->{mPendingContent} = DMPending->new($cdm,$self);
-    $self->{mInPipelineContent} = DMPipeline->new($cdm,$self);
+#    $self->{mCompleteAndVerifiedContent} = DMCommon->new($cdm,$self);
+#    $self->{mInPipelineContent} = DMPipeline->new($cdm,$self);
 }
 
 sub flushTempDirectories {
@@ -129,7 +123,6 @@ EOF
 #    shift if ref $_[0] eq CDM;
 sub getPathToCommon { shift->getPathTo(SUBDIR_COMMON); }
 sub getPathToLog { shift->getPathTo(SUBDIR_LOG); }
-sub getPathToPending { shift->getPathTo(SUBDIR_PENDING); }
 sub getPathToPipeline { shift->getPathTo(SUBDIR_PIPELINE); }
 sub getPathToPubkey { shift->getPathTo(SUBDIR_PUBKEY); }
 
@@ -146,11 +139,6 @@ sub getPathTo {
 sub getDMCommon {
     my __PACKAGE__ $self = shift;
     return $self->{mCompleteAndVerifiedContent};
-}
-
-sub getDMPending {
-    my __PACKAGE__ $self = shift;
-    return $self->{mPendingContent};
 }
 
 sub getDMPipeline {
@@ -186,15 +174,13 @@ sub getDMs {
     my __PACKAGE__ $self = shift or die;
     return (  # In 'desirability' order..
         $self->{mCompleteAndVerifiedContent},
-        $self->{mInPipelineContent},
-        $self->{mPendingContent}
+        $self->{mInPipelineContent}
         );
 }
 
 my %doms = (
     SUBDIR_COMMON => 2, # best
     SUBDIR_PIPELINE => 1, # better
-    SUBDIR_PENDING => 0, # good
 );
 
 sub getDominantDM {

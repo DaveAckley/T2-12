@@ -168,15 +168,15 @@ sub loadCnVMFZ {
     my $mfzSigningHandle; 
     my $USE_MFZUTILS = 1;
     if (!$USE_MFZUTILS) {
-        my $cmd = "echo Q | ".PATH_PROG_MFZRUN." -kd $basedir $mfzpath ANNOUNCE";
-        DPSTD("DO '$cmd'");
-        my $output = `$cmd`;
-        my $verifoutput;
-        ($packetstring,$verifoutput) = unpack(ANNOUNCE_UNPACK_OUTPUT_FORMAT,$output);
+        # my $cmd = "echo Q | ".PATH_PROG_MFZRUN." -kd $basedir $mfzpath ANNOUNCE";
+        # DPSTD("DO '$cmd'");
+        # my $output = `$cmd`;
+        # my $verifoutput;
+        # ($packetstring,$verifoutput) = unpack(ANNOUNCE_UNPACK_OUTPUT_FORMAT,$output);
 
-        return DPSTD("Handle of $mfzpath not found in '$verifoutput'")
-            unless $verifoutput =~ s/^SIGNING_HANDLE \[(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})\]//m;
-        $mfzSigningHandle = $1;
+        # return DPSTD("Handle of $mfzpath not found in '$verifoutput'")
+        #     unless $verifoutput =~ s/^SIGNING_HANDLE \[(:?[a-zA-Z][-., a-zA-Z0-9]{0,62})\]//m;
+        # $mfzSigningHandle = $1;
 
     } else {
         my $outer = LoadOuterMFZToMemory($mfzpath); 
@@ -186,13 +186,13 @@ sub loadCnVMFZ {
         ## MFZ_PUBKEY_NAME handle is locally known valid as of now
         $mfzSigningHandle = $inner->[3];
 
-        my (undef,undef,undef,$announcedata) = FindName($outer->[1],CDM_ANNOUNCE_NAME);
-        return DPSTD("${\CDM_ANNOUNCE_NAME} not found in $mfzpath")
-            unless defined $announcedata;
-        $packetstring = $announcedata;
+        # my (undef,undef,undef,$announcedata) = FindName($outer->[1],CDM_ANNOUNCE_NAME);
+        # return DPSTD("${\CDM_ANNOUNCE_NAME} not found in $mfzpath")
+        #     unless defined $announcedata;
+        # $packetstring = $announcedata;
     }
 
-    my $spkt = Packet::parse($packetstring);
+    my $spkt = Packable::parse($packetstring);
     return DPSTD("$mfzpath: Bad announcement: $@ ")
         unless defined $spkt;
     return DPSTD("$mfzpath: Not S packet ".$spkt->summarize())

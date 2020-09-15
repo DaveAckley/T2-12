@@ -3,8 +3,8 @@ package PacketCDM_C;
 use strict;
 use base 'PacketCDM';
 use fields qw(
-    mSKU
-    mCurrentLength
+    mSlotStamp
+    mFilePosition
     );
 
 use Exporter qw(import);
@@ -17,15 +17,21 @@ use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
 
-BEGIN { push @Packet::PACKET_CLASSES, __PACKAGE__ }
+BEGIN { push @Packable::PACKABLE_CLASSES, __PACKAGE__ }
 
-## Methods
-sub new {
-    my ($class) = @_;
-    my $self = fields::new($class);
-    $self->SUPER::new();
-    $self->{mCmd} = "C";
-    return $self;
+### CLASS METHOD
+sub makeFromMFZModel {
+    my $class = shift || die;
+    my MFZModel $model = shift || die;
+    my $fpkt = $model->{mNeighborFPacket} || die;
+    my $index = $model->pendingLength();
+    my $dir8 = $fpkt->getDir8();
+    my $cpkt = $class->new();
+    $cpkt->setDir8($dir8);
+    $cpkt->{mSlotStamp} = $model->{mSlotStamp};
+    $cpkt->{mFilePosition} = $index;
+
+    return $cpkt;
 }
 
 ### CLASS METHOD
@@ -40,9 +46,9 @@ sub packFormatAndVars {
     my ($self) = @_;
     my ($parentfmt,@parentvars) = $self->SUPER::packFormatAndVars();
     my ($myfmt,@myvars) =
-        ("C/a* C/a*", 
-         \$self->{mSKU},
-         \$self->{mCurrentLength}
+        ("N N", 
+         \$self->{mSlotStamp},
+         \$self->{mFilePosition}
         );
 
     return ($parentfmt.$myfmt,
@@ -56,10 +62,10 @@ sub validate {
     return $ret if defined $ret;
     return "Bad C command '$self->{mCmd}'"
         unless $self->{mCmd} eq "C";
-    return "Missing SKU in C packet"
-        unless length($self->{mSKU}) > 0;
-    return "Missing current length"
-        unless length($self->{mCurrentLength}) > 0;
+    return "Bad SS in C packet"
+        unless $self->{mSlotStamp} != 0;
+    return "Missing file position"
+        unless $self->{mFilePosition} > 0;
     return undef;
 }
 
@@ -67,8 +73,20 @@ sub validate {
 sub handleInbound {
     my __PACKAGE__ $self = shift or die;
     my CDM $cdm = shift or die;
-    my $tm = $cdm->{mTraditionalManager} or die;
-    return $tm->sendDataChunk($self); 
+    my $cmgr = $cdm->{mContentManager} or die;
+    return $cmgr->sendDataChunk($self); 
+}
+
+## Methods
+sub new {
+    my ($class) = @_;
+    my $self = fields::new($class);
+    $self->SUPER::new();
+    $self->{mCmd} = "C";
+
+    $self->{mSlotStamp} = 0; # Illegal value
+    $self->{mFilePosition} = -1; # Illegal value
+    return $self;
 }
 
 1;

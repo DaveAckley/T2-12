@@ -109,10 +109,12 @@ my @constants = qw(
     HOOK_TYPE_LOAD
     HOOK_TYPE_RELEASE
 
+    SS_SLOT_BITS
+    SS_SLOT_MASK
+    SS_STAMP_BITS
+    SS_STAMP_MASK
+
     );
-
-
-
 
 my @paths = qw(
     PATH_CDM_SOURCE_DIRECTORY

@@ -25,7 +25,7 @@ use List::Util qw(shuffle);
 
 use T2Utils qw(:all);
 use DP qw(:all);
-use TimeQueue qw(:timefuncs); # now, ago, aged
+use TimeQueue;
 use Constants qw(:all);
 use PacketClasses;
 

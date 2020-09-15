@@ -8,20 +8,15 @@ use Exporter qw(import);
 
 use DP qw(:all);
 
-my @timefuncs = qw(
-    now
-    ago
-    aged
-    );
-
-our @EXPORT_OK = (@timefuncs);
+our @EXPORT_OK = ();
 
 our %EXPORT_TAGS = (
-    timefuncs => \@timefuncs,
     all => \@EXPORT_OK
     );
 
-use Time::HiRes qw(sleep time);
+use T2Utils qw(:math);
+
+use Time::HiRes qw(sleep);
     
 sub new {
     my TimeQueue $self = shift;
@@ -32,20 +27,6 @@ sub new {
     $self->{mTimeoutAbles} = [];
     $self->{mCount} = 0;
     return $self;
-}
-
-sub now {
-    return time();
-}
-
-sub ago {
-    my $when = shift;
-    return now() - $when;
-}
-
-sub aged {
-    my ($when,$age) = @_;
-    return ago($when) >= $age;
 }
 
 sub insert {

@@ -73,7 +73,7 @@ sub tryFlushOutboundPackets {
     my $oref = $self->{mOutboundPackets};
     while (scalar(@{$oref}) > 0) {
         my $pkt = $oref->[0];
-
+        DPSTD(Packet::summarizeString($pkt)." GO");
         my $len = syswrite($self->{mPktHandle}, $pkt);
         if (defined($len) || $!{EHOSTUNREACH}) {
             DPPKT("Host unreachable, pkt dropped") if $!{EHOSTUNREACH};
@@ -104,7 +104,7 @@ sub processPacket {
 sub dispatchPacket {
     my ($self,$pkt) = @_;
     die unless defined $pkt;
-    my $packet = Packet::parse($pkt);
+    my $packet = Packable::parse($pkt);
     return DPSTD("Parse failed") unless defined $packet;
     DPPKT("< ".$packet->summarize());
     return $packet->handleInbound($self->{mCDM});

@@ -1,13 +1,11 @@
 ## Module stuff
-package PacketCDM_F; 
+package PacketCDM_F;  # New style file announcement
 use strict;
 use base 'PacketCDM';
 use fields qw(
-    mName
-    mLength
+    mSlotStamp
+    mAvailableLength
     mChecksum
-    mInnerTimestamp
-    mSeqno
     );
 
 use Exporter qw(import);
@@ -19,9 +17,9 @@ our %EXPORT_TAGS;
 use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
-use MFZManager;
+use MFZModel;
 
-BEGIN { push @Packet::PACKET_CLASSES, __PACKAGE__ }
+BEGIN { push @Packable::PACKABLE_CLASSES, __PACKAGE__ }
 
 ## Methods
 sub new {
@@ -29,7 +27,23 @@ sub new {
     my $self = fields::new($class);
     $self->SUPER::new();
     $self->{mCmd} = "F";
+    $self->{mSlotStamp} = 0;       # Illegal value
+    $self->{mAvailableLength} = 0; # Illegal value -- you can't advertise with <1KB
+    $self->{mChecksum} = -1;       # Incorrect checksum
     return $self;
+}
+
+### CLASS METHOD
+sub makeFromMFZModel {
+    my $class = shift || die;
+    my MFZModel $model = shift || die;
+    my $available = $model->servableLength() || return undef;
+    my $fpkt = $class->new();
+    $fpkt->{mSlotStamp} = $model->{mSlotStamp};
+    $fpkt->{mAvailableLength} = $available;
+    $fpkt->{mChecksum} = $fpkt->{mSlotStamp} ^ $fpkt->{mAvailableLength};
+    $fpkt->pack();
+    return $fpkt;
 }
 
 ### CLASS METHOD
@@ -44,12 +58,10 @@ sub packFormatAndVars {
     my __PACKAGE__ $self = shift;
     my ($parentfmt,@parentvars) = $self->SUPER::packFormatAndVars();
     my ($myfmt,@myvars) =
-        ("C/a* C/a* C/a* C/a* C/a*",  # Lovely!
-         \$self->{mName},
-         \$self->{mLength},
-         \$self->{mChecksum},
-         \$self->{mInnerTimestamp},
-         \$self->{mSeqno}
+        ("NNN",
+         \$self->{mSlotStamp},
+         \$self->{mAvailableLength},
+         \$self->{mChecksum}
         );
 
     return ($parentfmt.$myfmt,
@@ -62,48 +74,23 @@ sub validate {
     my $ret = $self->SUPER::validate();
     return $ret
         if defined $ret;
-    return "Bad F command '$self->{mCDMCmd}'"
+    return "Bad F command '$self->{mCmd}'"
         unless $self->{mCmd} eq "F";
-    return "Content name '$self->{mName}' too long"
-        unless length($self->{mName}) <= MAX_CONTENT_NAME_LENGTH;
-    return "Missing length"
-        unless $self->{mLength} > 0;
-    return "Missing checksum"
-        unless length($self->{mChecksum}) > 0;
-    return "Missing inner timestamp"
-        unless $self->{mInnerTimestamp} > 0;
-    return "Missing or bad seqno"
-        unless $self->{mSeqno} > 0;
+    return "Missing slotstamp"
+        unless $self->{mSlotStamp} > 0;
+    return "Missing available length"
+        unless $self->{mAvailableLength} > 0;
+    return "Checksum failure"
+        unless $self->{mChecksum} == ($self->{mSlotStamp} ^ $self->{mAvailableLength});
     return undef;
-}
-
-sub matchesMFZ {
-    my __PACKAGE__ $self = shift or die;
-    my MFZManager $mgr = shift or return undef;
-
-    return 0 unless $self->{mName} eq $mgr->{mContentName};
-    return 0 unless $self->{mLength} eq $mgr->{mFileTotalLength};
-    return 0 unless $self->{mChecksum} eq $mgr->{mFileTotalChecksum};
-    return 0 unless $self->{mInnerTimestamp} eq $mgr->{mFileInnerTimestamp};
-    return 1;  ## mSeqno NOT CHECKED
-}
-
-sub populateMFZMgr {
-    my __PACKAGE__ $self = shift or die;
-    my MFZManager $mgr = shift or die;
-    die unless $self->{mName} eq $mgr->{mContentName}; # Only field that must be already set
-    $mgr->{mFileTotalLength} = $self->{mLength};
-    $mgr->{mFileTotalChecksum} = $self->{mChecksum};
-    $mgr->{mFileInnerTimestamp} = $self->{mInnerTimestamp};
-    return $self->{mSeqno};
 }
 
 ##VIRTUAL
 sub handleInbound {
     my __PACKAGE__ $self = shift;
     my CDM $cdm = shift;
-    my $tm = $cdm->{mTraditionalManager} or die;
-    return $tm->handleAnnouncement($self); 
+    my $cmgr = $cdm->{mContentManager} or die;
+    return $cmgr->updateMFZModelAvailability($self); 
 }
 
 1;

@@ -2,13 +2,12 @@
 package CDM;
 use strict;
 use fields qw(
+    mBaseDirectory
     mPrograms 
     mTimeQueue 
     mPacketIO
-    mDirectoriesManager
+    mContentManager
     mNeighborhoodManager
-    mTraditionalManager
-    mPipelineManager
     mHookManager
     mStatusReporter
     mCryptoManager
@@ -25,19 +24,21 @@ use Constants qw(:all);
 use T2Utils qw(:all);
 use DP qw(:functions :flags);
 
-use MFZManager;
+use MFZUtils qw(:functions);
+#use MFZManager;
 use TimeQueue;
-use DirectoriesManager;
-use DMCommon;
-use DMPending;
-use DMPipeline;
+use ContentManager;
+#use DirectoriesManager;
+#use DMCommon;
+#use DMPending;
+#use DMPipeline;
 use PacketIO;
 use NeighborhoodManager;
-use TMTraditional;
-use TMPipeline;
-use HookManager;
+#use TMTraditional;
+#use TMPipeline;
+#use HookManager;
 use StatusReporter;
-use CryptoManager;
+#use CryptoManager;
 
 # Other imports
 use Fcntl;
@@ -54,12 +55,15 @@ sub new {
     unless (ref $self) {
         $self = fields::new($self);
     }
+    $self->{mBaseDirectory} = $base;
+    SetKeyDir($self->{mBaseDirectory});
+
     $self->{mPrograms} = {
         mMfzrun => "/home/t2/MFM/bin/mfzrun"        
     };
     $self->{mTimeQueue} = TimeQueue->new();
-    $self->{mDirectoriesManager} = DirectoriesManager->new($self,$base);
-    $self->{mHookManager} = HookManager->new($self);
+#    $self->{mDirectoriesManager} = DirectoriesManager->new($self,$base);
+#    $self->{mHookManager} = HookManager->new($self);
     return $self;
 }
 
@@ -69,12 +73,12 @@ sub getTQ {
 }
 
 sub getBaseDirectory {
-    return shift->getDirectoriesManager()->getBaseDirectory();
+    return shift->{mBaseDirectory};
 }
 
-sub getDirectoriesManager {
+sub getContentManager {
     my __PACKAGE__ $self = shift or die;
-    return $self->{mDirectoriesManager};
+    return $self->{mContentManager};
 }
 
 sub schedule {
@@ -93,8 +97,8 @@ sub eventLoop {
 
 sub init {
     my __PACKAGE__ $self = shift or die;
-    $self->{mDirectoriesManager}->init();
-    Hooks::installHooks($self);
+#    $self->{mDirectoriesManager}->init();
+#    Hooks::installHooks($self);
 
     $self->createTasks();
 }
@@ -108,9 +112,9 @@ sub getPIO {
 sub createTasks {
     my ($self) = @_;
 
-    die if defined $self->{mCryptoManager};
-    $self->{mCryptoManager} = CryptoManager->new($self,undef); # default -kd
-    $self->{mCryptoManager}->init();
+#    die if defined $self->{mCryptoManager};
+#    $self->{mCryptoManager} = CryptoManager->new($self,undef); # default -kd
+#    $self->{mCryptoManager}->init();
 
     die if defined $self->{mPacketIO};
     $self->{mPacketIO} = PacketIO->new($self);
@@ -120,13 +124,17 @@ sub createTasks {
     $self->{mNeighborhoodManager} = NeighborhoodManager->new($self);
     $self->{mNeighborhoodManager}->init();
 
-    die if defined $self->{mTraditionalManager};
-    $self->{mTraditionalManager} = TMTraditional->new($self);
-    $self->{mTraditionalManager}->init();
+    die if defined $self->{mContentManager};
+    $self->{mContentManager} = ContentManager->new($self,SUBDIR_COMMON);
+    $self->{mContentManager}->init();
 
-    die if defined $self->{mPipelineManager};
-    $self->{mPipelineManager} = TMPipeline->new($self);
-    $self->{mPipelineManager}->init();
+    # die if defined $self->{mTraditionalManager};
+    # $self->{mTraditionalManager} = TMTraditional->new($self);
+    # $self->{mTraditionalManager}->init();
+
+    # die if defined $self->{mPipelineManager};
+    # $self->{mPipelineManager} = TMPipeline->new($self);
+    # $self->{mPipelineManager}->init();
 
     die if defined $self->{mStatusReporter};
     $self->{mStatusReporter} = StatusReporter->new($self);

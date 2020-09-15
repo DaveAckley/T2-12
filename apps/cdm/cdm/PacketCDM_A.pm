@@ -17,7 +17,7 @@ use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
 
-BEGIN { push @Packet::PACKET_CLASSES, __PACKAGE__ }
+BEGIN { push @Packable::PACKABLE_CLASSES, __PACKAGE__ }
 
 ## Methods
 sub new {

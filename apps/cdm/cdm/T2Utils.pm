@@ -8,11 +8,21 @@ my @math = qw(
     ceiling 
     max
     min
+    oddsOf
+    oneIn
     pickOne
     lexEncode
     lexDecode
+
     hexEscape
     deHexEscape
+
+    hack16
+
+    now
+    ago
+    aged
+
     formatSeconds
     formatSize
     formatPercent
@@ -59,7 +69,8 @@ our %EXPORT_TAGS = (
 ## IMPORTS
 use List::Util qw(shuffle);
 use Digest::SHA qw(sha512_hex);
-
+use Time::HiRes qw(time);
+    
 use DP qw(:all);
 
 ## MATH
@@ -77,6 +88,17 @@ sub max {
 sub min {
     my ($n,$m) = @_;
     return ($n <= $m) ? $n : $m;
+}
+
+sub oddsOf {
+    my $n = shift;
+    my $outof = shift;
+    return 1 if $outof <= 1;
+    return int(rand($outof)) < $n;
+}
+
+sub oneIn {
+    return oddsOf(1,shift);
 }
 
 sub pickOne {
@@ -120,6 +142,29 @@ sub deHexEscape {
     my $str = shift;
     $str =~ s/%([a-fA-f0-9]{2})/chr(hex($1))/ge;
     return $str;
+}
+
+sub hack16 {
+    my $str = shift;
+    my $h = 0xfeed;
+    for my $i (0 .. (length ($str) - 1)) {
+        $h = (($h<<1)^ord(substr($str,$i,1))^($h>>11))&0xffff;
+    }
+    return chr(($h>>8)&0xff).chr($h&0xff);
+}
+
+sub now {
+    return time();
+}
+
+sub ago {
+    my $when = shift;
+    return now() - $when;
+}
+
+sub aged {
+    my ($when,$age) = @_;
+    return ago($when) >= $age;
 }
 
 my %units = (
