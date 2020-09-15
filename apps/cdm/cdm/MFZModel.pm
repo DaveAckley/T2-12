@@ -228,6 +228,7 @@ sub isComplete {
 
 sub totalLength {
     my __PACKAGE__ $self = shift || die;
+    return undef unless defined $self->{mCDMap}; # Might be too soon to know
     return $self->{mCDMap}->{mMappedFileLength} + CDM10_FULL_MAP_LENGTH;
 }
     
