@@ -1,4 +1,4 @@
-{348}  -*- text -*-
+{349}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -4105,3 +4105,20 @@ Tue Sep 15 02:17:19 2020 Yeah.  Committing.
 :346]
 
 :345]
+[348:
+
+Tue Sep 15 04:43:35 2020 OK, have been working back and forth between
+two tiles, and have fixed a lot of little things.  Man the
+persistence-of-in-progress .mfz's is a foggen wondadaba hold.
+
+I restart the 'server', and before it has even announced the file, a
+perfectly valid and handle-able Chunk request comes in, and the server
+reponds, and the two of them are off to the races again.  As long as
+the client doesn't restart, it doesn't even lose its partial block
+extension behind the previous xsum.
+
+Time to commit these fixes, make a new 02 mfz (T2-12 is slot 02!) and
+see how bad things get messed up when there's a dominance issue on a
+slot.. 
+
+:348]
