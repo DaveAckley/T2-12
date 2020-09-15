@@ -59,6 +59,9 @@ use constant CDMD_MFM_MFZ =>     "cdmd-MFM.mfz";
 use constant HOOK_TYPE_LOAD => "LOAD";
 use constant HOOK_TYPE_RELEASE => "RELEASE";
 
+use constant MAX_INPUT_PACKETS_PER_UPDATE => 10;
+use constant MAX_OUTPUT_PACKETS_PER_UPDATE => 15;
+
 my @subdirs = qw(
     SUBDIR_COMMON
     SUBDIR_LOG
@@ -108,6 +111,9 @@ my @constants = qw(
 
     HOOK_TYPE_LOAD
     HOOK_TYPE_RELEASE
+
+    MAX_INPUT_PACKETS_PER_UPDATE
+    MAX_OUTPUT_PACKETS_PER_UPDATE
 
     SS_SLOT_BITS
     SS_SLOT_MASK
