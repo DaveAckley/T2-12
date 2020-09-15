@@ -32,9 +32,10 @@ test:	FORCE
 	$(MAKE) -C tests
 endif
 
-TAR_SWITCHES+=--exclude=tools --exclude=*~ --exclude=.git --exclude-backups
+TAR_SWITCHES+=--exclude=tools --exclude=other --exclude=*~ --exclude=.git --exclude-backups
 TAR_SWITCHES+=--exclude=doc/internal --exclude=doc/old-versions
 TAR_SWITCHES+=--exclude=extra
+TAR_SWITCHES+=--exclude=apps/cdm/cdm/cdmDEBUG --exclude=apps/cdm/cdm-hold
 
 TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
 TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 
