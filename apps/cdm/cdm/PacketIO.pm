@@ -71,9 +71,11 @@ sub writePacket {
 sub tryFlushOutboundPackets {
     my ($self) = @_;
     my $oref = $self->{mOutboundPackets};
-    while (scalar(@{$oref}) > 0) {
+    my $count = 0;
+    while ($count++ < MAX_OUTPUT_PACKETS_PER_UPDATE &&
+           scalar(@{$oref}) > 0) {
         my $pkt = $oref->[0];
-        DPSTD(Packet::summarizeString($pkt)." GO");
+        #DPSTD(Packet::summarizeString($pkt)." GO");
         my $len = syswrite($self->{mPktHandle}, $pkt);
         if (defined($len) || $!{EHOSTUNREACH}) {
             DPPKT("Host unreachable, pkt dropped") if $!{EHOSTUNREACH};
@@ -112,7 +114,9 @@ sub dispatchPacket {
 
 sub processPackets {
     my ($self) = @_;
-    while (defined(my $pkt = $self->readPacket())) {
+    my $count = 0;
+    while ($count++ < MAX_INPUT_PACKETS_PER_UPDATE &&
+           defined(my $pkt = $self->readPacket())) {
         $self->dispatchPacket($pkt);
     }
 }
