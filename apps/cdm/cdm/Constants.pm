@@ -59,8 +59,8 @@ use constant CDMD_MFM_MFZ =>     "cdmd-MFM.mfz";
 use constant HOOK_TYPE_LOAD => "LOAD";
 use constant HOOK_TYPE_RELEASE => "RELEASE";
 
-use constant MAX_INPUT_PACKETS_PER_UPDATE => 10;
-use constant MAX_OUTPUT_PACKETS_PER_UPDATE => 15;
+use constant MAX_INPUT_PACKETS_PER_UPDATE => 32;
+use constant MAX_OUTPUT_PACKETS_PER_UPDATE => 8;
 
 my @subdirs = qw(
     SUBDIR_COMMON
