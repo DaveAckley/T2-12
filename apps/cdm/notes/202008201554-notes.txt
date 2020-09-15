@@ -1,4 +1,4 @@
-{349}  -*- text -*-
+{350}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -4122,3 +4122,12 @@ see how bad things get messed up when there's a dominance issue on a
 slot.. 
 
 :348]
+[349:
+
+Tue Sep 15 05:14:26 2020 For example, I was sorting backwards for
+dominance.  So the far tile is going to finish its old S02 no matter
+how many times I announce the new one.
+
+Another commit and .mfz.
+
+:349]
