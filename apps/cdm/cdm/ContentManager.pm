@@ -39,7 +39,7 @@ sub pickImprovableMFZModel {
     my $slot = pickOne(keys %{$self->{mSSMap}});
     return undef unless defined $slot;
     my $model = undef;
-    my @tss = sort {$a <=> $b} keys %{$self->{mSSMap}->{$slot}};
+    my @tss = sort {$b <=> $a} keys %{$self->{mSSMap}->{$slot}};
     for my $ts (@tss) {
         my $m = $self->{mSSMap}->{$slot}->{$ts};
 
@@ -59,9 +59,15 @@ sub pickImprovableMFZModel {
 sub pickUndominatedMFZModel {
     my __PACKAGE__ $self = shift || die;
     my $slot = pickOne(keys %{$self->{mSSMap}});
+    return $self->getDominantMFZModelForSlot($slot);
+}
+
+sub getDominantMFZModelForSlot {
+    my __PACKAGE__ $self = shift || die;
+    my $slot = shift;
     return undef unless defined $slot;
     my $model = undef;
-    my @tss = sort {$a <=> $b} keys %{$self->{mSSMap}->{$slot}};
+    my @tss = sort {$b <=> $a} keys %{$self->{mSSMap}->{$slot}};
     for my $ts (@tss) {
         my $m = $self->{mSSMap}->{$slot}->{$ts};
         next if $m->servableLength() == 0;
@@ -104,7 +110,7 @@ sub deleteDominatedInSlot {
     my __PACKAGE__ $self = shift || die;
     my $slot = shift || die;
     my $count = -1;
-    my @tss = sort { $a <=> $b } keys %{$self->{mSSMap}->{$slot}};
+    my @tss = sort { $b <=> $a } keys %{$self->{mSSMap}->{$slot}};
     for my $ts (@tss) {
         my $m = $self->{mSSMap}->{$slot}->{$ts};
         if ($count >= 0) {
@@ -216,7 +222,7 @@ sub reportMFZStats {
     my $maxlen = 16;
     my @ret = ();
     for my $slot (@slots) {
-        my @tss = sort { $a <=> $b } keys %{$self->{mSSMap}->{$slot}};
+        my @tss = sort { $b <=> $a } keys %{$self->{mSSMap}->{$slot}};
         for my $ts (@tss) {
             my $ss = SSMake($slot,$ts);
             my $sstag = SSToTag($ss);
@@ -288,6 +294,10 @@ sub handleDataChunk {
     return DPSTD("Rejected chunk ".$dpkt->summarize()) unless $ret >= 0;
 
     if (!$model->isComplete()) {
+        # Mr. President, perhaps we call for the non-dominated model
+        # for this slot.  Just in case.  While there's still time.
+        my $dom = $self->getDominantMFZModelForSlot(SSSlot($ss));
+        $model = $dom if defined $dom;
         $self->requestChunkFrom($model);
     }
 }
