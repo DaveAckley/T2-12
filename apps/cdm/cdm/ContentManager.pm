@@ -59,18 +59,20 @@ sub pickImprovableMFZModel {
 sub pickUndominatedMFZModel {
     my __PACKAGE__ $self = shift || die;
     my $slot = pickOne(keys %{$self->{mSSMap}});
-    return $self->getDominantMFZModelForSlot($slot);
+    return $self->getDominantMFZModelForSlot($slot,0);
 }
 
+# Find the dominant model for $slot, including non-announceable models if $all is true
 sub getDominantMFZModelForSlot {
     my __PACKAGE__ $self = shift || die;
     my $slot = shift;
+    my $all = shift || 0;
     return undef unless defined $slot;
     my $model = undef;
     my @tss = sort {$b <=> $a} keys %{$self->{mSSMap}->{$slot}};
     for my $ts (@tss) {
         my $m = $self->{mSSMap}->{$slot}->{$ts};
-        next if $m->servableLength() == 0;
+        next if $m->servableLength() == 0 && !$all;
         $model = $m;
         last;
     }
@@ -294,9 +296,9 @@ sub handleDataChunk {
     return DPSTD("Rejected chunk ".$dpkt->summarize()) unless $ret >= 0;
 
     if (!$model->isComplete()) {
-        # Mr. President, perhaps we call for the non-dominated model
+        # Mr. President, perhaps we might call for the dominant model
         # for this slot.  Just in case.  While there's still time.
-        my $dom = $self->getDominantMFZModelForSlot(SSSlot($ss));
+        my $dom = $self->getDominantMFZModelForSlot(SSSlot($ss),1);
         $model = $dom if defined $dom;
         $self->requestChunkFrom($model);
     }
