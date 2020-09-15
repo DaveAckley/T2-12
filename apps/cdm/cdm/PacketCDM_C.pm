@@ -65,7 +65,7 @@ sub validate {
     return "Bad SS in C packet"
         unless $self->{mSlotStamp} != 0;
     return "Missing file position"
-        unless $self->{mFilePosition} > 0;
+        unless $self->{mFilePosition} >= 0;
     return undef;
 }
 
