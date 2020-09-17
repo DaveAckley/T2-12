@@ -269,19 +269,6 @@ sub handleDataChunk {
     return DPSTD("No model for ".$dpkt->summarize()) unless defined $model;
 
     $model->receiveDataChunk($dpkt);
-    # my $index = $dpkt->{mFilePosition};
-    # my $data = $dpkt->{mData};
-    # my $ret = $model->addChunkAt($data,$index);
-
-    # return DPSTD("Rejected chunk ".$dpkt->summarize()) unless $ret >= 0;
-
-    # if (!$model->isComplete()) {
-    #     # Mr. President, perhaps we might call for the dominant model
-    #     # for this slot.  Just in case.  While there's still time.
-    #     my $dom = $self->getDominantMFZModelForSlot(SSSlot($ss),1);
-    #     $model = $dom if defined $dom;
-    #     $self->requestChunkFrom($model);
-    # }
 }
 
 sub sendDataChunk {
