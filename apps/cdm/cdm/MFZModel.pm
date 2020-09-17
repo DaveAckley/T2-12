@@ -13,6 +13,8 @@ use fields qw(
     mLastPositionRequested
     mLastActivityTime
     mPendingChunks
+    mCreationTime
+    mCompletionTime
     );
 
 use Exporter qw(import);
@@ -64,7 +66,7 @@ sub tryLoad {
     close $fh or die $!;
     unlink $pathbak;
 
-    DPSTD($model->getTag()." loaded");
+    $model->noteComplete();
     return $model;
 }
 
@@ -296,6 +298,8 @@ sub new {
     my $self = fields::new($class);
     $self->SUPER::new(SSToFileName($ss),$cdm);
     DPSTD($self->getTag()." initialized");
+    $self->{mCreationTime} = now();
+    $self->{mCompletionTime} = undef;
 
     $self->{mInDir} = $dir;       # Unused til length reaches 1KB
     $self->{mSlotStamp} = $ss;    # Untrusted til length reaches 1KB
@@ -381,6 +385,19 @@ sub receiveDataChunk {
     $self->advance();
 }
 
+sub noteComplete {
+    my __PACKAGE__ $self = shift || die;
+    $self->{mCompletionTime} ||= now();
+    my $secs = $self->{mCompletionTime} - $self->{mCreationTime};
+    $secs = 1 if $secs == 0;
+    my $bytespersec = $self->totalLength() / $secs;
+    DPSTD(sprintf("%s complete. %sB in %s, %sBPS",
+                  $self->getTag(),
+                  formatSize($self->totalLength()),
+                  formatSeconds($secs),
+                  formatSize($bytespersec)));
+}
+
 sub flushPendingChunks {
     my __PACKAGE__ $self = shift || die;
     my @stillPending;
@@ -390,7 +407,7 @@ sub flushPendingChunks {
             my $ret = $self->addChunkAt($dpkt->{mData},$dpkt->{mFilePosition});
             die "$@" if $ret < 0;
             $self->markActive();
-            DPSTD($self->getTag()." is complete") if $ret == 0;
+            $self->noteComplete() if $ret == 0;
         } elsif ($dpkt->{mFilePosition} > $currentFilePos &&
                  $dpkt->{mFilePosition} <= $self->{mLastPositionRequested}) {
             push @stillPending, $dpkt;
