@@ -42,6 +42,10 @@ use constant MAX_MFZ_NAME_LENGTH => MAX_CONTENT_NAME_LENGTH+4; # 4 for '.mfz'
 
 use constant MAX_D_TYPE_DATA_LENGTH => 180;
 
+use constant MAX_MFZ_DATA_IN_FLIGHT => 3*MAX_D_TYPE_DATA_LENGTH;
+
+use constant SERVER_VIABILITY_SECONDS => 90; # Minute and a half of silence is too much
+
 use constant SUBDIR_COMMON => "common";
 use constant SUBDIR_LOG => "log";
 use constant SUBDIR_PENDING => "pending";
@@ -108,6 +112,9 @@ my @constants = qw(
     MAX_CONTENT_NAME_LENGTH
     MAX_MFZ_NAME_LENGTH
     MAX_D_TYPE_DATA_LENGTH
+    MAX_MFZ_DATA_IN_FLIGHT
+
+    SERVER_VIABILITY_SECONDS
 
     HOOK_TYPE_LOAD
     HOOK_TYPE_RELEASE

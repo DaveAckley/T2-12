@@ -109,7 +109,7 @@ sub dispatchPacket {
     my $packet = Packable::parse($pkt);
     return DPSTD("Parse failed") unless defined $packet;
     DPPKT("< ".$packet->summarize());
-    return $packet->handleInbound($self->{mCDM});
+    $packet->handleInbound($self->{mCDM});
 }
 
 sub processPackets {

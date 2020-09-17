@@ -9,7 +9,10 @@ use fields qw(
     mBufferedData
     mCDMap
     mXsumDigester
-    mNeighborFPacket
+    mSources
+    mLastPositionRequested
+    mLastActivityTime
+    mPendingChunks
     );
 
 use Exporter qw(import);
@@ -39,7 +42,7 @@ sub tryLoad {
     my $model = MFZModel->new($cdm,$ss,$dir);
 
     my $path = $model->makePath();
-    DPSTD("Trying to load $path");
+    #DPSTD("Trying to load $path");
 
     my $pathbak = "$path.bak";
     rename $path,$pathbak or die $!;
@@ -61,7 +64,7 @@ sub tryLoad {
     close $fh or die $!;
     unlink $pathbak;
 
-    DPSTD($model->getTag()." created");
+    DPSTD($model->getTag()." loaded");
     return $model;
 }
 
@@ -282,6 +285,9 @@ sub makeDPktFromCPkt {
     return $dpkt;
 }
 
+use constant MFZMODEL_TIMEOUT_FREQUENCY => 3;
+use constant MFZMODEL_MAX_WAIT_FOR_ACTIVITY => 1.5;
+
 ## Methods
 sub new {
     my ($class,$cdm,$ss, $dir) = @_;
@@ -289,6 +295,7 @@ sub new {
     defined $dir or die;
     my $self = fields::new($class);
     $self->SUPER::new(SSToFileName($ss),$cdm);
+    DPSTD($self->getTag()." initialized");
 
     $self->{mInDir} = $dir;       # Unused til length reaches 1KB
     $self->{mSlotStamp} = $ss;    # Untrusted til length reaches 1KB
@@ -297,17 +304,158 @@ sub new {
     $self->{mBufferedData} = "";  # Nothing buffered to start
 
     $self->{mXsumDigester} = undef;
-    $self->{mNeighborFPacket} = undef; # Nonexistent til someone announces to us
-
+    $self->{mSources} = { };      # { d8 -> [ servableLength activityTime ] }
+    $self->{mLastPositionRequested} = -1; # The END position of the farthest chunk we've requested
+    $self->{mLastActivityTime} = now() - MFZMODEL_TIMEOUT_FREQUENCY; # Set to go
+    $self->{mPendingChunks} = [];  # None
+    
+    $self->defaultInterval(-2*MFZMODEL_TIMEOUT_FREQUENCY); # Run about every 3 seconds
     $self->{mCDM}->getTQ()->schedule($self);
-    $self->defaultInterval(-20); # Run about every 10 seconds if nothing happening
 
     return $self;
 }
 
+sub selectServableD8 { # Return undef or a d8 that has stuff we could request
+    my __PACKAGE__ $self = shift || die;
+    return undef if $self->isComplete();
+    
+    my $pick8 = undef;
+    my $weight = 0;
+    my $frontier = $self->{mLastPositionRequested};
+    for my $d8 (keys %{$self->{mSources}}) {
+        my ($servablelen, $activitytime) = @{$self->{mSources}->{$d8}};
+        next unless $servablelen > $frontier;   # Skip if they can't give us what we need
+        next unless now() - $activitytime < SERVER_VIABILITY_SECONDS; # Or if they're ghosting us
+        $pick8 = $d8 if oneIn(++$weight);       # Else pick uniformly
+    }
+    return $pick8;
+}
+
+sub getD8Rec {
+    my __PACKAGE__ $self = shift || die;
+    my $d8 = shift; defined($d8) or die;
+    my $rec = $self->{mSources}->{$d8};
+    unless (defined($rec)) {
+        $rec = [ -1, now() ];  # Default record offers nothing but is active
+        $self->{mSources}->{$d8} = $rec;
+    }
+    return $rec;
+}
+
+sub updateServableLength { # record that $d8 offers $length and mark active
+    my __PACKAGE__ $self = shift || die;
+    my $d8 = shift;        defined($d8) || die;
+    my $length = shift;    defined($length) || die;
+    my $rec = $self->getD8Rec($d8);
+
+    $rec->[0] = $length;
+    $rec->[1] = now();
+}
+
+sub markActiveD8 { # record that $d8 is active
+    my __PACKAGE__ $self = shift || die;
+    my $d8 = shift;        defined($d8) || die;
+    my $rec = $self->getD8Rec($d8);
+
+    $rec->[1] = now();
+}
+    
+
+sub resetTransfer {
+    my __PACKAGE__ $self = shift || die;
+    $self->{mPendingChunks} = [];  # Dump any pending
+    $self->{mLastPositionRequested} = $self->pendingLength();
+    $self->markActive();
+}
+
+sub advance {
+    my __PACKAGE__ $self = shift || die;
+    $self->flushPendingChunks();
+    $self->maybeSendNewRequests();
+}
+
+sub receiveDataChunk {
+    my __PACKAGE__ $self = shift || die;
+    my PacketCDM_D $dpkt = shift || die;
+    push @{$self->{mPendingChunks}}, $dpkt;
+    $self->advance();
+}
+
+sub flushPendingChunks {
+    my __PACKAGE__ $self = shift || die;
+    my @stillPending;
+    my $currentFilePos = $self->pendingLength();
+    while (my $dpkt = shift @{$self->{mPendingChunks}}) {
+        if ($dpkt->{mFilePosition} == $currentFilePos) {
+            my $ret = $self->addChunkAt($dpkt->{mData},$dpkt->{mFilePosition});
+            die "$@" if $ret < 0;
+            $self->markActive();
+            DPSTD($self->getTag()." is complete") if $ret == 0;
+        } elsif ($dpkt->{mFilePosition} > $currentFilePos &&
+                 $dpkt->{mFilePosition} <= $self->{mLastPositionRequested}) {
+            push @stillPending, $dpkt;
+        } else { next; } # obsolete or beyond what we requested
+        $self->markActiveD8($dpkt->getDir8());
+    }
+    $self->{mPendingChunks} = \@stillPending;
+}
+
+sub chunkSizeAtFP {
+    my __PACKAGE__ $self = shift || die;
+    my $fromFilePosition = shift; defined $fromFilePosition or die;
+    my $totalLength = $self->totalLength();
+    return MAX_D_TYPE_DATA_LENGTH  # It's a full packet if 
+        unless (defined $totalLength); # we don't have the map yet it
+    return MAX_D_TYPE_DATA_LENGTH  # It's a full packet if 
+        if $fromFilePosition + MAX_D_TYPE_DATA_LENGTH <= $totalLength; # there's room for it
+    return $totalLength - $fromFilePosition;
+}
+
+sub maybeSendNewRequests {
+    my __PACKAGE__ $self = shift || die;
+    return if $self->isComplete();  # Ah no
+    
+    my $pio = $self->{mCDM}->getPIO() || die;
+    my $currentFilePos = $self->pendingLength();
+    while (1) {
+        my $inflight = $self->{mLastPositionRequested} - $currentFilePos;
+        last if $inflight >= MAX_MFZ_DATA_IN_FLIGHT;  # Too much pending already
+
+        my $nextchunksize = $self->chunkSizeAtFP($self->{mLastPositionRequested});
+        last if $nextchunksize == 0;                  # Already seeing EOF coming
+
+        my $d8 = $self->selectServableD8();
+        last unless defined $d8;                      # Nobody's got what we need
+        
+        my $cpkt = PacketCDM_C->new();
+        $cpkt->setDir8($d8);
+        $cpkt->{mSlotStamp} = $self->{mSlotStamp};
+        $cpkt->{mFilePosition} = $self->{mLastPositionRequested};
+
+        if ($cpkt->sendVia($pio)) {
+            $self->{mLastPositionRequested} += $nextchunksize;
+        } else {
+            last;  # Can't ship now??
+        }
+    }
+}
+
+sub markActive {
+    my __PACKAGE__ $self = shift || die;
+    $self->{mLastActivityTime} = now();
+}
+
 sub update {
     my __PACKAGE__ $self = shift || die;
-    
+    if ($self->isComplete()) {
+        # XXX CHECK DOMINANCE SOMETIMES
+        return;
+    }
+    if (aged($self->{mLastActivityTime},MFZMODEL_MAX_WAIT_FOR_ACTIVITY)) {
+        $self->resetTransfer();
+        $self->advance();
+        return;
+    }
 }
 
 sub onTimeout {

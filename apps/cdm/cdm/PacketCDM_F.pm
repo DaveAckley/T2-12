@@ -95,7 +95,7 @@ sub handleInbound {
     my __PACKAGE__ $self = shift;
     my CDM $cdm = shift;
     my $cmgr = $cdm->{mContentManager} or die;
-    return $cmgr->updateMFZModelAvailability($self); 
+    $cmgr->updateMFZModelAvailability($self); 
 }
 
 1;

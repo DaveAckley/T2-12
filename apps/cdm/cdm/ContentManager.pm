@@ -5,7 +5,6 @@ use base 'TimeoutAble';
 use fields qw(
     mInDir
     mSSMap
-    mFilesToCheck
     );
 
 use Exporter qw(import);
@@ -34,25 +33,17 @@ sub getMFZModelForSSIfAny {
     return $map->{$ts};
 }
 
-sub pickImprovableMFZModel {
+sub pickImprovableMFZModel { # Return undef or an incomplete model with a usable server
     my __PACKAGE__ $self = shift || die;
     my $slot = pickOne(keys %{$self->{mSSMap}});
     return undef unless defined $slot;
-    my $model = undef;
+
     my @tss = sort {$b <=> $a} keys %{$self->{mSSMap}->{$slot}};
     for my $ts (@tss) {
         my $m = $self->{mSSMap}->{$slot}->{$ts};
-
-        next if $m->isComplete();
-
-        my $fpkt = $m->{mNeighborFPacket};
-        next unless defined $fpkt;
-        next unless $fpkt->{mAvailableLength} > $m->pendingLength();
-        
-        $model = $m;
-        last;
+        return $m if defined $m->selectServableD8();
     }
-    return $model;
+    return undef;
 }
 
 # Task1: Pick a random undominated MFZModel to announce or perhaps grow
@@ -155,14 +146,9 @@ sub updateMFZModelAvailability {
     my PacketCDM_F $fpkt = shift || die;
     my $ss = $fpkt->{mSlotStamp};
     my $model = $self->getMFZModelForSS($ss); # Creating if need be
-    my $ngbf = $model->{mNeighborFPacket};
-    $model->{mNeighborFPacket} = $fpkt     # Take this f packet
-        if !defined($ngbf)                 # ..if it's the first one
-        || ($ngbf->{mAvailableLength} < $fpkt->{mAvailableLength})  # ..or it offers more
-        || ($fpkt->{mAvailableLength} > $model->servableLength() && oneIn(4));  # ..or it offers something, and 25%
-    return $model->{mNeighborFPacket};
-}
 
+    $model->updateServableLength($fpkt->getDir8(), $fpkt->{mAvailableLength});
+}
 
 sub makeDirPath {
     my __PACKAGE__ $self = shift || die;
@@ -172,12 +158,6 @@ sub makeDirPath {
     my $path = "$basedir/$indir";
     return $path;
 }
-
-# sub checkNextFile {
-#     my __PACKAGE__ $self = shift || die;
-#     return undef unless my $fn = shift @{$self->{mFilesToCheck}};
-#     return $self->checkFile($fn);
-# }
 
 sub getBaseDirectory {
     my __PACKAGE__ $self = shift || die;
@@ -255,7 +235,6 @@ sub new {
 
     $self->{mInDir} = $dir;   
     $self->{mSSMap} = { };        # { slotnum -> { ts -> MFZModel } }
-    $self->{mFilesToCheck} = [ ]; # unsorted filenams from readdir
 
     $self->{mCDM}->getTQ()->schedule($self);
     $self->defaultInterval(-20); # Run about every 10 seconds if nothing happening
@@ -275,7 +254,7 @@ sub maybeAnnounceSomething {
     my $ngb = $hoodm->getRandomOpenNgbMgr();
     return undef unless defined $ngb;
 
-    my $fpkt = PacketCDM_F->makeFromMFZModel($model);
+    my $fpkt = PacketCDM_F->makeFromMFZModel($model) || die;
     $fpkt->setDir8($ngb->{mDir8});
     my $pio = $cdm->getPIO() || die;
     return $fpkt->sendVia($pio);
@@ -289,19 +268,20 @@ sub handleDataChunk {
     my $model = $self->getMFZModelForSSIfAny($ss);
     return DPSTD("No model for ".$dpkt->summarize()) unless defined $model;
 
-    my $index = $dpkt->{mFilePosition};
-    my $data = $dpkt->{mData};
-    my $ret = $model->addChunkAt($data,$index);
+    $model->receiveDataChunk($dpkt);
+    # my $index = $dpkt->{mFilePosition};
+    # my $data = $dpkt->{mData};
+    # my $ret = $model->addChunkAt($data,$index);
 
-    return DPSTD("Rejected chunk ".$dpkt->summarize()) unless $ret >= 0;
+    # return DPSTD("Rejected chunk ".$dpkt->summarize()) unless $ret >= 0;
 
-    if (!$model->isComplete()) {
-        # Mr. President, perhaps we might call for the dominant model
-        # for this slot.  Just in case.  While there's still time.
-        my $dom = $self->getDominantMFZModelForSlot(SSSlot($ss),1);
-        $model = $dom if defined $dom;
-        $self->requestChunkFrom($model);
-    }
+    # if (!$model->isComplete()) {
+    #     # Mr. President, perhaps we might call for the dominant model
+    #     # for this slot.  Just in case.  While there's still time.
+    #     my $dom = $self->getDominantMFZModelForSlot(SSSlot($ss),1);
+    #     $model = $dom if defined $dom;
+    #     $self->requestChunkFrom($model);
+    # }
 }
 
 sub sendDataChunk {
@@ -324,7 +304,7 @@ sub requestChunkFrom {
     my __PACKAGE__ $self = shift || die;
     my $model = shift || die;
     my $cdm = $self->{mCDM} || die;
-    my $cpkt = PacketCDM_C->makeFromMFZModel($model);
+    my $cpkt = PacketCDM_C->makeFromMFZModel($model) || die;
 
     my $pio = $cdm->getPIO() || die;
     return $cpkt->sendVia($pio);

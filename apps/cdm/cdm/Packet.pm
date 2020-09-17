@@ -88,7 +88,7 @@ sub packFormatAndVars {
 ##VIRTUAL
 sub handleInbound {  # Respond to this packet via side effects
     my ($self,$cdm) = @_;
-    return DPSTD("No inbound handler for ".$self->summarize());
+    DPSTD("No inbound handler for ".$self->summarize());
 }
 
 ### CLASS METHOD

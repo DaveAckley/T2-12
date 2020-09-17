@@ -20,16 +20,17 @@ use T2Utils qw(:all);
 BEGIN { push @Packable::PACKABLE_CLASSES, __PACKAGE__ }
 
 ### CLASS METHOD
-sub makeFromMFZModel {
+sub makeFromMFZModel {  # return a new C pkt or undef if no usable servers available
     my $class = shift || die;
     my MFZModel $model = shift || die;
-    my $fpkt = $model->{mNeighborFPacket} || die;
-    my $index = $model->pendingLength();
-    my $dir8 = $fpkt->getDir8();
+
+    my $dir8 = $model->selectServableD8();
+    return undef unless defined $dir8; 
+
     my $cpkt = $class->new();
     $cpkt->setDir8($dir8);
     $cpkt->{mSlotStamp} = $model->{mSlotStamp};
-    $cpkt->{mFilePosition} = $index;
+    $cpkt->{mFilePosition} = $model->pendingLength();
 
     return $cpkt;
 }
@@ -74,7 +75,7 @@ sub handleInbound {
     my __PACKAGE__ $self = shift or die;
     my CDM $cdm = shift or die;
     my $cmgr = $cdm->{mContentManager} or die;
-    return $cmgr->sendDataChunk($self); 
+    $cmgr->sendDataChunk($self); 
 }
 
 ## Methods

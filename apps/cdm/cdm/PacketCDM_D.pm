@@ -101,7 +101,7 @@ sub handleInbound {
     my __PACKAGE__ $self = shift or die;
     my CDM $cdm = shift or die;
     my $cmgr = $cdm->{mContentManager} or die;
-    return $cmgr->handleDataChunk($self); 
+    $cmgr->handleDataChunk($self); 
 }
 
 1;
