@@ -1,4 +1,4 @@
-{350}  -*- text -*-
+{380}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -4131,3 +4131,372 @@ how many times I announce the new one.
 Another commit and .mfz.
 
 :349]
+[350:
+
+Wed Sep 16 07:23:23 2020 OK, so we released t2sup#285 at foggen 22:45
+yesterday, gah.  Less than 90 mins from missing Tuesday entirely.  How
+are we going to avoid that in the future.
+
+We should aim and shooting overnight Sunday-Monday, instead of
+Monday-Tuesday.
+
+We should really do that.
+
+We should have viz and script set up Sunday evening.
+
+:350]
+[351:
+
+Wed Sep 16 07:26:19 2020 We should really do that.
+
+:351]
+[352:
+
+Wed Sep 16 07:26:28 2020 So, anyway, we have a small design issue that
+would be good to address quickly.  Consider MFZModel::addChunkAt:
+
+    ## return 0 if complete,
+    #  return next position > 0 if chunk added or in wrong position,
+    #  return -1 and set $@ if validation failed somehow
+    sub addChunkAt {
+        my __PACKAGE__ $self = shift || die;
+        my $chunk = shift; die unless defined $chunk;
+        my $at = shift; die unless defined $at;
+
+The issue is the 'or' in the 'return > 0' condition.  If (for any
+reason) we end up requesting the same position twice, and get the same
+chunk back twice, on the second call to addChunkAt, our chunk will be
+rejected, but caller has no way of knowing that.
+
+So caller will ask upstream for the returned 'next position' either
+way, and that will perpetuate requesting each chunk twice.
+
+And ContentManager WILL cause chunks to be re-requested, via:
+
+  onTimeout -> update -> maybeRequestSomething -> requestChunkFrom
+
+And ContentManager currently has no way of knowing if or how long
+chunk request has already been pending, so it can't know whether it's
+appropriate to initiate a request or not.
+
+So it just does it, and then we're doing doubles.
+
+And it will do it again in the future, and then we'll be doing
+triples, and that will be perpetuated.
+
+And that's why (I claim) we're seeing traffic numbers even over
+8KB/sec while the underlying file is growing nowhere near that fast.
+
+The growth process only ends once we have so many packets in flight
+that the kernel buffer runs out and it starts dropping packets:
+
+    [70820.144798] itc!bulk mUserIB kfifo full, starting to drop packets
+    [70820.342288] itc!bulk mUserIB kfifo space available after 2 attempts
+    [74042.789677] itc!bulk mUserIB kfifo full, starting to drop packets
+    [74042.927786] itc!bulk mUserIB kfifo space available after 1 attempts
+
+[353:
+
+Wed Sep 16 07:48:50 2020 So what's the clean-for-Gene fix here?
+
+TODO
+
+ - Redesign MFZModel::addChunkAt so caller can distinguish added or not
+
+[354:
+
+Wed Sep 16 07:52:06 2020 Maybe ContentManager::handleDataChunk should
+only issue another request so long as its current chunk was applied
+successfully.  If something goes wrong it should kick the MFZModel?
+
+Maybe most of the behavior in ContentManager::handleDataChunk should
+be moved to MFZModel::handleDataChunk.  ContentManager should just
+look up the MFZModel and delegate.
+
+[355:
+
+Wed Sep 16 07:56:43 2020 Well, except we have the nice feature that
+the ContentManager level can re-choose who to ask from among multiple
+neighbors; MFZModel doesn't do neighbors.
+
+Maybe MFZModel could tell ContentManager one of:
+
+R1 I applied this chunk and it worked great
+
+R2 I already had this chunk (position behind current eof)
+
+R3 I can't use this chunk yet (position beyond current eof)
+
+and then ContentManager could decide what to do
+
+ R1 Probably go back to the same model, but oneIn(K) ..
+ R2 ??
+ R3 ??
+
+[356:
+
+Wed Sep 16 08:11:30 2020 Well so here's another thing: Actually,
+MFZModel DOES do neighbors, in a limited way:
+
+It's got the 'mNeighborFPacket', which others -- like
+ContentMananger::pickImprovableMFZModel, and
+PacketCDM_C::makeFromMFZModel -- use as a dir8 source.
+[357:
+
+Wed Sep 16 08:42:31 2020 And we where unhappy a couple days ago with
+the whole notion of saving the F packet, because it made it hard (or
+at least gross) to keep track of dir8s that sent us chunks.  But
+having gotten a recent chunk is a real good reason to think of going
+back to a given dir8.
+
+So we'd been thinking about ditching mNeighborFPacket in favor of some
+more boiled-down notion that just keeps the key bits, and which could
+be refreshed based on D packets as well as F packets.
+
+:357]
+:356]
+
+:355]
+
+:354]:353]
+
+:352]
+[358:
+
+Wed Sep 16 11:37:54 2020 OK back from morning stuff.
+
+What would be a good replacement for keeping the mNeighborFPacket?
+
+Info:
+
+ - d8
+ - prefixLengthAvailable
+ - lastHeardFrom
+
+That's it maybe?
+
+And should we really stick it in the MFZModel?  It seemed wrong at the
+time we did it. and it still seems wrong.
+
+ContentManager has mSSMap.  This info we're talking about is jointly
+keyed by ss and d8.  NeighborManager has mLastSentTime and
+mLastRecvTime.. but is anybody using them?[359:
+
+Wed Sep 16 12:00:01 2020 mLastRecvTime is updated by A packets:
+
+ PacketCDM_A::handleInbound -> NeighborManager::bump -> mLastRecvTime
+
+and NeighborManager::considerInboundCDM also updates it, ....but
+nobody ever calls considerInboundCDM.
+
+So it's not clear that there's a really right place for this state.
+It's between ss and d8.[360:
+
+Wed Sep 16 12:13:15 2020 Aaand if we're going to think about this,
+what about the idea of deliberately allowing ourselves to have more
+than one chunk request in flight at the same time?  At the very least,
+allowing ourselves to double buffer the requests could help a lot, I'd
+think, and we'd still be better off than we are now with the redundant
+buffers blowing out.
+
+Now, to do this, we'd need to be able to predict the filepos of the
+next request before we get the reply from the previous one.  And we
+can do that, in most cases, because it's going to be
+
+    use constant MAX_D_TYPE_DATA_LENGTH => 180;
+
+except when the server hits its servableLength on the previous
+request.  Which we can also know, once we have the map in.  So it's
+not crazy to think we can extrapolate out to future requests.
+
+[361:
+
+Wed Sep 16 13:23:31 2020 We need a place to put this info.  Could it
+be okay to hang it off the MFZModel?  We don't know exactly how
+MFZModels get killed yet.  We made a whack a
+ContentManager::garbageCollector but so far nobody calls it.[362:
+
+Wed Sep 16 14:32:58 2020 Well, getting sidetracked a lot today, and
+letting myself go with that, in a 'Day After T2sday' kind of way.  But
+thinking maybe yeah try to make a thing for MFZModel that would let
+us:
+
+ - Keep track of what positions we've requested, and from who
+
+ - Detect when we've waited too long for any replies
+
+ - Allow us to have two or K requests in flight for whatever seems a
+   win. 
+
+And how would we do this exactly?
+[364:
+
+Thu Sep 17 00:50:34 2020 Information needed:
+
+[365: Thu Sep 17 02:42:40 2020 Maybe ditch this: :365] - d8 requested from
+[366: And this  :366] - prefixLengthAvailable
+[367: And make this lastActivity or something  :367] - lastHeardFrom (about this ss)
+
+as before, plus
+
+ - lastPositionRequested
+ - maxDataInFlight
+
+plus standard stuff we already have
+
+ - currentFilePosition
+
+Is that it?  What are our tasks?
+
+Task#0 init this Transfer Information
+  mTI.d8 = -1
+  mTI.pLA = -1
+  mTI.lHF = -1
+  mTI.lPR = -1
+
+Task#1 receiveAChunk
+  push @pending, $chunk
+  advance
+
+Task#1.5 advance
+  flushPendingChunks
+  maybeSendNewRequests
+
+Task#2 flushPendingChunks
+  while (my $c = shift @pendingChunks) {
+    if ($c.fp == cFP) {
+      apply $c
+      set lastActivity = now
+    } elsif ($c.fP > cFP && $c.fP <= lPR) {
+      push @stillPending
+    } else { next; }  # $c.fp < cFP or $c.fp > lPR: Drop obsolete or unrequested
+    mark $c.d8 heard from
+  }
+  @pendingChunks = @stillPending
+
+Task#3 maybeSendNewRequests
+  while (lPR < cFP + maxDataInFlight) {
+    my $d8 = pickRandomProviderFor(ss,cFP)
+    last if none
+    my $cs = chunkSizeAtFP(cFP); # Considering eof effects etc
+    request lPR from $d8
+    lPR += $cs
+  }
+
+Task#4 MFZModel timeout (default -5 seconds)
+  if isComplete
+    (check dominance in slot?)
+     return
+  if lastActivity + maxWaitForActivity < now
+     resetTransfer
+     advance
+     return
+
+Task#5 resetTransfer
+  @pendingChunks = ()
+  lPR = cFP
+  lastActivity = now()
+
+
+[368:
+
+Thu Sep 17 02:52:32 2020 OK, let's try implementing this, or at least
+see what the problems are.
+
+Although actually I think I could sleep again.  Probably better to try
+for that now, implement in next go.
+
+:368]
+:364]
+:362]
+
+:361]
+
+:360]
+
+:359]
+
+:358]
+[363:
+
+Thu Sep 17 00:50:20 2020 OK let's go GO GO GO
+
+:363]
+[369:
+
+Thu Sep 17 06:31:08 2020 OK so how do we implement
+'pickRandomProviderFor(ss,cFP)'?  For all ss, we need a place to track
+the servableLength and last activity time across all d8.  Candidates:
+
+ - On the MFZModel of the ss
+
+ - In the ContentManager::mSSMap
+
+[370:
+
+Thu Sep 17 06:56:20 2020 On the MFZModel I guess it could be like
+
+ mSources: { d8 -> [ servableLength activityTime ] }
+
+On the mSSMap,
+
+  { slotnum -> { ts -> [ MFZmodel ..  ugh.
+
+Let's try MFZModel mSources.  [371:
+
+Thu Sep 17 07:01:08 2020 So how are fpkts currently routed to the
+MFZModel?[372:
+
+Thu Sep 17 07:01:57 2020
+
+TODO
+
+[375: Thu Sep 17 11:32:15 2020
+DONE :375] - Fix PacketCDM_C::makeFromMFZModel to not use mNeighborFPacket
+
+[376: Thu Sep 17 11:48:16 2020
+DONE :376] - Fix ContentManager::pickImprovableMFZModel to not use mNeighborFPacket
+
+[374: Thu Sep 17 11:28:37 2020
+DONE :374] - Fix ContentMananger::updateMFZModelAvailability  ditto
+
+[373: Thu Sep 17 10:53:02 2020
+DONE  :373] - Second sleep
+
+:372]
+
+:371]
+  
+
+:370]
+:369]
+[377:
+
+Thu Sep 17 11:48:27 2020 OK.. Are we up to trying this?  Let's say yes
+and see what happens..
+
+:377]
+[378:
+
+Thu Sep 17 11:57:37 2020 Still fixing typose and stuff.  I see an
+issue coming with the aging of servers, though -- servers will age out
+just because they don't have enough length for us at the moment, and
+we'll stop considering them.  Well but then when a new F packet
+arrives, ContentManager goes to MFZModel::updateServableLength(),
+which absolutely does freshen the activity time.
+
+So maybe probably there's no issue here..  Back to typose and stuff.
+
+:378]
+[379:
+
+Thu Sep 17 13:19:06 2020 Well, we got far enough to debug our way
+through a reception of 
+
+  -rw-r--r-- 1 t2 t2    14283 Sep 17 13:18 cdmss-90-51661d.mfz
+
+that's starting to look pretty plausible, with three data packets in
+flight.  I'm going to commit this and take a break for HSA stuff for
+the afternoon I think.
+
+:379]
