@@ -42,7 +42,7 @@ use constant MAX_MFZ_NAME_LENGTH => MAX_CONTENT_NAME_LENGTH+4; # 4 for '.mfz'
 
 use constant MAX_D_TYPE_DATA_LENGTH => 180;
 
-use constant MAX_MFZ_DATA_IN_FLIGHT => 3*MAX_D_TYPE_DATA_LENGTH;
+use constant MAX_MFZ_DATA_IN_FLIGHT => 12*MAX_D_TYPE_DATA_LENGTH;
 
 use constant SERVER_VIABILITY_SECONDS => 90; # Minute and a half of silence is too much
 
@@ -64,7 +64,7 @@ use constant HOOK_TYPE_LOAD => "LOAD";
 use constant HOOK_TYPE_RELEASE => "RELEASE";
 
 use constant MAX_INPUT_PACKETS_PER_UPDATE => 32;
-use constant MAX_OUTPUT_PACKETS_PER_UPDATE => 8;
+use constant MAX_OUTPUT_PACKETS_PER_UPDATE => 16;
 
 my @subdirs = qw(
     SUBDIR_COMMON
