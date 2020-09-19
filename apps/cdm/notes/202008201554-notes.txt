@@ -1,4 +1,4 @@
-{382}  -*- text -*-
+{391}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -4525,12 +4525,25 @@ TODO
 
  - Review triggers for the new era
 
- - Get the garbage collector running
+[385: Fri Sep 18 04:14:19 2020
+DONE :385] - Get the garbage collector running
 
  - Start cleaning out dead wood
 
  - Develop a possible plan for reorging T2-12
 
+ - Consider modtime tracking on common[383: Fri Sep 18 00:12:14 2020 
+
+ - Look at new CDM10-ish implementations for cdm-deleteds, a la
+
+    Thu Sep 17 15:51:18 2020 Free notes.
+
+     - Make 00 be deletions and revocations.  Packable format much like
+       CDM10.  Or real mfz but with two files, SLOT.MAP and REGNUM.MAP,
+       that give most-recent-deleted info for each slot,
+       time-of-revocation for each regnum.
+
+  :383]
 
 :380]
 [381:
@@ -4538,3 +4551,91 @@ TODO
 Fri Sep 18 00:02:28 2020 GO GO GO
 
 :381]
+[382:
+
+Fri Sep 18 00:10:42 2020 Hooks review:
+
+So, Hooks.pm has a hardcoded map of where cdmds are supposed to get
+unpacked:
+
+    my %cdmdTargetDirs = (
+        'cdmd-MFM.mfz' => "/home/t2",
+        'cdmd-T2-12.mfz' => "/home/t2",
+        );
+
+which has multiple issues:
+
+ - Revise for slotstamps
+
+ - Where does slotstamp-specific code really want to live?
+   = In multiple places around multiple .mfzs, as now?
+   = In one master .mfz like perhaps slot 00 or 01?
+   = In a standard place within each mfz?  How would that be found?
+   = In one master .pm file somehow?
+
+[384:
+
+Fri Sep 18 01:21:33 2020 What about slot 01 for 'tile configuration'
+information?  Something small that could be pushed around quickly,
+that would include the master slot map.  And hook info per slot?  And
+command-line args for mfmt2, which determines the physics to be run?
+
+:384]
+
+:382]
+[386:
+
+Fri Sep 18 04:35:14 2020 So, yeah, a privileged tile configuration
+slot.  What would be appropriate for that level of rigidity?  Is hook
+definitions for all the (other) slots an appropriate thing?  I guess
+it might be.
+
+If we do the T2-12 subdir reorg -- let's say: When we do that -- one
+of the top-level dirs could be 'tile-config/' or the like, and doing
+'make cdmd' in there would produce this configuration file that we're
+thinking is slot 1.  Perhaps we could go ahead and make that now, and
+have it be a potential exemplar for other subdirs.[387:
+
+Fri Sep 18 04:48:30 2020 I guess we should think about having the
+'slotmap' still be code, though -- like at the level of an SLOTMAP.mk
+suitable for inclusion in other makefiles.[388:
+
+Fri Sep 18 04:56:56 2020 I don't really know how to write functions in
+make..  [389:
+
+Fri Sep 18 05:01:51 2020 Apparently it's '$(call myvar,arg1,arg2)'
+along with 'myvar = arg1=$(1) arg2=$(2)' or whatever.
+
+Maybe it would be better to be like a bash script and let makefiles
+$(shell) out for it when they need info?
+
+Or, you knew we were going to get here: A perl module with the guts,
+that hip apps can use, plus a shim mainline for shell/make/etc use.
+
+:389]
+
+:388]
+
+:387]
+
+:386]
+[390:
+
+Fri Sep 18 18:08:40 2020 OK well I have to close up for moving the
+flag, but current issues are in SlotConfig.pm:
+
+ - How much structure can we assume in slot mfz files?
+   = Always contain a tgz?
+   = tgz always/never includes top-level dir name?
+
+Given the SlotConfig targetDirectory concept, it seems like it would
+be better for the tgz to NOT include the top-level dir name, even
+though I normally hate such tar files.
+
+Maybe we unpack, and then look for the basename($targetDir) or
+something like that.
+
+But committing this stuff, broken, ahead of the move.
+
+
+:390]
