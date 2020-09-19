@@ -55,6 +55,7 @@ sub new {
     unless (ref $self) {
         $self = fields::new($self);
     }
+
     $self->{mBaseDirectory} = $base;
     SetKeyDir($self->{mBaseDirectory});
 
@@ -140,32 +141,6 @@ sub createTasks {
     $self->{mStatusReporter} = StatusReporter->new($self);
     $self->{mStatusReporter}->init();
 
-#    my $demo = MFZManager->new("DEMO",$self);
-#    $self->{mInPipelineContent}->insertMFZMgr($demo);
 }
-
-# sub checkCommonFile {
-#     my ($self, $announce) = @_;
-#     die;
-# }
-
-# sub preinitCommon {
-#     my ($self) = @_;
-#     DPSTD("Preloading common");
-#     my $count = 0;
-#     while ($self->checkCommonFile(0)) {
-#         ++$count; 
-#     }
-#     DPVRB("Preload complete after $count steps");
-# }
-
-# sub getITCDirNames {
-#     return sort { $ITCDirs{$a} <=> $ITCDirs{$b} } keys %ITCDirs;
-# }
-
-# sub getITCDirIndex {
-#     my ($self, $dir) = @_;
-#     return $ITCDirs{$dir};
-# }
 
 1;

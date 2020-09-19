@@ -1,4 +1,4 @@
-{380}  -*- text -*-
+{382}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -4500,3 +4500,41 @@ flight.  I'm going to commit this and take a break for HSA stuff for
 the afternoon I think.
 
 :379]
+[380:
+
+Thu Sep 17 23:48:10 2020 Eventually pushed up to a dozen:
+
+    use constant MAX_MFZ_DATA_IN_FLIGHT => 12*MAX_D_TYPE_DATA_LENGTH;
+
+packets in flight, and pushed up the packets per update:
+
+    use constant MAX_INPUT_PACKETS_PER_UPDATE => 32;
+    use constant MAX_OUTPUT_PACKETS_PER_UPDATE => 16;
+
+and got to this:
+
+    138.17:PacketIO#0: cdmss-03-51639b.mfz#16 initialized
+    2877.88:PacketIO#0: cdmss-03-51639b.mfz#16 complete.  15MB in 45m 40s, 5.8KBPS
+
+So, under an hour to move the full-blown MFM distribution.
+
+Let's get an update of T2-12 moving among my little pile of five
+tiles, while we look at some of this
+
+TODO
+
+ - Review triggers for the new era
+
+ - Get the garbage collector running
+
+ - Start cleaning out dead wood
+
+ - Develop a possible plan for reorging T2-12
+
+
+:380]
+[381:
+
+Fri Sep 18 00:02:28 2020 GO GO GO
+
+:381]
