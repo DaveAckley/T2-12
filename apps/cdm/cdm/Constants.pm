@@ -46,13 +46,24 @@ use constant MAX_MFZ_DATA_IN_FLIGHT => 12*MAX_D_TYPE_DATA_LENGTH;
 
 use constant SERVER_VIABILITY_SECONDS => 90; # Minute and a half of silence is too much
 
+# Modes for ContentManager::getDominantMFZModelForSlot
+use constant DOM_INCLUDE_ALL => 1;                     # Consider even if servableLength() == 0
+use constant DOM_ONLY_MAPPED => DOM_INCLUDE_ALL + 1;   # Consider only if servableLength() > 0
+use constant DOM_ONLY_COMPLETE => DOM_ONLY_MAPPED + 1; # Consider only if isComplete()
+
+# Actions for SlotConfigs
+use constant SC_INSTALL => 1;                          # Run 'make install' in target dir
+use constant SC_RESTART => SC_INSTALL + 1;             # Run 'make restart' in target dir
+use constant SC_REBOOT  => SC_RESTART + 1;             # Reboot the tile
+use constant SC_CUSTOM  => SC_REBOOT + 1;              # Call &SC_CUSTOM_$sn 
+
 use constant SUBDIR_COMMON => "common";
 use constant SUBDIR_LOG => "log";
-use constant SUBDIR_PENDING => "pending";
+use constant SUBDIR_TAGS => "tags";
 use constant SUBDIR_PIPELINE => "pipeline";
 use constant SUBDIR_PUBKEY => "public_keys";
 
-use constant PATH_PROG_MFZRUN => "${\PATH_CDM_SOURCE_DIRECTORY}/mfzrun";
+use constant PATH_PROG_MFZRUN => "${\PATH_CDM_SOURCE_DIRECTORY}/mfzrun"; # Our captive version
 use constant PATH_DATA_IOSTATS => "/sys/class/itc_pkt/statistics";
 use constant PATH_BASEDIR_REPORT_IOSTATS => "log/status.txt";
 
@@ -69,9 +80,9 @@ use constant MAX_OUTPUT_PACKETS_PER_UPDATE => 16;
 my @subdirs = qw(
     SUBDIR_COMMON
     SUBDIR_LOG
-    SUBDIR_PENDING
     SUBDIR_PIPELINE
     SUBDIR_PUBKEY
+    SUBDIR_TAGS
     );
 
 my @mfzfiles = qw(
@@ -115,6 +126,15 @@ my @constants = qw(
     MAX_MFZ_DATA_IN_FLIGHT
 
     SERVER_VIABILITY_SECONDS
+
+    DOM_INCLUDE_ALL
+    DOM_ONLY_MAPPED
+    DOM_ONLY_COMPLETE
+
+    SC_INSTALL
+    SC_RESTART
+    SC_REBOOT 
+    SC_CUSTOM
 
     HOOK_TYPE_LOAD
     HOOK_TYPE_RELEASE

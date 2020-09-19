@@ -50,20 +50,21 @@ sub pickImprovableMFZModel { # Return undef or an incomplete model with a usable
 sub pickUndominatedMFZModel {
     my __PACKAGE__ $self = shift || die;
     my $slot = pickOne(keys %{$self->{mSSMap}});
-    return $self->getDominantMFZModelForSlot($slot,0);
+    return $self->getDominantMFZModelForSlot($slot,DOM_ONLY_MAPPED);
 }
 
 # Find the dominant model for $slot, including non-announceable models if $all is true
 sub getDominantMFZModelForSlot {
     my __PACKAGE__ $self = shift || die;
     my $slot = shift;
-    my $all = shift || 0;
+    my $mode = shift || die;
     return undef unless defined $slot;
     my $model = undef;
     my @tss = sort {$b <=> $a} keys %{$self->{mSSMap}->{$slot}};
     for my $ts (@tss) {
         my $m = $self->{mSSMap}->{$slot}->{$ts};
-        next if $m->servableLength() == 0 && !$all;
+        next if $mode != DOM_INCLUDE_ALL && $m->servableLength() == 0;
+        next if $mode == DOM_ONLY_COMPLETE && !$m->isComplete();
         $model = $m;
         last;
     }
@@ -102,16 +103,18 @@ sub insertMFZModel {
 sub deleteDominatedInSlot {
     my __PACKAGE__ $self = shift || die;
     my $slot = shift || die;
-    my $count = -1;
+    my $dom = undef;
+    my $count = 0;
     my @tss = sort { $b <=> $a } keys %{$self->{mSSMap}->{$slot}};
     for my $ts (@tss) {
         my $m = $self->{mSSMap}->{$slot}->{$ts};
-        if ($count >= 0) {
+        if (defined($dom)) {
             ++$count;
-            $m->deleteMFZ();
+            DPSTD($dom->getTag()." dominates ".$m->getTag());
             delete $self->{mSSMap}->{$slot}->{$ts};
+            $m->deleteMFZ($dom);
         } elsif ($m->isComplete()) {
-            $count = 0; # Begin flushing from here
+            $dom = $m; # Begin flushing from here
         }
     }
     return $count;
@@ -145,8 +148,25 @@ sub updateMFZModelAvailability {
     my __PACKAGE__ $self = shift || die;
     my PacketCDM_F $fpkt = shift || die;
     my $ss = $fpkt->{mSlotStamp};
-    my $model = $self->getMFZModelForSS($ss); # Creating if need be
+    my ($slot,$stamp) = (SSSlot($ss), SSStamp($ss));
 
+    # Check if we already know this $fpkt's content is obsolete
+    my $dom = $self->getDominantMFZModelForSlot($slot,DOM_ONLY_MAPPED);
+    if (defined($dom)) {
+        my $domstamp = SSStamp($dom->{mSlotStamp});
+        if ($domstamp > $stamp) {
+            # They're obsolete.  Let's spread the good news about $dom
+            my $cdm = $self->{mCDM} || die;
+            my $fpkt2 = PacketCDM_F->makeFromMFZModel($dom) || die;
+            $fpkt2->setDir8($fpkt->getDir8());
+            my $pio = $cdm->getPIO() || die;
+            $fpkt2->sendVia($pio);
+            return;
+        }
+    }
+
+    # Theirs at least ties ours for dominance.  Record it.
+    my $model = $self->getMFZModelForSS($ss); # Creating if need be
     $model->updateServableLength($fpkt->getDir8(), $fpkt->{mAvailableLength});
 }
 
@@ -309,6 +329,7 @@ sub update {
     my __PACKAGE__ $self = shift || die;
     $self->maybeAnnounceSomething();
     $self->maybeRequestSomething();
+    $self->garbageCollect();
 }
 
 sub onTimeout {

@@ -31,6 +31,7 @@ use MFZUtils qw(:all);
 use CDMap;
 use PacketCDM_C;
 use PacketCDM_D;
+use SlotConfig;
 
 ## CLASS METHOD
 # MFZModel::tryLoad($cdm,$dir,$file) returns MFZModel or undef and sets $@
@@ -253,9 +254,18 @@ sub servableLength {
     return -s $self->{mFileHandle};
 }
 
+# NOTE: CALLER must clean up ContentManager
 sub deleteMFZ {
     my __PACKAGE__ $self = shift || die;
-    die "XXX IMmPLEMNTDNME";
+    
+    # Eliminate the file
+    my $path = $self->makePath();
+    my $pathDominated = $path."~";
+    rename $path, $pathDominated or die "Can't rename '%path': $!";
+    DPSTD($self->getTag()." renamed to $pathDominated");
+
+    # Eliminate the model
+    $self->unschedule();
 }
 
 sub readChunk {
@@ -396,6 +406,7 @@ sub noteComplete {
                   formatSize($self->totalLength()),
                   formatSeconds($secs),
                   formatSize($bytespersec)));
+    SlotConfig::configureMFZModel($self);
 }
 
 sub flushPendingChunks {
@@ -464,10 +475,8 @@ sub markActive {
 
 sub update {
     my __PACKAGE__ $self = shift || die;
-    if ($self->isComplete()) {
-        # XXX CHECK DOMINANCE SOMETIMES
-        return;
-    }
+    return if $self->isComplete();
+
     if (aged($self->{mLastActivityTime},MFZMODEL_MAX_WAIT_FOR_ACTIVITY)) {
         $self->resetTransfer();
         $self->advance();

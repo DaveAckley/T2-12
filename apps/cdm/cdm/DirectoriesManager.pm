@@ -32,7 +32,8 @@ my @subdirs = (
     SUBDIR_COMMON,
     SUBDIR_LOG,
     SUBDIR_PIPELINE,
-    SUBDIR_PUBKEY
+    SUBDIR_PUBKEY,
+    SUBDIR_TAGS,
     );
 my @tmpsubdirs = (
     );

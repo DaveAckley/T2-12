@@ -23,6 +23,8 @@ my @math = qw(
     ago
     aged
 
+    trim
+
     formatSeconds
     formatSize
     formatPercent
@@ -176,6 +178,8 @@ my %units = (
     );
 my @chunks = sort {$b <=> $a} keys %units;
 
+sub trim { $_ = shift;  s/^\s+|\s+$//g; $_}
+
 sub formatSeconds {
     my $sec = shift;
     my $neg = "";
@@ -184,6 +188,9 @@ sub formatSeconds {
         $neg = "-";
         $sec = -$sec;
     }
+    return sprintf("%s%.02fs",$neg,$sec)
+        if $sec < 1;
+
     for my $size (@chunks) {
         if ($sec > $size) {
             my $count = int($sec/$size);
