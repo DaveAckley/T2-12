@@ -87,7 +87,10 @@ sub configureSlot {
     die unless SSSlot($model->{mSlotStamp}) == $self->{mSlotNum};
     return DPSTD($model->getTag()." is not complete") unless $model->isComplete();
     my $as = ActionState::new($self,$model);
+    DPSTD("  [BEGIN SLOT CONFIGURATION: ".$model->getTag()."]");
     my $ret = $as->doActions($self->{mActions});
+    $ret ||= 0;
+    DPSTD("  [END SLOT CONFIGURATION ($ret): ".$model->getTag()."]");
 }
 
 #     if (defined($targetdir)) {
