@@ -63,8 +63,8 @@ sub getDominantMFZModelForSlot {
     my @tss = sort {$b <=> $a} keys %{$self->{mSSMap}->{$slot}};
     for my $ts (@tss) {
         my $m = $self->{mSSMap}->{$slot}->{$ts};
-        next if $mode != DOM_INCLUDE_ALL && $m->servableLength() == 0;
-        next if $mode == DOM_ONLY_COMPLETE && !$m->isComplete();
+        next if $mode ne DOM_INCLUDE_ALL && $m->servableLength() == 0;
+        next if $mode eq DOM_ONLY_COMPLETE && !$m->isComplete();
         $model = $m;
         last;
     }

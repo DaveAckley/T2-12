@@ -307,7 +307,7 @@ sub new {
     defined $dir or die;
     my $self = fields::new($class);
     $self->SUPER::new(SSToFileName($ss),$cdm);
-    DPSTD($self->getTag()." initialized");
+    DPSTD($self->getTag()." record created");
     $self->{mCreationTime} = now();
     $self->{mCompletionTime} = undef;
 
@@ -377,6 +377,7 @@ sub markActiveD8 { # record that $d8 is active
 
 sub resetTransfer {
     my __PACKAGE__ $self = shift || die;
+    DPSTD($self->getTag()." reset transfer");
     $self->{mPendingChunks} = [];  # Dump any pending
     $self->{mLastPositionRequested} = $self->pendingLength();
     $self->markActive();
@@ -414,15 +415,23 @@ sub flushPendingChunks {
     my @stillPending;
     my $currentFilePos = $self->pendingLength();
     while (my $dpkt = shift @{$self->{mPendingChunks}}) {
+        if ($self->isComplete()) {
+            DPSTD("We are complete.  Ignoring ".$dpkt->summarize());
+            next;
+        }
         if ($dpkt->{mFilePosition} == $currentFilePos) {
             my $ret = $self->addChunkAt($dpkt->{mData},$dpkt->{mFilePosition});
             die "$@" if $ret < 0;
+#            $currentFilePos = $self->pendingLength();
             $self->markActive();
             $self->noteComplete() if $ret == 0;
         } elsif ($dpkt->{mFilePosition} > $currentFilePos &&
                  $dpkt->{mFilePosition} <= $self->{mLastPositionRequested}) {
             push @stillPending, $dpkt;
-        } else { next; } # obsolete or beyond what we requested
+        } else {  # obsolete or beyond what we requested
+            DPSTD("Ignoring data at $dpkt->{mFilePosition}, instead of $currentFilePos");
+            next;
+        }
         $self->markActiveD8($dpkt->getDir8());
     }
     $self->{mPendingChunks} = \@stillPending;

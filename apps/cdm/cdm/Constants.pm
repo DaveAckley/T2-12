@@ -46,16 +46,31 @@ use constant MAX_MFZ_DATA_IN_FLIGHT => 12*MAX_D_TYPE_DATA_LENGTH;
 
 use constant SERVER_VIABILITY_SECONDS => 90; # Minute and a half of silence is too much
 
-# Modes for ContentManager::getDominantMFZModelForSlot
-use constant DOM_INCLUDE_ALL => 1;                     # Consider even if servableLength() == 0
-use constant DOM_ONLY_MAPPED => DOM_INCLUDE_ALL + 1;   # Consider only if servableLength() > 0
-use constant DOM_ONLY_COMPLETE => DOM_ONLY_MAPPED + 1; # Consider only if isComplete()
+my @stringConstants; # Constants that eval to their names for the antitypoe league
+our @SC_CONSTANTS;
+BEGIN {
+    sub uC { my $cn = shift; push @stringConstants, $cn; eval "use constant $cn => '$cn'"; }
+    sub uSC { my $cn = shift; push @SC_CONSTANTS, $cn; uC($cn); }
 
-# Actions for SlotConfigs
-use constant SC_INSTALL => 1;                          # Run 'make install' in target dir
-use constant SC_RESTART => SC_INSTALL + 1;             # Run 'make restart' in target dir
-use constant SC_REBOOT  => SC_RESTART + 1;             # Reboot the tile
-use constant SC_CUSTOM  => SC_REBOOT + 1;              # Call &SC_CUSTOM_$sn 
+    # Modes for ContentManager::getDominantMFZModelForSlot
+    uC qw(DOM_INCLUDE_ALL);   # Consider even if servableLength() == 0
+    uC qw(DOM_ONLY_MAPPED);   # Consider only if servableLength() > 0
+    uC qw(DOM_ONLY_COMPLETE); # Consider only if isComplete()
+
+    # Actions for SlotConfigs
+    uSC qw(SC_CHKTAG);    # Stop if newer install tag already known
+    uSC qw(SC_SETTAG);    # Update to current install tag
+    uSC qw(SC_PUSHTRG);   # Pushd to target directory
+    uSC qw(SC_PUSHTMP);   # Pushd to temporary directory
+    uSC qw(SC_POPD);      # Return to previous directory
+    uSC qw(SC_TARTAR);    # Move unpacked tar to target dir and set installation dir
+    uSC qw(SC_UNZIPCD);   # Do 'mfzrun unpack' to current dir
+    uSC qw(SC_UNTARCD);   # Find single SUBDIR.tgz, untar it, cd SUBDIR
+    uSC qw(SC_INSTALL);   # Do 'make install' in installation dir
+    uSC qw(SC_RESTART);   # Do 'make restart' in installation dir
+    uSC qw(SC_REBOOT);    # Reboot the tile
+    uSC qw(SC_CUSTOM);    # Call &SC_CUSTOM_$sn($model,$sc,$stepno)
+};
 
 use constant SUBDIR_COMMON => "common";
 use constant SUBDIR_LOG => "log";
@@ -66,10 +81,6 @@ use constant SUBDIR_PUBKEY => "public_keys";
 use constant PATH_PROG_MFZRUN => "${\PATH_CDM_SOURCE_DIRECTORY}/mfzrun"; # Our captive version
 use constant PATH_DATA_IOSTATS => "/sys/class/itc_pkt/statistics";
 use constant PATH_BASEDIR_REPORT_IOSTATS => "log/status.txt";
-
-use constant CDM_DELETEDS_MFZ => "cdm-deleteds.mfz";
-use constant CDMD_T2_12_MFZ =>   "cdmd-T2-12.mfz";
-use constant CDMD_MFM_MFZ =>     "cdmd-MFM.mfz";
 
 use constant HOOK_TYPE_LOAD => "LOAD";
 use constant HOOK_TYPE_RELEASE => "RELEASE";
@@ -86,9 +97,6 @@ my @subdirs = qw(
     );
 
 my @mfzfiles = qw(
-    CDM_DELETEDS_MFZ
-    CDMD_T2_12_MFZ
-    CDMD_MFM_MFZ
     );
 
 my @constants = qw(
@@ -127,15 +135,6 @@ my @constants = qw(
 
     SERVER_VIABILITY_SECONDS
 
-    DOM_INCLUDE_ALL
-    DOM_ONLY_MAPPED
-    DOM_ONLY_COMPLETE
-
-    SC_INSTALL
-    SC_RESTART
-    SC_REBOOT 
-    SC_CUSTOM
-
     HOOK_TYPE_LOAD
     HOOK_TYPE_RELEASE
 
@@ -156,9 +155,11 @@ my @paths = qw(
     PATH_BASEDIR_REPORT_IOSTATS
     );
 
-our @EXPORT_OK = (@constants, @subdirs, @mfzfiles, @paths);
+our @EXPORT_OK = (@constants, @subdirs, @mfzfiles, @paths, @stringConstants);
 our %EXPORT_TAGS =
     (
+     scconstants => \@SC_CONSTANTS,
+     sconstants => \@stringConstants,
      constants => \@constants,
      subdirs => \@subdirs,
      mfzfiles => \@mfzfiles,

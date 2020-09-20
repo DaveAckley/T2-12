@@ -52,6 +52,8 @@ my @packet = qw(
     );
 my @fileops = qw(
     checksumWholeFile
+    initDir
+    listDir
     );
 my @processops = qw(
     runCommandWithSync
@@ -72,6 +74,7 @@ our %EXPORT_TAGS = (
 use List::Util qw(shuffle);
 use Digest::SHA qw(sha512_hex);
 use Time::HiRes qw(time);
+use File::Path qw(make_path);
     
 use DP qw(:all);
 
@@ -325,6 +328,23 @@ sub checksumWholeFile {
     my $hexcs = unpack("H*",$cs);
     DPVRB(" $path => $hexcs");
     return $cs;
+}
+
+# return undef and set $! if dir couldn't be created
+sub initDir {
+    my $dirpath = shift || die;
+    if (!-d $dirpath) {
+        make_path($dirpath) or return undef;
+    }
+    return 1;
+}
+
+sub listDir {
+    my $dirpath = shift || die;
+    opendir my $fh, $dirpath or die "Can't read '$dirpath': $!";
+    my @files = readdir $fh;
+    closedir $fh or die $!;
+    return @files;
 }
 
 ##PROCESSOPS

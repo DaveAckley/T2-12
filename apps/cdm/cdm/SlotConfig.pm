@@ -1,6 +1,7 @@
 ## Module stuff
 package SlotConfig;
 use strict;
+use strict 'refs';
 use fields qw(
     mSlotNum
     mLabel
@@ -9,31 +10,43 @@ use fields qw(
     mSubmissions
     );
 
+use Constants qw(:all);
+
+### SLOTS ARE CONFIGURED HERE
+use constant PROG_SC_TARTAR =>  [SC_CHKTAG, SC_PUSHTMP, SC_UNZIPCD, SC_UNTARCD, SC_TARTAR];
+use constant PROG_SC_TAR =>     [PROG_SC_TARTAR, SC_SETTAG];
+use constant PROG_SC_INSTALL => [PROG_SC_TARTAR, SC_INSTALL, SC_SETTAG];
+
+sub INIT_ALL_SLOTS {
+    mSC(0x00,"deletions       ",undef,                  [SC_CUSTOM],[]);
+    mSC(0x01,"T2Config        ","/home/t2/T2-12/config",[SC_UNZIPCD],[0x02]);
+    mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_INSTALL, SC_RESTART],[]);
+#    mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR, SC_RESTART],[]);
+
+    mSC(0x90,"TEST 90 ~/TEST90","/home/t2/TEST90",      [SC_CHKTAG, SC_UNZIPCD, SC_SETTAG],[]);
+
+    for my $sn (0xa0..0xbf) {
+        mSC($sn,"Physics ".hex($sn),"/home/t2/physics",     [PROG_SC_TAR], [])
+    }
+}
+
+##MORE IMPORTS
 use Exporter qw(import);
 
 our @EXPORT_OK = qw(getSlotConfig);
 our %EXPORT_TAGS;
 
-## Imports
-use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
 use MFZUtils qw(:all);
 use MFZModel;
 use CDM;
+use ActionState;
 
 use File::Path qw(make_path);
 
 my %SLOT_CONFIGS;
 
-sub INIT_ALL_SLOTS {
-    mSC(0x00,"deletions       ",undef,                 ,[SC_CUSTOM],[]);
-    mSC(0x01,"T2Config        ","/home/t2/T2-12/config",[SC_INSTALL],[0x02]);
-#    mSC(0x02,"T2-12           ","/home/t2/T2-12",       [SC_INSTALL,SC_REBOOT],[]);
-#    mSC(0x03,"MFMT2           ","/home/t2/MFM",         [SC_INSTALL,SC_RESTART],[]);
-
-    mSC(0x90,"TEST 90 ~/TEST90","/home/t2/TEST90",      [SC_INSTALL],[]);
-}
 
 ##CLASS METHOD
 sub getSlotConfig {
@@ -70,31 +83,22 @@ sub mSC {  ## makeSlotConfig
 sub configureSlot {
     my __PACKAGE__ $self = shift || die;
     my MFZModel $model = shift || die;
-    my CDM $cdm = $model->{mCDM} || die;
+
     die unless SSSlot($model->{mSlotStamp}) == $self->{mSlotNum};
     return DPSTD($model->getTag()." is not complete") unless $model->isComplete();
-    my $mfzpath = $model->makePath();
-    my $targetdir = $self->{mTargetDir};
-
-    die unless -r $mfzpath;
-    die unless -d $targetdir;
-
-    my $cdmdir = $cdm->getBaseDirectory();
-    my $tagdir = $cdmdir."/".SUBDIR_TAGS;
-    unless (-d $tagdir) {
-        make_path($tagdir)
-            or die "Couldn't mkdir $tagdir: $!";
-    }
-
-    if (defined($targetdir)) {
-        my $fn = $self->checkIfInstallable($model,$tagdir);
-        return unless defined($fn); # message already offered
-        my ($tgzpath, $targetsubdir) = installUnpack($cdm, $self->{mSlotNum},$mfzpath,$targetdir,$tagdir);
-        return unless defined($targetsubdir);
-    }
-    die "XXXX FINASIFDKLSDL";
-    
+    my $as = ActionState::new($self,$model);
+    my $ret = $as->doActions($self->{mActions});
 }
+
+#     if (defined($targetdir)) {
+#         my $fn = $self->checkIfInstallable($model,$tagdir);
+#         return unless defined($fn); # message already offered
+#         my ($tgzpath, $targetsubdir) = installUnpack($cdm, $self->{mSlotNum},$mfzpath,$targetdir,$tagdir);
+#         return unless defined($targetsubdir);
+#     }
+#     DPSTD("${\FUNCNAME}: XXXX FINASIFDKLSDL");
+    
+# }
 
 
 ## CLASS METHOD
@@ -167,11 +171,7 @@ sub checkIfInstallable { # Check if MFZModel needs to be installed
     return DPSTD($model->getTag()." no installation configured")  # No target -> not installable
         unless defined $targetdir;
 
-    unless (-e $targetdir) {
-        make_path($targetdir)      
-            or die "Couldn't mkdir $targetdir: $!";
-    }
-    die unless -d $targetdir;
+    initDir($targetdir) or die "Couldn't mkdir $targetdir: $!";
 
     my $cdmap = $model->{mCDMap} || die;
     my $ss = $model->{mSlotStamp} || die;
@@ -200,7 +200,7 @@ sub checkIfInstallable { # Check if MFZModel needs to be installed
                 return;
             }
         }
-        DPSTD("CHECK $fn: PROCEEDING");
+        DPSTD($model->getTag()." Tag needs update, proceeding");
     } 
     return $fn;
 }
