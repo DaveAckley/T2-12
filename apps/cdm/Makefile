@@ -12,7 +12,11 @@ $(CMDS):	FORCE
 run:	build
 	./$(APP_NAME)
 
-build:	$(APP_NAME)
+build:	cdm/mfzrun $(APP_NAME)
+
+# Copy mfzrun so cdm can do .mfz ops without the MFM tree
+cdm/mfzrun:	/home/t2/MFM/bin/mfzrun
+	cp $^ $@
 
 $(APP_NAME):	FORCE
 	chmod a+rx $(APP_NAME)
