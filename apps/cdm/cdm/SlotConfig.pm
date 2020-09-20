@@ -21,7 +21,7 @@ sub INIT_ALL_SLOTS {
     mSC(0x00,"deletions       ",undef,                  [SC_CUSTOM],[]);
     mSC(0x01,"T2Config        ","/home/t2/T2-12/config",[SC_UNZIPCD],[0x02]);
     mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_INSTALL, SC_RESTART],[]);
-#    mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR, SC_RESTART],[]);
+    mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR],[]);
 
     mSC(0x90,"TEST 90 ~/TEST90","/home/t2/TEST90",      [SC_CHKTAG, SC_UNZIPCD, SC_SETTAG],[]);
 
