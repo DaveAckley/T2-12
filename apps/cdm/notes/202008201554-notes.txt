@@ -1,4 +1,4 @@
-{391}  -*- text -*-
+{401}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -4639,3 +4639,95 @@ But committing this stuff, broken, ahead of the move.
 
 
 :390]
+[391:
+
+Fri Sep 18 21:52:47 2020 Setting up.
+
+:391]
+[392:
+
+Sat Sep 19 02:32:38 2020 OK let's have another run here.  Really
+should be able to get to full pipeline tranfser with install actions
+running in this go. GO GO
+
+TODO
+
+ - Create UNPACK vs UNTAR actions.  Latter expects a tar file that
+   creates its own top-level directory, and its target directory
+   points above that; former expects just loose files in the inner
+   zip, and its target directory points directly at where those files
+   are to go.
+
+ - Sort files during startup load, such that we go from
+   smallest-then-newest to largest-then-oldest.  The goal is to avoid
+   installing already obsoleted packages.
+
+   (Even though the ancient ccrupdate protocol, for example, went out
+   of its way to apply updates from oldest to newest, so that
+   incremental database updates would be applied in the right order.
+   Here, we're claiming that the t2 tiles are supposed to be
+   essentially stateless at this level, so there's nothing unique that
+   needs to be updated-but-preserved, beyond the packages themselves.)
+
+   (We'll see.)
+
+:392]
+[393:
+
+Sat Sep 19 07:10:01 2020 OK taking a break.  In the middle of designing
+/ coding / redesigning the mini-language for doing installs.
+
+:393]
+[394:
+
+Sat Sep 19 11:25:38 2020 Back.  Get T2-12 / MFM installs GO GO GOing
+
+:394]
+[395:
+
+Sat Sep 19 11:27:10 2020 Current op: SC_PUSHTMP
+
+:395]
+[396:
+
+Sat Sep 19 14:33:43 2020 OK, lots of progress, but just got to the
+place where the automation renamed /home/t2/T2-12 out from under me,
+yikes.  We need to modify the 'make cdmd' sequence to know about the
+new location of the install tags, but then after we do that we can't
+be debugging the automation using T2-12 as a test case.
+
+Going to have to break soon for some early dinner prep, but I guess we
+should set up another test case pronto.
+
+Could we set up some kind of fake downpayment on a 'runnable physics
+mfz' workflow, as an example?
+
+:396]
+[397:
+
+Sat Sep 19 15:19:16 2020 OK breaking to cook.  Have
+/home/t2/PHYSICS/a0 as a stub physics dir.  Currently dying in
+SC_TARTAR on subdir name stuff; pick up there.[398:
+
+Sat Sep 19 16:03:21 2020 OK, have maybe 45 minutes here.  We're
+getting really close on the PROG_SC_TAR workflow, GO GO GO.
+
+:398]
+
+:397]
+[399:
+
+Sun Sep 20 00:42:05 2020 Back to it GO GO GO.[400:
+
+Sun Sep 20 02:16:14 2020 Well, automatic slot configuration kind of
+seems to be working for slot02, slot90, and slota0.  slot03 pretty
+much wants an mfm rebuild which is going to take forever, so we're not
+configuring slot03 yet.  But if we push around a new S03, and later
+push a new S02 with S03 configuration turned on, S03 configuration
+will kick in the next time cdm restarts.
+
+So time to commit again, I think.
+
+:400]
+
+:399]
