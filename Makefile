@@ -49,11 +49,16 @@ cdmd:	FORCE
 	cp -f $$BASE-built.tgz /home/debian/CDMSAVE/TGZS/; \
 	FN=`/home/t2/MFM/bin/mfzmake cdmake $(REGNUM) $(SLOTNUM) $$BASE $$BASE-built.tgz | \
             perl -e "while(<>) {/'([^']+)'/ && print "'$$1}'`; \
-	echo "Got $$FN for $$BASE"; \
-	/home/t2/MFM/bin/mfzrun -kd /cdm $$FN VERIFY | \
-	perl -ne 'print $$1 if /INNER_TIMESTAMP \[(\d+)\]/' > ./cdmd-$$BASE.mfz-cdm-install-tag.dat; \
+	if [ "x$$FN" = "x" ] ; then echo "Build failed" ; else  \
+	echo -n "Got $$FN for $$BASE, tag = "; \
+	perl -e '"'$$FN'" =~ /[^-]+-[^-]+-([[:xdigit:]]+)[.]/; print $$1' > /cdm/tags/slot$(SLOTNUM)-install-tag.dat; \
+	cat /cdm/tags/slot$(SLOTNUM)-install-tag.dat; echo ;\
 	cp -f $$FN /home/debian/CDMSAVE/CDMDS/; \
+	fi; \
 	popd
+
+restart:	FORCE
+	pkill cdm.pl
 
 $(SUBDIRS):	FORCE
 	$(MAKE) -C $@ $(MAKECMDGOALS)
