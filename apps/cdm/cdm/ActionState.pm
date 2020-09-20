@@ -260,7 +260,7 @@ sub doSC_TARTAR {
         if (-d $dirtobackupto) {
             DPSTD($model->getTag()." -Deleting $dirtobackupto");
             my $count = remove_tree($dirtobackupto);
-            DPSTD($model->getTag()." -Removed $count file".($count!=1)?"s":"");
+            DPSTD($model->getTag()." -Removed $count file".(($count!=1)?"s":""));
         }
         my $ret = runCommandWithSync("mv $dirtobackup $dirtobackupto","INSTALL $slotname: ERROR");
         return -1 if !$ret; # rCWS returns non-zero on success; we must die without that

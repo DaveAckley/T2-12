@@ -185,6 +185,7 @@ sub trim { $_ = shift;  s/^\s+|\s+$//g; $_}
 
 sub formatSeconds {
     my $sec = shift;
+    my $optrim = shift;
     my $neg = "";
     my $ret = "";
     if ($sec < 0) {
@@ -202,12 +203,15 @@ sub formatSeconds {
             $ret .= "${count}$units{$size}";
         }
     }
-    return "$neg$ret";
+    $ret = "$neg$ret";
+    $ret = trim($ret) if $optrim;
+    return $ret;
 }
 
 my @kunits = split(//," KMGTPE");
 sub formatSize {
     my $size = shift;
+    my $optrim = shift;
     my $ret = "";
     return " <0 " if $size < 0;
     for my $unit (@kunits) {
@@ -223,16 +227,22 @@ sub formatSize {
         }
         $size /= 1000.0;
     }
+    $ret = trim($ret) if $optrim;
     return $ret;
 }
 
 sub formatPercent {
     my $pct = shift;
-    return " <0%" if $pct < 0;
-    return sprintf(".%02d%%",int($pct*100)) if $pct < 1;
-    return sprintf("%3.1f%%",$pct) if $pct < 10;
-    return sprintf("%3d%%",int($pct)) if $pct < 999;
-    return "1K+%";
+    my $optrim = shift;
+    my $ret;
+    if (0) { }
+    elsif ($pct <   0) { $ret = " <0%"; }
+    elsif ($pct <   1) { $ret = sprintf(".%02d%%",int($pct*100)); }
+    elsif ($pct <  10) { $ret = sprintf("%3.1f%%",$pct); }
+    elsif ($pct < 999) { $ret = sprintf("%3d%%",int($pct)); }
+    else               { $ret = "1K+%"; }
+    $ret = trim($ret) if $optrim;
+    return $ret;
 }
 
 

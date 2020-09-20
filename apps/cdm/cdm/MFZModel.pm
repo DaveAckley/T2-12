@@ -14,6 +14,7 @@ use fields qw(
     mLastActivityTime
     mPendingChunks
     mCreationTime
+    mCreationLength
     mCompletionTime
     );
 
@@ -50,6 +51,7 @@ sub tryLoad {
     my $pathbak = "$path.bak";
     rename $path,$pathbak or die $!;
     open my $fh, "<", $pathbak or die $!;
+    $model->{mCreationLength} = -s $fh;
     my $len;
     my $data;
     my $pos = 0;
@@ -103,11 +105,8 @@ sub addChunkAt {
     my $chunk = shift; die unless defined $chunk;
     my $at = shift; die unless defined $at;
 
-    {
-        my $disklen = $self->servableLength();
-        my $appendat = $disklen + length($self->{mBufferedData});
-        return $appendat if $at != $appendat;
-    }
+    my $appendat = $self->pendingLength();
+    return $appendat if $at != $appendat;
 
     my $chunklen = length($chunk);
 
@@ -309,6 +308,7 @@ sub new {
     $self->SUPER::new(SSToFileName($ss),$cdm);
     DPSTD($self->getTag()." record created");
     $self->{mCreationTime} = now();
+    $self->{mCreationLength} = 0; # Updated if tryLoad runs on this
     $self->{mCompletionTime} = undef;
 
     $self->{mInDir} = $dir;       # Unused til length reaches 1KB
@@ -401,12 +401,19 @@ sub noteComplete {
     $self->{mCompletionTime} ||= now();
     my $secs = $self->{mCompletionTime} - $self->{mCreationTime};
     $secs = 1 if $secs == 0;
-    my $bytespersec = $self->totalLength() / $secs;
-    DPSTD(sprintf("%s complete. %sB in %s, %sBPS",
+
+    my $totlen = $self->totalLength();   
+    my $uselen = ($self->{mCreationLength} == $totlen) ?
+        $totlen : $totlen - $self->{mCreationLength};
+
+    my $bytespersec = $uselen / $secs;
+    DPSTD(sprintf("%s complete. %sB %s in %s, %sBPS",
                   $self->getTag(),
-                  formatSize($self->totalLength()),
-                  formatSeconds($secs),
-                  formatSize($bytespersec)));
+                  formatSize($uselen,1),
+                  (($uselen == $totlen) ? "loaded" :
+                   "(of ".formatSize($totlen,1).")"),
+                  formatSeconds($secs,1),
+                  formatSize($bytespersec,1)));
     SlotConfig::configureMFZModel($self);
 }
 

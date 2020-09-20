@@ -106,7 +106,7 @@ sub writeBulkIOStats {
     my $hoodmgr = $self->{mCDM}->{mNeighborhoodManager} or die;
     my $path = "$basedir/${\PATH_BASEDIR_REPORT_IOSTATS}";
     open HDL, ">", $path or die "Can't write $path: $!";
-    print HDL "CDM UPTIME ".formatSeconds($uptime)."\n";
+    print HDL "CDM UPTIME ".formatSeconds($uptime,1)."\n";
     for my $dir6 (getDir6s()) {
         next unless $hoodmgr->ngbMgr($dir6)->state() == NGB_STATE_OPEN;
         my $dir8 = mapDir6ToDir8($dir6);
