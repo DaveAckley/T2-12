@@ -12,7 +12,7 @@ use fields qw(
     mSources
     mLastPositionRequested
     mLastActivityTime
-    mPendingChunks
+    mInboundChunks
     mCreationTime
     mCreationLength
     mCompletionTime
@@ -297,7 +297,7 @@ sub makeDPktFromCPkt {
 }
 
 use constant MFZMODEL_TIMEOUT_FREQUENCY => 3;
-use constant MFZMODEL_MAX_WAIT_FOR_ACTIVITY => 1.5;
+use constant MFZMODEL_MAX_WAIT_FOR_ACTIVITY => 5;
 
 ## Methods
 sub new {
@@ -321,7 +321,7 @@ sub new {
     $self->{mSources} = { };      # { d8 -> [ servableLength activityTime ] }
     $self->{mLastPositionRequested} = -1; # The END position of the farthest chunk we've requested
     $self->{mLastActivityTime} = now() - MFZMODEL_TIMEOUT_FREQUENCY; # Set to go
-    $self->{mPendingChunks} = [];  # None
+    $self->{mInboundChunks} = [];  # None
     
     $self->defaultInterval(-2*MFZMODEL_TIMEOUT_FREQUENCY); # Run about every 3 seconds
     $self->{mCDM}->getTQ()->schedule($self);
@@ -374,25 +374,24 @@ sub markActiveD8 { # record that $d8 is active
     $rec->[1] = now();
 }
     
-
 sub resetTransfer {
     my __PACKAGE__ $self = shift || die;
     DPSTD($self->getTag()." reset transfer");
-    $self->{mPendingChunks} = [];  # Dump any pending
+    $self->{mInboundChunks} = [];   # Dump any unlanded dpkts
     $self->{mLastPositionRequested} = $self->pendingLength();
     $self->markActive();
 }
 
 sub advance {
     my __PACKAGE__ $self = shift || die;
-    $self->flushPendingChunks();
+    $self->landInboundChunks();
     $self->maybeSendNewRequests();
 }
 
 sub receiveDataChunk {
     my __PACKAGE__ $self = shift || die;
     my PacketCDM_D $dpkt = shift || die;
-    push @{$self->{mPendingChunks}}, $dpkt;
+    push @{$self->{mInboundChunks}}, $dpkt;
     $self->advance();
 }
 
@@ -417,31 +416,32 @@ sub noteComplete {
     SlotConfig::configureMFZModel($self);
 }
 
-sub flushPendingChunks {
+sub landInboundChunks {
     my __PACKAGE__ $self = shift || die;
-    my @stillPending;
-    my $currentFilePos = $self->pendingLength();
-    while (my $dpkt = shift @{$self->{mPendingChunks}}) {
+    my @stillInFlight;
+    while (my $dpkt = shift @{$self->{mInboundChunks}}) {
         if ($self->isComplete()) {
             DPSTD("We are complete.  Ignoring ".$dpkt->summarize());
             next;
         }
+        my $currentFilePos = $self->pendingLength();
         if ($dpkt->{mFilePosition} == $currentFilePos) {
             my $ret = $self->addChunkAt($dpkt->{mData},$dpkt->{mFilePosition});
             die "$@" if $ret < 0;
-#            $currentFilePos = $self->pendingLength();
             $self->markActive();
             $self->noteComplete() if $ret == 0;
         } elsif ($dpkt->{mFilePosition} > $currentFilePos &&
                  $dpkt->{mFilePosition} <= $self->{mLastPositionRequested}) {
-            push @stillPending, $dpkt;
+            push @stillInFlight, $dpkt;
         } else {  # obsolete or beyond what we requested
-            DPSTD("Ignoring data at $dpkt->{mFilePosition}, instead of $currentFilePos");
+            DPSTD(sprintf("Ignoring data %+d bytes from %d",
+                          ($dpkt->{mFilePosition} -  $currentFilePos),
+                          $currentFilePos));
             next;
         }
         $self->markActiveD8($dpkt->getDir8());
     }
-    $self->{mPendingChunks} = \@stillPending;
+    $self->{mInboundChunks} = \@stillInFlight; # Keep circling the airport
 }
 
 sub chunkSizeAtFP {
