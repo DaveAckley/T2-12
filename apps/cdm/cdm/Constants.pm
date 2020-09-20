@@ -67,6 +67,7 @@ BEGIN {
     uSC qw(SC_UNZIPCD);   # Do 'mfzrun unpack' to current dir
     uSC qw(SC_UNTARCD);   # Find single SUBDIR.tgz, untar it, cd SUBDIR
     uSC qw(SC_INSTALL);   # Do 'make install' in installation dir
+    uSC qw(SC_REFRESH);   # Do 'make refresh' in installation dir
     uSC qw(SC_RESTART);   # Do 'make restart' in installation dir
     uSC qw(SC_REBOOT);    # Reboot the tile
     uSC qw(SC_CUSTOM);    # Call &SC_CUSTOM_$sn($model,$sc,$stepno)

@@ -57,6 +57,11 @@ cdmd:	FORCE
 	fi; \
 	popd
 
+# Let's define a 'refresh' target -- a phony 'install light' -- to get
+# around building the LKMs all the time.  Triggered by SC_REFRESH
+refresh:	FORCE
+	$(MAKE) -C apps/cdm install
+
 restart:	FORCE
 	pkill cdm.pl
 

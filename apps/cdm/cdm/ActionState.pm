@@ -308,6 +308,13 @@ sub doSC_RESTART {
     return $ret;
 }
 
+sub doSC_REFRESH {
+    my __PACKAGE__ $self = shift || die;
+    my $installdir = $self->{mInstallationDir} || die; # Don't come here before SC_TARTAR works
+    my $ret = $self->doMakeCmdInDir('refresh', $installdir);
+    return $ret;
+}
+
 sub doSC_REBOOT  {
     die
 }
