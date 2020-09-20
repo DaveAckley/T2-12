@@ -1,4 +1,4 @@
-{401}  -*- text -*-
+{405}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -4731,3 +4731,41 @@ So time to commit again, I think.
 :400]
 
 :399]
+[401:
+
+Sun Sep 20 06:13:11 2020 Well overdue for a break, but lots of
+progress.  We've got six tiles in a triangle all updated to the new
+cdm, exchanging slot files all over the place.  Pulling from three
+neighbors at once.  Serving slot to a neighbor while simultaneously
+pulling another slot from that same neighbor.  Automatically
+installing S02s and SA0s.
+
+Not auto-installing S03/mfms yet because I'm chicken.  But we are
+almost done pushing (the slightly old) 03-51639b out to 'the grid',
+and when we later push another 02 enabling 03 autobuild, those
+previously positioned 03s will get installed during the 02 restart.
+
+But, sleep now.
+
+[402:
+
+Sun Sep 20 06:19:50 2020 except --
+
+TODO
+
+ - Capture initial size when initting an MFZModel, and only report the
+   size and speed of the part we actually downloaded to finish the mfz
+   (Getting crazy crazy rates on restarted xfers ATM.)
+
+:402]
+:401]
+[403:
+
+Sun Sep 20 08:27:27 2020 Well didn't sleep much but here we are.
+
+:403]
+[404:
+
+Sun Sep 20 09:20:29 2020 Time to release the kraken.
+
+:404]
