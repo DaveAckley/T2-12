@@ -1,4 +1,4 @@
-{405}  -*- text -*-
+{406}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -4769,3 +4769,39 @@ Sun Sep 20 08:27:27 2020 Well didn't sleep much but here we are.
 Sun Sep 20 09:20:29 2020 Time to release the kraken.
 
 :404]
+[405:
+
+Sun Sep 20 09:40:03 2020 Well so we have a language clash here that I
+suspect is causing me problems.  We're using 'pending' in two
+different ways:
+
+ - MFZModel::pendingLength() refers to the length of the disk file
+   plus the length of mBufferedData, but
+
+ - MFZModel::{mPendingChunks} refers to $dpkts whose data has not yet
+   been added to mBufferedData.
+
+Now, pendingLength is the earlier usage, so it has the incumbent
+advantage here.   The risk is stuff like this from resetTransfer:
+
+        $self->{mPendingChunks} = [];  # Dump any pending
+        $self->{mLastPositionRequested} = $self->pendingLength();
+
+which uses different senses of 'pending' in adjacent lines of code.
+
+I really think that should be okay -- if our goal is just to dump our
+inflight data but KEEP all the mBufferedData.  One could certainly
+imagine a more robust resetTransfer, though, that would do
+
+        $self->{mPendingChunks} = [];  # Dump any in flight chunks
+        $self->{mBufferedData} = "";   # Dump any unverified data
+        $self->{mLastPositionRequested} = $self->servableLength();
+
+to get back to someplace more believable.  Now, one wouldn't want to
+do this kind of resetTransfer lightly, since it could force
+retransmission of up to 1% of the total file size, which is 100KB+
+easily for sl03.
+
+Changing mPendingChunks to mInFlightChunks, I think.
+
+:405]
