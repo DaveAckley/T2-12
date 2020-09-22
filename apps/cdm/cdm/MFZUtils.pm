@@ -9,6 +9,7 @@ use Carp;
 use File::Path qw(make_path);
 use File::Spec;
 use File::Temp qw(tempdir);
+use IO::Compress::Zip qw($ZipError);
 use IO::Uncompress::Unzip qw($UnzipError);
 use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::SHA qw(sha512_hex sha512);
@@ -47,12 +48,51 @@ use constant CDM10_PACK_FULL_FILE_FORMAT =>
 
 use constant CDM10_FULL_MAP_LENGTH => 1024;
 
+## DeletedMap
+use constant DELETED_SLOT_NUMBER => 0x01;
+
+#DMP10\n
+use constant DELETED_MAP_SIGNED_DATA_FORMAT =>
+    ""            #   0
+    ."a6"         #   0 +   6 =    6 magic + maj + min + \n
+    ."C1"         #   6 +   1 =    7 regnum
+    ."N"          #   7 +   4 =   11 signing slot stamp
+    ."a37"        #  11 +  37 =   48 reserved
+    ."N256"       #  40 +1024 = 1072 256*4 flagstamp map
+    #  1072 total length
+    ;
+
+use constant DELETED_MAP_FULL_FILE_FORMAT =>
+    ""            #   0
+    ."a1072"      #   0 +1072 = 1072 as from DELETED_MAP_SIGNED_DATA_FORMAT
+    ."a*"         #1072 + 128 = 1200 RSA sig by regnum of bytes 0..895
+    # 1200 total length
+    ;
+
+use constant DELETED_MAP_DATA_LENGTH => 1072;
+use constant DELETED_MAP_FULL_FILE_LENGTH => 1200;
+
+use constant DELETED_FLAG_SLOT_VALID =>   (1<<0);
+use constant DELETED_FLAG_SLOT_DELETED => (1<<1);
+use constant DELETED_FLAG_SLOT_RSRV2 =>   (1<<2);
+use constant DELETED_FLAG_SLOT_RSRV3 =>   (1<<3);
+use constant DELETED_FLAG_SLOT_RSRV4 =>   (1<<4);
+use constant DELETED_FLAG_SLOT_RSRV5 =>   (1<<5);
+use constant DELETED_FLAG_SLOT_RSRV6 =>   (1<<6);
+use constant DELETED_FLAG_SLOT_RSRV7 =>   (1<<7);
+
+##cdmctl
+use constant DELETEDS_MAP_NAME => "cdmss-deleted.map";
+
 use constant SS_SLOT_BITS => 8;
 use constant SS_SLOT_MASK => (1<<SS_SLOT_BITS)-1;
 use constant SS_STAMP_BITS => 24;
 use constant SS_STAMP_MASK => (1<<SS_STAMP_BITS)-1;
 
 use constant SS_SECS_PER_STAMP => 60*5; # Five minute slotstamp time granularity
+
+my @zipOtherOptions;
+ConfigureZipOptions();  # Ubuntu 12.04's zip module doesn't know CanonicalName! :(
 
 my @constants = qw(
     MFZ_VERSION
@@ -69,6 +109,22 @@ my @constants = qw(
     CDM10_PACK_FULL_FILE_FORMAT
     CDM10_FULL_MAP_LENGTH
 
+    DELETEDS_MAP_NAME
+
+    DELETED_SLOT_NUMBER
+    DELETED_MAP_SIGNED_DATA_FORMAT
+    DELETED_MAP_FULL_FILE_FORMAT
+    DELETED_MAP_DATA_LENGTH
+    DELETED_MAP_FULL_FILE_LENGTH
+    DELETED_FLAG_SLOT_VALID
+    DELETED_FLAG_SLOT_DELETED
+    DELETED_FLAG_SLOT_RSRV2
+    DELETED_FLAG_SLOT_RSRV3
+    DELETED_FLAG_SLOT_RSRV4
+    DELETED_FLAG_SLOT_RSRV5
+    DELETED_FLAG_SLOT_RSRV6
+    DELETED_FLAG_SLOT_RSRV7
+
     SS_SLOT_BITS
     SS_SLOT_MASK
     SS_STAMP_BITS
@@ -78,6 +134,7 @@ my @constants = qw(
     );
 
 my @functions = qw(
+    CDMakeMFZ
     CheckForPubKey
     ComputeChecksumOfString
     ComputeChecksumPrefixOfString
@@ -103,6 +160,7 @@ my @functions = qw(
     LastArg
     LoadInnerMFZToMemory
     LoadOuterMFZToMemory
+    MakeCDMMap
     NextArg
     NoVerb
     ReadPrivateKeyFile
@@ -118,6 +176,7 @@ my @functions = qw(
     SSStampFromTime
     SSToFileName
     SSToTag
+    SScmpSS
     SetError
     SetKeyDir
     SetProgramName
@@ -132,7 +191,7 @@ my @functions = qw(
     VersionExit
     WritableFileOrDie
     WriteWholeFile
-
+    ZipTimeNow
     );
 
 our @EXPORT_OK = (@constants, @functions);
@@ -602,13 +661,27 @@ sub SetError {
     shift
 }
 
-# Returns [$mfzpath \@outerpaths] on success, or undef and sets $@ on error
+# Returns [$mfzpath, $cdmhdr, \@outerpaths] on success, or undef and sets $@ on error
 # DOES NOT DO CRYPTO CHECKS!
 sub LoadOuterMFZToMemory {
     my $mfzpath = shift or die;
     return SetError("Can't read '$mfzpath': $!")
         unless open MFZ,"<",$mfzpath;
     my $firstline = <MFZ>;
+
+    my $cdmhdr = "";  # assume none
+
+    if (defined($firstline) && $firstline =~ /^CDM1\d\n$/) { # detect cdmake version 1 header
+        $cdmhdr = $firstline;
+        my $remainingLen = 1024-6;
+        my $data;
+        my $read = read MFZ,$data,$remainingLen;
+        die "Malformed CDM header or content"
+            unless $read == $remainingLen;
+        $cdmhdr .= $data;
+        $firstline = <MFZ>; # The poifect crime
+    }
+
     return SetError("Bad .mfz header in $mfzpath")
         unless defined $firstline and $firstline eq MFZRUN_HEADER;
 
@@ -621,15 +694,16 @@ sub LoadOuterMFZToMemory {
     return SetError("Can't close '$mfzpath': $!")
         unless close MFZ;
 
-    return [$mfzpath, \@outerpaths];
+    return [$mfzpath, $cdmhdr, \@outerpaths];
 }
 
-# Takes [$mfzpath, \@outerpaths] as from LoadOuterMFZToMemory
-# Returns [$mfzpath, \@outerpaths, \@innerpaths, $pubhandle] on verification success, or undef and sets $@ on error
+# Takes [$mfzpath, $cdmhdr, \@outerpaths] as from LoadOuterMFZToMemory
+# Returns [$mfzpath, $cdmhdr, \@outerpaths, \@innerpaths, $pubhandle] on verification success, or undef and sets $@ on error
 sub LoadInnerMFZToMemory {
     my $oorec = shift or die;
     my $mfzpath = $oorec->[0];
-    my @outerpaths = @{$oorec->[1]};
+    my $cdmhdr = $oorec->[1];
+    my @outerpaths = @{$oorec->[2]};
 
     my ($sigpath,$signame,undef,$sigdata) = FindName(\@outerpaths,MFZ_SIG_NAME,undef);
     return SetError(".mfz signature not found in $mfzpath")
@@ -664,7 +738,7 @@ sub LoadInnerMFZToMemory {
 
     return $@ unless ValidPubKey($pubhandle,$pubkey);
 
-    return [$mfzpath, \@outerpaths, \@innerpaths, $pubhandle];
+    return [$mfzpath, $cdmhdr, \@outerpaths, \@innerpaths, $pubhandle];
 }
 
 sub ValidPubKey {
@@ -680,9 +754,13 @@ sub ValidPubKey {
     return 1;
 }
 
+sub ZipTimeNow {
+    return int(time()/2)*2; # Default even seconds for ZIP compatibility 
+}
+
 sub SSStampFromTime {
-    my $sec = shift || time();
-    return int($sec/SS_SECS_PER_STAMP);
+    my $sec = shift || ZipTimeNow();
+    return (int($sec/SS_SECS_PER_STAMP), $sec);
 }
 
 sub SSMake {
@@ -767,5 +845,193 @@ sub SSStamp {
     return $sval & SS_STAMP_MASK;
 }
 
+############################
+# Internal routines
+# convert module-name to path
+
+sub GetModuleVersion {
+    my $mod = shift;
+    my $file = $mod;
+    $file =~ s{::}{/}gsmx;
+    $file .= '.pm';
+
+    # Pull in the module, if it exists
+    eval { require $file }
+    or die "can't find module $mod\n";
+
+    # Get the version from the module, if defined
+    my $ver;
+    { no strict 'refs';
+      $ver = ${$mod . "::VERSION"} || 'UNKNOWN';
+    }
+    return $ver;
+}
+
+sub ConfigureZipOptions {
+    my $zipVer = GetModuleVersion("IO::Compress::Zip");
+    if ($zipVer >= 2.039) {
+        @zipOtherOptions = ( CanonicalName => 1 );
+    }
+#    print "$zipVer/@zipOtherOptions\n";
+}
+
+# each @file is either a string file path, or an array ref to [$filename, $data]
+sub MakeInnerZip {
+    my ($pubkeydata,$mfzfilename,$assignedinnertime,@files) = @_;
+    my $compressedoutput;
+
+    my $z = new IO::Compress::Zip
+        \$compressedoutput,
+        Name          => MFZ_PUBKEY_NAME,
+        Time          => $assignedinnertime,
+        @zipOtherOptions,
+        BinModeIn     => 1
+        or IDie("Zip init failed for inner: $ZipError");
+    $z->print ($pubkeydata);
+
+    $z->newStream(
+        Name          => MFZ_FILE_NAME,
+        Time          => $assignedinnertime,
+        @zipOtherOptions,
+        BinModeIn     => 1)
+        or die "Zip reinit failed on ".MFZ_FILE_NAME.": $ZipError\n";
+    $z->print ($mfzfilename);
+
+    for my $file (@files) {
+        my ($filename,$modtime,$filedata);
+        if (ref($file) eq 'ARRAY') {
+            die unless @$file == 2;
+            $filename = $file->[0];
+            $filedata = $file->[1];
+            $modtime = $assignedinnertime;
+        } else {
+            my $origFile = $file;
+            $file = abs_path($file);
+            # Check top-level special files after path normalization
+            UDie("'$origFile' is handled automatically, cannot pack it explicitly")
+                if $file eq "/".MFZ_PUBKEY_NAME
+                or $file eq "/".MFZ_FILE_NAME;
+            $filename = $file;
+
+            open (my $fh, "<", $file) or UDie("Can't read '$file': $!");
+            $modtime = (stat($fh))[9];
+            while (<$fh>) { $filedata .= $_; }
+            close $fh or IDie("Failed closing '$file': $!");
+        }
+        $z->newStream(
+            Name          => $filename,
+            @zipOtherOptions,
+            BinModeIn     => 1,
+            Time          => $modtime,
+            ExtAttr       => 0666 << 16)
+            or die "Zip reinit failed on '$file': $ZipError\n";
+        $z->print ($filedata);
+    }
+
+    close $z;
+    return $compressedoutput;
+}
+
+sub MakeOuterZip {
+    my ($signature,$inner,$announce) = @_;
+    my $compressedoutput;
+    my $z = new IO::Compress::Zip
+        \$compressedoutput,
+        Name          => MFZ_SIG_NAME,
+        @zipOtherOptions,
+        BinModeIn     => 1
+        or IDie("Zip init failed for outer: $ZipError");
+    $z->print($signature);
+
+    $z->newStream(
+        Name          => MFZ_ZIP_NAME,
+        @zipOtherOptions,
+        BinModeIn     => 1,
+        ExtAttr       => 0666 << 16)
+        or die "Zip reinit failed for outer: $ZipError\n";
+    $z->print($inner);
+
+    if (defined $announce) {
+        IDie("Why are you here? ANNOUNCING doesn't exist anymore");
+    }
+
+    close $z;
+    return $compressedoutput;
+}
+
+sub MakeCDMMap {
+    my ($regnum,$slotnum,$stamptime,$mfzfilename,$privkeyfile,$outer,$innertime,$label) =
+        @_;
+    my $slotstamp = SSMake($slotnum,$stamptime);
+    my $mappedFileLen = length($outer);
+    my $bitsInBlock = 8;
+    do ++$bitsInBlock while (1<<$bitsInBlock) * 100 < $mappedFileLen;
+    my $blockSize = (1<<$bitsInBlock);
+    my @xsums = ("") x 100;
+    my $sha = Digest::SHA->new(512);
+    my $lastfullxsum;
+    for (my $block = 0; $block<100;++$block) {
+        my $offset = $blockSize*$block;
+        last if $offset > $mappedFileLen;
+        my $chunk = substr($outer,$offset,$blockSize); # blockSize or til eof
+        $sha->add($chunk);
+        $lastfullxsum = $sha->clone()->digest();
+        my $xsum8 = substr($lastfullxsum,0,8);
+        $xsums[$block] = $xsum8;
+    }
+    my $maptosign =
+        pack(CDM10_PACK_SIGNED_DATA_FORMAT,
+             CDM_FORMAT_MAGIC.CDM_FORMAT_VERSION_MAJOR.CDM_FORMAT_VERSION_MINOR."\n",
+             $bitsInBlock,
+             $regnum,
+             $slotstamp,
+             $mappedFileLen,
+             $label,
+             $lastfullxsum,
+             @xsums);
+    IDie("Bad pack") unless length($maptosign) == 896;
+    my $signature = SignStringRaw($privkeyfile, $maptosign);
+    IDie("Bad sign") unless length($signature) == 128;
+    my $cdmmap =
+        pack(CDM10_PACK_FULL_FILE_FORMAT,
+             $maptosign,
+             $signature);
+    IDie("Bad map") unless length($cdmmap) == 1024;
+    return $cdmmap;
+}
+
+# each @file is either a string file path, or an array ref to [$filename, $data]
+sub CDMakeMFZ {
+    my ($slotnum, $regnum, $label, $innertime, $destdir, @files) = @_;
+    my $handle = GetHandleIfLegalRegnum($regnum);
+    my ($stamptime) = SSStampFromTime($innertime);
+    my $mfzfile = sprintf("cdmss-%02x-%06x.mfz",$slotnum,$stamptime);
+    my $mfzpath = "$destdir/$mfzfile";
+    UDie("File '$mfzpath' already exists.  Maybe wait a couple minutes, tiger?")
+        if -e $mfzpath;
+    
+    my $privkeyfile = GetPrivateKeyFile($handle);
+    $privkeyfile = ReadableFileOrDie("private key file", $privkeyfile);
+
+    my $pubkeyfile =  GetPublicKeyFile($handle);
+    $pubkeyfile = ReadableFileOrDie("public key file", $pubkeyfile);
+
+    my $pubkeydata = ReadWholeFile($pubkeyfile);
+
+    $mfzpath = WritableFileOrDie("MFZ path", $mfzpath);
+    $mfzpath =~ /[.]mfz$/ or UDie("MFZ filename '$mfzpath' doesn't end in '.mfz'");
+    ((!-e $mfzpath) || (-f $mfzpath && -w $mfzpath)) or UDie("MFZ filename '$mfzpath' is not writable");
+
+    my $inner = MakeInnerZip($pubkeydata,$mfzfile,$innertime, @files);
+
+    my $signed = SignString($privkeyfile, $inner);
+#    WriteWholeFile($mfzfile,MFZRUN_HEADER.$signed.$inner,0644);
+    my $outer = MFZRUN_HEADER.MakeOuterZip($signed,$inner,undef);
+
+    my $cdmmap = MakeCDMMap($regnum,$slotnum,$stamptime,$mfzfile,$privkeyfile,$outer,$innertime,$label);
+
+    WriteWholeFile($mfzpath,$cdmmap.$outer,0644);
+    return $mfzpath;
+}
 
 1;

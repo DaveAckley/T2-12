@@ -18,8 +18,8 @@ use constant PROG_SC_TAR =>     [PROG_SC_TARTAR, SC_SETTAG];
 use constant PROG_SC_INSTALL => [PROG_SC_TARTAR, SC_INSTALL, SC_SETTAG];
 
 sub INIT_ALL_SLOTS {
-    mSC(0x00,"deletions       ",undef,                  [SC_CUSTOM],[]);
-    mSC(0x01,"T2Config        ","/home/t2/T2-12/config",[SC_UNZIPCD],[0x02]);
+    # S00 reserved and probably illegal
+    mSC(0x01,"deletions       ",undef,                  [SC_CHKTAG],[]); # NOT YET BUT WANT: , SC_CUSTOM],[]);
     mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_TAR, SC_REFRESH, SC_RESTART],[]);
     mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR],[]);
 

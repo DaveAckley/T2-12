@@ -39,9 +39,10 @@ sub new {
     my MFZModel $model = shift || die;
     
     my $mfzpath = $model->makePath();
-    my $targetdir = $sc->{mTargetDir};
-
     die unless -r $mfzpath;
+
+    my $targetdir = $sc->{mTargetDir} || "/tmp";
+
     initDir($targetdir) or die "Couldn't mkdir $targetdir: $!";
 
     my CDM $cdm = $model->{mCDM} || die;

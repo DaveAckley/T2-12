@@ -218,8 +218,8 @@ sub formatSize {
         if ($size < 1000) {
             if ($size < 1) {
                 $ret = sprintf(".%02d%s",int($size*100),$unit);
-            } elsif ($size > 10 || int($size) == $size) {
-                $ret = sprintf("%3d%s", $size,$unit);
+            } elsif ($size >= 9.95 || int($size) == $size) {
+                $ret = sprintf("%3d%s", $size+0.5, $unit);
             } else {
                 $ret = sprintf("%3.1f%s",$size,$unit);
             }
@@ -236,10 +236,10 @@ sub formatPercent {
     my $optrim = shift;
     my $ret;
     if (0) { }
-    elsif ($pct <   0) { $ret = " <0%"; }
-    elsif ($pct <   1) { $ret = sprintf(".%02d%%",int($pct*100)); }
-    elsif ($pct <  10) { $ret = sprintf("%3.1f%%",$pct); }
-    elsif ($pct < 999) { $ret = sprintf("%3d%%",int($pct)); }
+    elsif ($pct <    0) { $ret = " <0%"; }
+    elsif ($pct <    1) { $ret = sprintf(".%02d%%",int($pct*100)); }
+    elsif ($pct < 9.95) { $ret = sprintf("%3.1f%%",$pct); }
+    elsif ($pct <  999) { $ret = sprintf("%3d%%",int($pct+0.5)); }
     else               { $ret = "1K+%"; }
     $ret = trim($ret) if $optrim;
     return $ret;

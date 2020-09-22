@@ -7,6 +7,7 @@ use fields qw(
 use Exporter qw(import);
 
 use DP qw(:all);
+use T2Utils qw(:math);
 
 our @EXPORT_OK = qw(parse recognize validateAsClass);
 

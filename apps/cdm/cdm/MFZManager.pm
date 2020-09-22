@@ -184,7 +184,7 @@ sub loadCnVMFZ {
         my $inner = LoadInnerMFZToMemory($outer); ## COUNTS ON SetKeyDir($basedir) ALREADY DONE
         return DPSTD($@) unless defined $inner;   
         ## MFZ_PUBKEY_NAME handle is locally known valid as of now
-        $mfzSigningHandle = $inner->[3];
+        $mfzSigningHandle = $inner->[4];
 
         # my (undef,undef,undef,$announcedata) = FindName($outer->[1],CDM_ANNOUNCE_NAME);
         # return DPSTD("${\CDM_ANNOUNCE_NAME} not found in $mfzpath")

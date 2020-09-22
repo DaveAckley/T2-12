@@ -5,6 +5,7 @@ use base 'TimeoutAble';
 use fields qw(
     mInDir
     mSSMap
+    mDeletedMap
     );
 
 use Exporter qw(import);
@@ -208,8 +209,9 @@ sub loadDirectory {
     my __PACKAGE__ $self = shift || die;
     my $dirpath = $self->makeDirPath();
     opendir my $fh, $dirpath or return SetError("Can't read $dirpath: $!");
-    my @files = grep { SSFromPath($_) } readdir $fh;
+    my @files = sort { SScmpSS(SSFromPath($b),SSFromPath($a)) } grep { SSFromPath($_) } readdir $fh;
     closedir $fh or die $!;
+    DPSTD("${\FUNCNAME} FILES ".join(", ",@files));
     # Just do it all atomically for now, until we actually have a clue
     # about updating incrementally.
     for my $file (@files) {
@@ -254,7 +256,8 @@ sub new {
     $self->SUPER::new("CM:$dir",$cdm);
 
     $self->{mInDir} = $dir;   
-    $self->{mSSMap} = { };        # { slotnum -> { ts -> MFZModel } }
+    $self->{mSSMap} = { };          # { slotnum -> { ts -> MFZModel } }
+    $self->{mDeletedMap} = undef;   # instance of DeletedMap
 
     $self->{mCDM}->getTQ()->schedule($self);
     $self->defaultInterval(-20); # Run about every 10 seconds if nothing happening

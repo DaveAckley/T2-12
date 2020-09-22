@@ -871,7 +871,7 @@ sub purifyArgs {
 sub TryToPromoteInstalledPubKey {
     my $handle = shift;
     my $ehandle = EscapeHandle($handle);
-    my $dir = "/usr/lib//MFM/res/public_keys/";
+    my $dir = "/usr/lib/ulam/MFM/res/public_keys/";
     my $pub = "$dir/$ehandle.pub";
     if (-r $pub) {
         my $localpub = GetPublicKeyFile($handle);
@@ -942,7 +942,7 @@ EOM
 # Find and parse the demos.dat file
 sub ListDemosDat {
     my $path;
-    -r ($path = "/usr/lib//MFM/res/elements/demos.dat") or
+    -r ($path = "/usr/lib/ulam/MFM/res/elements/demos.dat") or
     -r ($path = "./res/elements/demos.dat") or
     return 0;
     my $count = 0;
@@ -982,7 +982,7 @@ sub FindDemoOrDie {
     }
     $demoname .= ".mfz";
     my $path;
-    return $path if -r ($path = "/usr/lib//MFM/res/elements/demos/$demoname");
+    return $path if -r ($path = "/usr/lib/ulam/MFM/res/elements/demos/$demoname");
     return $path if -r ($path = "~/.mfm/demos/$demoname");
     return $path if -r ($path = "./res/elements/demos/$demoname");
 
