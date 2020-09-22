@@ -25,12 +25,18 @@ use constant REC_TOTIN => REC_DIR8+1;
 use constant REC_TOTOUT => REC_TOTIN+1;
 use constant REC_FASTIN => REC_TOTOUT+1;
 use constant REC_FASTOUT => REC_FASTIN+1;
-use constant REC_SLOWIN => REC_FASTOUT+1;
+use constant REC_MEDIN => REC_FASTOUT+1;
+use constant REC_MEDOUT => REC_MEDIN+1;
+use constant REC_SLOWIN => REC_MEDOUT+1;
 use constant REC_SLOWOUT => REC_SLOWIN+1;
 use constant REC_COUNT => REC_SLOWOUT+1;
-use constant FAST_FRAC_OLD => 0.85;
+
+use constant FAST_FRAC_OLD => 0.9200;  # time constant  ~1min (on 5sec sampling)
+use constant MED_FRAC_OLD  => 0.9917;  # time constant ~10min 
+use constant SLOW_FRAC_OLD => 0.9986;  # time constant ~60min
+
 use constant FAST_FRAC_NEW => 1-FAST_FRAC_OLD;
-use constant SLOW_FRAC_OLD => 0.98;
+use constant MED_FRAC_NEW => 1-MED_FRAC_OLD;
 use constant SLOW_FRAC_NEW => 1-SLOW_FRAC_OLD;
 
 ## Methods
@@ -81,10 +87,14 @@ sub captureBulkIOStats {
                 my $outsample = $diffout / $diffsec;
                 $rec->[REC_FASTIN] =
                     defined($rec->[REC_FASTIN]) ? FAST_FRAC_OLD * $rec->[REC_FASTIN] + FAST_FRAC_NEW * $insample : $insample;
+                $rec->[REC_MEDIN] =
+                    defined($rec->[REC_MEDIN])  ? MED_FRAC_OLD *  $rec->[REC_MEDIN]  + MED_FRAC_NEW * $insample : $insample;
                 $rec->[REC_SLOWIN] =
                     defined($rec->[REC_SLOWIN]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWIN] + SLOW_FRAC_NEW * $insample : $insample;
                 $rec->[REC_FASTOUT] =
                     defined($rec->[REC_FASTOUT]) ? FAST_FRAC_OLD * $rec->[REC_FASTOUT] + FAST_FRAC_NEW * $outsample : $outsample;
+                $rec->[REC_MEDOUT] =
+                    defined($rec->[REC_MEDOUT])  ? MED_FRAC_OLD *  $rec->[REC_MEDOUT] + MED_FRAC_NEW * $outsample : $outsample;
                 $rec->[REC_SLOWOUT] =
                     defined($rec->[REC_SLOWOUT]) ? SLOW_FRAC_OLD * $rec->[REC_SLOWOUT] + SLOW_FRAC_NEW * $outsample : $outsample;
             }
@@ -107,27 +117,33 @@ sub writeBulkIOStats {
     my $path = "$basedir/${\PATH_BASEDIR_REPORT_IOSTATS}";
     open HDL, ">", $path or die "Can't write $path: $!";
     print HDL "CDM UPTIME ".formatSeconds($uptime,1)."\n";
-    for my $dir6 (getDir6s()) {
-        next unless $hoodmgr->ngbMgr($dir6)->state() == NGB_STATE_OPEN;
-        my $dir8 = mapDir6ToDir8($dir6);
-        my $rec = $self->{mRatesDir8}->{$dir8};
-        my ($infast,$inslow,$outfast,$outslow) =
-            ($rec->[REC_FASTIN], $rec->[REC_SLOWIN],
-             $rec->[REC_FASTOUT], $rec->[REC_SLOWOUT]);
-        next if $infast==0 && $inslow==0 && $outfast==0 && $outslow==0;
-        printf(HDL " %s i[%s %s] o[%s %s]\n",
-               getDir8Name($dir8),
-               formatSize($infast),
-               formatSize($inslow),
-               formatSize($outfast),
-               formatSize($outslow)
-            );
-    }
 
     my $cmgr = $self->{mCDM}->{mContentManager};
     my @progress = $cmgr->reportMFZStats();
     for my $mfz (@progress) {
         printf(HDL "%s",$mfz);
+    }
+
+    for my $dir6 (getDir6s()) {
+        next unless $hoodmgr->ngbMgr($dir6)->state() == NGB_STATE_OPEN;
+        my $dir8 = mapDir6ToDir8($dir6);
+        my $rec = $self->{mRatesDir8}->{$dir8};
+        my ($infast, $outfast) = ($rec->[REC_FASTIN], $rec->[REC_FASTOUT]);
+        my ($inmed, $outmed)   = ($rec->[REC_MEDIN],  $rec->[REC_MEDOUT]);
+        my ($inslow, $outslow) = ($rec->[REC_SLOWIN], $rec->[REC_SLOWOUT]);
+        next if
+            $infast==0 && $outfast==0 &&
+            $inmed==0  && $outmed==0 &&
+            $inslow==0 && $outslow==0;
+        printf(HDL "%s %s %s/%s %s/%s %s\n",
+               getDir8Name($dir8),
+               formatSize($infast),
+               formatSize($outfast),
+               formatSize($inmed),
+               formatSize($outmed),
+               formatSize($inslow),
+               formatSize($outslow)
+            );
     }
 
     # my $dmpipe =  $dirsmgr->getDMPipeline();
