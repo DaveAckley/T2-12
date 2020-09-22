@@ -1,4 +1,4 @@
-{406}  -*- text -*-
+{449}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -1671,13 +1671,16 @@ break instead of doing crabby code.  For when we return
 
 TODO
 
- - Change TransferManager so serverData and clientData support
+[420:
+MOOT :420] - Change TransferManager so serverData and clientData support
    indexing by $contentName and indexing by some other provided
    scalar.
 
- - Use that in TMTraditional to look up clientData by SKU
+[421:
+MOOT :421] - Use that in TMTraditional to look up clientData by SKU
 
- - Use that to complete a first cut at handleDataChunk.
+[422:
+MOOT :422] - Use that to complete a first cut at handleDataChunk.
 
 :121]
 [122:
@@ -2203,14 +2206,16 @@ TODO
 [220: Sun Sep  6 11:22:12 2020
 DONE :220] - Review current protocol exchanges for pipeline
 
- - Think briefly about whether we announce both traditional and
+[417: Sun Sep 20 11:17:23 2020 So far, screw traditional
+DONE :417] - Think briefly about whether we announce both traditional and
    pipeline, where possibly, and how we respond to that if so.
 
 [252: Tue Sep  8 15:43:35 2020
 DONE :252] - Start fleshing out TMPipeline following 'best practices' such as
    they emerged from TMTraditional.
 
- - Report back in about sticking points encountered.
+[418: Sun Sep 20 11:17:52 2020 See everywhere below
+DONE :418] - Report back in about sticking points encountered.
 
 :169]
 [170:
@@ -3533,7 +3538,8 @@ DEFERRED :301] - Reorganize T2-12 top subdirs for cdmd alignment
 
 [290: Sat Sep 12 13:11:16 2020
 
- - Ditch ANNOUNCE and S packet stuff in favor of CDM10 stuff as in
+[416:
+DONE :416] - Ditch ANNOUNCE and S packet stuff in favor of CDM10 stuff as in
    :285: above
 
 :290]
@@ -3603,9 +3609,11 @@ going to achieve here in no time flat.
 
 TEAR-OUT TODO
 
- - Move it all to cdm/cdm-hold/ and start fresh
+[414:
+DONE :414] - Move it all to cdm/cdm-hold/ and start fresh
 
- - Pull in cdm.pl and start working from the front, ditching 
+[415:
+DONE :415] - Pull in cdm.pl and start working from the front, ditching 
 
 :302]
 
@@ -4024,7 +4032,8 @@ DONE :327] - Implement Task0
 
  - Spike test them
 
- - Start shipping F,C,D packets!
+[413: Sun Sep 20 11:15:57 2020 Woah long since
+DONE :413] - Start shipping F,C,D packets!
 
 :324]
 [325:
@@ -4523,7 +4532,8 @@ tiles, while we look at some of this
 
 TODO
 
- - Review triggers for the new era
+[410: Sun Sep 20 11:11:34 2020 Yah,
+DONE :410] - Review triggers for the new era
 
 [385: Fri Sep 18 04:14:19 2020
 DONE :385] - Get the garbage collector running
@@ -4652,7 +4662,8 @@ running in this go. GO GO
 
 TODO
 
- - Create UNPACK vs UNTAR actions.  Latter expects a tar file that
+[408: Sun Sep 20 11:10:11 2020 Created a bunch of SC_ops and stuff;
+DONE :408] - Create UNPACK vs UNTAR actions.  Latter expects a tar file that
    creates its own top-level directory, and its target directory
    points above that; former expects just loose files in the inner
    zip, and its target directory points directly at where those files
@@ -4753,7 +4764,8 @@ Sun Sep 20 06:19:50 2020 except --
 
 TODO
 
- - Capture initial size when initting an MFZModel, and only report the
+[407: Sun Sep 20 11:09:19 2020 Added mCreationLength; call it
+DONE :407] - Capture initial size when initting an MFZModel, and only report the
    size and speed of the part we actually downloaded to finish the mfz
    (Getting crazy crazy rates on restarted xfers ATM.)
 
@@ -4805,3 +4817,278 @@ easily for sl03.
 Changing mPendingChunks to mInFlightChunks, I think.
 
 :405]
+[406:
+
+Sun Sep 20 11:08:17 2020 OK, well, so we are getting kind of plausible
+here.  Seems like we should be closing in on some subgoal popping.
+Let's review to-dos..
+
+:406]
+[409:
+
+Sun Sep 20 11:10:57 2020 Ah, there's sorting the files during load
+directory, in :392: above.  That's probably worth trying.
+[411:
+
+Sun Sep 20 11:12:19 2020 Also revisiting cdm-deleteds, from :380:
+above, really do need to address that somehow.
+[412:
+
+Sun Sep 20 11:13:53 2020 Now, we never really changed the
+previously-problematic addChunkAt API (a la :353: above), so how come
+that's not a problem anymore?  I guess because the inflight management
+now uses pendingLength and such directly, and pretty much ignores
+addChunkAt's rv..  Leaving it open for now though.
+[419:
+
+Sun Sep 20 11:18:12 2020 Also need to think about MFMT2 persistent
+command line arguments, a la :155: above, but that can/should wait.
+
+:419]
+:412]
+:411]
+:409]
+[423:
+
+Sun Sep 20 11:20:15 2020 So given all that, what now batman?
+
+:423]
+[424:
+
+Sun Sep 20 11:21:42 2020 (Started non-debug build after realclean on
+MFM.  Let's see how long that's taking these days.  Under an hour?
+Two?)[426: Sun Sep 20 11:47:47 2020 Finished at 11:39 -- but it wasn't
+'make -k', so that's not worth much :426]
+[425:
+
+Sun Sep 20 11:47:13 2020 Whups!  How about this:
+
+    src/T2FlashTrafficManager.cpp: In member function ‘void MFM::T2FlashTrafficManager::showPending() const’:
+    src/T2FlashTrafficManager.cpp:266:25: error: ‘%s’ directive output may be truncated writing up to 65 bytes into a region of size 20 [-Werror=format-truncation=]
+           snprintf(buff,LEN,"%s%d",cmdlabel->GetText(),getRange());
+                             ^~~~~~
+    src/T2FlashTrafficManager.cpp:266:25: note: using the range [-2147483648, 2147483647] for directive argument
+    src/T2FlashTrafficManager.cpp:266:15: note: ‘snprintf’ output between 2 and 77 bytes into a destination of size 20
+           snprintf(buff,LEN,"%s%d",cmdlabel->GetText(),getRange());
+           ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+:425]
+:424]
+[427:
+
+Sun Sep 20 12:06:28 2020 Second try
+
+    Compilation finished at Sun Sep 20 11:52:57
+
+So, less than 40 minutes even with a break in the middle?  'Not bad' ha.
+
+:427]
+[428:
+
+Mon Sep 21 01:44:20 2020 OK.  How can we pop pop pop here?
+
+:428]
+[429:
+
+Mon Sep 21 01:56:38 2020 Well, starting to update power zone 1, using
+the USB-serial cable + zmodem (!! :) to push 'hackInstallCDM.sh' and 
+'cdmss-02-516918-T2-12-build-tgz' to one tile at a time..
+
+Oh the price of non-backward-compatibility.
+
+But we should just have that running as a background process while
+doing whatever else it is that we are up to, tonight.[430:
+
+Mon Sep 21 02:02:09 2020 Let's start with loadDirectory file sorting
+while thinking about cdm-deleteds. [432:
+
+Mon Sep 21 02:36:29 2020 OK, so we already has SScmpSS which sorted
+files just in the order we wanted, using
+
+  sort { SScmpSS(SSFromPath($b),SSFromPath($a))}
+
+so that seems to be that.  Now what.
+
+Do we want to just whole-hog the old cdm-deleteds code?  We're going
+to have to touch cdmctl a little bit anyway, just for filenames if
+nothing else.. 
+
+:432] [431:
+
+Mon Sep 21 02:02:46 2020 Ah, first download complete.  Time to run
+hackInstallCDM.sh.. 
+
+:431]
+
+:430]
+
+:429]
+[433:
+
+Mon Sep 21 02:45:16 2020 Well let's think for real about cdm-deleteds,
+then.  We now have MFZUtils available and could go for a more custom,
+easier-to-load format.  If we wanted to.[435:
+
+Mon Sep 21 03:02:19 2020 I'd like to come up with a CDM10-like
+Packable record for the deleted info.  Let's draft it now.
+
+:435]
+[434:
+
+Mon Sep 21 02:59:05 2020 (Jeez the interruptions to service the
+zmodems transfers and move on to the next tile are really disruptive.
+But I've also d/ld a slightly more recent S03 so PZ1 tiles
+have something to sink their teeth into as they get updated.  Already
+can see lots of data moving around as I advance the frontier.)
+
+:434]
+
+:433]
+[436:
+
+Mon Sep 21 03:37:19 2020 OK well that's the last tile of PZ1 updated.
+Well, last but one -- the tile just west of the power injector isn't
+updated because the PI cable is blocking the UART.  Going to have to
+power down the whole zone to replug, because I couldn't find the extra
+Y-cable that I was sure I'd packed..[437:
+
+Mon Sep 21 03:51:09 2020 Aaaand it was in the FIRST place I looked but
+I missed it because I thought it would still be wrapped but it
+wasn't.  OK, let's power down, replug, power up, get this grid done,
+and move on to (what's still plugged up of) PZ2.
+
+:437]
+
+:436]
+[438:
+
+Mon Sep 21 10:58:12 2020 After second sleep.  At a minimum, deletion
+can be just "N256" -- 256 slotstamps, 1KB.  Really only need the
+stamps; could reserve the slot byte for flags or redundancy.  We could
+just implement that but I'd want room to grow in the format.
+[439:
+
+Mon Sep 21 11:08:07 2020 Well, so say we keep everything as is:
+
+TODO
+
+ - Use standard (SC_UNZIPCD style) .mfz packing for S00.
+
+ - Leave cdm-deleteds.map in there, but ignore it.
+
+ - Create cdmss-deleteds.map on a CDM10-style format
+
+ - Write a custom loader for it in ActionState.pm
+
+ - Store the map in ContentManager
+
+ - Use the map during ContentManager::deleteDominatedInSlot, so that
+   we can end up with no file at all for a given slot.
+
+
+:439]
+:438]
+[440:
+
+Mon Sep 21 13:10:02 2020 OK, have been working in DeletedMap.pm; about
+to have to break to set up for Computing Up.  Giving up on slot00 at
+least for now; moving deleteds to S01.  Next steps
+
+TODO
+
+ - Copy cdmctl down into cdm/cdm and rework to generate the new-style
+   cdmss-deleted.map (that will go inside cdmss-01-000000.mfz)
+
+ - Watch the SC_CUSTOM blow up due to lack of implementation
+
+ - Implement that to load into ContentManager::mDeletedMap
+[441:
+
+Mon Sep 21 13:54:34 2020 Time for Computing Up, but also, think about
+
+ - Build an easy mechanism to push a specific announcement in a
+   specific direction.
+
+ - Call it when inbound stuff ends up referring to something
+   dominated.
+
+ - Announce S01 when inbound refers to something deleted
+
+:441]
+
+:440]
+[442:
+
+Tue Sep 22 00:24:02 2020 Starting GO GO GO
+
+:442]
+[443:
+
+Tue Sep 22 09:10:53 2020 On again.  (Stopped around 6am before I
+think.)
+
+Still on deletion in cdmctl and MFZUtils..
+
+:443]
+[444:
+
+Tue Sep 22 10:31:39 2020 OK chikins -> home -> roost.
+
+I made DeletedMap::mRegnumSigningStamp to hold the regnum and stamp
+time as of signing.  That means bending the semantics of a $slotstamp
+to put in a regnum instead of a slot, but so what: They're both just
+one byte?
+
+So what?  Well slot 0 is illegal.  But our only current regnum is
+regnum 0.  So we blow up when we try to make a slotnum out of it.
+
+Of course.
+
+Breaking for blunch but after we get back, I think: Split into
+separate mRegnum and mSigningSlotStamp, but ditch mInternalVersion so
+the sizes don't change.[445:
+
+Tue Sep 22 11:20:50 2020 Back.[446:
+
+Tue Sep 22 12:23:17 2020 OK, cdmctl is just barely stable, and we've
+made a newstal empty deleteds map in /cdm/common/cdmss-01-516bbb.mfz
+..although looking at it it's not clear it's got the right filename
+buried in there..  Let's try unpacking it..[447:
+
+Tue Sep 22 12:26:40 2020 Well that looks superficially okay: 
+
+    t2@beaglebone:~/T2-12/apps/cdm/cdm$ ./mfzrun -kd /cdm /cdm/common/cdmss-01-516bbb.mfz unpack /tmp
+    SIGNED BY RECOGNIZED HANDLE: t2-keymaster-release-10 (85ee-b41-7cb3)
+    UNPACKED INTO: /tmp
+    t2@beaglebone:~/T2-12/apps/cdm/cdm$ 
+
+and
+
+      /tmp:
+      total used in directory 112 available 51880
+      drwxrwxrwt 25 root root 4096 Sep 22 12:26 .
+      drwxr-xr-x 22 root root 4096 Dec 31  1999 ..
+      -rw-r--r--  1 t2   t2   1200 Sep 22 12:19 cdmss-deleted.map
+  ..
+      -rw-r--r--  1 t2   t2     19 Sep 22 12:19 MFZNAME.DAT
+      -rw-r--r--  1 t2   t2    288 Sep 22 12:19 MFZPUBKEY.DAT
+  ..
+
+So let's think maybe we're okay and keep pushing on.
+
+[448:
+
+Tue Sep 22 13:59:29 2020 OK, cdmctl initmap, listdeleted, and delete
+are all seeming vaguely plausible.  Taking an HSA break, I think.
+
+Let's commit.
+
+:448]
+:447]
+
+:446]
+
+:445]
+
+:444]
