@@ -822,6 +822,7 @@ sub SSFromPath {
 sub SSSlot {
     my $sref = shift;
     my $sval = $sref;
+    $sval = $$sval if ref($sval) eq 'SCALAR';
     if (defined $_[0]) {
         die "Need scalar ref" unless ref($sref) eq 'SCALAR';
         my $new = shift;
@@ -835,6 +836,7 @@ sub SSSlot {
 sub SSStamp {
     my $sref = shift;
     my $sval = $sref;
+    $sval = $$sval if ref($sval) eq 'SCALAR';
     if (defined $_[0]) {
         die "Need scalar ref" unless ref($sref) eq 'SCALAR';
         my $new = shift;
