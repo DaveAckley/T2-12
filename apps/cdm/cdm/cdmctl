@@ -74,27 +74,10 @@ sub findDeletedMFZ {
 # returns instance of DeletedMap
 sub loadDeletedMap {
     my ($mapfile,$indir) = findDeletedMFZ();
-
     my $mfzpath = "$indir/$mapfile";
-
-    my $outer = LoadOuterMFZToMemory($mfzpath); 
-    die $@ unless defined $outer;
-    my $inner = LoadInnerMFZToMemory($outer); ## COUNTS ON SetKeyDir($basedir) ALREADY DONE
-    die $@ unless defined $inner;   
-
-    ## MFZ_PUBKEY_NAME handle is locally known valid as of now
-    my $mfzSigningHandle = $inner->[4];
-    my $innerpathsref = $inner->[3];
-
-    my ($dmpath, $dmname, $dmtime, $dmdata) = FindName($innerpathsref,DELETEDS_MAP_NAME,undef);
-
-    my $dmref = Packable::parse($dmdata);
-    die $@ unless defined $dmref;
-    die unless $dmref->isa('DeletedMap');
-    
-    return $dmref;
+    return DeletedMap::initFromS01MFZ($mfzpath);
 }
-
+        
 my $digester = Digest::SHA->new(256);
 
 sub checksumWholeFileHex {
@@ -189,20 +172,26 @@ sub doListDeleted {
     }
     my $dmref = loadDeletedMap();
     my $len = 0;
-    my ($invalid,$deleted) = (0,0);
+    my ($invalid,$zombies,$deleted) = (0,0,0);
     for (my $slotnum = 1; $slotnum < 256; ++$slotnum) {
         my $ss = $dmref->{mFlagStampMap}->[$slotnum];
-        my $fn = SSToFileName($ss);
         my ($flags,$stamp) = (SSSlot($ss),SSStamp($ss));
+        my $fn = SSToFileName(SSMake($slotnum,$stamp));
         unless ($flags&DELETED_FLAG_SLOT_VALID) {
             print "$fn -- INVALID\n";
             ++$invalid;
         } elsif ($flags&DELETED_FLAG_SLOT_DELETED) {
-            print "$fn\n";
-            ++$deleted
+            print "$fn";
+            if (-e "$COMMON_DIR/$fn") {
+                print " -- marked deleted (but exists)";
+                ++$zombies;
+            } else {
+                ++$deleted
+            }
+            print "\n";
         }
     }
-    print $deleted." deleted, ".$invalid." invalid\n";
+    print " ".$deleted." deleted, ".$zombies." zombies, ".$invalid." invalid\n";
 }
 
 sub doInitMap {
