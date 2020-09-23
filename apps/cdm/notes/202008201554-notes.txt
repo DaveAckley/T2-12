@@ -1,4 +1,4 @@
-{459}  -*- text -*-
+{481}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -4210,7 +4210,8 @@ Wed Sep 16 07:48:50 2020 So what's the clean-for-Gene fix here?
 
 TODO
 
- - Redesign MFZModel::addChunkAt so caller can distinguish added or not
+[479: Wed Sep 23 11:31:36 2020
+MOOTED :479] - Redesign MFZModel::addChunkAt so caller can distinguish added or not
 
 [354:
 
@@ -4540,11 +4541,14 @@ DONE :385] - Get the garbage collector running
 
  - Start cleaning out dead wood
 
+[476: Wed Sep 23 11:30:47 2020 Letting this one go for now:  :476]
  - Develop a possible plan for reorging T2-12
 
- - Consider modtime tracking on common[383: Fri Sep 18 00:12:14 2020 
+[477:
+DONE :477] - Consider modtime tracking on common[383: Fri Sep 18 00:12:14 2020 
 
- - Look at new CDM10-ish implementations for cdm-deleteds, a la
+[478:
+DONE :478] - Look at new CDM10-ish implementations for cdm-deleteds, a la
 
     Thu Sep 17 15:51:18 2020 Free notes.
 
@@ -4669,7 +4673,8 @@ DONE :408] - Create UNPACK vs UNTAR actions.  Latter expects a tar file that
    zip, and its target directory points directly at where those files
    are to go.
 
- - Sort files during startup load, such that we go from
+[475:
+DONE :475] - Sort files during startup load, such that we go from
    smallest-then-newest to largest-then-oldest.  The goal is to avoid
    installing already obsoleted packages.
 
@@ -4973,17 +4978,22 @@ Mon Sep 21 11:08:07 2020 Well, so say we keep everything as is:
 
 TODO
 
- - Use standard (SC_UNZIPCD style) .mfz packing for S00.
+[470: Wed Sep 23 11:29:46 2020 Went full custom, but still,
+DONE :470] - Use standard (SC_UNZIPCD style) .mfz packing for S00.
 
  - Leave cdm-deleteds.map in there, but ignore it.
 
- - Create cdmss-deleteds.map on a CDM10-style format
+[471:
+DONE :471] - Create cdmss-deleteds.map on a CDM10-style format
 
- - Write a custom loader for it in ActionState.pm
+[472:
+DONE :472] - Write a custom loader for it in ActionState.pm
 
- - Store the map in ContentManager
+[473:
+DONE :473] - Store the map in ContentManager
 
- - Use the map during ContentManager::deleteDominatedInSlot, so that
+[474:
+DONE :474] - Use the map during ContentManager::deleteDominatedInSlot, so that
    we can end up with no file at all for a given slot.
 
 
@@ -4997,23 +5007,29 @@ least for now; moving deleteds to S01.  Next steps
 
 TODO
 
- - Copy cdmctl down into cdm/cdm and rework to generate the new-style
+[464: Wed Sep 23 11:29:00 2020
+DONE :464] - Copy cdmctl down into cdm/cdm and rework to generate the new-style
    cdmss-deleted.map (that will go inside cdmss-01-000000.mfz)
 
- - Watch the SC_CUSTOM blow up due to lack of implementation
+[465:
+DONE :465] - Watch the SC_CUSTOM blow up due to lack of implementation
 
- - Implement that to load into ContentManager::mDeletedMap
+[466:
+DONE :466] - Implement that to load into ContentManager::mDeletedMap
 [441:
 
 Mon Sep 21 13:54:34 2020 Time for Computing Up, but also, think about
 
- - Build an easy mechanism to push a specific announcement in a
+[467:
+DONE, or semi-done; done enough:467] - Build an easy mechanism to push a specific announcement in a
    specific direction.
 
- - Call it when inbound stuff ends up referring to something
+[468:
+DONE :468] - Call it when inbound stuff ends up referring to something
    dominated.
 
- - Announce S01 when inbound refers to something deleted
+[469:
+DONE :469] - Announce S01 when inbound refers to something deleted
 
 :441]
 
@@ -5200,3 +5216,80 @@ First to our little 'triangle six', then to the '1.5 PZ grid' that
 currently has 27 tiles hot.
 
 :458]
+[459:
+
+Wed Sep 23 09:25:24 2020 OK, committed, and made cdmss-02-516cb8.mfz.
+Now, we did a cut at modtime watching, so theoretically if we just
+dump that file into /cdm/common, things ought to start to happen.
+
+Let's just watch..[460:
+
+Wed Sep 23 09:30:58 2020 Could be perkier on the announce, but looking
+eminently plausible:
+
+    646.81:PacketIO#0: Replying with 01-516c76 to NE CDM_F [15] about 90-516775
+    707.40:PacketIO#0: Replying with 01-516c76 to ET CDM_F [15] about 90-516775
+    752.48:CM:common#8: ContentManager::loadFiles FILES cdmss-01-516c76.mfz, cdmss-02-516cb8.mfz, cdmss-02-51699a.mfz, cdmss-03-51698b.mfz
+    752.48:CM:common#8: Trying to load new file cdmss-02-516cb8.mfz
+    752.48:CM:common#8: cdmss-02-516cb8.mfz#13 record created
+    752.48:CM:common#8: cdmss-02-516cb8.mfz#13 complete. 2.1MB loaded in 1s, 1.1MBPS
+    752.48:CM:common#8:   [BEGIN SLOT CONFIGURATION: cdmss-02-516cb8.mfz#13]
+    752.48:CM:common#8: cdmss-02-516cb8.mfz#13 1.1.1. SC_CHKTAG
+    752.48:CM:common#8: cdmss-02-516cb8.mfz#13 -Checking for /cdm/tags/slot02-install-tag.dat
+    752.48:CM:common#8: cdmss-02-516cb8.mfz#13 CHKTAG: We are up to date; nothing to do
+    752.48:CM:common#8:   [END SLOT CONFIGURATION (1): cdmss-02-516cb8.mfz#13]
+    752.48:CM:common#8: Loaded cdmss-02-516cb8.mfz
+    752.48:CM:common#8: cdmss-02-516cb8.mfz#13 dominates cdmss-02-51699a.mfz#10
+    752.48:CM:common#8: cdmss-02-51699a.mfz#10 renamed to /cdm/common/cdmss-02-51699a.mfz~
+    756.27:CM:common#8: ContentManager::loadFiles FILES cdmss-01-516c76.mfz, cdmss-02-516cb8.mfz, cdmss-03-51698b.mfz
+    799.63:PacketIO#0: Replying with 02-516cb8 to ET CDM_F [15] about 02-51699a
+    888.33:PacketIO#0: Replying with 01-516c76 to ET CDM_F [15] about a0-51688d
+
+
+:460]
+
+:459]
+[461:
+
+Wed Sep 23 11:11:09 2020 OK, so the results from the 1.5PZ grid
+suggest that fully distributing S02 to a grid takes a little more than
+3 minutes times the maximum shortest path length from the injection
+point.
+
+There's currently significant variation hop-to-hop due to random
+announcements and sporadic packet loss due to buffer overflows, but I
+expect that will hold for a while.  The S02 being distributed was:
+
+  -rw-r--r-- 1 root root  2062272 Sep 23 09:27 cdmss-02-516cb8.mfz
+
+so we're talking something like (/ 2062272 (* 3.25 60)) -> ~10KBps as
+a per hop rate?  That seems way high; I'd've expected 5 or 8KBps max.
+
+[462:
+
+Wed Sep 23 11:22:09 2020 Ah my metric is screwed.  Counting from the
+time the first recipient restarted cdm is unfair, because it ignores
+all the pipelining going out of that tile before its new S02 was
+complete.
+[463:
+
+Wed Sep 23 11:27:37 2020 Anyway, let's quick review our to-dos and see
+if there's anything we can't ignore for now.
+
+I think we should switch back to mfmt2, Mr. President.  While there's
+still time.
+[480:
+
+Wed Sep 23 11:32:06 2020 Well, wow, cleared a lot of to-dos back
+there!
+
+LET'S DO A FINAL COMMIT AND THEN END THIS NOTES FILE 4EVA!
+
+Actually let's merge cdm-simplex into develop!  That's the demarc!
+
+:480]
+:463]
+
+:462]
+
+:461]
