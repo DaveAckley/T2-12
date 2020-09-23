@@ -4,6 +4,7 @@ use strict;
 use base 'TimeoutAble';
 use fields qw(
     mInDir
+    mInDirModTime
     mSSMap
     mDeletedMap
     );
@@ -54,7 +55,11 @@ sub pickUndominatedMFZModel {
     return $self->getDominantMFZModelForSlot($slot,DOM_ONLY_MAPPED);
 }
 
-# Find the dominant model for $slot, including non-announceable models if $all is true
+# Return undef if there is no known model for $slot, or return the
+# dominant $slot model allowable according to $mode: Only complete
+# models if DOM_ONLY_COMPLETE, or all models including
+# non-announceable models if DOM_INCLUDE_ALL, or just announceable
+# models if DOM_ONLY_MAPPED (or otherwise).
 sub getDominantMFZModelForSlot {
     my __PACKAGE__ $self = shift || die;
     my $slot = shift;
@@ -99,8 +104,30 @@ sub insertMFZModel {
     return $model;
 }
 
+sub takeDeletedMap {
+    my __PACKAGE__ $self = shift || die;
+    my DeletedMap $dmap = shift || die;
+    DPSTD($self->getTag().
+          (defined($self->{mDeletedMap}) ? " Replacing " : " Initializing ").
+          "deleted map");
+    $self->{mDeletedMap} = $dmap;
+}
+
+# return undef and set $@ if problem, else return 1 if ss is deleted, and 0 if not
+sub isDeletedSS {
+    my __PACKAGE__ $self = shift || die;
+    my $ss = shift || die;
+    my $dmap = $self->{mDeletedMap};
+    return DPSTD("No deleted map") unless defined($dmap);
+    my ($slot,$stamp) = (SSSlot($ss), SSStamp($ss));
+    my ($dflags,$dstamp) = ($dmap->slotFlags($slot), $dmap->slotStamp($slot));
+    return DPSTD("dmap invalid") unless $dflags&DELETED_FLAG_SLOT_VALID;
+    return 1 if ($dflags&DELETED_FLAG_SLOT_DELETED) && $dstamp >= $stamp;
+    return 0;
+}
+
 #Task3: Reap any slotnum $sn MFZModels that are dominated by other
-#       completed slotnum models
+#       completed slotnum models, or are explicitly deleted
 sub deleteDominatedInSlot {
     my __PACKAGE__ $self = shift || die;
     my $slot = shift || die;
@@ -109,11 +136,15 @@ sub deleteDominatedInSlot {
     my @tss = sort { $b <=> $a } keys %{$self->{mSSMap}->{$slot}};
     for my $ts (@tss) {
         my $m = $self->{mSSMap}->{$slot}->{$ts};
-        if (defined($dom)) {
+        if (defined($dom) || $self->isDeletedSS($m->{mSlotStamp})) {
             ++$count;
-            DPSTD($dom->getTag()." dominates ".$m->getTag());
-            delete $self->{mSSMap}->{$slot}->{$ts};
-            $m->deleteMFZ($dom);
+            if (defined($dom)) {
+                DPSTD($dom->getTag()." dominates ".$m->getTag());
+            } else {
+                DPSTD($m->getTag()." is marked deleted");
+            }
+            delete $self->{mSSMap}->{$slot}->{$ts}; # This is all we have to do??
+            $m->deleteMFZ();
         } elsif ($m->isComplete()) {
             $dom = $m; # Begin flushing from here
         }
@@ -151,19 +182,30 @@ sub updateMFZModelAvailability {
     my $ss = $fpkt->{mSlotStamp};
     my ($slot,$stamp) = (SSSlot($ss), SSStamp($ss));
 
-    # Check if we already know this $fpkt's content is obsolete
-    my $dom = $self->getDominantMFZModelForSlot($slot,DOM_ONLY_MAPPED);
-    if (defined($dom)) {
-        my $domstamp = SSStamp($dom->{mSlotStamp});
-        if ($domstamp > $stamp) {
-            # They're obsolete.  Let's spread the good news about $dom
-            my $cdm = $self->{mCDM} || die;
-            my $fpkt2 = PacketCDM_F->makeFromMFZModel($dom) || die;
-            $fpkt2->setDir8($fpkt->getDir8());
-            my $pio = $cdm->getPIO() || die;
-            $fpkt2->sendVia($pio);
-            return;
+    my $domby = undef;
+    if ($self->isDeletedSS($ss)) {
+        $domby = $self->getDominantMFZModelForSlot(DELETED_SLOT_NUMBER, DOM_ONLY_COMPLETE);
+    } else {
+        # Check if we already know this $fpkt's content is obsolete
+        my $dom = $self->getDominantMFZModelForSlot($slot,DOM_ONLY_MAPPED);
+        if (defined($dom)) {
+            my $domstamp = SSStamp($dom->{mSlotStamp});
+            if ($domstamp > $stamp) {
+                $domby = $dom;
+            }
         }
+    }
+
+    if (defined($domby)) {
+        my $domss = $domby->{mSlotStamp};
+        # They're obsolete.  Let's spread the good news about $domby
+        DPSTD("Replying with ".SSToTag($domss)." to ".$fpkt->summarize()." about ".SSToTag($ss));
+        my $cdm = $self->{mCDM} || die;
+        my $fpkt2 = PacketCDM_F->makeFromMFZModel($domby) || die;
+        $fpkt2->setDir8($fpkt->getDir8());
+        my $pio = $cdm->getPIO() || die;
+        $fpkt2->sendVia($pio);
+        return;
     }
 
     # Theirs at least ties ours for dominance.  Record it.
@@ -205,15 +247,21 @@ sub init() {
     DPPopPrefix();
 }
 
-sub loadDirectory {
+sub loadFiles {
     my __PACKAGE__ $self = shift || die;
     my $dirpath = $self->makeDirPath();
     opendir my $fh, $dirpath or return SetError("Can't read $dirpath: $!");
     my @files = sort { SScmpSS(SSFromPath($b),SSFromPath($a)) } grep { SSFromPath($_) } readdir $fh;
     closedir $fh or die $!;
     DPSTD("${\FUNCNAME} FILES ".join(", ",@files));
-    # Just do it all atomically for now, until we actually have a clue
-    # about updating incrementally.
+    return @files;
+}
+
+sub loadDirectory {
+    my __PACKAGE__ $self = shift || die;
+    my @files = $self->loadFiles();
+    # Just process them all atomically for now, until we actually have
+    # a clue about updating incrementally.
     for my $file (@files) {
         $self->checkFile($file); 
     }
@@ -256,6 +304,7 @@ sub new {
     $self->SUPER::new("CM:$dir",$cdm);
 
     $self->{mInDir} = $dir;   
+    $self->{mInDirModTime} = undef;
     $self->{mSSMap} = { };          # { slotnum -> { ts -> MFZModel } }
     $self->{mDeletedMap} = undef;   # instance of DeletedMap
 
@@ -328,8 +377,40 @@ sub maybeRequestSomething {
     return $self->requestChunkFrom($model);
 }
 
+sub reloadCommon {
+    my __PACKAGE__ $self = shift || die;
+    my @files = $self->loadFiles();
+    my $cdm = $self->{mCDM};
+
+    for my $fn (@files) {
+        my $ss = SSFromPath($fn) or next;
+        my $model = $self->getMFZModelForSSIfAny($ss);
+        next if defined $model;
+        DPSTD("Trying to load new file $fn");
+        $model = MFZModel->tryLoad($cdm,$self->{mInDir},$fn);
+        if (defined $model) {
+            DPSTD("Loaded $fn");
+            $self->insertMFZModel($model);
+        } else {
+            DPSTD("Load failed: $@");
+        }
+    }
+}
+
+sub maybeReloadCommon {
+    my __PACKAGE__ $self = shift || die;
+    my $path = $self->makeDirPath();
+    my $modtime = (stat($path))[9];
+    my $prevmod = $self->{mInDirModTime};
+    unless (defined($prevmod) && $modtime <= $prevmod) {
+        $self->reloadCommon();
+        $self->{mInDirModTime} = $modtime;
+    }
+}    
+
 sub update {
     my __PACKAGE__ $self = shift || die;
+    $self->maybeReloadCommon();
     $self->maybeAnnounceSomething();
     $self->maybeRequestSomething();
     $self->garbageCollect();

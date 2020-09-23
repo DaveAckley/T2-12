@@ -257,11 +257,13 @@ sub servableLength {
 sub deleteMFZ {
     my __PACKAGE__ $self = shift || die;
     
-    # Eliminate the file
-    my $path = $self->makePath();
-    my $pathDominated = $path."~";
-    rename $path, $pathDominated or die "Can't rename '%path': $!";
-    DPSTD($self->getTag()." renamed to $pathDominated");
+    # Eliminate the file, if it exists
+    if ($self->servableLength() > 0) {
+        my $path = $self->makePath();
+        my $pathDominated = $path."~";
+        rename $path, $pathDominated or die "Can't rename '%path': $!";
+        DPSTD($self->getTag()." renamed to $pathDominated");
+    }
 
     # Eliminate the model
     $self->unschedule();

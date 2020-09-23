@@ -14,12 +14,15 @@ use fields qw(
     mTagDir
     );
 
+use File::Temp qw(tempdir);
+use File::Path qw(make_path remove_tree);
+
 use DP qw(:all);
 use T2Utils qw(:fileops :processops);
 use Constants qw(:all);
 use MFZUtils qw(:functions);
-use File::Temp qw(tempdir);
-use File::Path qw(make_path remove_tree);
+use ContentManager;
+use DeletedMap;
 
 BEGIN {
     sub actionRoutines {
@@ -316,10 +319,25 @@ sub doSC_REFRESH {
     return $ret;
 }
 
-sub doSC_REBOOT  {
-    die
-}
 sub doSC_CUSTOM  {
+    my __PACKAGE__ $self = shift || die;
+    my $slot = $self->{mSlotNum};
+    if ($slot == 0x01) {  # Custom deletion processing
+        my MFZModel $model = $self->{mModel} || die;
+        my CDM $cdm = $model->{mCDM} || die;
+        my $path = $model->makePath();
+        my DeletedMap $dmap = DeletedMap::initFromS01MFZ($path);
+        die "Couldn't build deleted map from '$path': $@" unless defined $dmap;
+        my ContentManager $cmgr = $cdm->{mContentManager};
+        $cmgr->takeDeletedMap($dmap);
+        return 0;
+    } 
+    DPSTD("NO SC_CUSTOM FOUND FOR ".sprintf("%02x",$slot));
+    return -1;
+}
+
+
+sub doSC_REBOOT  {
     die
 }
 

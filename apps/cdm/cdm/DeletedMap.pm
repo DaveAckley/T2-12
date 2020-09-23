@@ -29,6 +29,28 @@ sub recognize {
         && $pk =~ /^DMP1.\n/;
 }
 
+##CLASS METHOD
+# Returns instance of DeletedMap, or undef and sets $@
+sub initFromS01MFZ {
+    my $mfzpath = shift || die;
+    my $outer = LoadOuterMFZToMemory($mfzpath); 
+    return undef unless defined $outer;  # $@ already set
+    my $inner = LoadInnerMFZToMemory($outer); ## COUNTS ON SetKeyDir($basedir) ALREADY DONE
+    return undef unless defined $inner;  # $@ already set
+
+    ## MFZ_PUBKEY_NAME handle is locally known valid as of now
+    my $mfzSigningHandle = $inner->[4];
+    my $innerpathsref = $inner->[3];
+
+    my ($dmpath, $dmname, $dmtime, $dmdata) = FindName($innerpathsref,DELETEDS_MAP_NAME,undef);
+
+    my $dmref = Packable::parse($dmdata);
+    return undef unless defined $dmref; # $@ already set
+    return SetError("Not a DeletedMap") unless $dmref->isa('DeletedMap');
+    
+    return $dmref;
+}
+
 # return undef and set $@ if map sig bad, else return successful handle
 sub verifySignature {
     my __PACKAGE__ $self = shift;
@@ -135,13 +157,15 @@ sub slotRef {
 sub slotFlags {
     my __PACKAGE__ $self = shift || die;
     my $idx = shift; defined $idx || die;
-    return SSSlot(slotRef($idx),shift);
+    my $optval = shift;
+    return SSSlot($self->slotRef($idx),$optval);
 }
 
 sub slotStamp {
     my __PACKAGE__ $self = shift || die;
     my $idx = shift; defined $idx || die;
-    return SSStamp(slotRef($idx),shift);
+    my $optval = shift;
+    return SSStamp($self->slotRef($idx),$optval);
 }
 
 sub init {
@@ -192,5 +216,7 @@ sub signDeletedMap {
 
     return $self;
 }
+
+
 
 1;
