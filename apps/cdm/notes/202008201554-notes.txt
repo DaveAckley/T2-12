@@ -1,4 +1,4 @@
-{449}  -*- text -*-
+{459}  -*- text -*-
 [0:
 
 Thu Aug 20 15:54:24 2020 And here we are.
@@ -5092,3 +5092,111 @@ Let's commit.
 :445]
 
 :444]
+[449:
+
+Wed Sep 23 02:58:07 2020 OK, late start tonight; where are we?
+
+So with or without modtime changes in common, we should write code
+that looks for new file names in common/ and 'announces' them to
+ourselves.
+
+Also, when we accept a new announcement -- even just a new prefix
+availability -- we should forward it to all our neighbors.
+everybody 
+
+:449]
+[450:
+
+Wed Sep 23 04:19:00 2020 So, we've got this:
+
+    root@beaglebone:/home/t2/T2-12# ./apps/cdm/cdm/cdmctl listdeleted
+    cdmss-90-516775.mfz -- marked deleted (but exists)
+    cdmss-a0-51688d.mfz -- marked deleted (but exists)
+     0 deleted, 2 zombies, 0 invalid
+    root@beaglebone:/home/t2/T2-12# 
+
+because we're not actually checking the deletion map when processing
+announcements or determining dominances.
+
+Time to bite the bullet.[451:
+
+Wed Sep 23 05:05:58 2020 OK, so we hacked up an SC_CUSTOM and now
+ContentManager::mDeletedMap is getting set up.  Can we get garbage
+collection to notice when a file's been deleted?
+
+:451]
+
+:450]
+[452:
+
+Wed Sep 23 05:45:24 2020 OK I guess it's a short one tonight.  Wanting
+second sleep here.  Current status: ContentManager::garbageCollect now
+actually reaps files marked deleted, yay.  But then the neighbors
+announce them to us again (apparently), and things blow up with rename
+failures:
+
+    77.32:CM:common#8: cdmss-90-516775.mfz#15 is marked deleted
+     at /home/t2/T2-12/apps/cdm/cdm/cdm.pl line 22, <__ANONIO__> line 2.
+            main::__ANON__[/home/t2/T2-12/apps/cdm/cdm/cdm.pl:23]("Can't rename '%path': No such file or directory at /home/t2/T"...) called at /home/t2/T2-12/apps/cdm/cdm/MFZModel.pm line 263
+            MFZModel::deleteMFZ(MFZModel=HASH(0x356e228), undef) called at /home/t2/T2-12/apps/cdm/cdm/ContentManager.pm line 143
+            ContentManager::deleteDominatedInSlot(ContentManager=HASH(0x354eed0), 144) called at /home/t2/T2-12/apps/cdm/cdm/ContentManager.pm line 156
+            ContentManager::garbageCollect(ContentManager=HASH(0x354eed0)) called at /home/t2/T2-12/apps/cdm/cdm/ContentManager.pm line 401
+
+
+:452]
+[453:
+
+Wed Sep 23 05:56:02 2020 OK, now we're at repeatedly accepting
+announcements about deleted files, and then deleting them over and
+over.  Where are those announcements getting processed?[454:
+
+Wed Sep 23 05:57:29 2020
+ContentManager::updateMFZModelAvailability($fpkt)
+
+..which uses ContentMananger::getDominantMFZModelForSlot.  Do we dare
+try to return the slot01 MFZModel when a file is deleted?[455:
+
+Wed Sep 23 05:59:25 2020 Well it won't work immediately, because
+caller compares stamps to determine obsolescence, which means it'd
+compare slot rando's stamp to slot01's stamp.. but that's not really
+the right comparison, is it?  I guess slot01's stamp has to be at
+least as new as any deletion time within it..  But equality would have
+to be resolved there.
+
+Rework ContentManager::updateMFZModelAvailability a little more
+deeply, to check deletion as a separate process from simple
+dominance.
+
+After sleep.
+[456:
+
+Wed Sep 23 08:39:07 2020 UPp.
+
+:456]
+:455]
+
+:454]
+
+
+
+:453]
+[457:
+
+Wed Sep 23 09:11:18 2020 OK, now we're doing a lot of this:
+
+    384.47:PacketIO#0: Replying with cdmss-01-516c76.mfz#9 to ET CDM_F [15] about a0-51688d
+    384.47:PacketIO#0: Replying with cdmss-01-516c76.mfz#9 to NE CDM_F [15] about a0-51688d
+    384.47:PacketIO#0: Replying with cdmss-01-516c76.mfz#9 to ET CDM_F [15] about 90-516775
+    384.47:PacketIO#0: Replying with cdmss-01-516c76.mfz#9 to NE CDM_F [15] about 90-516775
+
+because our ET and NE neighbors do not yet have the SC_CUSTOM ability
+to take advantage of cdmss-01-516c76.mfz (which they already possess.)
+
+:457]
+[458:
+
+Wed Sep 23 09:16:30 2020 Let's commit and then release a new S02!
+First to our little 'triangle six', then to the '1.5 PZ grid' that
+currently has 27 tiles hot.
+
+:458]
