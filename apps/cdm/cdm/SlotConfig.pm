@@ -21,7 +21,7 @@ sub INIT_ALL_SLOTS {
     # S00 reserved and probably illegal
     mSC(0x01,"deletions       ",undef,                  [SC_CUSTOM],[]); 
     mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_TAR, SC_REFRESH, SC_RESTART],[]);
-    mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR],[]);
+    mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR, SC_RESTART],[]);
 
     mSC(0x90,"TEST 90 ~/TEST90","/home/t2/TEST90",      [SC_CHKTAG, SC_UNZIPCD, SC_SETTAG],[]);
 
