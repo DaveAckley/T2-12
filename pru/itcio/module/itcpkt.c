@@ -2307,9 +2307,9 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
           if (!mfm) { /* service traffic is delivered to /dev/itc/{bulk|flash} */
 
             if (byte1&PKT_HDR_BYTE1_BITMASK_BULK)
-              pktdev = S.mPktDeviceState[0]; /* 0==/dev/itc/bulk */
+              pktdev = S.mPktDeviceState[0]; /* [0]==/dev/itc/bulk */
             else
-              pktdev = S.mPktDeviceState[1]; /* 1==/dev/itc/flash */
+              pktdev = S.mPktDeviceState[1]; /* [1]==/dev/itc/flash */
 
           } else if ((byte1&PKT_HDR_BYTE1_BITMASK_XITC) !=   /* mfm traffic has XITC in byte1 */
                      PKT_HDR_BYTE1_XITC_VALUE_KITC) { /* non-kitc is ITC or circuit traffic */
