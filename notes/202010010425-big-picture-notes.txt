@@ -1,0 +1,1056 @@
+{74}  -*- text -*- 
+[0:
+
+Thu Oct  1 04:25:46 2020 OK so we're closing in on two years of T2sday
+Updates and we need a foggen plan.
+
+Random thoughts first.
+
+ - Perhaps target T2sup#3100 as a series finale?  At some level.  That
+   would be somewhere around next April on the current schedule?
+
+ - We need a downshift and tool-strengthening push on intertile
+   events.  Don't think about debugging; think about visualization.
+
+ - Simple neural network structures, with many atoms cooperating in a
+   single neuron+dendritic tree+axon, is a tremendously natural idea
+   for running on the grid.  Imagine 'sensory data' on one grid edge,
+   'motor commands' on another, and dynamic neural structures
+   remapping data, abstracting and instantiating, between them.  Or
+   imagine 'sensorimotor' at the top of the grid, and 'abstract mind'
+   at the bottom of the grid, and the flow goes down and then up
+   again.  So low-order sensorimotor loops can be resolved more
+   quickly than higher-order computations.
+
+ - When/if do we start publishing this stuff in science/engineering
+   venues?
+
+:0][1:
+
+Thu Oct  1 04:52:23 2020 And what might a 'downshift and
+tool-strengthening' look like?
+
+ - A mile-high view of event processing; something that suggests some
+   kind of first principles for resolutions of race conditions.
+
+ - The 'hard part' is the distibuted commit?  As long as the event
+   originator can decide to flush an event things are easy.
+
+ - We want more of a falling-toward-consistent solution.
+
+ - Where is the stigmergy in event processing?  Could we somehow mark
+   the floor as 'dir8 claims this site+radius 2'?
+
+ - The CDM stigmergy move was shifting stuff into the file.  Could we
+   ship an entire update to everybody without even holding a lock?
+   And ask them if they can apply it cleanly?  And when they all say
+   yes we say: Shift assumptions to it's happening.
+
+ - How about that?  Part of the protocol can be a shift in
+   responsibility in the case of failure or timeout.  At first the
+   passive sides believe their ground state is to break the lock and
+   forget the event.  But if they see that event processing has
+   reached a certain state, they change their belief so that their
+   ground state is to apply the change.  As long as everything works
+   out without failures, the ground state beliefs shouldn't matter,
+   but -- the thought is -- once timeouts start occuring, the ground
+   states provide the justification for what the failure-recovery code
+   in all the different components should do.
+
+[2: Thu Oct  1 05:07:35 2020
+
+ - Another thought is to couple to a larger failure mode, at the ITC
+   level.  If an event fails, trigger a renegotiation of all involved
+   ITCs.  All existing events touching the ITC blow up uncommitted,
+   all involved locks are released.
+
+ - So each side needs to be able to get to that state successfully
+   (i.e., without FAIL), even though they'll hear about it in somewhat
+   different ways.
+
+ - But again, we need big-picture, out-of-the-weeds views on this.
+
+Another point of view is that we should do retries for apparently lost
+event process messages, and be willing to wait a very long time, until
+we get explicit ACK or NAK on any given state.
+
+That feels like going in the wrong direction, of course.
+
+But what does the right direction feel like, here, really?
+
+:2]
+:1]
+[3:
+
+Thu Oct  1 05:19:39 2020 Restate fundamentals.
+
+We have the race to get a lock.  That's tough because A might be
+asking B for a lock on region rA, while B is asking C for a lock on a
+region rB that doesn't overlap rA, while C is asking A for a lock on a
+region rC that overlaps rB but not rA.  All those requests can be
+satisfied pairwise (if I set the story up right), but not all locks
+can actually be granted.
+
+Actually I don't think I set the story up right.
+
+:3]
+[4:
+
+Thu Oct  1 05:38:49 2020 Think about log centralization tools.
+
+ - DO THE TRACE-TO-DISK ON FAIL.  DO IT NOW NOW NOW
+[6:
+
+Fri Oct  2 00:51:14 2020 Reviewing the Trace system.[7:
+
+Fri Oct  2 02:34:06 2020 Well, have been re-reading through
+/home/t2/MFM/src/drivers/mfmt2/notes/202006120116-notes.txt here,
+re-exposing the brain to intertile, the yoink protocol, Weaverville,
+and the rest.
+
+And thinking: What about another stigmergic 'simplification'?  What
+if we ditched the 32 active EventWindows, and ditched the 32 passive
+EventWindows?  What if we gave an active and a passive EventWindow To
+Every Visible Site In The Tile?  [8:
+
+Fri Oct  2 04:04:40 2020 The idea is that the current EW#s are like
+the CDM SKU's and tag#s -- just more state that can get out of sync
+and go bad.[9:
+
+Fri Oct  2 12:26:51 2020 Good second sleep.
+
+[10:
+
+Fri Oct  2 12:27:01 2020 So, with the CDM10 story, we have clear
+separation of timescales between creating a new .mfz (relatively slow)
+and disseminating it to the grid (relatively fast).  That seems, at
+best, far less true with event processing.
+
+One thing it would be good to know is whether any of our issues
+involve MFM packet loss.  It's pretty easy to believe our CURRENT
+issues anyway are just bugs even though all packets arrive
+(eventually).
+
+I guess in absence of a clear design alternative (still), our current
+mission is still to do the snap-to-disk trace logging.  And Hey Why
+Not Make A Flash Command For That?
+[11:
+
+Fri Oct  2 12:35:35 2020 So let's design a snap-trace-to-disk
+mechanism; that's nice and conventional and non-threatening.
+
+ - Manage some assigned pool of disk space; flushing oldest
+   (unmarked?) traces automatically to gain space.
+
+ - Have a concept of a 'trace group', identified by a random label,
+   to link trace files across multiple tiles.
+
+ - Have a separate directory for each trace group?  Or just a separate
+   trace file per trace group, which get merged into a trace group
+   directory as a second step.  Maybe keep the snap target flat: Just
+   a lex sequence number plus a 32 bit random tag in hex.
+
+ - On a fail-to-top-level, or via an explicit call, send a Persist
+   History flash packet with a one hop TTL.  If it's by an explicit
+   call, I guess we then go about our business and wait for the flash
+   timer to trigger locally as usual, but if it's a fail-to-top I
+   guess we block, doing nothing else, until the appropriate time?
+   But what is 'nothing else'?  Unclear.  Maybe we snap-to-disk out of
+   turn in that case, then go ahead and crash.
+
+ - Disk structure:
+     SNAPDIR/ctrl/seqno.dat    ; Last sequence number used, u32 netorder
+     SNAPDIR/snap/<FILE>       ; Trace files FILE lex(seqno)-hex(label).dat
+     SNAPDIR/save/<DIR>        ; Unified trace files for DIR hex(label)
+
+[13: Fri Oct  2 12:58:34 2020
+
+ - Going to need a way to move files between nearby tiles!  Been
+   seeing that coming, with mixed emotions, but here it is!  The idea
+   is we should be able to plug a serial cable into the middle of the
+   grid, 'centralize' the nearby files associated with a given label,
+   and run the curses Weaver right there to examine things.
+
+:13]
+[12:
+
+Fri Oct  2 12:53:27 2020 Hmm maybe include relative address in the
+filename, so we can tell who's where and who triggered this group.
+
+Also maybe we want to separate the explicitly-saved unified trace
+files from the automatically-managed ones, so that the automatic disk
+space management only applies to the the latter.
+
+Well, but we can have that simply by saying it's only the SNAPDIR/snap
+directory that's auto-space-managed..
+
+:12]
+
+:11]
+
+:10]
+
+:9]
+
+:8]
+
+:7]
+
+:6]
+:4]
+[5:
+
+Thu Oct  1 13:03:48 2020 Getting ready to move the flag.  Feel like I
+haven't gotten to any decent 'big picture' on event processing..
+
+Perhaps if we get that story set up right we can derive something like
+the latest points at which an event can get blown up..
+
+But really I want to move towards timeouts and retransmits.  Just like
+CDM now rides out packet losses, I want to get event processing to
+look more like that.  So that any party can say 'I think the situation
+is this' and that should trigger some explicit response from everybody
+that hears it.  I guess the response might be just doing the next
+step, if that's what comes next from some participant's point of view,
+or a NAK if that's not the situation on the recipient's view, or an
+ACK if that is the situation but the recipient is not next to move.
+
+And we need to remember that Things Will Still Blow Up.  So we need,
+for example, mechanisms to count and report failures.
+
+:5]
+[14:
+
+Fri Oct  2 13:19:07 2020 OK, so have a call at the top of the hour.
+Let's think about moving single files between tiles.
+
+OPTIONS!
+
+ - Extend CDM somehow.  CDM owns /dev/itc/bulk, so if our file was
+   going to move on that device..
+
+ - Extend MFM somehow.  Have the file move via /dev/itc/mfm/*.  Or by
+   /dev/itc/flash?  Those both seem uncommonly bad ideas.  For moving
+   background bulk data.
+
+ - Create yet another minor device in the itc_pkt LKM.  Like
+   /dev/itc/ptp or /dev/itc/misc or something.  But I mean we have to
+   stop meeting like this.
+
+[15:
+
+Fri Oct  2 13:23:48 2020 Of those three I guess extending CDM feels
+least worst.  Creating another device seems 'clean' but then all the
+userspace issues just recapitulate.
+
+ - It's perl, easy to code, and already slow to run and slow to
+   transmit.
+
+ - Could have like outbound/ and inbound/ directories.  Maybe per-ITC?
+   Maybe.  Dump a file in /cdm/ptp/outbound/NE/, and it will get
+   shipped one hop toward the NE.  And once it arrives there intact
+   (in /cdm/ptp/inbound/SW/, presumably), it will get deleted from
+   here.
+
+ - Now, as long as we're (thinking of) doing this, we could extend it
+   to the multihop worm-routed syntax as well.  Like, drop a file in
+   /cdm/ptp/outbound/223/, and it'll get shipped east (dir8==2) two
+   tiles and then southeast (dir8==3) one tile.  And it'll land there
+   in /cdm/ptp/inbound/766/, showing where it came from.
+
+ - Now what do we do about file names?  Aren't we heading right back
+   towards SKUs here?  Could the files be anonymous?  Like you can
+   only send one file -- 'the file' -- and then it's up to sender and
+   receiver to determine what it means?  Or I suppose we could fake up
+   some metadata, like an on-the-fly cdm10 header, to supply a label
+   and a size and what-not?
+
+ - We could include a few bytes of digest in every packet, rather than
+   percent mapping the whole thing?  But I guess if there's a
+   non-trivial chance of a false positive that would be bad; we
+   wouldn't know how far back to chew the file.
+
+ - Well how about a real cdm10 header?  Or perhaps an unsigned one?  A
+   sixteen byte label is pretty tight if we want hex(seqno+label) in
+   it
+
+:15]
+
+
+:14]
+[16:
+
+Fri Oct  2 13:43:10 2020 I wonder about creating a literal socket..
+Like, you configure it with "223" or whatever, and I guess you
+configure the far end with "776" too?, and then you treat it like an
+regular (network?) socket.  What about if it's a virtual TTY, and we
+could use like sz/rz over it?
+
+I REALLY DON'T WANT TO OPEN INTERTILE UP TO GENERAL UNIX TRAFFIC!
+
+[17:
+
+Fri Oct  2 13:50:56 2020 What if it's like a datagram though.  No
+stream reliability, no guarantee of packet delivery, just some
+checksum for plausible packet integrity if it does arrive.  Still
+scary. 
+
+:17]
+:16]
+[18:
+
+Sat Oct  3 02:14:56 2020 Well.
+
+We do have all that 'non-standard' space just sitting there in the
+packet header.
+
+Suppose.
+
+Suppose we implemented IXM-style source routing.
+
+Like:
+
+  !"#$%&', 0x20..0x27: End-of-address code: Deliver here.
+
+ 01234567, 0x30..0x37: Source-routed packet arriving from byte[0]&0x7
+
+                       Delete byte[0] (which shall match the arrival
+                       dir) and examine byte[1].  Route rest in direction
+                       dir8==BYTE-'0'.  Insert ((dir8+4)%8)+'0' after
+                       ' ' if that is encountered before any other
+                       non-'0'..'7' byte. 
+
+[19:
+
+Sat Oct  3 04:50:25 2020 So, a couple points:
+
+(1) The PRU code basically doesn't care what the first byte of the
+    packet is; it doesn't examine it.  But
+(2) The PRU code writes the source direction of the packet into the
+    bottom three bits of the first byte of the packet regardless of
+    what is there.
+
+So any 'non-standard' packet types better be assigned in aligned
+groups of eight, and be prepared to have their bottom three bits
+smashed in transit.
+
+
+:19]
+
+:18]
+[20:
+
+Sun Oct  4 01:12:17 2020 OK, well where the hack are we, here?  Are we
+really thinking of trying to implement source-routed packets?[21:
+
+Sun Oct  4 01:17:58 2020 How about we just fake that inside CDM
+packets?  That's minimally invasive.  Then it's all about how to hook 
+the packets into local userspace.
+
+What about the outbound and inbound file idea instead?  So you can
+only send one file at a time to any given destination, so the filename
+issue goes away and the 'SKU' is implied by the source route.
+
+[22:
+
+Sun Oct  4 01:27:27 2020 OK come on enough with the 'big picture'
+-- sheesh -- we have to hack.  So,
+
+TODO
+
+ - Create a variant CDMap called 'UDM10' -- meaning something like
+   unsigned/unique data map/manager.  Use the bytes of the mSignature
+   field for a 
+
+ - Have cdmctl acquire a new command (or start a new cdm program):
+   'cdmctl send ROUTE FILE', and it creates a UDM from the file and
+   dumps it in /cdm/ptp/outbound/ROUTE
+
+ - Make a new UDManager.pm in cdm/ that watches /cdm/ptp/outbound,
+   announces files via source routed packets, the whole megillah.
+
+Jeez it's all a lot of hair.  Can't we make it all manual like zmodem?
+
+How do unix sockets work again?  Named pipes?
+[23:
+
+Sun Oct  4 03:19:52 2020 Well, we have a perl spike --
+./pairunixdomain.pl s -- setting up a non-blocking unix domain socket
+and reading data from connections, and closing the connections down
+when they finish.  And we can send big chunks of data and have it all
+get there with:
+
+   # cat 202010010425-big-picture-notes.txt | nc -NU /home/t2/PUD.sock 
+
+(NOTE: THAT'S AFTER WE INSTALLED netcat-openbsd --
+    # apt-get install netcat-openbsd
+)
+[24:
+
+Sun Oct  4 03:24:07 2020 So if we had a solution for specifying the
+desired routing, plus a hacked-up CDM level source routing mechanism,
+we'd be close to having all the pieces.[25:
+
+Sun Oct  4 03:36:44 2020 OK well it is after all a two-way connection
+we've got, so we can report status back to the client that way.  Like
+at the moment, we're showing:
+
+  ..
+    BONG 1601804176
+    CONNECTION IO::Socket::UNIX=GLOB(0xa61f90)
+    DATA FROM IO::Socket::UNIX=GLOB(0xa61f90): ZNLDONEW
+    FORCED GDBY TO IO::Socket::UNIX=GLOB(0xa61f90)
+    BONG 1601804181
+  ..
+
+on the server, and
+
+    root@beaglebone:/home/t2/T2-12/notes# echo -e "ZNLDONEW\n foNGe\ndslsd" | nc -NU /home/t2/PUD.sock
+    ZABODO BAYEY:IO::Socket::UNIX=GLOB(0xa61f90)
+    root@beaglebone:/home/t2/T2-12/notes#
+
+on the client.
+
+So we could make the first line be a command, like "SEND addr" or
+"RECV addr", and those would need to match up like in the good old
+zmodem days.  "SEND 1" on a tile would need a "RECV 5" on the tile to
+its northeast.  Our server would route some header/request to 1, and
+the NE server would ack or nak after scanning its active connections.
+
+Server side could retry every ten seconds or so perhaps, for as long
+as its client was willing to wait.
+
+When a match is established, server side starts shipping data packets,
+and client side starts acking them, with maybe enough digest data to
+believe each packet.  As client sees valid checksums, it delivers the
+bytes to its receiver and acks the length delivered.
+
+Eventually client could nak when a problem is detected, and have the
+server resend that packet.  So server needs to buffer all the data its
+sent that hasn't been acked (in typical reliable stream style doh) so
+it can retransmit as needed.
+
+Eventually the whole file is transmitted, and the server announces
+that with a final packet including the whole-file checksum.  At that
+point the server closes its source connection, and the client closes
+its sink connection, and that's the end of that delivery.
+
+It could be "SEND toroute FILENAME" and "RECV fromroute TODIR".
+
+Now given that we're going bidirectional here anyway, so command line
+pipes may not be the most useful, we could support multifile
+connections if we wanted to.  Sender would need to specify the data
+length of each file, and then (precisely) that much data, and then a
+send command for the next file.
+
+It would be nice to know the data length for progress reporting in any
+case.
+
+And the only reason we're interposing CDM in the middle of all this is
+because it's hogging /dev/itc/bulk so nobody else can get to it.
+
+:25]
+
+:24]
+:23]
+:22]
+
+:21]
+
+:20]
+[26:
+
+Sun Oct  4 09:00:34 2020 So let's keep it as simple as we can manage,
+for starters.
+
+TODO
+
+[27: Sun Oct  4 10:39:11 2020 First cut, as PacketCDM_S.pm,
+DONE :27] - SRPacket.pm for source-routed packets at the CDM level
+
+ - SRManager.pm to generate and handle SRPackets
+
+ - A Unix-domain datagram server?  Or just stream?
+
+:26]
+[28:
+
+Sun Oct  4 10:51:51 2020 OK we need a first specific SR packet type to
+debug with.  Announce a file?  SF?  Sure.[29:
+
+Sun Oct  4 12:47:09 2020 OK, so we sent an SR F packet twice around a
+loopback cable and successfully landed it on unimplemented code in
+ourselves.  Next stop would be to spike-out an SRManager to (generate
+and) handle the announcement, but I think I need to switch to
+finishing off the October ComputingUp while it's still the
+weekend.[30:
+
+Mon Oct  5 00:14:59 2020 Well, it won't quite be the weekend.  Will
+push out the episode today.
+
+:30]
+
+Pulling t2 dir, but not committing yet..
+
+:29]
+
+:28]
+[31:
+
+Mon Oct  5 00:15:25 2020 Starting on SRManager.pm[32:
+
+Mon Oct  5 01:47:36 2020 OK, have SRManager listening and accepting
+connections on /cdm/sockets/xfer.sock, and we need another class to
+represent an xfer state or something.  So far, now, when we accept a
+connection, we don't even know whether they want to send a file,
+receive one, or who knows what combination or else.
+
+I wonder how the zmodem protocol actually works.[33:
+
+Mon Oct  5 01:56:19 2020 Well it's non-trivial, specific, and of course
+truly ancient, based on
+https://stackoverflow.com/questions/9611000/understanding-the-zmodem-protocol
+
+If we could somehow act like a transparent point-to-point connection,
+we could possibly tunnel an existing zmodem implementation over it..
+
+Or ssh for that matter.  Or netcat.  It's just getting the route
+specified that's the problem.
+[34:
+
+Mon Oct  5 02:46:08 2020 So, once again, let's just pound it out.
+We'll make an SREndpoint, say, that represents a local connection to
+the socket, regardless of its purpose.  We'll have packet formats for
+talking to ..[35:
+
+Mon Oct  5 03:20:02 2020 Actually, screw it.  Let's just have a single
+one-line exchange, first from client to SREndpoint, and then back,
+followed by transparent byte delivery.  Client connects and sends the
+route they want to connect on.  SREndpoint checks if there's a pending
+request from that route, .. Aand we have a race on establishing the
+connections.  We could make the local users specify whether they wish
+to be 'clients' or 'servers' when they connect; then we'd only send
+connection requests from the client to the server.
+
+And it's nice: If a user connects and says '1238', that means they
+want to be a client, connecting to route 1238 (go NE, then ET, then
+SE, then you're there).  But if a user connects and says '8123', that
+means they want to be a server, listening for connections from that
+tile.
+
+We capture the route, check if the named SREndpoint exists, and then
+go from there.  For clients, we issue an SR_C packet aimed at 1238 and
+wait for a reply, retrying a few times ad hoc.  For servers, we sit
+and wait for inbound SR_C packets from 8123.
+
+Eventually either a (final) timeout happens or a connection is made,
+and we issue our one-line response to the local users: 'CONNECTED' or
+'TIMEOUT', perhaps other errors as needed.
+
+Then we just start shoveling bytes in both directions, using SR_D
+packets that send a variable size packet, with a stream index, and a
+checksum, plus a stream index for the reverse direction
+acknowledgment.
+
+I guess we just try to read a maximum length chunk from our local
+user, but we make an SR_D packet out of whatever non-zero length we
+get, and stick it on an outbound packet queue.  We could do the stream
+index in terms of SR_D packet count rather than the underlying stream
+byte count, and so an arriving SR_Ds would tell us how many SR_Ds we
+could drop from the front of our outbound queue.
+
+I guess we need to support a zero-length SR_D so we can ack packets
+even if we have nothing to ship, or have an SR_A packet that just acks
+without data to send instead.
+
+If we detect a checksum error or a break in the stream index, we send
+an SR_R retransmit request, which resets the receiver's stream back to
+the requested index, and go from there.
+
+If we see EOF from our local user, we put an SR_Q quit packet into our
+outbound queue.  I guess we'll need to deal with half-closed
+connections.
+
+I guess really we need an inbound queue, too, to have a place to stick
+arrived SR_Ds before our local user has read them.  Which also pushes
+back toward byte indices instead of packet indices, since the user is
+not strictly constrained to take a whole packet's worth, whatever that
+turns out to be in each case, at once.
+[36:
+
+Mon Oct  5 03:49:53 2020 And hey look, we ought to be able to do like:
+
+    $ echo "1238" | cat - MYFILE | nc -NU /cdm/sockets/xfer.sock
+
+to send MYFILE to 1238.  And I guess like
+
+    $ echo "8765" | nc -NU /cdm/sockets/xfer.sock | tail +2 > YOURFILE
+
+to receive it three tiles away (ignoring errors and timeouts)?
+
+:36]
+
+:35]
+
+:34]
+:33]
+
+:32]
+
+:31]
+[37:
+
+Mon Oct  5 10:03:49 2020 After second sleep.
+
+Let's use '.' instead of '8'?  ..Except we want the range to be
+contiguous so that 'return $packet =~ /^[\x80-\x87][\xb0-\xb8]/;'
+works.
+
+Except we're now calling 'encodeRoute' and 'decodeRoute' all over the
+place anyway; we could map between '.' <-> '\xb8' there, right?
+
+Leave it for now, I guess; leave it '8'.
+
+:37]
+[38:
+
+Mon Oct  5 10:11:03 2020
+
+TODO:
+
+ - Add netcat-openbsd to the list of packages we want
+
+:38]
+[39:
+
+Mon Oct  5 10:27:19 2020 Roughing out SREndpoint.pm.  
+
+:39]
+[40:
+
+Mon Oct  5 13:11:40 2020 OK, making progress but also getting a fair
+bit of untested complexity accumulating and making me anxious.
+
+So, we have to be explicit about whether an SREndpoint is 'client' or
+'server' -- we can't tell the difference by the route, because we need
+the route to be the same for both, to match up the two ends.  So I
+guess a three-way mUserMode?  In (undef, 'client', 'server')?  Or
+(0,1,-1)?
+
+Or mServerMode, in (-1 => unknown, 0 => client, 1 => server)?
+
+But wait is this really true?  What's wrong with having two
+connections on a given route, one being server and one being client?
+As long as they match up.
+
+So if we get a SR C over the net, that means there is a client at the
+far end for sure, and we should look for an *existing* server on that
+route, NAK the C if we don't have one, and *don't* create one.  So we
+only create SRes when local users connect and then tell us what kind
+of endpoint they are.  And it's up to the user to start up the server
+first, so that it's already there when the SR C arrives.
+[41:
+
+Mon Oct  5 13:26:14 2020 So we can go with 8xx routes meaning 'server
+to xx' and 'xx8' routes meaning 'client of xx'.  And don't need
+mUserMode.  Right?
+
+:41]
+:40]
+[42:
+
+Tue Oct  6 00:14:35 2020 OK, so now we're an SREndpoint configured as
+a client.  How do we know if we've received an SR_R CONNECTED?  I
+guess, mTheirSeqno is >= 0?
+
+:42]
+[43:
+
+Tue Oct  6 04:51:19 2020 So, using the route itself as the address is
+kind of weird.  It means that for two tiles to connect up they must
+not only target each other but they must choose the exactly
+complementary paths.  Using relative coordinates for addresses would
+make more sense, but that leaves us without a source route.
+
+We could still work in terms of source routes, but then take an
+inbound return address and collapse into a relative coordinate, and
+use that as the key to the endpoint map.  Then even if the two ends
+specified non-complementary routes, as long as the routes collapsed to
+the same coordinates, the connection would be made.
+
+Is that maybe a plausible compromise?  It still suffers/offers the
+loopback cable aliasing problem/debugging trick.[44:
+
+Tue Oct  6 05:26:25 2020 And it recreates the client/server endpoint
+ambiguity that I thought I had to deal with, before.
+
+:44]
+
+It does expand our assumptions about regional grid flatness.  But
+probably not significantly more than, say, flash traffic already does.
+
+Second sleep.
+
+:43]
+[45:
+
+Tue Oct  6 10:43:49 2020 S/C+Relative coord keys. GO GO GO  [46:
+
+Tue Oct  6 10:51:20 2020 Actually wait, let's get Computing Up posted
+first; it's way overdue again.[47:
+
+Tue Oct  6 14:11:58 2020 OK, 40th conversation posted, and the pot
+roast sitting in the oven at 250F.
+
+:47]
+
+:46]
+
+:45]
+[48:
+
+Wed Oct  7 01:43:00 2020 OK, last couple hours here debugging through
+the SREndpoint::getKey isclient+offset structure.  Have gotten to
+getting a server started and configured, but it doesn't know what to
+do with transparent data when it shows up.
+
+Let's now get a matching client started, and then connecting to the
+server.. [49:
+
+Wed Oct  7 02:14:26 2020 OK well that was stupid.  I made a server
+on route '83', meaning it was listening for clients connecting from
+the SE.  Than I made a client on route '38', meaning it was trying to
+connect to a server in the SE.  But we're on a SE<>NW loopback so the
+client request actually arrives from '87'.  So that client address
+didn't match what the server was listening for.
+
+But now serving on 83, and connecting on 78, we have managed to call
+the non-existent SREndpoint::acceptConnection method.  Step by step.
+
+:49]
+
+:48]
+[50:
+
+Wed Oct  7 06:10:17 2020 Still down in the weeds of DataQueue
+interacting with SREndpoints, but out of gas now.
+
+Second sleep.
+
+:50]
+[51:
+
+Wed Oct  7 11:05:13 2020 OK, so.  Part of the overnight muddle was we
+started out with separate XmitQueue.pm and RecvQueue.pm, but merged
+them into DataQueue.pm somewhere along the way, and haven't done a
+very good job of it so far.
+
+Problems include
+
+ - Method named assuming the xmit side -- that adding to the queue
+   happens from a filehandle but, but removing from the queue always
+   succeeds up to a window-bounded size.
+
+Well, that anyway.
+
+How should we name/structure it?
+
+ - acceptFromFH.  Read up to what the buffer can take from the FH.
+   Detect and store EOF on the FH so that it can be delivered later
+   when the buffer has gone empty.  [used on sre->mXmitQueue]
+
+ - deliverToFH.  Write len bytes -- up to whatever the buffer has --
+   to the FH, without blocking.  Call retireToSeqno(mFrontSeqno+len)
+   to remove len bytes from the front[62: changing mFrontSeqno but not
+   mNextSeqno. :62].  [used on sre->mRecvQueue]
+
+ - appendString.  Insert as much of string as will fit in the
+   buffer, return amount of string taken[61:  and advance mNextSeqno
+   by that amount  :61].  [used on sre->mRecvQueue]
+
+ - nextString.  Return up to what's requested bytes as a string,
+   starting from mNextSeqno, without allowing (mNextSeqno -
+   mFrontSeqno) to become larger than the window size.  Adjust
+   mNextSeqno to track whatever is returned. [used on sre->mXmitQueue]
+
+ - retireToSeqno.  Delete to the given seqno from the front of the
+   buffer, incrementing mFrontSeqno by the amount deleted.
+
+ - retryFromSeqno. Reduce mNextSeqno to the given seqno, as long as
+   that is >= mFrontSeqno.
+
+ - markEOF.  Set EOF on the buffer, meaning that: (1) acceptFromFH and
+   appendString will no longer add anything to the buffer, and (2)
+   atEOF() will start returning true as soon as the buffer is empty.
+
+:51]
+[52:
+
+Wed Oct  7 15:18:43 2020 Got as far as SREndpoint::handleResponse
+needing to deal with mResult OK.[53:
+
+Thu Oct  8 00:10:45 2020 OK come on ship data tonight GO GO GO
+
+:53]
+
+:52]
+[54:
+
+Thu Oct  8 05:29:06 2020 Well still not there.  The client is dealing
+with SR_R mResult OK but it's got also to send an SR_R back to the
+server as well.  We were planning on letting the server go transparent
+when it sees the first data packet, but that means the client would
+have to speak first and the server couldn't xmit even if it had data. 
+
+Which maybe isn't necessarily such a bad thing..
+
+Actually wait.  What if we just have the client send a data packet
+immediately upon going transparent, and just let it be zero length if
+there isn't actually anything ready to send on the client side?  Then
+server does go transparent on first data packet arrival.
+
+Maybe.
+
+Second sleep.
+
+:54]
+[55:
+
+Thu Oct  8 12:03:15 2020 Working for last 90 minutes or so; now up to 
+DataQueue::maybeReceiveData.  What happens there?
+
+Hmm, maybe it should be SREndpoint::maybeReceiveData.  Need to access
+both DataQueues, for accepting inbound data and retiring outbound
+data.
+[56:
+
+Thu Oct  8 13:19:52 2020 OK, about time to move the flag, but the
+current issue is that somewhere along the way our server coordinates
+are (not) getting negated so that when the first D packet arrives, it
+gets delivered (back) to itself (the client) rather than to the server
+for which it was intended.
+
+When a packet arrives at an endpoint, the packet's route is all in the
+'from', and it's been both sequentially reversed and with each step
+dir8-inverted.  So a packet with mRoute 7338 arrive with its mRoute
+set to 8773.[57:
+
+Thu Oct  8 13:42:24 2020 Time to pack up.  But since we're adding
+coordinates and addition commutes, sequential order shouldn't matter.
+But dir8 reversing should change the sign of the collapsed result, no?
+
+Have to check it through more carefully.
+
+Risky bits off.
+
+:57]
+
+:56]
+
+:55]
+[58:
+
+Thu Oct  8 23:38:48 2020 OK GO GO GO darn it get bytes moving.
+
+:58]
+[59:
+
+Fri Oct  9 02:36:58 2020 OK a couple issues:
+
+ - When do we ack incoming bytes?  I originally thought we'd only ack
+   them once we actually delivered them to the local user.  So when we
+   generate an ack in a reply, we're currently giving the mFrontSeqno
+   of the mRecvData queue.
+
+   Aand why is the mFrontSeqno getting advanced once we send stuff to
+   the local user?  I do see output showing up..
+
+:59]
+[60:
+
+Mon Oct 12 07:45:12 2020 OK, well, was working on We Are Coders over
+the weekend, but I'd like to take one more run at getting this
+starting to work before T2sday.
+
+Assuming we have to ack bytes once they reach mRecvData, not once they
+ship to the local user.  So the value to ack from the rd is
+mFrontSeqno+length(mBuffer)?  What does mNextSeqno do in this context?
+It's always ignored?  Implicitly equal to mFrontSeqno?
+
+Because we don't have to allow for the local user to drop bytes,
+there's no distinction between mFrontSeqno and mNextSeqno.  Whenever
+we write bytes to the local user they are gone for good.
+
+Well which is it?  If mNextSeqno is mFrontSeqno+length(buffer), then
+mNextSeqno is what we should ack with -- it's the next sequence number
+we're expecting from sender.  And we should increment it whenever we
+add bytes to the buffer.  That seems kind of plausible.
+
+If mNextSeqno is mFrontSeqno, then it's what we're next going to ship
+to the local user.  Which isn't ridiculous, but it isn't as
+compelling.
+
+So we need to focus on the API methods above that are local user
+facing, and let's try to ensure mRecvData.mNextSeqno stays at
+mFrontSeqno+length(buffer), and we use mNextSeqno in acks.
+
+:60]
+[63:
+
+Mon Oct 12 08:12:01 2020 Well, so far from that review all that
+happened is that this line in DataQueue::maybeShipData:
+
+    $pkt->{mAckRecvSeqno} = $rq->{mFrontSeqno};
+
+got changed to this line
+
+    $pkt->{mAckRecvSeqno} = $rq->{mNextSeqno};
+
+so.. let's see what that does..[64:
+
+Mon Oct 12 08:17:48 2020 So looks like first packet (containing "n\n")
+got into mRecvData and out to local user okay.  [65:
+
+Mon Oct 12 08:22:17 2020 And it advanced its mNextSeqno from 1993 to
+1995.. but it didn't acknowledge anything back to sender, because it
+had nothing it needed to say.  So apparently sender is resending the
+"n\n" over and over, and it's getting dropped at the receiver over and
+over:
+
+    67.46:PacketIO#0: #9(0,2,0) osn(41575) tsn(1993) Dropping packet; have 1993 got 1995
+
+and then sent again:
+
+    242.97:SREndpoint#16/#13(1,-2,0) osn(1993) tsn(41575): SEND D to 758 ack 41575 seq 1993 len 2
+
+etc.
+
+So, if we feed some data to the other end, so the 'receiver' will have
+something to send, will that cause this 1993->1995 "n\n" to stop
+getting sent?[66:
+
+Mon Oct 12 08:27:42 2020 No, because our server->client packets are
+getting addressed to 813 so the source routing ends immediately and,
+I think, they get dropped because there's no client there to handle
+them. [67:
+
+Mon Oct 12 08:30:41 2020 So, what really do we think the mRoute on a
+server should be?  Actually -- and maybe we should rename one --
+there's TWO (or *THREE*) mRoutes in play: SREndpoint::mRoute and
+DataQueue::mRoute.  Maybe SREndpoint::mRoute should stay as it is --
+813 in this case -- showing that it's a server; but mXmitData::mRoute
+should become 138, because that's the return route the server should
+use to xmit things to the client?  Is mXmitData::mRoute what's being
+used to address the E packet?
+
+:67]
+
+:66]
+
+
+:65]
+
+:64]
+
+:63]
+[68:
+
+Mon Oct 12 09:20:25 2020 So retireToSeqno is updating mFrontSeqno but
+not mNextSeqno, is that right?  I thought the idea was that mNextSeqno
+would always already be higher than mFrontSeqno (and any retirement
+point) so that retireToSeqno would never touch mNextSeqno.
+
+Where DO we think mNextSeqno should get moved?[69:
+
+Mon Oct 12 09:24:24 2020 Well at the moment,
+
+ - appendString increments mNextSeqno.  SRE::maybeReceiveData calls
+   that while accepting data.
+
+ - nextString increments mNextSeqno.  But apparently nobody calls
+   nextString?[70:
+
+Mon Oct 12 09:29:03 2020 Because, it appears, DataQueue::maybeShipData
+repeats a lot of the code of DataQueue::nextString, but not the
+mNextSeqno incrementing.  Niiiice.
+
+    sub nextString {
+        my __PACKAGE__ $self = shift || die;
+        my $max = shift; defined $max or die;
+        my $alreadyout = $self->{mNextSeqno} - $self->{mFrontSeqno};
+        my $available = length($self->{mBuffer}) - $alreadyout;
+        my $windowsize = MAX_DATA_BYTES_IN_FLIGHT;
+        my $advance = min($max,$available);
+        $self->{mNextSeqno} += $advance;
+        return substr($self->{mBuffer},$alreadyout,$advance);
+    }
+
+vs
+   ..
+        my $unacked = $self->{mNextSeqno} - $self->{mFrontSeqno};
+        return unless $unacked < MAX_DATA_BYTES_IN_FLIGHT;
+        my $available = length($self->{mBuffer}) - $unacked;
+        return unless ($available > 0) || ($emptyokopt && $available == 0);
+        my $shipamt = min($available, MAX_D_TYPE_DATA_LENGTH);
+        my $data = substr($self->{mBuffer},$unacked,$shipamt);
+        my $pkt = PacketSR_DE->new();
+        $pkt->{mAckRecvSeqno} = $rq->{mFrontSeqno};
+        $pkt->{mThisDataSeqno} = $self->{mNextSeqno};
+        $pkt->{mData} = $data;
+   ..
+
+I guess we want
+
+        $self->{mNextSeqno} += $shipamt;
+
+somewhere after $pkt->{mThisDataSeqno} gets set up?
+
+And I guess perhaps we also want to try to stop sucking quite so much
+at coding as if we've been doing it for more than 21 days in our life?
+
+:70]
+
+
+
+:69]
+
+:68]
+[71:
+
+Mon Oct 12 15:39:46 2020 OK so now we're reaching
+SREndpoint::handleQuit and need to do something besides say IMPLEMENT
+ME.  Perhaps
+
+ - Ignore it if isClosedNetwork
+
+ - Otherwise set mEOFSeen on mRecvData?
+
+ - And on mXmitData?
+
+ - check if do disconnectNetwork
+
+ - Check if isFullyClosed.  If so, exit?  That's assuming a 'server'
+   is only going to serve one client, which, I think for now, is what
+   we are thinking..
+
+:71]
+[72:
+
+Tue Oct 13 00:28:18 2020 Well, I'm going to commit all this as a WIP.
+We got it to transfer a non-trivial file successfully, although 
+server-side connections don't know how to clean themselves up properly
+on closing, so in fact we can't do more than one transfer without
+crashing cdm.pl.  Nice.
+
+I wonder if we can do two transfers at once, though?[73:
+
+Tue Oct 13 00:37:02 2020 Well, kind of.  But the current hack actually
+EXITS when it's gotten to the end of a file, so the second file (not
+to mention all the rest of cdm.pl, hmm) doesn't have a chance.
+
+But none of this does anything until somebody connects, so..
+
+
+:73]
+
+:72]
