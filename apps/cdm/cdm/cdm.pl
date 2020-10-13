@@ -12,7 +12,6 @@ use DP qw(:all);
 use T2Utils qw(:all);
 
 use PacketClasses;
-#use Hooks;
 
 ## Cleanliness stuff
 use warnings FATAL => 'all';
@@ -34,7 +33,7 @@ sub main {
     $cdm->init();
 
 #    DO_DEBUG_THING($cdm);
-#    exit 1;
+
 
     $cdm->eventLoop();
 
@@ -109,43 +108,43 @@ sub DO_DEBUG_THING13 {
     $tmppipe->update();
 }
 
-sub DO_DEBUG_THING14 {
-    my $cdm = shift or die;
+# sub DO_DEBUG_THING14 {
+#     my $cdm = shift or die;
 
-    my $dirsmgr = $cdm->getDirectoriesManager();
-    my $cmdirmgr = $dirsmgr->{mCompleteAndVerifiedContent};
-    my $mfzmgr = MFZManager->new("cdmd-T2-12.mfz",$cdm);
-    $cmdirmgr->insertMFZMgr($mfzmgr);
-    $mfzmgr->loadCnVMFZ();
+#     my $dirsmgr = $cdm->getDirectoriesManager();
+#     my $cmdirmgr = $dirsmgr->{mCompleteAndVerifiedContent};
+#     my $mfzmgr = MFZManager->new("cdmd-T2-12.mfz",$cdm);
+#     $cmdirmgr->insertMFZMgr($mfzmgr);
+#     $mfzmgr->loadCnVMFZ();
 
-    my $tmppipe = $cdm->{mPipelineManager};
+#     my $tmppipe = $cdm->{mPipelineManager};
 
-    my $hoodmgr = $cdm->{mNeighborhoodManager};
-    my $semgr = $hoodmgr->ngbMgr(getDir6Number("SE"));
-    my $spktstring = $tmppipe->createAnnouncementFor($mfzmgr,$semgr);
+#     my $hoodmgr = $cdm->{mNeighborhoodManager};
+#     my $semgr = $hoodmgr->ngbMgr(getDir6Number("SE"));
+#     my $spktstring = $tmppipe->createAnnouncementFor($mfzmgr,$semgr);
 
-    my Packet $spkt = Packet::parse($spktstring);
-    defined $spkt or die;
-    $spkt->handleInbound($cdm);
-}
+#     my Packet $spkt = Packet::parse($spktstring);
+#     defined $spkt or die;
+#     $spkt->handleInbound($cdm);
+# }
 
-sub DO_DEBUG_THING15 {
-    my $cdm = shift or die;
-    my $dirsmgr = $cdm->getDirectoriesManager();
-    my $cmdirmgr = $dirsmgr->{mCompleteAndVerifiedContent};
-    my $mfzmgr = MFZManager->new("cdmd-T2-12.mfz",$cdm);
-    $cmdirmgr->insertMFZMgr($mfzmgr);
-    $mfzmgr->loadCnVMFZ();
+# sub DO_DEBUG_THING15 {
+#     my $cdm = shift or die;
+#     my $dirsmgr = $cdm->getDirectoriesManager();
+#     my $cmdirmgr = $dirsmgr->{mCompleteAndVerifiedContent};
+#     my $mfzmgr = MFZManager->new("cdmd-T2-12.mfz",$cdm);
+#     $cmdirmgr->insertMFZMgr($mfzmgr);
+#     $mfzmgr->loadCnVMFZ();
 
-    my $pfpkt = $mfzmgr->{mFilePipelineAnnouncePacket};
-    $pfpkt->setDir8(getDir8Number('SW'));
-    $pfpkt->pack();
-    my $pfpktstring = $pfpkt->{mPacketBytes};
+#     my $pfpkt = $mfzmgr->{mFilePipelineAnnouncePacket};
+#     $pfpkt->setDir8(getDir8Number('SW'));
+#     $pfpkt->pack();
+#     my $pfpktstring = $pfpkt->{mPacketBytes};
     
-    print length($pfpktstring);
-    my $pfpkt2 = Packet::parse($pfpktstring);
-    $pfpkt2->handleInbound($cdm);
-}
+#     print length($pfpktstring);
+#     my $pfpkt2 = Packet::parse($pfpktstring);
+#     $pfpkt2->handleInbound($cdm);
+# }
 
 use MFZModel;
 
@@ -201,7 +200,7 @@ sub DO_DEBUG_THING18 {
     print "YON\n";
 }
 
-sub DO_DEBUG_THING {
+sub DO_DEBUG_THING19 {
     my $cdm = shift or die;
     my $dir = "common";
     my $cmgr = ContentManager->new($cdm,$dir);
@@ -217,6 +216,15 @@ sub DO_DEBUG_THING {
     }
     $cmgr->garbageCollect();
     print "YON\n";
+}
+
+#use PacketSR_C;
+
+sub DO_DEBUG_THING {
+    # my $cdm = shift or die;
+    # my PacketSR_F $spkt = PacketSR_F::makeFromFileNameAndRoute("foo.bar","773");
+    # $spkt->validate() and die;
+    # $spkt->handleInbound($cdm);
 }
 
 main();

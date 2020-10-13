@@ -36,14 +36,16 @@ use Exporter qw(import);
 our @EXPORT_OK = qw(getSlotConfig);
 our %EXPORT_TAGS;
 
+use File::Path qw(make_path);
+
 use DP qw(:all);
 use T2Utils qw(:all);
 use MFZUtils qw(:all);
+
 use MFZModel;
 use CDM;
 use ActionState;
 
-use File::Path qw(make_path);
 
 my %SLOT_CONFIGS;
 

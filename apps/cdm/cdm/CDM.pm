@@ -10,7 +10,7 @@ use fields qw(
     mNeighborhoodManager
     mHookManager
     mStatusReporter
-    mCryptoManager
+    mSRManager
 );
 
 use Exporter qw(import);
@@ -25,20 +25,13 @@ use T2Utils qw(:all);
 use DP qw(:functions :flags);
 
 use MFZUtils qw(:functions);
-#use MFZManager;
+
 use TimeQueue;
 use ContentManager;
-#use DirectoriesManager;
-#use DMCommon;
-#use DMPending;
-#use DMPipeline;
 use PacketIO;
 use NeighborhoodManager;
-#use TMTraditional;
-#use TMPipeline;
-#use HookManager;
 use StatusReporter;
-#use CryptoManager;
+use SRManager;
 
 # Other imports
 use Fcntl;
@@ -63,7 +56,6 @@ sub new {
         mMfzrun => "/home/t2/MFM/bin/mfzrun"        
     };
     $self->{mTimeQueue} = TimeQueue->new();
-#    $self->{mDirectoriesManager} = DirectoriesManager->new($self,$base);
 #    $self->{mHookManager} = HookManager->new($self);
     return $self;
 }
@@ -98,7 +90,6 @@ sub eventLoop {
 
 sub init {
     my __PACKAGE__ $self = shift or die;
-#    $self->{mDirectoriesManager}->init();
 #    Hooks::installHooks($self);
 
     $self->createTasks();
@@ -113,10 +104,6 @@ sub getPIO {
 sub createTasks {
     my ($self) = @_;
 
-#    die if defined $self->{mCryptoManager};
-#    $self->{mCryptoManager} = CryptoManager->new($self,undef); # default -kd
-#    $self->{mCryptoManager}->init();
-
     die if defined $self->{mPacketIO};
     $self->{mPacketIO} = PacketIO->new($self);
     $self->{mPacketIO}->init();
@@ -124,6 +111,11 @@ sub createTasks {
     die if defined $self->{mNeighborhoodManager};
     $self->{mNeighborhoodManager} = NeighborhoodManager->new($self);
     $self->{mNeighborhoodManager}->init();
+
+    # Let's get the SR server going before loading common
+    die if defined $self->{mSRManager};
+    $self->{mSRManager} = SRManager->new($self);
+    $self->{mSRManager}->init();
 
     die if defined $self->{mContentManager};
     $self->{mContentManager} = ContentManager->new($self,SUBDIR_COMMON);

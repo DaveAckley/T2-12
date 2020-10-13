@@ -76,12 +76,14 @@ BEGIN {
 use constant SUBDIR_COMMON => "common";
 use constant SUBDIR_LOG => "log";
 use constant SUBDIR_TAGS => "tags";
-use constant SUBDIR_PIPELINE => "pipeline";
 use constant SUBDIR_PUBKEY => "public_keys";
+use constant SUBDIR_PRIVKEY => "private_keys";
+use constant SUBDIR_SOCKETS => "sockets";
 
 use constant PATH_PROG_MFZRUN => "${\PATH_CDM_SOURCE_DIRECTORY}/mfzrun"; # Our captive version
 use constant PATH_DATA_IOSTATS => "/sys/class/itc_pkt/statistics";
 use constant PATH_BASEDIR_REPORT_IOSTATS => "log/status.txt";
+use constant PATH_SOCKETDIR_XFERSOCK => "xfer.sock";
 
 use constant HOOK_TYPE_LOAD => "LOAD";
 use constant HOOK_TYPE_RELEASE => "RELEASE";
@@ -89,11 +91,14 @@ use constant HOOK_TYPE_RELEASE => "RELEASE";
 use constant MAX_INPUT_PACKETS_PER_UPDATE => 32;
 use constant MAX_OUTPUT_PACKETS_PER_UPDATE => 16;
 
+use constant SR_RESULT_OK => 0;
+use constant SR_RESULT_CONNREFUSED => 1;
+
 my @subdirs = qw(
     SUBDIR_COMMON
     SUBDIR_LOG
-    SUBDIR_PIPELINE
     SUBDIR_PUBKEY
+    SUBDIR_SOCKETS
     SUBDIR_TAGS
     );
 
@@ -142,6 +147,9 @@ my @constants = qw(
     MAX_INPUT_PACKETS_PER_UPDATE
     MAX_OUTPUT_PACKETS_PER_UPDATE
 
+    SR_RESULT_OK
+    SR_RESULT_CONNREFUSED
+
     SS_SLOT_BITS
     SS_SLOT_MASK
     SS_STAMP_BITS
@@ -154,6 +162,7 @@ my @paths = qw(
     PATH_PROG_MFZRUN
     PATH_DATA_IOSTATS
     PATH_BASEDIR_REPORT_IOSTATS
+    PATH_SOCKETDIR_XFERSOCK
     );
 
 our @EXPORT_OK = (@constants, @subdirs, @mfzfiles, @paths, @stringConstants);

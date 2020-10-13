@@ -11,6 +11,7 @@ my @math = qw(
     oddsOf
     oneIn
     pickOne
+    createNBits
     lexEncode
     lexDecode
 
@@ -29,6 +30,25 @@ my @math = qw(
     formatSize
     formatPercent
     );
+
+my @route = qw(
+    unpackRoute
+    reverseRoute
+    toAddressOfRoute
+    fromAddressOfRoute
+    atStartOfRoute
+    atEndOfRoute
+    encodeRoute
+    decodeRoute
+    collapseRouteToCoord
+    collapseRouteToEndpointKey
+    unpackEndpointKey
+    packEndpointKey
+    packCoord
+    unpackCoord
+    dir8ToCoord
+);
+
 my @dir6s = qw(
     getDir6Name 
     getDir6Number 
@@ -54,17 +74,19 @@ my @fileops = qw(
     checksumWholeFile
     initDir
     listDir
+    sysreadlineNonblocking
     );
 my @processops = qw(
     runCommandWithSync
     );
-our @EXPORT_OK = (@math, @dirs, @packet, @fileops, @processops);
+our @EXPORT_OK = (@math, @dirs, @packet, @route, @fileops, @processops);
 our %EXPORT_TAGS = (
     math => \@math,
     dir6s => \@dir6s,
     dir8s => \@dir8s,
     dirs => \@dirs,
     packet => \@packet,
+    route => \@route,
     fileops => \@fileops,
     processops => \@processops,
     all => \@EXPORT_OK
@@ -90,6 +112,11 @@ sub max {
     return ($n >= $m) ? $n : $m;
 }
 
+# sub abs {
+#     my ($n) = @_;
+#     return ($n > 0) ? $n : -$n;
+# }
+
 sub min {
     my ($n,$m) = @_;
     return ($n <= $m) ? $n : $m;
@@ -111,6 +138,12 @@ sub pickOne {
     my $len = scalar(@args);
     return undef if $len == 0;
     return $args[int(rand($len))];
+}
+
+sub createNBits {
+    my $bits = shift || 32;
+    die if $bits > 48;  # rand starts pooping out?
+    return int(rand(1<<$bits));
 }
 
 sub lexEncode {
@@ -357,6 +390,39 @@ sub listDir {
     return @files;
 }
 
+# return 1 if $$bufref now has complete line
+# return 0 if $$bufref not enough data available yet
+# return -1 on EOF
+# return undef and set $! on error
+sub sysreadlineNonblocking {
+    my($handle,$bufref) = @_;
+    my $wasBlocking = $handle->blocking(0);
+    my $result = undef;
+    while (1) {
+        my $nextbyte;
+        my $ret = sysread($handle, $nextbyte, 1);
+        if (!defined($ret)) {
+            if ($!{EAGAIN}) {  # No more data yet
+                $result = 0;
+            }  # Else some other error, result stays undef
+            last;
+        }
+        
+        if ($ret == 0) {
+            $result = -1;
+            last;
+        }
+        $$bufref .= $nextbyte;
+
+        if ($nextbyte eq "\n") {
+            $result = 1;
+            last;
+        }
+    }
+    $handle->blocking($wasBlocking);
+    return $result;
+}
+
 ##PROCESSOPS
 
 sub runCommandWithSync {
@@ -369,5 +435,121 @@ sub runCommandWithSync {
     return !$ret;
 }
 
+## ROUTE FUNCTIONS
+sub unpackRoute {
+    my $route = shift || die;
+    $route =~ /^([0-7]*)(8)([0-7]*)$/
+        or return DPSTD("Bad route '$route'");
+    return ($1,$2,$3)
+}
+
+sub reverseRoute {
+    my $route = shift || die;
+    my ($to,$here,$from) = unpackRoute($route);
+    return unless defined $from;
+    return "$from$here$to";
+}
+
+sub toAddressOfRoute {
+    my $route = shift || die;
+    my ($to,$here,$from) = unpackRoute($route);
+    return unless defined $from;
+    return $to;
+}
+
+sub fromAddressOfRoute {
+    my $route = shift || die;
+    my ($to,$here,$from) = unpackRoute($route);
+    return unless defined $from;
+    return $from;
+}
+
+sub atStartOfRoute {
+    my $route = shift || die;
+    my ($to,$here,$from) = unpackRoute($route);
+    return unless defined $from;
+    return $from eq "" ? 1 : 0;
+}
+
+sub atEndOfRoute {
+    my $route = shift || die;
+    my ($to,$here,$from) = unpackRoute($route);
+    return unless defined $from;
+    return $to eq "" ? 1 : 0;
+}
+
+sub encodeRoute {
+    my $route = shift; defined $route or die;
+    my $count = $route =~ tr/0-8/\xb0-\xb8/;
+    die unless $count == length($route);
+    return $route;
+}
+
+sub decodeRoute {
+    my $route = shift; defined $route or die;
+    my $count = $route =~ tr/\xb0-\xb8/0-8/;
+    die unless $count == length($route);
+    return $route;
+}
+
+sub collapseRouteToEndpointKey {
+    my $route = shift; defined $route or die;
+    my $isclient = atStartOfRoute($route);
+    my ($x,$y) = collapseRouteToCoord($route);
+    return packEndpointKey($isclient,$x,$y);
+}
+
+sub packEndpointKey {
+    my ($isclient,$x,$y) = @_;
+    return pack("ccc",$isclient,$x,$y);
+}
+
+sub unpackEndpointKey {
+    my $ekey = shift || die;
+    return unpack("ccc",$ekey);
+}
+
+sub collapseRouteToCoord {
+    my $route = shift; defined $route or die;
+    my ($x,$y) = (0,0);
+    for my $stop (split(//,$route)) {
+        my ($dx,$dy) = dir8ToCoord($stop);
+        die "Illegal dir8 '$stop' in '$route'"
+            unless defined $dy;
+        $x += $dx;
+        $y += $dy;
+    }
+    die "|($x,$y)| too large"
+        if abs($x) > 127 || abs($y) > 127;
+    return ($x,$y);
+}
+
+sub packCoord {
+    my ($x,$y) = @_;
+    die unless defined $x && defined $y;
+    return pack("c1 c1", $x, $y);
+}
+
+sub unpackCoord {
+    my $c = shift || die;
+    return unpack("c1 c1", $c);
+}
+
+sub dir8ToCoord {
+    my $dir8 = shift; defined $dir8 or die;
+    my ($x,$y);
+    if (0) { }
+    elsif ($dir8 == 0) { ($x,$y) = ( 0,+1); } # (NT) 
+    elsif ($dir8 == 1) { ($x,$y) = (+1,+1); } # NE
+    elsif ($dir8 == 2) { ($x,$y) = (+2, 0); } # ET
+    elsif ($dir8 == 3) { ($x,$y) = (+1,-1); } # SE
+    elsif ($dir8 == 4) { ($x,$y) = ( 0,-1); } # (ST)
+    elsif ($dir8 == 5) { ($x,$y) = (-1,-1); } # SW
+    elsif ($dir8 == 6) { ($x,$y) = (-2, 0); } # WT
+    elsif ($dir8 == 7) { ($x,$y) = (-1,+1); } # NW
+    elsif ($dir8 == 8) { ($x,$y) = ( 0, 0); } # (here)
+    else { return undef; }
+    return ($x,$y);
+}
 
 1;

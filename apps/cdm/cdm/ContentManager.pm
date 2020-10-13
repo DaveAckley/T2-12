@@ -23,6 +23,7 @@ use MFZUtils qw(:all);
 use CDMap;
 use PacketCDM_F;
 use PacketCDM_C;
+use DeletedMap;
 
 # Task0: Get the existing MFZModel for $ss if any
 sub getMFZModelForSSIfAny {

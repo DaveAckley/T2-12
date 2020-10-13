@@ -121,6 +121,16 @@ sub summarizeString {
     return "Service + $len" if $len < 2;
     my $byte1 = rawByteOfRef(\$packet,1);
     return "$dir8name '$byte1' flash [$len]" unless (ord($byte1)&0x80);
+    if (ord($byte1) >= 0xb0 && ord($byte1) <= 0xb8) {
+        if ($packet =~ /^.([^\x00]+)\x00(.)/) {
+            my ($croute,$cmd) = ($1,$2);
+            my $route = decodeRoute($croute);
+            return "$dir8name SR $route/$cmd+[$len]";
+        } else {
+            my $unmap = chr(ord($byte1)-0xb0+ord('0'));
+            return "$dir8name SR $unmap+[$len]";
+        }
+    }
     my $bulkcode = ord($byte1)&0x7f;
     return "$dir8name bulk code $bulkcode [$len]" unless ($bulkcode == 3);
     return "$dir8name CDM [$len]" if $len < 3;

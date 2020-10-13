@@ -31,9 +31,9 @@ use Constants qw(:all);
 use T2Utils qw(:math :fileops);
 use MFZUtils qw(:all);
 
-require DMCommon;
-require PacketCDM_S;
-require PacketCDM_PF;
+use DMCommon;
+use PacketCDM_S;
+use PacketCDM_PF;
 
 ## PRIVATE CLASS VARS
 

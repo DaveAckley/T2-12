@@ -17,6 +17,8 @@ use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
 
+use MFZModel;
+
 BEGIN { push @Packable::PACKABLE_CLASSES, __PACKAGE__ }
 
 ### CLASS METHOD
