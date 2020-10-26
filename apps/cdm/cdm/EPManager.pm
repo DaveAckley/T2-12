@@ -57,6 +57,8 @@ sub init {
         Local => $self->{mSocketPath},
         Listen => 1,
         ) or die "new: $@";
+
+    unless (chmod(0777, $self->{mSocketPath}) == 1) { die "Can't chmod $self->{mSocketPath}: $!"; }
     $self->{mSocket}->blocking(0);
 
     $SIG{PIPE} = sub { DPSTD("CAUGHT SIGPIPE"); };
