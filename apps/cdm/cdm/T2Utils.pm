@@ -74,6 +74,8 @@ my @packet = qw(
     );
 my @fileops = qw(
     checksumWholeFile
+    checksumWholeFileBoth
+    hexChecksumWholeFile
     initDir
     listDir
     sysreadlineNonblocking
@@ -372,13 +374,23 @@ sub makeCDMPacket {
 
 my $digester = Digest::SHA->new(256);
 sub checksumWholeFile {
+    my ($hex,$cs) = checksumWholeFileBoth(shift);
+    return $cs;
+}
+
+sub hexChecksumWholeFile {
+    my ($hex,$cs) = checksumWholeFileBoth(shift);
+    return $hex;
+}
+
+sub checksumWholeFileBoth {
     my $path = shift;
     $digester->reset();
     $digester->addfile($path);
     my $cs = substr($digester->digest(),0,16);
     my $hexcs = unpack("H*",$cs);
     DPVRB(" $path => $hexcs");
-    return $cs;
+    return ($hexcs,$cs);
 }
 
 # return undef and set $! if dir couldn't be created
