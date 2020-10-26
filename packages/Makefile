@@ -4,6 +4,7 @@ PACKAGES+=inotify-tools
 PACKAGES+=git g++
 PACKAGES+=software-properties-common 
 PACKAGES+=libncurses-dev
+PACKAGES+=netcat-openbsd
 
 # For unpacking .mfz files in emacs
 PACKAGES+=zip
