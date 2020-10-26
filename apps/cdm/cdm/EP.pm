@@ -511,6 +511,17 @@ sub tryContact {
         }
     }
 
+    # Check for sigpipe meaning local user bailed
+    my $unused = "";
+    my $count = syswrite $self->{mLocalCxn}, $unused, 0;
+    if (!defined($count)) {
+        # Die quietly on the pipe
+        return $self->doDIE() if $!{EPIPE};
+        # Otherwise EAGAIN is our only fren
+        return $self->doDIE("Write failed: $!") unless $!{EAGAIN};
+        $count = 0;
+    }
+
     # Check for timeout/retry to connect
     return 1 unless $self->isClient();  # Only clients reach out
 
