@@ -1,4 +1,4 @@
-{74}  -*- text -*- 
+{138}  -*- text -*-
 [0:
 
 Thu Oct  1 04:25:46 2020 OK so we're closing in on two years of T2sday
@@ -293,7 +293,7 @@ I REALLY DON'T WANT TO OPEN INTERTILE UP TO GENERAL UNIX TRAFFIC!
 Fri Oct  2 13:50:56 2020 What if it's like a datagram though.  No
 stream reliability, no guarantee of packet delivery, just some
 checksum for plausible packet integrity if it does arrive.  Still
-scary. 
+scary.
 
 :17]
 :16]
@@ -318,7 +318,7 @@ Like:
                        dir) and examine byte[1].  Route rest in direction
                        dir8==BYTE-'0'.  Insert ((dir8+4)%8)+'0' after
                        ' ' if that is encountered before any other
-                       non-'0'..'7' byte. 
+                       non-'0'..'7' byte.
 
 [19:
 
@@ -344,7 +344,7 @@ Sun Oct  4 01:12:17 2020 OK, well where the hack are we, here?  Are we
 really thinking of trying to implement source-routed packets?[21:
 
 Sun Oct  4 01:17:58 2020 How about we just fake that inside CDM
-packets?  That's minimally invasive.  Then it's all about how to hook 
+packets?  That's minimally invasive.  Then it's all about how to hook
 the packets into local userspace.
 
 What about the outbound and inbound file idea instead?  So you can
@@ -360,7 +360,7 @@ TODO
 
  - Create a variant CDMap called 'UDM10' -- meaning something like
    unsigned/unique data map/manager.  Use the bytes of the mSignature
-   field for a 
+   field for a
 
  - Have cdmctl acquire a new command (or start a new cdm program):
    'cdmctl send ROUTE FILE', and it creates a UDM from the file and
@@ -380,7 +380,7 @@ and reading data from connections, and closing the connections down
 when they finish.  And we can send big chunks of data and have it all
 get there with:
 
-   # cat 202010010425-big-picture-notes.txt | nc -NU /home/t2/PUD.sock 
+   # cat 202010010425-big-picture-notes.txt | nc -NU /home/t2/PUD.sock
 
 (NOTE: THAT'S AFTER WE INSTALLED netcat-openbsd --
     # apt-get install netcat-openbsd
@@ -623,7 +623,7 @@ TODO:
 :38]
 [39:
 
-Mon Oct  5 10:27:19 2020 Roughing out SREndpoint.pm.  
+Mon Oct  5 10:27:19 2020 Roughing out SREndpoint.pm.
 
 :39]
 [40:
@@ -800,7 +800,7 @@ Thu Oct  8 05:29:06 2020 Well still not there.  The client is dealing
 with SR_R mResult OK but it's got also to send an SR_R back to the
 server as well.  We were planning on letting the server go transparent
 when it sees the first data packet, but that means the client would
-have to speak first and the server couldn't xmit even if it had data. 
+have to speak first and the server couldn't xmit even if it had data.
 
 Which maybe isn't necessarily such a bad thing..
 
@@ -816,7 +816,7 @@ Second sleep.
 :54]
 [55:
 
-Thu Oct  8 12:03:15 2020 Working for last 90 minutes or so; now up to 
+Thu Oct  8 12:03:15 2020 Working for last 90 minutes or so; now up to
 DataQueue::maybeReceiveData.  What happens there?
 
 Hmm, maybe it should be SREndpoint::maybeReceiveData.  Need to access
@@ -1037,7 +1037,7 @@ ME.  Perhaps
 [72:
 
 Tue Oct 13 00:28:18 2020 Well, I'm going to commit all this as a WIP.
-We got it to transfer a non-trivial file successfully, although 
+We got it to transfer a non-trivial file successfully, although
 server-side connections don't know how to clean themselves up properly
 on closing, so in fact we can't do more than one transfer without
 crashing cdm.pl.  Nice.
@@ -1054,3 +1054,745 @@ But none of this does anything until somebody connects, so..
 :73]
 
 :72]
+[74:
+
+Fri Oct 16 23:04:13 2020 Well another slow back after T2sup #287
+pushed, but here we are.  Voted.
+
+So, most pressing issue is about ending clean.  Which has a couple of
+aspects:
+
+ - Getting the 'quit' (status, packet, etc) delivered at the right
+   time -- after the buffer drains appropriately.
+
+ - Getting the 'half closed' status working systematically.
+
+Ideally, I'd think we ought to be able to do a server side with like
+
+    $ echo "813" | nc -NU /cdm/sockets/xfer.sock > rcvd.dat
+
+where the echo closes after one line, so the server's endpoint should
+be in a half-closed state before a client has even shown up?  That
+seems wrong.  [75:
+
+Sat Oct 17 00:30:06 2020 There's two connections involved on the
+server side, right?  Well, the socket and the 'actual' connection
+returned by the socket.  But the socket is supposed to stay open for
+the life of the cdm.
+
+So the 'server' side connection begins with the accept on the local
+unix domain socket.  Once it's got a route it could go half-closed --
+couldn't it? -- but stay available until it's processed a network
+connection request, or the local connection goes away.
+
+[76:
+
+Sat Oct 17 02:49:41 2020 Jeez wait have to be more careful with the
+two sides of the connection.  The
+
+    $ echo "813" | nc -NU /cdm/sockets/xfer.sock > rcvd.dat
+
+means that the local file handle will see eof after reading the
+"813\n".  And we (where 'we' is netcat, here) can still write to
+stdout after that, right?  Sure why not.
+
+:76]
+
+:75]
+
+:74]
+[77:
+
+Sat Oct 17 07:19:57 2020 So I've been thinking more and more about how
+one ought to represent state machines -- and in particular, how to
+represent what specific actual state one is in.  Which I've
+traditionally embodied as some sort of enum data member, but more and
+more I'm thinking it ought to be a method returning an enum.
+
+A _single_ _non-virtual_ method that examines the environment and the
+working internals of the machine and decides what the current machine
+state should be called.
+
+With the key point, I guess, being that there is no explicit way to
+write an arbitrary state transition.  You can't just say 'go to state
+B'.  Instead, you have to make some alteration to the 'environment or
+working internals' of the machine such that the 'getState()' function
+will now return 'B'.
+
+And so it might not be possible to go directly to state 'B' from the
+current state:
+
+ - Because it might require an environmental change you can't now do,
+
+ - Because it might require changes that mean you are really going to
+   state 'C', then 'D', and then finally 'B', and those intermediate
+   states could be observable and/or have unexpected consequences.
+
+[78:
+
+Sat Oct 17 08:16:20 2020 So this is the idea of 'stigmergic state
+machines'.
+
+And I guess the structure of getState() is a pretty important part of
+that -- it's the standing-start reexamination of the system state
+that's (a big) key to robustness.  Because getState() is sequential,
+it must look at _something_ first.  And whatever it looks at first
+becomes critical in determining the state equivalence classes over the
+entire phase space of the system.  Once we see something that says we
+are in an 'early' state, like a reset state or whatever, we must not
+be able to escape that without actually resetting any and all related
+state as we move up.
+
+[79:
+
+Sat Oct 17 09:24:17 2020 So in the case at hand, how could this play
+out.[80:
+
+Sun Oct 18 01:34:28 2020 Gah so slow here.  Come ON.
+
+getState for SRManager
+
+ return NEED_CONFIGURE unless defined mSocketPath
+ return NEED_OPEN unless defined mSocket and defined mSelect
+ return NEED_CLEANUP if scalar mFinishedCxns
+ return NEED_ACCEPT if mSelect..can_read..mSocket
+ return NEED_CLOSE if env(shutting_down) ..yarite
+ return NEED_NOTHING otherwise
+
+getState for SREndpoint
+ return NEED_CONNECT unless defined mSRManager, mUserHandle, mOurStartSeqno
+ return
+
+:80]
+
+:79]
+
+:78]
+
+:77]
+[81:
+
+Sun Oct 18 07:09:06 2020
+
+   userc          CDMC                                          CDMS        users
+     .             run                                           run          .
+     .              .                                            open         .
+     .              .                                           listen        .
+     .              .                                             .           .
+     .              .                                             .      --connect
+     .              .                                   SRE     accept<-/     .
+     .              .      SRE                           .    ----.           .
+  connect --\       .       .                          init<-/                .
+     .       \-->accept     .                            .          /------ "82"
+     .              .---    .                         configure<----          .
+     .                  \>init                  mXmitData. (2,0)              .
+     .                      .                            .                    .
+   "578" -------\           .                            .                    .
+     .           \----->configure                        .                    .
+     .             mXmitData. (-2,0)                     .
+     .                      .                            .
+     .                    "578C"--\                      .
+     .                      .      ------------------>acceptConnection
+     .                      .                            .
+     .                      .      /-------------------"318R"
+     .          handleResponse<---/                      .
+     .                      .mRecvData                   .
+
+
+
+
+
+
+
+
+
+
+
+:81]
+[82:
+
+Sun Oct 18 08:29:06 2020 So how do we represent the half-closed
+states?  And how does each arise, exactly?
+
+(S1) local socket connect, creates SREndpoint
+(S2) configure route, SREndpoint becomes known server
+
+(S3) eof on local socket, server SREndpoint computes the final seqno
+     that it wishes to xmit.
+
+-> SREndpoint server is now half-closed.
+
+(S4) It will continue to xmit any unacked data it has buffered, until 
+
+
+
+:82]
+[83:
+
+Mon Oct 19 00:36:36 2020 Screw it let's move on the 'final seqno'
+idea; that's got more stigmeric feel than the current mEOFSeen.
+
+DO SOMETHING GO GO GO
+
+:83]
+[84:
+
+Mon Oct 19 01:30:06 2020 OK so I want to push decision making closer
+to the workers -- out of SREndpoint and into DataQueue.  We have all
+these confident-sounding SREndpoint methods like isFullyClosed() which
+turn out to be based on hack seqno manipulations.
+
+SREndpoint::isFullyClosed() should do something like ask mXMitData if
+it is closed for xmit and ask mRecvData if it closed for recv.
+
+Now, I wanted to push the local file handle down, but DataQueue really
+has no good place for it, and use cases where it's not even involved,
+so that doesn't seem so good.
+
+:84]
+[85:
+
+Mon Oct 19 01:44:19 2020 I think I'm going to have to
+clean-slate-and-pull-pieces to get this sorted out.  Have to do a
+spike just on opening and closing the ends in appropriate sequences,
+then fit in the data carriage and stuff that's working into that.
+
+But maye not this absolute instant, sigh.[86:
+
+Tue Oct 20 01:55:58 2020 OK, how about this instant right now instead?
+
+TODO
+
+[87: Wed Oct 21 14:09:52 2020 In ./pud2.pl, vaguely
+DONEish :87] - restart from pairunixdomain.pl
+   = maybe don't use IO::Select, though?  Just do non-blocking read
+
+ - spike entire lifecycle including half-closes
+
+ - Make 'stigmergic sequencer' that proceeds through BORN,
+   CONNECT, COMMUNICATE, CONCLUDE, DIE
+
+ phase      behavior            state
+ BORN:       initialize route   firstLine
+   if local eof with empty first line    
+     -> DIE()    
+   if bad route at eof or eol
+     -> DIE(err) 
+   if complete good route
+     -> CONNECT(route)
+   if read newBytes  
+     -> BORN(firstLine+newBytes) if localread > 0
+   : GFN
+
+ CONNECT     client<->server    route, isClient=, lastactivity=0, ipkt=undef
+   if !isClient & ipkt==C etc
+     -> COMMUNICATE(0,relc,route) 
+   if isClient & ipkt==R etc
+     -> COMMUNICATE(1,relc,route) 
+   if age(lastact) > TIMEOUT
+     send C
+     -> CONNECT(route,isClient,now,ipkt)
+   if local eof && isClient
+     -> CONCLUDE() ?  DIE() ?
+   : GFN
+   
+
+ COMMUNICATE  end<->end         xmitData/frontseq/lastseq, recvData/frontseq/lastseq
+   if xd.frontseq == xd.lastseq && rd.frontseq == rd.lastseq
+     -> CONCLUDE()
+   if 
+   { send/recv/retire data as implemented }
+
+ DIE         end local cxn       msg
+   if msg report to stderr
+   : HEA
+
+:86]
+
+:85]
+[88:
+
+Wed Oct 21 14:10:23 2020 So it appears our understanding of 'nc -NU'
+is right -- we can still print to the nc socket after reading eof on
+that same socket, and the output appears on the nc side.
+
+So.  Can we pull in DataQueue.pm here?  Or start a new minified DQ
+from it?  How symmetric is it really?  How symmetric do we want to try
+to force it to be?  If we go asymmetric, we could put both buffers
+into a single BiDirNetPipe or something, and let the input and output
+ends get customized for their directions.
+
+Let's try a fresh start and try to stay squeaky; come back here when
+things don't feel squeaky.[89:
+
+Wed Oct 21 14:16:01 2020 If we're doing both directions in one, how is
+this different than SREndpoint?
+[90:
+
+Wed Oct 21 14:39:54 2020 OK, we have a minimal EP.pm (for 'EndPoint'
+arg bad camelcaps).  So far it's just holding the user handle and
+handing it back, though.  What's next step?
+
+ - EP::tryReadLocal
+
+What needs to be true to do that?  Are we doing stigmergic actions
+machines or anything like it, here?  Is tryReadLocal a low-level read
+and return bytes thing?
+
+I think tryReadLocal is the wrong thing to write now.  We want
+lifecycle stuff first somehow.[91:
+
+Wed Oct 21 14:48:21 2020 So, that's like update() or advance() or
+something like that?  Maybe let's try.
+
+:91]
+
+:90]
+:89]
+
+:88]
+[92:
+
+Wed Oct 21 15:34:52 2020 So, how do we terminate an EP cleanly?
+There's a foggen lifecycle issue for you.  The case at hand is local
+EOF before getting a route.  At that point you might give a message,
+but then you clean up and that EP is just done.
+
+:92]
+[93:
+
+Wed Oct 21 17:53:10 2020 OK, making progress.  pud2.pl starts up,
+accepts connections, recognizes when it's a server, configures route,
+waits.  nc as client connects, waits, cleans up if nc quits.
+
+[94:
+
+Wed Oct 21 17:55:13 2020 Making multiple servers doesn't seem to work?
+Hadn't tried that til just now..[95:
+
+Thu Oct 22 00:46:32 2020 No, actually it did, it just wasn't printing
+anything.
+
+So how do we fake up more steps here?
+[96:
+
+Thu Oct 22 00:48:57 2020 In particular, all we've done so far is
+interactions with the local unix socket under our own initiative.  And
+that was already weird in that we had to be ready early to start
+buffering local socket input, just so we could check for eof..
+
+How do we deal with asynchronous packet input?  Same thing?  Buffer
+the packets and just call that buffer state for the action machine to
+deal with?
+
+[97:
+
+Thu Oct 22 01:35:28 2020 Stigmergy says we should be able to call our
+action function 'at any time', so we could just say that when a packet
+arrives that can be resolved onto a given EP, we should stick that
+packet onto a one-packet data member part of the state, then call
+update() right then and there.  And it's up to update to react to that
+data member packet, or not, as appropriate.
+
+We're not going to let update() be entered recursively, so we need to
+be a little careful how thick we let its processing get.
+[98:
+
+Thu Oct 22 01:58:48 2020 OK so update blocks re-entry.  Starting to
+write responding-to-inbound-packet code, but that's troublesome --
+it's a ton more stuff to spike up from nothing, which makes me want to
+start pulling from the existing modules.. but that feels
+super-premature and risks squandering my 'spike clarity' before it's
+really clear what I want.
+
+Maybe I can start pulling in the PacketSR stuff without too-horrible
+pollution..?[99:
+
+Thu Oct 22 02:07:16 2020 Grr, we can maybe make packets, but we can't
+send them without pulling in CDM.pm and that implies everything.
+
+Can we gingerly carry EP.pm over to a 'spike-in-situ' in cdm?[100:
+
+Thu Oct 22 10:34:01 2020 Well, urgh, started moving EP.pm into
+apps/cdm/cdm, and things immediately start getting confusing and my
+clean life-cycle stops being so clean.  GRRR!  On top of that, it's
+getting to be time to move the flag
+
+:100]
+
+:99]
+
+:98]
+:97]
+
+:96]
+:95]
+
+:94]
+
+:93]
+[101:
+
+Fri Oct 23 02:03:12 2020 OK so let's push this through.  Integrate EP
+into CDM.pm and then come say you did.  GO.[102:
+
+Fri Oct 23 02:05:26 2020 So let's push the EPs into SRManager?  How
+could that go?
+
+ - Save a ref copy in SRManager.pm-hold
+
+ - Still need two access paths to EPs: route-related (once a route
+   exists) and fileno-related (lifetime of the local socket).
+
+   = Say SRManager::mEPs for fileno -> EP.  This is the 'owning' link
+   = Plus SRManager::mEPByKey for routekey -> This is a second ref
+
+ - Let's try just replacing SREndpoint with EP, and see how far we can
+   push it.
+
+:102]
+
+:101]
+[103:
+
+Fri Oct 23 02:52:06 2020 OK, we're starting to move forward with EP
+instead of SREndpoint, and EPManager instead of SRManager.  Have
+gotten as far as trying to send the PacketSR_C packet from the client
+side.  
+
+:103]
+[104:
+
+Fri Oct 23 12:11:57 2020 OK, well now we're getting to the nub of
+things -- if we're going to do this 'input is just stigmergic state to
+react to' thing, then it's time to get going.  We're trying to write
+EP::maybeReceiveData.. and in the old SREndpoint version, the first
+thing it does is check if it's an appropriate state to receive the
+packet.  We could just write analogous state-checking code here
+now.. or we could 'just' stash the packet in some new mInboundPkt data
+member and then call EP::update().
+
+If we dared.
+[105:
+
+Fri Oct 23 12:26:22 2020 I'M TOO CHICKEN!
+
+:105]
+:104]
+[106:
+
+Fri Oct 23 14:48:19 2020 OK, a fair amount of stuff is working, but
+the ack/retirement stuff is not yet confirmed.  And the bigger
+question is: Where do retransmits get handled in the current scheme?
+Right now it seems we're only sending data packets when we have new
+local stuff to ship, which means we don't send (empty) ACKs when our
+side is quiet.
+
+:106]
+[107:
+
+Fri Oct 23 15:01:05 2020 Breaking until the overnight..
+
+:107]
+[108:
+
+Sat Oct 24 02:25:46 2020 OK, so, how do we know when to send an empty
+data packet just to ack inbound stuff?
+
+When they send us something it goes into our mFrontNetBuffer and
+mFromNetAckedSeq increments.  
+
+How do we know whether we've already sent a packet acking that changed
+mFromNetAckedSeq?[109:
+
+Sat Oct 24 02:32:33 2020 Ah hmm SREndpoint had mNeedToAck.  I guess EP
+wants that too.[110:
+
+Sat Oct 24 05:04:25 2020 Well, I guess adding a flag byte to
+PacketSR_D.  That means we can ditch the Dd distinction and just have
+an ISCLIENT flag.  
+
+:110]
+
+:109]
+
+:108]
+[111:
+
+Sat Oct 24 09:04:59 2020 Well, getting closer.  Now we're closing one
+side cleanly, but it's not shipping the LSQ flag notification before
+it quits.  How do we want to resolve that?  It's really a
+manifestation of the same infinite-regress-of-other-minds problem that
+TCP has as well, and it hacks around with its CLOSE_WAIT, and just
+foists the consequences out onto implementations and then the world.
+
+[112:
+
+Sat Oct 24 12:08:20 2020 Well so let's make a little bit of that and
+move on, here.  state_NEED_WAIT?  What does it stig-merge on?
+mLastActivity?  Maybe plus a repeat count?
+
+[113:
+
+Sat Oct 24 12:30:07 2020 So the specific issue here is that one side
+or the other will be the first to not be in state_NEED_IO.  That side
+will already have seen local EOF, so mToNetLastSeq will be set, and it
+will receive a packet flagged with D_PKT_FLAG_LAST_SEQ, and at that
+point mFromNetLastSeq will be set and it will no longer be in
+state_NEED_IO. 
+[114:
+
+Sat Oct 24 12:38:33 2020 What if we set mNeedToAck when we set a
+'lastseq' variable -- even either one, local or remote?  And say we
+NEED_IO if mNeedToAck is true?[115:
+
+Sat Oct 24 12:57:49 2020 OK, now we're sending a 'final' D pkt because
+of mNeedToAck, but that D pkt contains the final seqno, which causes
+us to set mNeedToAck again, and we never actually exit state_NEED_IO.
+
+Can we set mNeedToAck only when we first acquire lastseq info?[116:
+
+Sat Oct 24 13:10:34 2020 Woah, it kind of worked.  Looks like I just
+had one extra mNeedToAck setting in there.  Both sides now exited
+cleanly, once we saw EOFs from both local users.
+
+Let's try another example.
+
+..actually, let's try another go right in place, here.  With
+clean-living connections we ought to be able to go right round again
+without restarting cdm.pl..[117:
+
+Sat Oct 24 13:13:14 2020 Buuuuut we can't.  Something failing to clean
+up properly in EPManager.  '$self->{mKeyToEP}->{$key}' is still
+defined.  How did that happen?[118:
+
+Sat Oct 24 13:14:21 2020 Ahh, hmm.  What's wrong with this picture?
+
+    delete $self->{mKeyToEP}->{$fileno};
+
+I mean, why WOULDN'T someone delete a '$fileno' entry of a hash called
+'mKeyToEP'? 
+
+:118]
+
+:117]
+
+
+
+:116]
+
+:115]
+
+:114]
+:113]
+
+:112]
+
+:111]
+[119:
+
+Sat Oct 24 13:22:26 2020 So okay!  Things finally starting to work
+semi-plausibly here![120:
+
+Sat Oct 24 13:32:22 2020 And we sent a file from the command line!
+Behold:
+
+SERVER SIDE
+    root@beaglebone:~# echo 81 | nc -NU /cdm/sockets/xfer.sock > recv.dat
+    root@beaglebone:~# 
+
+CLIENT SIDE
+    root@beaglebone:/home/t2/T2-12/notes# echo 58 | cat - /home/t2/T2-12/Makefile | nc -NU /cdm/sockets/xfer.sock 
+    root@beaglebone:/home/t2/T2-12/notes# 
+
+(and then, server side:
+
+    root@beaglebone:~# ls -l recv.dat /home/t2/T2-12/Makefile
+    -rw-r--r-- 1 t2   t2   2001 Sep 23 11:37 /home/t2/T2-12/Makefile
+    -rw-r--r-- 1 root root 2001 Oct 24 13:31 recv.dat
+    root@beaglebone:~# diff recv.dat /home/t2/T2-12/Makefile
+    root@beaglebone:~# 
+)
+
+WAHOO!
+
+[121:
+
+Sat Oct 24 13:34:29 2020 I think we're not handling packet drops and
+retries, though, in the current version.  So when we start suppressing
+debug output and speeding up the timings, sooner or later we'll run
+into trouble I think..
+
+:121]
+
+:120]
+
+:119]
+[122:
+
+Sun Oct 25 04:04:37 2020 OK, we've upped the in-flight window to 1KB,
+and sped up the timings slightly, and reduced the logging
+signficantly.  Fixed a few bugs and things are still working-ish.  But
+unlikely that we've actually experienced a packet drop, yet.  Let's
+kick the window up to 4KB and see what happens..
+
+:122]
+[123:
+
+Sun Oct 25 07:06:53 2020 OK so do we have really any clue how we want
+to reset the far-end stream index after dropped packet(s)?  We now
+have D_PKT_FLAG_RETRY_SEQ, but how do we want to use it?
+
+Do we maybe want to distinguish between missed packets and redundant
+packets?  We used to, but I folded that away just now.  Maybe unfold
+again? [124:
+
+Sun Oct 25 07:26:51 2020 OK now we distinguish DUPs from DROPPEDs, but
+we still need better recovery.  I think we need a per-EP flag saying
+when we're 'in sync', that's set whenever we get a packet we're
+expecting, and is cleared whenever we detect a DROP and request a
+retransmit.
+
+Then the behavior is: If we detect a DROP when we're NOT in sync, we
+assume we've already sent an D/RSQ, and we don't send another one.  If
+that prior D/RSQ gets eaten we'll have to hit our backstop timeout
+retry mechanism that I'm not 100% exists yet in this iteration..
+[125:
+
+Sun Oct 25 07:34:57 2020 So we currently have a behavior where we
+might take only part of the data in a received D pkt, and that's
+feeling like a mistake.
+
+First off, we'd like our receive buffer limit to be well above the max
+window in flight limit, so this really shouldn't happen.[126:
+
+Sun Oct 25 08:50:03 2020 OK, we're really starting to stress things
+here, running two (looped back) file transfers simultaneously.
+Packets are getting dropped which is slowing the data rate, but it was
+all managing to progress until I ^C'd one of the server 'nc' processes
+and got
+
+    382.65: Retiring 2160 to 224617 on dq route 18
+
+    Debugger broken pipe
+
+in the *gud-cdm.pl* debugger window.
+
+[127:
+
+Sun Oct 25 08:52:33 2020 So I think that means I need something like
+
+    $SIG{PIPE} = sub { SOMETHING };
+
+but not yet sure what SOMETHING we want.  Let's try just printing a
+message first..[128:
+
+Sun Oct 25 10:11:05 2020 So the current problem is that if our
+inbound mFromNetBuffer is empty, we don't even try to syswrite to the
+local process, and therefore the SIGPIPE that is waiting for us is not
+delivered.
+
+Could we try writing 0 bytes and see if it provokes the SIGPIPE?[129:
+
+Sun Oct 25 10:20:31 2020 Well so far writing 0 bytes seems to be safe,
+and it did provoke the SIGPIPE and allowed us to clean up.[130:
+
+Sun Oct 25 10:29:49 2020 OK, so now we're cleaning up okay from
+locally killing the client, but it leaves the server side hanging,
+and then dying at
+
+    if (defined($self->{mFromNetAckedSeq})) {
+        return DPSTD($self->getDesc()." Ignoring duplicate connection $theirseq")
+            if $theirseq == $self->{mFromNetAckedSeq};
+        die "INCONSISTO ($theirseq vs $self->{mFromNetAckedSeq})";
+    }
+
+when another connection comes in.
+
+So ideally we'd ship some kind of abort code before dying, if we
+  could.[131:
+
+Sun Oct 25 15:46:20 2020 Well, would we prefer something like
+D_PKT_FLAG_ABORT, or something like PacketSR_Q?
+
+D_PKT_FLAG_ABORT:
+  Pro: We are already using D_PKT_FLAGs with some success
+  Con: Might cause other effects on the way to recognizing it
+  
+PacketSR_Q:
+  Pro: Offers a completely separate place to deal with this
+  Con: Requires a whole new flow to deal with this
+  
+[132:
+
+Sun Oct 25 17:49:28 2020 OK, time to break for dinner.  Current status
+is PacketSR_Q is getting the server EP to shut down when we kill the
+client side, but killing the server doesn't shut down the client EP.
+[133:
+
+Sun Oct 25 20:10:39 2020 Problem almost surely is our new PacketSR_Q
+doesn't have a isClient/isServer flag, so we're looking up the wrong
+endpoint key going in one direction or the other.  [134:
+
+Sun Oct 25 20:19:03 2020 Yeah that was it; now PacketSR_Q has an
+mFlags WTH, and ^C'ing is cleaning up the far end in both directions.
+'Only' remaining issue is that the far end exits status 0 but it
+should be something else.[136:
+
+Mon Oct 26 01:23:40 2020 Um, yeah, except, the far end exit status is
+not actually under our control, chumley.  The process that is exiting
+is netcat, right?  All we can do is close the socket, and then nc does
+with that whatever it's going to do.
+
+All we could do would be to violate transparency and send some kind of
+error message text via the socket, before closing it.
+
+Screw that.  Far side user of nc won't know why it exited.  Users at
+both ends will have to do file integrity some OoB way -- such as
+layering some additional protocol on top of the nc-based data
+carriage.
+
+Like a first line containing a byte count and a newline, then that
+many bytes, then a magic string and a file checksum.
+
+Let's work on that instead.
+
+:136]
+
+
+But first sleep now I think.
+
+[135:
+
+Mon Oct 26 01:20:30 2020 OK let's 'polish' this off, get it committed,
+and move on.
+:135]
+:134]
+
+:133]
+:132]
+
+
+:131]
+
+:130]
+
+:129]
+
+:128] 
+
+:127]
+
+
+:126]
+
+:125]
+
+:124]
+
+:123]
+[137:
+
+Mon Oct 26 02:02:06 2020 Committing.
+
+:137]
