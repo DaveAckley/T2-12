@@ -1,0 +1,78 @@
+{6}  -*- text -*- 
+[0:
+
+Mon Oct 26 02:29:12 2020 OK time to declare source-routed streams are
+usable, at least a little bit, and pop up a level.
+
+Let's think about scripts for a little file transfer protocol.
+
+Maybe like:
+
+srsend CLIENTROUTE [FILE ..]
+srrecv SERVERROUTE DIR
+[1:
+
+Mon Oct 26 03:09:47 2020 OK, we have T2-12/apps/srf/srsend (perl)
+starting to exist.  And it's connecting to our unix socket directly!
+No nc needed!
+
+Now we need our file transfer protocol.
+
+I'm thinking like
+
+CMD ARGS "\n"
+<possible transparent data>
+CMD ARGS "\n"
+
+from client->server, maybe with a TAG in ARGS so the server can do like
+
+STATUS TAG status "\n"
+
+[2:
+
+Mon Oct 26 03:29:00 2020 Like:
+
+c->s
+    SEND TAG FILENAME LENGTH "\n"
+    byte x LENGTH opaque data
+
+s->c
+    STATUS TAG [READY|DONE hexchecksum|FAIL msg] "\n"
+
+and more TBD, but let's just do that..
+
+[3:
+
+Mon Oct 26 03:36:43 2020 Maybe we should have a 'token' which acts
+kind of like a port, in addition to the route.  With commands like
+
+c->s
+    HI TOKEN "\n"
+
+s->c
+    YEAH TOKEN "\n"    -- If token matches
+
+    NAH "\n"           -- If not
+     
+or whatever
+[4:
+
+Mon Oct 26 03:53:29 2020 OK, did that (just using nc on the server
+side).  Now for SEND
+
+
+:4]
+
+:3]
+:2]
+
+:1]
+:0]
+[5:
+
+Mon Oct 26 10:01:00 2020 OK, 'srf' (does either srsend or srrecv
+depending on route) committed.
+
+Rough but edible dog food.
+
+:5]
