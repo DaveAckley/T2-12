@@ -80,11 +80,11 @@ sub handleInbound {
     my ($to,$here,$from) = unpackRoute($route);
     return DPSTD("Bad route '$route' in ".$self->summarize())
         unless defined $from;
-    DPSTD("SRhIB:$self->{mCmd}/$route=($to,$here,$from)+".
-          (defined($self->{mPacketBytes}) ? length($self->{mPacketBytes}) : "(not packed)"));
+    #DPSTD("SRhIB:$self->{mCmd}:$route+".
+    #      (defined($self->{mPacketBytes}) ? length($self->{mPacketBytes}) : "(not packed)"));
 
     # Dish for terminal packets
-    return $self->deliverLocally($cdm->{mSRManager}) if $to eq ""; 
+    return $self->deliverLocally($cdm->{mEPManager}) if $to eq ""; 
 
     # Else forward
     $to =~ /^([0-7])([0-7]*)$/ or die;           
@@ -102,7 +102,7 @@ sub handleInbound {
 
     my $pio = $cdm->getPIO();
     my $ret = $self->sendVia($pio);  # Forward to next stop
-    DPSTD("SR send ".$self->summarize()); # self packed by sendVia, can now summarize
+    DPPKT("SR send ".$self->summarize()); # self packed by sendVia, can now summarize
 
     DPSTD("Send failed for ".$self->summarize()) unless $ret;
 }
@@ -110,7 +110,7 @@ sub handleInbound {
 ##VIRTUAL
 sub deliverLocally {
     my __PACKAGE__ $self = shift || die;
-    my SRManager $srm = shift || die;
+    my EPManager $srm = shift || die;
     DPSTD("Undelivered ".$self->summarize());
 }
 

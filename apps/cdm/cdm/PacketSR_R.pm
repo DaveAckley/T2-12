@@ -12,7 +12,7 @@ use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
 
-use SREndpoint;
+use EPManager;
 
 use Exporter qw(import);
 
@@ -82,13 +82,13 @@ sub validate {
 ##VIRTUAL
 sub deliverLocally {
     my __PACKAGE__ $self = shift || die;
-    my SRManager $srm = shift || die;
+    my EPManager $srm = shift || die;
     my $from = $self->{mRoute};
     atEndOfRoute($from) or
         return DPSTD("Not at end, dropped ".$self->summarize());
-    my $ssre = $srm->getClientIfAny($from);
-    if (defined($ssre)) {
-        $ssre->handleResponse($self);
+    my $ep = $srm->getClientIfAny($from);
+    if (defined($ep)) {
+        $ep->handleResponse($self);
     } else {
         DPSTD("No '$from' client, dropping ".$self->summarize());
     }

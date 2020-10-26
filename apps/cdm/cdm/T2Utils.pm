@@ -44,9 +44,11 @@ my @route = qw(
     collapseRouteToEndpointKey
     unpackEndpointKey
     packEndpointKey
+    formatEndpointKey
     packCoord
     unpackCoord
     dir8ToCoord
+    formatDFlags
 );
 
 my @dir6s = qw(
@@ -99,6 +101,7 @@ use Time::HiRes qw(time);
 use File::Path qw(make_path);
     
 use DP qw(:all);
+use Constants qw(:all);
 
 ## MATH
 
@@ -246,19 +249,24 @@ sub formatSize {
     my $size = shift;
     my $optrim = shift;
     my $ret = "";
-    return " <0 " if $size < 0;
-    for my $unit (@kunits) {
-        if ($size < 1000) {
-            if ($size < 1) {
-                $ret = sprintf(".%02d%s",int($size*100),$unit);
-            } elsif ($size >= 9.95 || int($size) == $size) {
-                $ret = sprintf("%3d%s", $size+0.5, $unit);
-            } else {
-                $ret = sprintf("%3.1f%s",$size,$unit);
+    if ($size < 0) {
+        $ret = " <0 ";
+    } elsif ($size== 0) {
+        $ret = "  0 ";
+    } else {
+        for my $unit (@kunits) {
+            if ($size < 1000) {
+                if ($size < 1) {
+                    $ret = sprintf(".%02d%s",int($size*100),$unit);
+                } elsif ($size >= 9.95 || int($size) == $size) {
+                    $ret = sprintf("%3d%s", $size+0.5, $unit);
+                } else {
+                    $ret = sprintf("%3.1f%s",$size,$unit);
+                }
+                last;
             }
-            last;
+            $size /= 1000.0;
         }
-        $size /= 1000.0;
     }
     $ret = trim($ret) if $optrim;
     return $ret;
@@ -509,6 +517,12 @@ sub unpackEndpointKey {
     return unpack("ccc",$ekey);
 }
 
+sub formatEndpointKey {
+    my ($isclient,$x,$y) = unpackEndpointKey(shift);
+    return "invalid" unless defined($y);
+    return ($isclient ? "c" : "s")."($x,$y)";
+}
+
 sub collapseRouteToCoord {
     my $route = shift; defined $route or die;
     my ($x,$y) = (0,0);
@@ -550,6 +564,21 @@ sub dir8ToCoord {
     elsif ($dir8 == 8) { ($x,$y) = ( 0, 0); } # (here)
     else { return undef; }
     return ($x,$y);
+}
+
+sub formatDFlags {
+    my $dflags = shift||0;
+    my $ret = "";
+    $ret .= "TOS|" if $dflags & D_PKT_FLAG_TO_SERVER;
+    $ret .= "FSQ|" if $dflags & D_PKT_FLAG_FIRST_SEQ;
+    $ret .= "LSQ|" if $dflags & D_PKT_FLAG_LAST_SEQ;
+    $ret .= "RSQ|" if $dflags & D_PKT_FLAG_RETRY_SEQ;
+    $ret .= "RV4|" if $dflags & D_PKT_FLAG_RSV4;
+    $ret .= "RV5|" if $dflags & D_PKT_FLAG_RSV5;
+    $ret .= "RV6|" if $dflags & D_PKT_FLAG_RSV6;
+    $ret .= "RV7|" if $dflags & D_PKT_FLAG_RSV7;
+    chop $ret;
+    return $ret;
 }
 
 1;

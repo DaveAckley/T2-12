@@ -146,6 +146,17 @@ sub writeBulkIOStats {
             );
     }
 
+    my $epm = $self->{mCDM}->{mEPManager} || die;
+    my @epstatus = $epm->statusLines();
+    my $count = 0;
+    my $maxlines = 5;
+    for my $line (@epstatus) {
+        if (++$count >= $maxlines) {
+            print HDL "..\n";
+            last;
+        }
+        print HDL " $line\n";
+    }
     # my $dmpipe =  $dirsmgr->getDMPipeline();
     # my @pipeline = $dmpipe->reportMFZStats();
     # for my $pipe (@pipeline) {
@@ -158,7 +169,7 @@ sub writeBulkIOStats {
     #     printf(HDL " trad %s", $pend);
     # }
 
-    print HDL "\n"x12;
+    print HDL "\n"x(12-$count);
 
     close HDL or die "Can't close $path: $!";
 }

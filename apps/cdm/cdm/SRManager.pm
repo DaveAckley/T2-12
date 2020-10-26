@@ -7,7 +7,7 @@ use fields qw(
     mSocketPath
     mSelect
     mSocket
-    mEndpoints
+    mEPByKey
     mUsers
     );
 
@@ -29,6 +29,7 @@ use TimeQueue;
 use Constants qw(:all);
 use PacketClasses;
 use PacketSR;
+use EP;
 
 use SREndpoint;
 
@@ -42,7 +43,7 @@ sub new {
     $self->{mSocketPath} = "$sockdir/${\PATH_SOCKETDIR_XFERSOCK}";
     $self->{mSocket} = undef;  # Illegal value
     $self->{mSelect} = undef;  # Illegal value
-    $self->{mEndpoints} = { }; # srekey -> SREndpoint (when network side open)
+    $self->{mEPByKey} = { }; # routekey -> EP (once route configured)
     $self->{mUsers} = { };  # fileno -> SREndpoint (when user side open)
 
     $self->{mCDM}->getTQ()->schedule($self);
@@ -87,7 +88,7 @@ sub getClientIfAny {
 sub getEndpointIfAnyFromKey {
     my __PACKAGE__ $self = shift || die;
     my $key = shift || die;
-    return $self->{mEndpoints}->{$key};
+    return $self->{mEPByKey}->{$key};
 }
 
 sub openLocal {
@@ -145,7 +146,22 @@ sub updateRead {
     for my $fh (@ready) {
         if ($fh == $self->{mSocket}) {  # new connect
             my $conn = $self->{mSocket}->accept();
-            $self->openLocal($conn);
+            #$self->openLocal($conn);
+
+######SPIKE12vvv
+            my $cdm = $self->{mCDM};
+            print "CONNECTION ".fileno($conn)." from ".fileno($self->{mSocket})."\n";
+            $conn->blocking(0);
+            my $ep = EP->new($cdm);
+            $ep->init($conn,"D",
+                      sub {
+                          my $sock = shift || die;
+                          DPSTD(" KILNG ($sock) from ($cdm)");
+                          delete $cdm->{mEPs}->{fileno($sock)};
+                      });
+            $cdm->{mEPs}->{fileno($conn)} = $ep;
+######SPIKE12^^^
+
         } else {    # input on existing
             my $fileno = fileno($fh);
             my $sre = $self->{mUsers}->{$fileno};

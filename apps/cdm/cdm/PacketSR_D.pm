@@ -1,19 +1,18 @@
 ## Module stuff
-package PacketSR_Dd; # Source route client->server (D) or server->client (d) data packet
+package PacketSR_D; # Source route client<->server data packet
 use strict;
 use base 'PacketSR';
-use fields qw(
-    mAckRecvSeqno
-    mThisDataSeqno
-    mData
+use fields (
+    "mFlags",                   # See D_PKT_FLAG_* in Constants.pm
+    "mAckRecvSeqno",            # Highest received seqno (or retry point)
+    "mThisDataSeqno",           # Seqno of this packet data if any
+    "mData",                    # Packet data
     );
 
 ## Imports
 use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
-
-use SREndpoint;
 
 use Exporter qw(import);
 
@@ -27,7 +26,8 @@ sub new {
     my ($class) = @_;
     my $self = fields::new($class);
     $self->SUPER::new();
-    $self->{mCmd} = undef;          # Illegal value
+    $self->{mCmd} = "D";
+    $self->{mFlags} = 0;            # Default value
     $self->{mAckRecvSeqno} = -1;    # Illegal value
     $self->{mThisDataSeqno} = -1;   # Illegal value
     $self->{mData} = undef;         # Illegal value
@@ -39,7 +39,7 @@ sub new {
 sub recognize {
     my ($class,$packet) = @_;
     return $class->SUPER::recognize($packet)
-        && $packet =~ /^.[^\x00]*\x00[Dd]/;  # Urgh
+        && $packet =~ /^.[^\x00]*\x00D/;  # Urgh
 }
 
 ##VIRTUAL
@@ -47,7 +47,8 @@ sub packFormatAndVars {
     my ($self) = @_;
     my ($parentfmt,@parentvars) = $self->SUPER::packFormatAndVars();
     my ($myfmt,@myvars) =
-        ("N N C/a*", 
+        ("C N N C/a*", 
+         \$self->{mFlags},
          \$self->{mAckRecvSeqno},
          \$self->{mThisDataSeqno},
          \$self->{mData},
@@ -62,8 +63,8 @@ sub validate {
     my ($self) = @_;
     my $ret = $self->SUPER::validate();
     return $ret if defined $ret;
-    return "Bad SR Dd command '$self->{mCmd}'"
-        unless $self->{mCmd} eq "D" || $self->{mCmd} eq "d";
+    return "Bad SR D command '$self->{mCmd}'"
+        unless $self->{mCmd} eq "D";
     return "Bad ack seqno"
         unless $self->{mAckRecvSeqno} >= 0;
     return "Bad data seqno"
@@ -76,29 +77,30 @@ sub validate {
 ##VIRTUAL
 sub deliverLocally {
     my __PACKAGE__ $self = shift || die;
-    my SRManager $srm = shift || die;
-    my $toserver = ($self->{mCmd} eq "D"); 
+    my EPManager $srm = shift || die;
+    my $toserver = ($self->{mFlags} & D_PKT_FLAG_TO_SERVER)!=0;
     my $from = $self->{mRoute};
-    DPSTD("handling Dd: toserver($toserver) from($from)");
-
     atEndOfRoute($from) or
         return DPSTD("Not at end, dropped ".$self->summarize());
-    my $ssre;
-    if ($toserver && defined($ssre =  $srm->getServerIfAny($from))) {
-        unless (defined($ssre->{mRecvData})) {
-            $ssre->{mRecvData} = DataQueue->new($ssre->{mCDM});
-            $ssre->{mRecvData}->init($from,$ssre->{mTheirStartSeqno},"d");
-            DPSTD("SERVER GOING TRANSPARENT $ssre->{mOurStartSeqno}/$ssre->{mTheirStartSeqno}");
+    my $ep;
+    if ($toserver && defined($ep =  $srm->getServerIfAny($from))) {
+        unless (defined($ep->{mFromNetBuffer})) {
+            $ep->{mFromNetBuffer} = "";
+            die "WRTDKL?" unless defined $ep->{mFromNetAckedSeq};
+            DPSTD("SERVER GOING TRANSPARENT $ep->{mToNetFrontSeq}/$ep->{mFromNetAckedSeq}");
         }
-        DPSTD("got server ssre ($ssre) from ($from)");
+        #DPSTD("got server ssre ($ep) from ($from)");
     } else {
-        $ssre =  $srm->getClientIfAny($from);
-        DPSTD("undefined client ssre from ($from) :") unless defined $ssre;
+        $ep =  $srm->getClientIfAny($from);
+        DPSTD("No client found for route $from, dropping ".$self->summarize()) unless defined $ep;
     }
 
-
-    $ssre->maybeReceiveData($self)
-        if defined $ssre;
+    if (defined($ep)) {
+        DPPKT($ep->getDesc()." D/L D:$from [".formatDFlags($self->{mFlags})."] dlen"
+          .length($self->{mData})
+          ." $self->{mThisDataSeqno}/$self->{mAckRecvSeqno}");
+        $ep->maybeReceiveData($self);
+    }
 }
 
 

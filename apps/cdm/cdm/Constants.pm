@@ -46,6 +46,28 @@ use constant MAX_MFZ_DATA_IN_FLIGHT => 12*MAX_D_TYPE_DATA_LENGTH;
 
 use constant SERVER_VIABILITY_SECONDS => 90; # Minute and a half of silence is too much
 
+use constant D_PKT_FLAG_TO_SERVER => (1<<0); # This packet directed to a server EP
+use constant D_PKT_FLAG_FIRST_SEQ => (1<<1); # mThisDataSeqno is the initial seqno of this direction
+use constant D_PKT_FLAG_LAST_SEQ =>  (1<<2); # mThisDataSeqno is the final seqno of this direction
+use constant D_PKT_FLAG_RETRY_SEQ => (1<<3); # Receiver should retry starting from mAckRecvSeqno
+use constant D_PKT_FLAG_RSV4 =>      (1<<4); # Reserved set to 0 don't read
+use constant D_PKT_FLAG_RSV5 =>      (1<<5); # Reserved set to 0 don't read
+use constant D_PKT_FLAG_RSV6 =>      (1<<6); # Reserved set to 0 don't read
+use constant D_PKT_FLAG_RSV7 =>      (1<<7); # Reserved set to 0 don't read
+
+use constant Q_PKT_FLAG_TO_SERVER => (1<<0); #
+use constant Q_PKT_FLAG_RSV1=>       (1<<1); #
+use constant Q_PKT_FLAG_RSV2=>       (1<<2); #
+use constant Q_PKT_FLAG_RSV3=>       (1<<3); #
+use constant Q_PKT_FLAG_RSV4 =>      (1<<4); #
+use constant Q_PKT_FLAG_RSV5 =>      (1<<5); #
+use constant Q_PKT_FLAG_RSV6 =>      (1<<6); #
+use constant Q_PKT_FLAG_RSV7 =>      (1<<7); #
+
+use constant EP_FLAG_IN_SYNC =>      (1<<0); # Most recent inbound D was where we wanted it
+use constant EP_FLAG_LOCAL_ABORT =>  (1<<1); # Something went wrong locally
+use constant EP_FLAG_REMOTE_ABORT => (1<<2); # Something went wrong at the far end
+
 my @stringConstants; # Constants that eval to their names for the antitypoe league
 our @SC_CONSTANTS;
 BEGIN {
@@ -140,6 +162,28 @@ my @constants = qw(
     MAX_MFZ_DATA_IN_FLIGHT
 
     SERVER_VIABILITY_SECONDS
+
+    D_PKT_FLAG_TO_SERVER 
+    D_PKT_FLAG_FIRST_SEQ 
+    D_PKT_FLAG_LAST_SEQ 
+    D_PKT_FLAG_RETRY_SEQ 
+    D_PKT_FLAG_RSV4 
+    D_PKT_FLAG_RSV5 
+    D_PKT_FLAG_RSV6 
+    D_PKT_FLAG_RSV7 
+
+    Q_PKT_FLAG_TO_SERVER 
+    Q_PKT_FLAG_RSV1
+    Q_PKT_FLAG_RSV2
+    Q_PKT_FLAG_RSV3
+    Q_PKT_FLAG_RSV4 
+    Q_PKT_FLAG_RSV5 
+    Q_PKT_FLAG_RSV6 
+    Q_PKT_FLAG_RSV7 
+
+    EP_FLAG_IN_SYNC
+    EP_FLAG_LOCAL_ABORT
+    EP_FLAG_REMOTE_ABORT
 
     HOOK_TYPE_LOAD
     HOOK_TYPE_RELEASE

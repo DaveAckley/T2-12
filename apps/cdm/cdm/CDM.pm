@@ -1,16 +1,16 @@
 ## Module stuff
 package CDM;
 use strict;
-use fields qw(
-    mBaseDirectory
-    mPrograms 
-    mTimeQueue 
-    mPacketIO
-    mContentManager
-    mNeighborhoodManager
-    mHookManager
-    mStatusReporter
-    mSRManager
+use fields (
+    "mBaseDirectory",           #
+    "mPrograms",                # 
+    "mTimeQueue",               # 
+    "mPacketIO",                #
+    "mContentManager",          #
+    "mNeighborhoodManager",     #
+    "mHookManager",             #
+    "mStatusReporter",          #
+    "mEPManager",               #
 );
 
 use Exporter qw(import);
@@ -31,7 +31,7 @@ use ContentManager;
 use PacketIO;
 use NeighborhoodManager;
 use StatusReporter;
-use SRManager;
+use EPManager;
 
 # Other imports
 use Fcntl;
@@ -93,6 +93,7 @@ sub init {
 #    Hooks::installHooks($self);
 
     $self->createTasks();
+
 }
 
 sub getPIO {
@@ -113,9 +114,8 @@ sub createTasks {
     $self->{mNeighborhoodManager}->init();
 
     # Let's get the SR server going before loading common
-    die if defined $self->{mSRManager};
-    $self->{mSRManager} = SRManager->new($self);
-    $self->{mSRManager}->init();
+    $self->{mEPManager} = EPManager->new($self);
+    $self->{mEPManager}->init();
 
     die if defined $self->{mContentManager};
     $self->{mContentManager} = ContentManager->new($self,SUBDIR_COMMON);

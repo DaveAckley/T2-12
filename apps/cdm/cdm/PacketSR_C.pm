@@ -11,7 +11,7 @@ use Constants qw(:all);
 use DP qw(:all);
 use T2Utils qw(:all);
 
-use SREndpoint;
+use EPManager;
 use PacketSR_R;
 
 use Exporter qw(import);
@@ -20,21 +20,6 @@ our @EXPORT_OK = qw();
 our %EXPORT_TAGS;
 
 BEGIN { push @Packable::PACKABLE_CLASSES, __PACKAGE__ }
-
-### CLASS METHOD
-sub makeFromSREndpoint {
-    my SREndpoint $sre = shift || die;
-    my $route = $sre->{mRoute};
-    atStartOfRoute($route) or die; 
-
-    my $seqno = $sre->{mOurStartSeqno};
-    $seqno >= 0 or die;
-
-    my $sfpkt = PacketSR_C->new();
-    $sfpkt->{mRoute} = $route;
-    $sfpkt->{mSourceSeqno} = $seqno;
-    return $sfpkt;
-}
 
 ## Methods
 sub new {
@@ -82,13 +67,13 @@ sub validate {
 ##VIRTUAL
 sub deliverLocally {
     my __PACKAGE__ $self = shift || die;
-    my SRManager $srm = shift || die;
+    my EPManager $srm = shift || die;
     my $from = $self->{mRoute};
     atEndOfRoute($from) or
         return DPSTD("Not at end, dropped ".$self->summarize());
-    my $ssre = $srm->getServerIfAny($from);
-    if (defined($ssre)) {
-        $ssre->acceptConnection($from,$self->{mSourceSeqno});
+    my $ep = $srm->getServerIfAny($from);
+    if (defined($ep)) {
+        $ep->acceptConnection($from,$self->{mSourceSeqno});
         DPSTD("ACCEPTED CONNECTION FROM $from");
     } else {
         my $rpkt = PacketSR_R->new();

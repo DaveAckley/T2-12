@@ -7,8 +7,8 @@ use fields qw(
     mRoute
     mFrontSeqno
     mNextSeqno
+    mLastSeqno
     mBuffer
-    mEOFSeen
     mDataCmd
     );
 
@@ -37,9 +37,9 @@ sub new {
     $self->{mRoute} = undef;      # Illegal value
     $self->{mFrontSeqno} = -1;      # Illegal value
     $self->{mNextSeqno} = -1;       # Illegal value
+    $self->{mLastSeqno} = undef;    # Illegal value
     $self->{mBuffer} = undef;       # Illegal value
-    $self->{mEOFSeen} = undef;     # Illegal value
-    $self->{mDataCmd} = undef;     # Illegal value
+    $self->{mDataCmd} = undef;      # Illegal value
 
     $self->{mCDM}->getTQ()->schedule($self);
     $self->defaultInterval(-2);
@@ -58,8 +58,8 @@ sub init {
     $self->{mRoute} = $toroute;
     $self->{mFrontSeqno} = $startseqno;
     $self->{mNextSeqno} = $startseqno;
+    $self->{mLastSeqno} = -1;  # Once >= 0, mBuffer can only shrink
     $self->{mBuffer} = "";
-    $self->{mEOFSeen} = 0;  # Once set, mBuffer can only shrink
     $self->{mDataCmd} = $datacmd; # "D" (c->s) or "d" (s->c)
     DPSTD("INIT DQ ($toroute,$startseqno,$datacmd)");
 }
@@ -70,7 +70,7 @@ use constant MAX_DATA_BYTES_IN_FLIGHT => 1<<9;
 sub canAppend {
     my __PACKAGE__ $self = shift || die;
     die unless defined $self->{mRoute};
-    return 0 if $self->{mEOFSeen};
+    return 0 if $self->{mLastSeqno} >= 0;
     return MAX_DATA_BUFFER_LENGTH - length($self->{mBuffer});
 }
 
@@ -99,7 +99,7 @@ sub appendString {
 
 sub deliveryDone {
     my __PACKAGE__ $self = shift || die;
-    return $self->{mEOFSeen} && $self->canDeliver() == 0;
+    return $self->{mFrontSeqno} == $self->{mLastSeqno} && $self->canDeliver() == 0;
 }
 
 # return 0 if would block
@@ -111,7 +111,7 @@ sub acceptFromFH {
     my $fh = shift || die;
     my SREndpoint $sre = shift || die;
 
-    return -1 if $self->{mEOFSeen};
+    return -1 if $self->{mLastSeqno} >= 0;
 
     my $acceptable = $self->canAppend();
     return 1 if $acceptable == 0; # No room now but attempts should continue
@@ -123,9 +123,11 @@ sub acceptFromFH {
         return undef; # $! set by sysread
     }
     if ($count == 0) {
-        $self->markEOF();
+        die if $self->{mLastSeqno} >= 0;
+        $self->{mLastSeqno} = $self->endSeqno();
         
-        return $self->{mCDM}->{mSRManager}->closeLocal($fh,undef);
+        die "REIMPLEMENT ME";
+#        return $self->{mCDM}->{mSRManager}->closeLocal($fh,undef);
     }
 
     $self->{mBuffer} .= $data;
@@ -161,7 +163,8 @@ sub deliverToFH {
         unless ($self->isClosedNetwork()) {
             $self->sendQuit();
         }
-        $self->{mCDM}->{mSRManager}->closeLocal($fh,undef);
+        die "XXSXREIMPLEMENT ME";
+#        $self->{mCDM}->{mSRManager}->closeLocal($fh,undef);
         return -1;
     }
     return 1;
@@ -198,11 +201,11 @@ sub retryFromSeqno {
     return 1;
 }    
 
-sub markEOF {
-    my __PACKAGE__ $self = shift || die;
-    die if $self->{mEOFSeen};
-    return $self->{mEOFSeen} = 1;
-}
+# sub markEOF {
+#     my __PACKAGE__ $self = shift || die;
+#     die if $self->{mEOFSeen};
+#     return $self->{mEOFSeen} = 1;
+# }
 
 
 sub maybeShipData {
@@ -224,7 +227,7 @@ sub maybeShipData {
     $pkt->{mData} = $data;
     $self->{mNextSeqno} += $shipamt;
     DPSTD("SEND $pkt->{mCmd} to $self->{mRoute} ack $pkt->{mAckRecvSeqno} seq $pkt->{mThisDataSeqno} len ".length($pkt->{mData}));
-    my $srm = $self->{mCDM}->{mSRManager} || die;
+    my $srm = $self->{mCDM}->{mEPManager} || die;
     $srm->sendSR($pkt,$self->{mRoute});
     return 1;
 }

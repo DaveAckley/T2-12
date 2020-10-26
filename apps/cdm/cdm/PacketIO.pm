@@ -90,10 +90,10 @@ sub tryFlushOutboundPackets {
 
 sub onTimeout {
     my ($self) = @_;
-    DPPushPrefix($self->getTag());
+#    DPPushPrefix($self->getTag());
     $self->processPackets();
     $self->tryFlushOutboundPackets();
-    DPPopPrefix();
+#    DPPopPrefix();
 }
 
 sub processPacket {
