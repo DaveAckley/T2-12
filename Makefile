@@ -52,7 +52,8 @@ cdmd:	FORCE
 	if [ "x$$FN" = "x" ] ; then echo "Build failed" ; else  \
 	echo -n "Got $$FN for $$BASE, tag = "; \
 	perl -e '"'$$FN'" =~ /[^-]+-[^-]+-([[:xdigit:]]+)[.]/; print $$1' > /cdm/tags/slot$(SLOTNUM)-install-tag.dat; \
-	cat /cdm/tags/slot$(SLOTNUM)-install-tag.dat; echo ;\
+	cat /cdm/tags/slot$(SLOTNUM)-install-tag.dat; \
+	echo -n ", size = " ; stat -c %s $$FN; \
 	cp -f $$FN /home/debian/CDMSAVE/CDMDS/; \
 	fi; \
 	popd
@@ -61,6 +62,7 @@ cdmd:	FORCE
 # around building the LKMs all the time.  Triggered by SC_REFRESH
 refresh:	FORCE
 	$(MAKE) -C apps/cdm install
+	$(MAKE) -C files/opt install
 
 restart:	FORCE
 	pkill cdm.pl
