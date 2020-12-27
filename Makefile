@@ -62,6 +62,7 @@ cdmd:	FORCE
 # around building the LKMs all the time.  Triggered by SC_REFRESH
 refresh:	FORCE
 	$(MAKE) -C apps/cdm install
+	$(MAKE) -C apps/mfm install
 	$(MAKE) -C files/opt install
 
 restart:	FORCE
