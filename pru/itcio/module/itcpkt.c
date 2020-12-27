@@ -88,6 +88,7 @@ static char * strBuffer(int buffer) {
   case BUFFERSET_U: return "UserIB";
   case BUFFERSET_L: return "LoclIB";
   case BUFFERSET_P: return "PrioOB";
+  case BUFFERSET_K: return "KernOB";
   case BUFFERSET_B: return "BulkOB";
   default: BUG_ON(1);
   }
@@ -299,6 +300,7 @@ static void printkITCPRUDeviceStateStatus(ITCPRUDeviceState * ipd) {
   char * name = ipd->mCDevState.mName;
   printkITCPacketBufferStatus(&ipd->mLocalIB,name);
   printkITCPacketBufferStatus(&ipd->mPriorityOB,name);
+  printkITCPacketBufferStatus(&ipd->mKernelOB,name);
   printkITCPacketBufferStatus(&ipd->mBulkOB,name);
 }
 
@@ -410,11 +412,15 @@ static int sendPacketViaRPMsg(ITCPRUDeviceState * prudev, ITCPacketBuffer * ipb)
   return pktlen;
 }
 
-/* return 0 if a priority packet shipped, 1 if a bulk packet shipped, or errno < 0 if problem */
+/* return 0 if a priority or kernel packet shipped, 1 if a bulk packet shipped, or errno < 0 if problem */
 static int shipAPacketToPRU(ITCPRUDeviceState * prudevstate) {
   int ret;
   BUG_ON(!prudevstate);
   BUG_ON(!prudevstate->mRpmsgDevice);
+
+  ret = sendPacketViaRPMsg(prudevstate, &prudevstate->mKernelOB);
+  if (ret > 0) return 0;  /* shipped kernel priority */
+  if (ret < 0) return ret; /* problem */
 
   ret = sendPacketViaRPMsg(prudevstate, &prudevstate->mPriorityOB);
   if (ret > 0) return 0;  /* shipped priority */
@@ -649,13 +655,14 @@ static ssize_t pru_bufs_show(struct class *c,
   int len = 0;
   int pru;
 
-  len += sprintf(&buf[len], "pru libl libr libw pobl pobr pobw bobl bobr bobw\n");
+  len += sprintf(&buf[len], "pru libl libr libw pobl pobr pobw kobl kobr kobw bobl bobr bobw\n");
   for (pru = 0; pru < PRU_MINORS; ++pru) {
     ITCPRUDeviceState * t = S.mPRUDeviceState[pru];
     if (!t) continue;
     len += sprintf(&buf[len], "%u", pru);
     len = sprintPktBufInfo(buf,len,&t->mLocalIB);
     len = sprintPktBufInfo(buf,len,&t->mPriorityOB);
+    len = sprintPktBufInfo(buf,len,&t->mKernelOB);
     len = sprintPktBufInfo(buf,len,&t->mBulkOB);
     len += sprintf(&buf[len], "\n");
   }
@@ -917,6 +924,7 @@ static ssize_t tppParseBufferSet(TracePointParser * tpp) {
     if      (ret == 'u') tpp->mBufferSet |= 1<<BUFFERSET_U;
     else if (ret == 'l') tpp->mBufferSet |= 1<<BUFFERSET_L;
     else if (ret == 'p') tpp->mBufferSet |= 1<<BUFFERSET_P;
+    else if (ret == 'k') tpp->mBufferSet |= 1<<BUFFERSET_K;
     else if (ret == 'b') tpp->mBufferSet |= 1<<BUFFERSET_B;
     else {
       tppUnread(tpp);
@@ -948,6 +956,7 @@ static void tppStorePattern(TracePointParser * tpp, bool onInsert, bool onRemove
         case BUFFERSET_U: continue;
         case BUFFERSET_L: ipb = &pru->mLocalIB; break;
         case BUFFERSET_P: ipb = &pru->mPriorityOB; break;
+        case BUFFERSET_K: ipb = &pru->mKernelOB; break; 
         case BUFFERSET_B: ipb = &pru->mBulkOB; break;
         default: BUG_ON(1);
         }
@@ -958,6 +967,7 @@ static void tppStorePattern(TracePointParser * tpp, bool onInsert, bool onRemove
         case BUFFERSET_U: ipb = &pkt->mUserIB; break;
         case BUFFERSET_L: continue;
         case BUFFERSET_P: continue;
+        case BUFFERSET_K: continue;
         case BUFFERSET_B: continue;
         default: BUG_ON(1);
         }
@@ -1080,6 +1090,7 @@ static bool tppGenerateBufferIfNeeded(TracePointParser *tpp, int b) {
   case BUFFERSET_U: tppPutByte(tpp,'U'); break;
   case BUFFERSET_L: tppPutByte(tpp,'L'); break;
   case BUFFERSET_P: tppPutByte(tpp,'P'); break;
+  case BUFFERSET_K: tppPutByte(tpp,'K'); break;
   case BUFFERSET_B: tppPutByte(tpp,'B'); break;
   default: BUG_ON(1);
   }
@@ -1127,6 +1138,7 @@ static void tppGenerateTraceProgram(char *buf, u32 len) {
         case BUFFERSET_U: continue;
         case BUFFERSET_L: ipb = &pru->mLocalIB; break;
         case BUFFERSET_P: ipb = &pru->mPriorityOB; break;
+        case BUFFERSET_K: ipb = &pru->mKernelOB; break;
         case BUFFERSET_B: ipb = &pru->mBulkOB; break;
         default: BUG_ON(1);
         }
@@ -1137,6 +1149,7 @@ static void tppGenerateTraceProgram(char *buf, u32 len) {
         case BUFFERSET_U: ipb = &pkt->mUserIB; break;
         case BUFFERSET_L: continue;
         case BUFFERSET_P: continue;
+        case BUFFERSET_K: continue;
         case BUFFERSET_B: continue;
         default: BUG_ON(1);
         }
@@ -1667,7 +1680,7 @@ static bool roomInPacketFIFO(ITCPacketBuffer * ipb, u32 countNeeded, const char 
   return true;
 }
 
-ssize_t trySendMFMRoutedKernelPacket(const u8 *pkt, size_t count)
+ssize_t trySendRoutedKernelPacket(const u8 *pkt, size_t count)
 {
   int minor;
   ITCCharDeviceState * cdevstate;
@@ -1689,7 +1702,7 @@ ssize_t trySendMFMRoutedKernelPacket(const u8 *pkt, size_t count)
   BUG_ON(!cdevstate);
 
   prudevstate = (ITCPRUDeviceState*) cdevstate;
-  ipb = &prudevstate->mPriorityOB;  /*MFM packets are always priority dispatch*/
+  ipb = &prudevstate->mKernelOB;  /*Routed kernel packets always go via mKernelOB*/
 
   DBGPRINTK(DBG_PKT_ROUTE,
             KERN_INFO "Routing %s %s/%d packet to %s\n",
@@ -2410,12 +2423,13 @@ static int itc_pkt_cb(struct rpmsg_device *rpdev,
   return 0;
 }
 
-static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname, bool routed, bool priority, int minor, int buffer) {
+static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname, bool routed, bool priority, bool kernel, int minor, int buffer) {
   BUG_ON(!ipb);
   ipb->mMinor = minor;
   ipb->mBuffer = buffer;
   ipb->mRouted = routed;
   ipb->mPriority = priority;
+  ipb->mKernel = kernel;
   strncpy(ipb->mName, ipbname,DBG_NAME_MAX_LENGTH);
   mutex_init(&ipb->mLock);
   init_waitqueue_head(&ipb->mReaderQ);
@@ -2430,7 +2444,7 @@ static ITCPktDeviceState * makeITCPktDeviceState(struct device * dev,
 {
   ITCCharDeviceState* cdev = makeITCCharDeviceState(dev, sizeof(ITCPktDeviceState), minor_to_create, err_ret);
   ITCPktDeviceState* pktdev = (ITCPktDeviceState*) cdev;
-  initITCPacketBuffer(&pktdev->mUserIB, "mUserIB", false, false, minor_to_create, BUFFERSET_U);
+  initITCPacketBuffer(&pktdev->mUserIB, "mUserIB", false, false, false, minor_to_create, BUFFERSET_U);
   return pktdev;
 }
 
@@ -2441,9 +2455,10 @@ static ITCPRUDeviceState * makeITCPRUDeviceState(struct device * dev,
   ITCCharDeviceState* cdev = makeITCCharDeviceState(dev, sizeof(ITCPRUDeviceState), minor_to_create, err_ret);
   ITCPRUDeviceState* prudev = (ITCPRUDeviceState*) cdev;
   prudev->mRpmsgDevice = 0; /* caller inits later */
-  initITCPacketBuffer(&prudev->mLocalIB,"mLocalIB",false,false, minor_to_create, BUFFERSET_L);
-  initITCPacketBuffer(&prudev->mPriorityOB,"mPriorityOB",true,true, minor_to_create, BUFFERSET_P);
-  initITCPacketBuffer(&prudev->mBulkOB,"mBulkOB",true,false, minor_to_create, BUFFERSET_B);
+  initITCPacketBuffer(&prudev->mLocalIB,"mLocalIB",false,false,false, minor_to_create, BUFFERSET_L);
+  initITCPacketBuffer(&prudev->mPriorityOB,"mPriorityOB",true,true,false, minor_to_create, BUFFERSET_P);
+  initITCPacketBuffer(&prudev->mKernelOB,"mKernelOB",true,true,true, minor_to_create, BUFFERSET_K);
+  initITCPacketBuffer(&prudev->mBulkOB,"mBulkOB",true,false,false, minor_to_create, BUFFERSET_B);
   return prudev;
 }
 
@@ -2464,7 +2479,7 @@ static ITCMFMDeviceState * makeITCMFMDeviceState(struct device * dev,
   ITCCharDeviceState* cdev = makeITCCharDeviceState(dev, sizeof(ITCMFMDeviceState), minor_to_create, err_ret);
   ITCMFMDeviceState* mfmdev = (ITCMFMDeviceState*) cdev;
   ITCPktDeviceState* pktdev = (ITCPktDeviceState*) mfmdev;
-  initITCPacketBuffer(&pktdev->mUserIB, "mUserIB",false,false,minor_to_create,BUFFERSET_P);
+  initITCPacketBuffer(&pktdev->mUserIB, "mUserIB",false,false,false,minor_to_create,BUFFERSET_P);  /* XXX NOT BUFFERSET_U ?? */
   mfmdev->mStale = false;
   BUG_ON(minor_to_create < PKT_MINOR_MFM_ET || minor_to_create > PKT_MINOR_MFM_NE);
   mfmdev->mDir6 = minor_to_create - PKT_MINOR_MFM_ET;
@@ -2814,6 +2829,7 @@ static void unmakeITCPRUDeviceState(ITCPRUDeviceState * prudevstate) {
   BUG_ON(S.mOpenPRUMinors < 1);
   unmakePacketBuffer(&prudevstate->mLocalIB);
   unmakePacketBuffer(&prudevstate->mPriorityOB);
+  unmakePacketBuffer(&prudevstate->mKernelOB);
   unmakePacketBuffer(&prudevstate->mBulkOB);
   unmakeITCCharDeviceState((ITCCharDeviceState *) prudevstate);
   --S.mOpenPRUMinors;

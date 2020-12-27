@@ -346,7 +346,7 @@ void handleKITCPacket(ITCMFMDeviceState * ds, u8 * packet, u32 len)
 static bool sendPacketHandler(PacketHandler * ph) {
   bool ret;
   BUG_ON(!ph);
-  ret = trySendMFMRoutedKernelPacket(ph->pktbuf,ph->index) > 0;
+  ret = trySendRoutedKernelPacket(ph->pktbuf,ph->index) > 0;
 
   ADD_ITC_EVENT(makeItcStateSendEvent(mapDir8ToDir6(getDir8FromPH(ph)),
                                        getStateNumberFromPH(ph)));

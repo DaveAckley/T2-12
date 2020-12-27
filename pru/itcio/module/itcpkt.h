@@ -183,6 +183,7 @@ enum {
   BUFFERSET_U = 0,
   BUFFERSET_L,
   BUFFERSET_P,
+  BUFFERSET_K,
   BUFFERSET_B
 };
 
@@ -212,6 +213,7 @@ typedef struct itcpacketbuffer {
   u8 mBuffer;                        /* buffer code of this buffer */
   bool mRouted;              /* Packets in this outbound buffer are routed */
   bool mPriority;            /* This is a priority outbound buffer */
+  bool mKernel;              /* This is a kernel-sourced outbound buffer */
   TracePoint mTraceInsert;   /* What fifo additions to trace */
   TracePoint mTraceRemove;   /* What fifo removals to trace */
 } ITCPacketBuffer;
@@ -232,6 +234,7 @@ typedef struct itcprudevicestate {
   unsigned char mTempPacketBuffer[RPMSG_MAX_PACKET_SIZE]; /* Buffer for pkt transfer grr */
   ITCPacketBuffer mLocalIB;    /* for non-standard packet replies from PRU */
   ITCPacketBuffer mPriorityOB; /* urgent pkts from userspace awaiting rpmsg to PRU */
+  ITCPacketBuffer mKernelOB;   /* intermediate priority pkts from LKM/KITC awaiting rpmsg to PRU */
   ITCPacketBuffer mBulkOB;     /* background pkts from userspace awaiting rpmsg to PRU */
 } ITCPRUDeviceState;
 
@@ -315,7 +318,7 @@ u32 getITCEnabledStatusByDir8(int dir8) ;
 
 void setITCEnabledStatusDir8(u32 dir8, int enabled) ;
 
-ssize_t trySendMFMRoutedKernelPacket(const u8 *pkt, size_t count) ;
+ssize_t trySendRoutedKernelPacket(const u8 *pkt, size_t count) ;
 
 
 #endif /* ITC_PKT_H */
