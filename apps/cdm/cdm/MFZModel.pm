@@ -261,9 +261,15 @@ sub deleteMFZ {
     # Eliminate the file, if it exists
     if ($self->servableLength() > 0) {
         my $path = $self->makePath();
-        my $pathDominated = $path."~";
-        rename $path, $pathDominated or die "Can't rename '%path': $!";
-        DPSTD($self->getTag()." renamed to $pathDominated");
+#202012190308 Can't afford backups if no automation to remove them
+#        my $pathDominated = $path."~";
+#        rename $path, $pathDominated or die "Can't rename '%path': $!";
+#        DPSTD($self->getTag()." renamed to $pathDominated");
+        if (unlink $path) {
+            DPSTD($self->getTag()." unlinked");
+        } else {
+            DPSTD("Couldn't unlink '$path': $!");
+        }
     }
 
     # Eliminate the model
