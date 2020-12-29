@@ -20,7 +20,10 @@ use constant PROG_SC_INSTALL => [PROG_SC_TARTAR, SC_INSTALL, SC_SETTAG];
 sub INIT_ALL_SLOTS {
     # S00 reserved and probably illegal
     mSC(0x01,"deletions       ",undef,                  [SC_CUSTOM],[]); 
+#HERE FOR 'T2-12 LITE'
     mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_TAR, SC_REFRESH, SC_RESTART],[]);
+#HERE FOR NEW LKM CODE
+#    mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_INSTALL, SC_REBOOT],[]);
     mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR, SC_RESTART],[]);
 
     mSC(0x90,"TEST 90 ~/TEST90","/home/t2/TEST90",      [SC_CHKTAG, SC_UNZIPCD, SC_SETTAG],[]);
