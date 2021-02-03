@@ -310,7 +310,7 @@ sub new {
     $self->{mDeletedMap} = undef;   # instance of DeletedMap
 
     $self->{mCDM}->getTQ()->schedule($self);
-    $self->defaultInterval(-20); # Run about every 10 seconds if nothing happening
+    $self->defaultInterval(-10); # Run about every 5 seconds if nothing happening
 
     return $self;
 }
