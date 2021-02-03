@@ -6,6 +6,9 @@ PACKAGES+=software-properties-common
 PACKAGES+=libncurses-dev
 PACKAGES+=netcat-openbsd
 
+# For SPLAT
+PACKAGES+=libfile-sharedir-install-perl
+
 # For unpacking .mfz files in emacs
 PACKAGES+=zip
 
