@@ -95,7 +95,6 @@ sub doActions {
     return $ret;
 }
 
-#return 1 if no action needed by tag
 sub getTagPath {
     my __PACKAGE__ $self = shift || die;
     my $model = $self->{mModel} || die;
@@ -103,6 +102,7 @@ sub getTagPath {
     return $tagpath;
 }
 
+#return 1 if no action needed by tag
 sub doSC_CHKTAG {
     my __PACKAGE__ $self = shift || die;
     my $model = $self->{mModel} || die;
@@ -338,7 +338,11 @@ sub doSC_CUSTOM  {
 
 
 sub doSC_REBOOT  {
-    die
+    my __PACKAGE__ $self = shift || die;
+    my $slot = $self->{mSlotNum};
+    DPSTD(sprintf("doSC_REBOOT: Rebooting by slot %02x request",$slot));
+    `reboot`;
+    die "Didn't boot?";
 }
 
 1;
