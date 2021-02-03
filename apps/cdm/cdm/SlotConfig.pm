@@ -21,14 +21,15 @@ sub INIT_ALL_SLOTS {
     # S00 reserved and probably illegal
     mSC(0x01,"deletions       ",undef,                  [SC_CUSTOM],[]); 
 #HERE FOR 'T2-12 LITE'
-    mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_TAR, SC_REFRESH, SC_RESTART],[]);
-#HERE FOR NEW LKM CODE
-#    mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_INSTALL, SC_REBOOT],[]);
+#    mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_TAR, SC_REFRESH, SC_RESTART],[]);
+#HERE FOR NEW LKM CODE (NUKING FROM ORBIT IS THE ONLY WAY TO BE SURE)
+    mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_INSTALL, SC_REBOOT],[]);
     mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR, SC_RESTART],[]);
+    mSC(0x04,"CONFIGT2        ","/home/t2/CONFIG-T2",   [PROG_SC_TAR],[]);
 
     mSC(0x90,"TEST 90 ~/TEST90","/home/t2/TEST90",      [SC_CHKTAG, SC_UNZIPCD, SC_SETTAG],[]);
 
-    for my $sn (0xa0..0xbf) {
+    for my $sn (0xa0..0xef) {
         mSC($sn,"Physics ".hex($sn),"/home/t2/physics",     [PROG_SC_TAR], [])
     }
 }
