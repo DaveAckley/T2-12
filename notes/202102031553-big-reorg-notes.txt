@@ -1,4 +1,4 @@
-{2}  -*- text -*- 
+{3}  -*- text -*- 
 [0:
 
 Wed Feb  3 15:53:22 2021 OK, trying to reorg T2-12 for finer grain
@@ -10,7 +10,13 @@ cdmss and therefore lower-overhead updating.  Goals:
 [1:
 
 Wed Feb  3 15:55:28 2021 First step is commit all this stuff we've had
-hanging around for the last two weeks.. 
+hanging around for the last two weeks.. [2:
+
+Thu Feb  4 13:16:51 2021 OK, trying out ssh access to github.  Let's
+see if this commit goes smoothly (from a shell that doesn't have
+ssh-agent running, I think).
+
+:2]
 
 :1]
 
