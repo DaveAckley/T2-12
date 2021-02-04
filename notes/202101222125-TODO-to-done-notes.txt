@@ -1,4 +1,4 @@
-{22}  -*- text -*- 
+{23}  -*- text -*- 
 [0:
 
 Fri Jan 22 21:27:41 2021 A place to pull together all kinds of
@@ -6,7 +6,11 @@ whatever-level tasks to get the grid to the impact I think it could
 have.
 
 TODO
+  [22: Thu Feb  4 13:11:24 2021
 
+ - Get an ssh key going for github
+ 
+  :22]
   [8: Thu Jan 28 00:03:00 2021 well took a ridiculout amount of time but
 DONE :8] - A presentation screen that describes the physics for, say, five
    seconds every time mfmt2 starts up.  Technical stuff in small font,
