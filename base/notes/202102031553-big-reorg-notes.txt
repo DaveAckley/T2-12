@@ -1,4 +1,4 @@
-{5}  -*- text -*- 
+{13}  -*- text -*-
 [0:
 
 Wed Feb  3 15:53:22 2021 OK, trying to reorg T2-12 for finer grain
@@ -10,7 +10,7 @@ cdmss and therefore lower-overhead updating.  Goals:
 [1:
 
 Wed Feb  3 15:55:28 2021 First step is commit all this stuff we've had
-hanging around for the last two weeks.. [2:
+hanging around for the last two weeks.. [5: DONE  :5][2:
 
 Thu Feb  4 13:16:51 2021 OK, trying out ssh access to github.  Let's
 see if this commit goes smoothly (from a shell that doesn't have
@@ -30,7 +30,7 @@ Thu Feb  4 14:07:07 2021 Well, so like:
 
     $ eval `ssh-agent`
     $ ssh-add  /home/t2/.ssh/id_githack
-    Enter passphrase for /home/t2/.ssh/id_githack: 
+    Enter passphrase for /home/t2/.ssh/id_githack:
     Identity added: /home/t2/.ssh/id_githack (ackley@ackleyshack.com)
     $ git push
 
@@ -45,3 +45,75 @@ Thu Feb  4 14:07:07 2021 Well, so like:
 :1]
 
 :0]
+[6:
+
+Thu Feb  4 14:35:25 2021 So okay, what's the plan here?
+
+Slot New dirs: Action       Containing old dirs and files:     Containing new dirs and files:
+
+02   T2-12/    install      everything                          everything
+
+05    base/    install      LICENSE Makefile README.md          LICENSE README.md Makefile base/
+                            doc/ extra/ files/ notes/
+                            packages/ pkgconfig/ services/
+                            apps/sdlsplash apps/t2 apps/t2adm
+                            apps/tnv
+06     low/    reboot       pru/ lkms/                          lkms/ pru/
+07     cdm/    restart      apps/cdm                            cdm.pl cdmctl cdm.sh cdm/ Makefile ..
+08     mfm/    restart      apps/mfm                            mfm.pl mfm.sh Makefile RUN_SDL ..
+[8:
+
+Thu Feb  4 16:12:39 2021 So, cshould we start a T2-13 for this,
+perhaps?[9:
+
+Thu Feb  4 16:50:37 2021 Maybe let's do it in place, and consider
+renaming the repo to T2-13 separately later.  But maybe let's do it
+from a clean clone..
+
+:9]
+
+:8]
+no: 04     cfg/    install      /home/t2/CONFIG-T2/
+[7:
+
+Thu Feb  4 16:01:26 2021 So T2-12 remains a single repo, but cdmss-02
+will exclude everything that requires special handling -- low/ cdm/
+mfm/ -- as well as our extremely lightweight cfg/.  Do we really want
+cfg/ even in there?  Want to be committing every physics change, even
+in principle?  Perhaps it's enough if mfm.pl can handle lack of
+/home/t2/CONFIG-T2/ sensibly, and then we can leave /home/t2/CONFIG-T2
+as is?
+
+(All this is going to really have to be revisited when we REDO THE
+DISK IMAGE GENERATION WORKFLOW RSN.)
+
+:7]
+
+:6]
+[10:
+
+Fri Feb  5 01:55:42 2021 OK, so we'd like to automate cdmss generation
+enough to avoid generating a new ss if it looks like the directory is
+up to date.  So how are we going to do that?  Should we have some
+persistent intermediate output file that plain 'make' builds, and
+'make cdmd' relies upon?  It wants to interact with stamp generation
+probably?
+
+:10]
+[11:
+
+Fri Feb  5 06:12:17 2021 So now I'm thinking I should keep slot 02 --
+for now anyway -- as meaning 'the whole T2-12 repo', so that we might
+have a hope of distributing the new T2-12 scheme using the existing
+cdm setup.
+
+:11]
+[12:   
+
+Fri Feb  5 12:42:30 2021 Well I've got to get the keymaste to a state
+we can reboot in.. So I think I'm going to try to get back to branch
+develop for now..
+
+Committing.
+
+:12]
