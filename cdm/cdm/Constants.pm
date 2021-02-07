@@ -92,6 +92,7 @@ BEGIN {
     uSC qw(SC_REFRESH);   # Do 'make refresh' in installation dir
     uSC qw(SC_RESTART);   # Do 'make restart' in installation dir
     uSC qw(SC_REBOOT);    # Reboot the tile
+    uSC qw(SC_FAIL);      # Die explicitly
     uSC qw(SC_CUSTOM);    # Call &SC_CUSTOM_$sn($model,$sc,$stepno)
 };
 

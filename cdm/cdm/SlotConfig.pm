@@ -27,6 +27,12 @@ sub INIT_ALL_SLOTS {
     mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR, SC_RESTART],[]);
     mSC(0x04,"CONFIGT2        ","/home/t2/CONFIG-T2",   [PROG_SC_TAR],[]);
 
+    mSC(0x05,"T2/base         ","/home/t2/T2-12",       [SC_FAIL],[]);    # NYI
+#    mSC(0x06,"T2/low          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_REBOOT],[]);    # NYI
+    mSC(0x06,"T2/low          ","/home/t2/T2-12",       [PROG_SC_INSTALL],[]);  
+    mSC(0x07,"T2/cdm          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_RESTART],[]);  
+    mSC(0x08,"T2/mfm          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_RESTART],[]);  
+
     mSC(0x90,"TEST 90 ~/TEST90","/home/t2/TEST90",      [SC_CHKTAG, SC_UNZIPCD, SC_SETTAG],[]);
 
     for my $sn (0xa0..0xef) {

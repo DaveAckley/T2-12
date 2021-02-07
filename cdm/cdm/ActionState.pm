@@ -345,4 +345,11 @@ sub doSC_REBOOT  {
     die "Didn't boot?";
 }
 
+sub doSC_FAIL {
+    my __PACKAGE__ $self = shift || die;
+    my $slot = $self->{mSlotNum};
+    DPSTD(sprintf("doSC_FAIL: Failure requested by slot %02x",$slot));
+    die "CDM failure requested";
+}
+
 1;
