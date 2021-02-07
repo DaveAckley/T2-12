@@ -19,6 +19,7 @@ SUBDIRS:=lkms pru
 all clean realclean:	$(SUBDIRS)
 
 realclean:	clean
+	rm -f $(TAR_PATH)
 
 clean:	FORCE
 	rm -f *~
@@ -44,9 +45,10 @@ TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner
 REGNUM:=0
 SLOTNUM:=06
 $(TAR_PATH):	FORCE
-	pushd ..;tar cvzf $(TAR_PATH) $(TAR_SWITCHES) $(BASE)
+	pushd ..;tar cvzf $(TAR_PATH) $(TAR_SWITCHES) $(BASE);popd
 
 cdmd:	$(TAR_PATH)
+	pushd .. ; \
 	FN=`/home/t2/MFM/bin/mfzmake cdmake $(REGNUM) $(SLOTNUM) $(BASE) $(BASE)-built.tgz | \
             perl -e "while(<>) {/'([^']+)'/ && print "'$$1}'`; \
 	if [ "x$$FN" = "x" ] ; then echo "Build failed" ; else  \
