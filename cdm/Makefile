@@ -21,7 +21,7 @@ OBJ_DEST_DIR:=/opt/scripts/t2/cdm
 OBJS:=$(OBJ_DEST_DIR)/$(SRC_FILES)
 
 #DEFAULT TARGET
-all:	run
+all:	build
 
 #############
 ##CDMD CREATION

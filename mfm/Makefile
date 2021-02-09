@@ -19,7 +19,7 @@ SRCS:=$(APP_NAME) $(ENGINE_NAME) RUN_SDL
 OBJS:=$(patsubst %,$(DEST_DIR)/%,$(SRCS))
 
 #DEFAULT TARGET
-all:	run
+all:	build
 
 #############
 ##CDMD CREATION
