@@ -1,4 +1,4 @@
-{22}  -*- text -*-
+{23}  -*- text -*-
 [0:
 
 Wed Feb  3 15:53:22 2021 OK, trying to reorg T2-12 for finer grain
@@ -190,7 +190,15 @@ Mon Feb  8 21:51:29 2021 Well, 'T2-12# make install' seemed to work.
 Have to try a reboot I guess.
 
 Committing.
+[22:
 
+Mon Feb  8 22:01:50 2021 OK had a few typoes but now coming up clean
+after 'T2-12# make install'
+
+I guess, let's try building and releasing a transitional cdmss-02 and
+hooking up a neighbor?
+
+:22]
 :21]
 
 :20]
