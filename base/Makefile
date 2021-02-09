@@ -50,7 +50,7 @@ $(TAR_PATH):	FORCE
 
 cdmd:	$(TAR_PATH)
 	pushd .. ; \
-	FN=`/home/t2/MFM/bin/mfzmake cdmake $(REGNUM) $(SLOTNUM) $(BASE) $(BASE)-built.tgz | \
+	FN=`/home/t2/MFM/bin/mfzmake cdmake $(REGNUM) $(SLOTNUM) $(BASE) $(TAR_PATH) | \
             perl -e "while(<>) {/'([^']+)'/ && print "'$$1}'`; \
 	if [ "x$$FN" = "x" ] ; then echo "Build failed" ; else  \
 	echo -n "Got $$FN for $(BASE), tag = "; \

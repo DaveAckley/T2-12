@@ -24,9 +24,14 @@ TAR_FILE:=$(BASE)-built.tgz
 TAR_FILE_DIR:=..
 TAR_PATH:=$(abspath $(TAR_FILE_DIR)/$(TAR_FILE))
 
-TAR_SWITCHES+=--exclude=tools --exclude=*~ --exclude=.git --exclude-backups
+TAR_SWITCHES+=--exclude=tools --exclude=*~ --exclude=.git* --exclude-backups
 TAR_SWITCHES+=--exclude=doc/internal --exclude=doc/old-versions
-TAR_SWITCHES+=--exclude=extra other
+TAR_SWITCHES+=--exclude=*.tgz
+TAR_SWITCHES+=--exclude=*.mfz
+TAR_SWITCHES+=--exclude=*-install-tag.dat
+TAR_SWITCHES+=--exclude=extra
+TAR_SWITCHES+=--exclude=other
+TAR_SWITCHES+=--exclude=.trash
 
 TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
 TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 

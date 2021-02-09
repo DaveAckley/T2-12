@@ -43,6 +43,9 @@ TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner
 
 REGNUM:=0
 SLOTNUM:=06
+DESTDIR:=$(abspath ..)
+TAG_PATH:=$(DESTDIR)/slot$(SLOTNUM)-install-tag.dat
+
 $(TAR_PATH):	FORCE
 	pushd ..;tar cvzf $(TAR_PATH) $(TAR_SWITCHES) $(BASE);popd
 
@@ -52,9 +55,11 @@ cdmd:	$(TAR_PATH)
             perl -e "while(<>) {/'([^']+)'/ && print "'$$1}'`; \
 	if [ "x$$FN" = "x" ] ; then echo "Build failed" ; else  \
 	echo -n "Got $$FN for $(BASE), tag = "; \
-	perl -e '"'$$FN'" =~ /[^-]+-[^-]+-([[:xdigit:]]+)[.]/; print $$1' > /cdm/tags/slot$(SLOTNUM)-install-tag.dat; \
-	cat /cdm/tags/slot$(SLOTNUM)-install-tag.dat; \
+	perl -e '"'$$FN'" =~ /[^-]+-[^-]+-([[:xdigit:]]+)[.]/; print $$1' > $(TAG_PATH); \
+	cat $(TAG_PATH); \
 	echo -n ", size = " ; stat -c %s $$FN; \
+	echo "TO RELEASE:" ; \
+	echo "  cp $(TAG_PATH) /cdm/tags ; cp $(DESTDIR)/$$FN /cdm/common"; \
 	fi; \
 	popd
 
