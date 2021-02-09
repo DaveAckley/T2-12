@@ -16,7 +16,7 @@ endif
 SUBDIRS:=packages pkgconfig apps files services 
 # (Not making subdirs: doc, extra, notes, tests)
 
-all clean realclean:	$(SUBDIRS)
+all install clean realclean:	$(SUBDIRS)
 
 realclean:	clean
 

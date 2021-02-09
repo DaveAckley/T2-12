@@ -15,7 +15,7 @@ endif
 # Deal with subdirs in this order precisely:
 SUBDIRS:=lkms pru
 
-all clean realclean:	$(SUBDIRS)
+all install clean realclean:	$(SUBDIRS)
 
 realclean:	clean
 	rm -f $(TAR_PATH)

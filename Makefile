@@ -15,7 +15,7 @@ endif
 # Deal with subdirs in this order precisely:
 SUBDIRS:=base low cdm mfm
 
-all clean realclean:	$(SUBDIRS)
+all install clean realclean:	$(SUBDIRS)
 
 realclean:	clean
 
