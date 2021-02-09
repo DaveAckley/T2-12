@@ -20,16 +20,15 @@ use constant PROG_SC_INSTALL => [PROG_SC_TARTAR, SC_INSTALL, SC_SETTAG];
 sub INIT_ALL_SLOTS {
     # S00 reserved and probably illegal
     mSC(0x01,"deletions       ",undef,                  [SC_CUSTOM],[]); 
-#HERE FOR 'T2-12 LITE'
-#    mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_TAR, SC_REFRESH, SC_RESTART],[]);
 #HERE FOR NEW LKM CODE (NUKING FROM ORBIT IS THE ONLY WAY TO BE SURE)
+#SLOT 02 IS DEPRECATED SEE SLOTS 05..08
     mSC(0x02,"T2-12           ","/home/t2",             [PROG_SC_INSTALL, SC_REBOOT],[]);
     mSC(0x03,"MFMT2           ","/home/t2",             [PROG_SC_TAR, SC_RESTART],[]);
     mSC(0x04,"CONFIGT2        ","/home/t2/CONFIG-T2",   [PROG_SC_TAR],[]);
 
-    mSC(0x05,"T2/base         ","/home/t2/T2-12",       [SC_FAIL],[]);    # NYI
-#    mSC(0x06,"T2/low          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_REBOOT],[]);    # NYI
+    mSC(0x05,"T2/base         ","/home/t2/T2-12",       [PROC_SC_INSTALL],[]);
     mSC(0x06,"T2/low          ","/home/t2/T2-12",       [PROG_SC_INSTALL],[]);  
+#    mSC(0x06,"T2/low          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_REBOOT],[]);    # NYI
     mSC(0x07,"T2/cdm          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_RESTART],[]);  
     mSC(0x08,"T2/mfm          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_RESTART],[]);  
 

@@ -22,7 +22,7 @@ sub oneTry {
         print "'$rec' ignored: Not recognized as slot\n";
     }
     print "SLOT PHYSICS $slot\n";
-    my $libcue = "/home/t2/physics/$slot/code/.gen/bin/libcue.so";
+    my $libcue = "/home/t2/physics/$slot/libcue.so";
     return undef
         unless -r $libcue; # Hmm?
     my $tagfile = "/cdm/tags/slot$slot-install-tag.dat";

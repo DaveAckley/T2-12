@@ -1,33 +1,79 @@
+SHELL = /bin/bash
+HOSTNAME:=$(shell uname -n)
+HOSTMACH:=$(shell uname -m)
+ON_TILE:=
+ifeq ($(HOSTNAME),beaglebone)
+ifeq ($(HOSTMACH),armv7l)
+ON_TILE:=true
+endif
+endif
+# We only make sense on the tile
+ifeq ($(ON_TILE),)
+$(error Must be running on the T2 tile)
+endif
+
 APP_NAME:=mfm.sh
+ENGINE_NAME:=mfm.pl
 DEST_DIR:=/opt/scripts/t2
-DEST_PATH:=$(DEST_DIR)/$(APP_NAME)
+SRCS:=$(APP_NAME) $(ENGINE_NAME) RUN_SDL
+OBJS:=$(patsubst %,$(DEST_DIR)/%,$(SRCS))
 
-CMDS:=build touch install clean realclean
+#DEFAULT TARGET
+all:	run
 
-$(CMDS):	FORCE
+#############
+##CDMD CREATION
+BASE:=$(lastword $(subst /, ,$(dir $(realpath $(firstword $(MAKEFILE_LIST))))))
+TAR_FILE:=$(BASE)-built.tgz
+TAR_FILE_DIR:=..
+TAR_PATH:=$(abspath $(TAR_FILE_DIR)/$(TAR_FILE))
+
+TAR_SWITCHES+=--exclude=--exclude=*~ --exclude=.git --exclude-backups
+
+TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
+TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 
+
+REGNUM:=0
+SLOTNUM:=08
+$(TAR_PATH):	FORCE
+	pushd ..;tar cvzf $(TAR_PATH) $(TAR_SWITCHES) $(BASE);popd
+
+cdmd:	$(TAR_PATH)
+	pushd .. ; \
+	FN=`/home/t2/MFM/bin/mfzmake cdmake $(REGNUM) $(SLOTNUM) $(BASE) $(TAR_PATH) | \
+            perl -e "while(<>) {/'([^']+)'/ && print "'$$1}'`; \
+	if [ "x$$FN" = "x" ] ; then echo "Build failed" ; else  \
+	echo -n "Got $$FN for $(BASE), tag = "; \
+	perl -e '"'$$FN'" =~ /[^-]+-[^-]+-([[:xdigit:]]+)[.]/; print $$1' > /cdm/tags/slot$(SLOTNUM)-install-tag.dat; \
+	cat /cdm/tags/slot$(SLOTNUM)-install-tag.dat; \
+	echo -n ", size = " ; stat -c %s $$FN; \
+	fi; \
+	popd
+##CDMD CREATION
+#############
 
 run:	build
 	./$(APP_NAME)
 
-build:	$(APP_NAME)
+restart:
+	killall $(ENGINE_NAME)
 
-$(APP_NAME):	FORCE
-	chmod a+rx $(APP_NAME)
-	@echo $(APP_NAME) ready
+build:	$(SRCS)
 
-touch:	FORCE
-	touch $(APP_NAME)
+$(SRCS):	FORCE
+	chmod a+rx $@
+	@echo $@ ready
 
-install: $(APP_NAME)
+install: $(OBJS)
+
+$(DEST_DIR)/%:	%
 	mkdir -p $(DEST_DIR)
-	@unlink $(DEST_PATH) 2>/dev/null || echo no existing $(DEST_PATH) to unlink
-	cp $< $(DEST_DIR) || (echo status=$$?, must be root? ; exit 2)
+	cp -p $^ $@ || (echo status=$$?, must be root? ; exit 2)
 
 clean:	
 	rm -f *~
 
 realclean:	clean
+	rm -f $(OBJS)
 
-.PHONY:	FORCE
-
-
+.PHONY:	all clean realclean install test FORCE 

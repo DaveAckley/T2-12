@@ -1,4 +1,4 @@
-{15}  -*- text -*-
+{20}  -*- text -*-
 [0:
 
 Wed Feb  3 15:53:22 2021 OK, trying to reorg T2-12 for finer grain
@@ -33,7 +33,6 @@ Thu Feb  4 14:07:07 2021 Well, so like:
     Enter passphrase for /home/t2/.ssh/id_githack:
     Identity added: /home/t2/.ssh/id_githack (ackley@ackleyshack.com)
     $ git push
-
 
 :4]
 
@@ -122,13 +121,22 @@ Committing.
 Sat Feb  6 01:00:22 2021 OK back on branch T2-13.  What are some next
 steps here?
 
- - Demo 'make' and 'make cdmd' in say low/, end up  with
+   [16: Sat Feb  6 12:43:39 2021 Got 'Got cdmss-06-5205ec.mfz for low, tag = 5205ec, size = 1246421'
+DONE :16] - Demo 'make' and 'make cdmd' in say low/, end up  with
    low/../cdmss-06-FFFFFF.mfz
    
- - Do NOT try to have cdmd construction be automatic on dependencies.
+   [17:
+DONE :17] - Do NOT try to have cdmd construction be automatic on dependencies.
    Just do it when told as in existing flows, and blow up on repeated
    tag as in existing flows
- 
+
+   [18: Sat Feb  6 12:45:17 2021 OK, can we now
+
+ - Make some SlotConfig hack to understand the low cdmss
+
+ - Checking an appropriate tag, and not install/rebooting if set.
+
+  :18]
 :13][14:
 
 Sat Feb  6 02:28:59 2021 Going back to develop to play with a1 a
@@ -137,3 +145,38 @@ little bit.
 Committing
 
 :14]
+[15:
+
+Sat Feb  6 12:34:56 2021 OK come on let's go T2-13.
+
+Noting the '-f' in:
+
+    root@beaglebone:/home/t2/T2-12# git checkout -f T2-13
+    Checking out files: 100% (590/590), done.
+    Switched to branch 'T2-13'
+    Your branch is up to date with 'origin/T2-13'.
+    root@beaglebone:/home/t2/T2-12# 
+
+to stomp on base/ and so forth in local branch.
+
+:15]
+[19:
+
+Mon Feb  8 21:10:25 2021 Well, getting close to needing to test some
+of this new layout, so we should think about committing first..
+
+Basic ideas of new design:
+
+ - '/home/t2/T2-12$ make cdmd' does nothing
+
+ - '/home/t2/T2-12/(base|low|cdm|mfm)$ make cdmd' builds the
+   corresponding cdmss (05..08) in /home/t2/T2-12
+
+ - '/home/t2/T2-12$ make -f Makefile.slot02.mk cdmd' builds the
+   old-style cdmss-02, intended for use only to transition the
+   existing tiles.
+
+ - '/home/t2/T2-12/mfm/CreatePhysicsSlot.pl' exists to initialize
+   physics demos
+
+:19]

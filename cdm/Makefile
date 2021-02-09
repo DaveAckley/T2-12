@@ -7,7 +7,6 @@ ifeq ($(HOSTMACH),armv7l)
 ON_TILE:=true
 endif
 endif
-ON_TILE:=1
 # We only make sense on the tile
 ifeq ($(ON_TILE),)
 $(error Must be running on the T2 tile)
