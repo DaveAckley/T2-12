@@ -14,7 +14,7 @@ while [ true ] ; do
 #    /home/t2/MFM/bin/mfmt2 -w /home/t2/MFM/res/mfmt2/wconfig.txt -z cdmss-a1-51f131.mfz -t/tmp -e/home/t2/physics/a1/code/.gen/bin/libcue.so
 #    /home/t2/MFM/bin/mfmt2 -w /home/t2/MFM/res/mfmt2/wconfig.txt -z cdmss-a1-51f131.mfz -e/home/t2/physics/a1/code/.gen/bin/libcue.so
     # Just dish to mfm.pl to do config-specific launching
-    /home/t2/T2-12/apps/mfm/mfm.pl
+    /home/t2/T2-12/mfm/mfm.pl
     echo mfmt2 exited status $? -- RESTARTING
 #    echo Launching mfmt2
 #    /home/t2/T2-12/apps/mfm/RUN_SDL /home/t2/MFM/bin/mfmt2 {{1H1}} --sw 480 --sh 320 --sf --start-file /home/t2/T2-12/apps/mfm/14stats.mfs --startsymbol SD -ep /home/t2/T2-12/apps/mfm/libcueSD.so --run -a 0 -n -wf 10 -e 10
