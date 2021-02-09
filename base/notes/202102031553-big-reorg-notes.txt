@@ -1,4 +1,4 @@
-{20}  -*- text -*-
+{22}  -*- text -*-
 [0:
 
 Wed Feb  3 15:53:22 2021 OK, trying to reorg T2-12 for finer grain
@@ -180,3 +180,17 @@ Basic ideas of new design:
    physics demos
 
 :19]
+[20:
+
+Mon Feb  8 21:22:10 2021 OK committed and pushed where we are so far.
+Trying '/home/t2/T2-12$ make install', since that's going to need to
+continue to work if cdmss-02 is to survive.[21:
+
+Mon Feb  8 21:51:29 2021 Well, 'T2-12# make install' seemed to work.
+Have to try a reboot I guess.
+
+Committing.
+
+:21]
+
+:20]
