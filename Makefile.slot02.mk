@@ -39,7 +39,8 @@ TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner
 
 REGNUM:=0
 SLOTNUM:=02
-TAG_PATH:=/home/t2/slot$(SLOTNUM)-install-tag.dat
+DESTDIR:=$(abspath ..)
+TAG_PATH:=$(DESTDIR)/slot$(SLOTNUM)-install-tag.dat
 
 $(TAR_PATH):	FORCE
 	pushd ..;tar cvzf $(TAR_PATH) $(TAR_SWITCHES) $(BASE);popd
@@ -54,8 +55,7 @@ cdmd:	$(TAR_PATH)
 	cat $(TAG_PATH); \
 	echo -n ", size = " ; stat -c %s $$FN; \
 	echo "TO RELEASE:" ; \
-	echo "# cp $(TAG_PATH) /cdm/tags"; \
-	echo "# mv $$FN /cdm/common"; \
+	echo "  cp $(TAG_PATH) /cdm/tags ; cp $(DESTDIR)/$$FN /cdm/common"; \
 	fi; \
 	popd
 
