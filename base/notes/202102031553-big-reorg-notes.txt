@@ -1,4 +1,4 @@
-{23}  -*- text -*-
+{24}  -*- text -*-
 [0:
 
 Wed Feb  3 15:53:22 2021 OK, trying to reorg T2-12 for finer grain
@@ -197,7 +197,15 @@ after 'T2-12# make install'
 
 I guess, let's try building and releasing a transitional cdmss-02 and
 hooking up a neighbor?
+[23:
 
+Thu Feb 11 14:42:06 2021 (Well that actually seemed to all go fine.
+And it seems we could actually release new cdmss-02s any time we
+wanted -- SO LONG AS THERE'S NO cdmss-05..08s STILL MOVING -- if it
+seemed more useful to do all of T2-12 for some reason, and we were
+happy with its reboot action.)
+
+:23]
 :22]
 :21]
 

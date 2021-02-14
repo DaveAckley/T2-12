@@ -1,4 +1,4 @@
-{23}  -*- text -*- 
+{29}  -*- text -*- 
 [0:
 
 Fri Jan 22 21:27:41 2021 A place to pull together all kinds of
@@ -7,8 +7,8 @@ have.
 
 TODO
   [22: Thu Feb  4 13:11:24 2021
-
- - Get an ssh key going for github
+  [23: Tue Feb  9 00:28:49 2021
+DONE :23] - Get an ssh key going for github
  
   :22]
   [8: Thu Jan 28 00:03:00 2021 well took a ridiculout amount of time but
@@ -28,7 +28,8 @@ DONE :7] - Also try to fix the crash screen.  How come it doesn't show up any
    the installed tag matches (or exceeds) the content, we don't
    'do-the-thing' again.
 
- - Reorganize T2-12 so that it makes multiple cdmds, not just one, so
+   [24: Tue Feb  9 00:29:27 2021 At least a solid first cut,
+DONE :24] - Reorganize T2-12 so that it makes multiple cdmds, not just one, so
    that we don't have to reboot when we just changed mfm.sh, or
    whatever. Have separate ss for:
    = pru/ -> install + reboot
@@ -40,9 +41,11 @@ DONE :7] - Also try to fix the crash screen.  How come it doesn't show up any
 
  - Set up a separate T2 physics repo.
 
- - Clean up the physics Makefile stuff
+   [25: Tue Feb  9 00:29:53 2021 Also a pretty good start here, say
+DONE :25] - Clean up the physics Makefile stuff
 
- - Have cdm do a better job announcing freshly 'improved' cdmds.
+   [28: Sun Feb 14 07:06:55 2021 Pretty good cut at this, it seems!
+DONE :28] - Have cdm do a better job announcing freshly 'improved' cdmds.
    We're already spending too much time waiting for random
    announcements and that's going to get much worse when we're
    circulating lots of physics files.
@@ -92,6 +95,19 @@ DONE :6] - Come up with some kind of libcue.so hashing that doesn't suck
  - Consider extending the metadata to allow specifying that graphics
    configuration 
 
+   [26: Wed Feb 10 01:16:15 2021
+
+ - Get rid of Seed#1 and Seed#2 in the Physics menu
+
+   [27: Wed Feb 10 03:38:32 2021
+
+ - Actually install physics' libcue.so files somewhere, instead of
+   running them out of their Makefile $(DESTPATH), so that recompiling
+   a physics doesn't immediately crash the local mfmt2
+
+  :27]
+
+  :26]
 :10]:5]
 
 :4]
