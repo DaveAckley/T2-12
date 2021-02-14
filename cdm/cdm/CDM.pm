@@ -74,6 +74,11 @@ sub getContentManager {
     return $self->{mContentManager};
 }
 
+sub getUrgencyManager {
+    my __PACKAGE__ $self = shift or die;
+    return $self->getContentManager()->getUrgencyManager();
+}
+
 sub schedule {
     my ($self,$to,$delay) = @_;
     $to->isa("TimeoutAble") or die;

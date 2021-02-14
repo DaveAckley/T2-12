@@ -7,6 +7,7 @@ use fields qw(
     mInDirModTime
     mSSMap
     mDeletedMap
+    mUrgencyManager
     );
 
 use Exporter qw(import);
@@ -24,6 +25,7 @@ use CDMap;
 use PacketCDM_F;
 use PacketCDM_C;
 use DeletedMap;
+use Urgency;
 
 # Task0: Get the existing MFZModel for $ss if any
 sub getMFZModelForSSIfAny {
@@ -201,17 +203,16 @@ sub updateMFZModelAvailability {
         my $domss = $domby->{mSlotStamp};
         # They're obsolete.  Let's spread the good news about $domby
         DPSTD("Replying with ".SSToTag($domss)." to ".$fpkt->summarize()." about ".SSToTag($ss));
-        my $cdm = $self->{mCDM} || die;
-        my $fpkt2 = PacketCDM_F->makeFromMFZModel($domby) || die;
-        $fpkt2->setDir8($fpkt->getDir8());
-        my $pio = $cdm->getPIO() || die;
-        $fpkt2->sendVia($pio);
+        $self->trySendAnnouncement($domby,$fpkt->getDir8());
         return;
     }
 
     # Theirs at least ties ours for dominance.  Record it.
     my $model = $self->getMFZModelForSS($ss); # Creating if need be
     $model->updateServableLength($fpkt->getDir8(), $fpkt->{mAvailableLength});
+
+    # And tell Urgency about what they have
+    $self->getUrgencyManager()->iNowThinkTheyKnow($slot, $fpkt->getDir8(), $stamp, $fpkt->{mAvailableLength});
 }
 
 sub makeDirPath {
@@ -226,6 +227,11 @@ sub makeDirPath {
 sub getBaseDirectory {
     my __PACKAGE__ $self = shift || die;
     return $self->{mInDir};
+}
+
+sub getUrgencyManager {
+    my __PACKAGE__ $self = shift || die;
+    return $self->{mUrgencyManager};
 }
 
 sub checkFile {
@@ -308,6 +314,7 @@ sub new {
     $self->{mInDirModTime} = undef;
     $self->{mSSMap} = { };          # { slotnum -> { ts -> MFZModel } }
     $self->{mDeletedMap} = undef;   # instance of DeletedMap
+    $self->{mUrgencyManager} = Urgency->new($cdm); 
 
     $self->{mCDM}->getTQ()->schedule($self);
     $self->defaultInterval(-10); # Run about every 5 seconds if nothing happening
@@ -315,7 +322,6 @@ sub new {
     return $self;
 }
 
-# return undef unless a fpkt was sent
 sub maybeAnnounceSomething {
     my __PACKAGE__ $self = shift || die;
 
@@ -327,10 +333,27 @@ sub maybeAnnounceSomething {
     my $ngb = $hoodm->getRandomOpenNgbMgr();
     return undef unless defined $ngb;
 
+    return $self->trySendAnnouncement($model,$ngb->{mDir8});
+}
+
+sub trySendAnnouncement {
+    my __PACKAGE__ $self = shift || die;
+    my $model = shift || die;
+    my $dir8 = shift || die;
+
+    my $cdm = $self->{mCDM} || die;
     my $fpkt = PacketCDM_F->makeFromMFZModel($model) || die;
-    $fpkt->setDir8($ngb->{mDir8});
+    $fpkt->setDir8($dir8);
     my $pio = $cdm->getPIO() || die;
-    return $fpkt->sendVia($pio);
+    my $ret = $fpkt->sendVia($pio);
+    if (defined($ret)) {
+        # Update Urgency on our action..
+        my $ss = $fpkt->{mSlotStamp};
+        my $slot = SSSlot($ss);
+        my $urg = $self->getUrgencyManager();
+        $urg->iJustAnnouncedTo($slot,$dir8);
+    }
+    return $ret;
 }
 
 sub handleDataChunk {
@@ -357,7 +380,18 @@ sub sendDataChunk {
     return DPSTD("No reply to ".$cpkt->summarize()) unless defined $dpkt;
 
     my $pio = $cdm->getPIO() || die;
-    return $dpkt->sendVia($pio);
+    my $ret = $dpkt->sendVia($pio);
+    if (defined($ret)) {
+        # Tell Urgency what we sent
+        my $ss = $dpkt->{mSlotStamp};
+        my $slot = SSSlot($ss);
+        my $ts = SSStamp($ss);
+        my $len = $dpkt->{mFilePosition};
+        my $itc = $dpkt->getDir8();
+        my $urg = $self->getUrgencyManager();
+        $urg->iNowThinkTheyKnow($slot,$itc,$ts,$len);
+    }
+    return $ret;
 }
 
 sub requestChunkFrom {
@@ -412,7 +446,8 @@ sub maybeReloadCommon {
 sub update {
     my __PACKAGE__ $self = shift || die;
     $self->maybeReloadCommon();
-    $self->maybeAnnounceSomething();
+#    $self->maybeAnnounceSomething();
+    $self->{mUrgencyManager}->maybeAnnounceSomeThings($self);
     $self->maybeRequestSomething();
     $self->garbageCollect();
 }

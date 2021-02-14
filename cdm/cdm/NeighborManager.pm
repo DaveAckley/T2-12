@@ -70,11 +70,22 @@ sub theirVersion {
     return $self->{mTheirVersion};
 }
 
+sub isOpen {
+    my __PACKAGE__ $self = shift || die;
+    return $self->state() >= NGB_STATE_OPEN;
+}
+
 sub acceptStatus { # 0:disabled, 1:enabled but no mfz compat, 2:mfz compat known
     my ($self,$status) = @_;
     if ($status == 0 && $self->state() > NGB_STATE_INIT) {
         DPSTD($self->getTag()." ".$self->state()." => ".NGB_STATE_INIT);
         $self->reset(); # Force retraining
+        {
+            # Tell Urgency the bad news
+            my $urg = $self->{mCDM}->getUrgencyManager();
+            $urg->forgetAboutThem($self->{mDir8});
+        }
+            
     } elsif ($status > 0 && $self->state() < NGB_STATE_OPEN) {
         DPSTD($self->getTag()." STATUS CHANGE ".$self->state()." => ".NGB_STATE_OPEN);
         $self->state(NGB_STATE_OPEN);

@@ -98,6 +98,15 @@ sub makePath {
     return $path;
 }
 
+sub reportFileGrowth {
+    my __PACKAGE__ $self = shift || die;
+    my $urg = $self->{mCDM}->getUrgencyManager();
+    my $slot = SSSlot($self->{mSlotStamp});
+    my $ts =   SSStamp($self->{mSlotStamp});
+    my $len = -s $self->{mFileHandle};
+    $urg->iJustGrewTo($slot,$ts,$len);
+}
+
 ## return 0 if complete,
 #  return next position > 0 if chunk added or in wrong position,
 #  return -1 and set $@ if validation failed somehow
@@ -148,6 +157,9 @@ sub addChunkAt {
         print {$self->{mFileHandle}} $self->{mBufferedData};
         $self->{mBufferedData} = "";
 
+        # Tell Urgency about that
+        $self->reportFileGrowth();
+
         # Set up to digest rest of the file
         $self->{mXsumDigester} = Digest::SHA->new(512);
     }
@@ -176,6 +188,9 @@ sub addChunkAt {
         print {$self->{mFileHandle}} $chunk;
         $self->{mBufferedData} = "";
 
+        # Tell Urgency about that
+        $self->reportFileGrowth();
+        
         ## Reopen file as read-only?
         return 0;  ## SUCCESS
     }
@@ -222,6 +237,9 @@ sub addChunkAt {
             or die "Why does seek die? $!";
         print {$self->{mFileHandle}} $self->{mBufferedData};
         $self->{mBufferedData} = "";
+
+        # Tell Urgency about that
+        $self->reportFileGrowth();
     }
 
     ## Mop up any leftover
