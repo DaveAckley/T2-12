@@ -1,4 +1,4 @@
-{29}  -*- text -*- 
+{30}  -*- text -*- 
 [0:
 
 Fri Jan 22 21:27:41 2021 A place to pull together all kinds of
@@ -101,6 +101,11 @@ DONE :6] - Come up with some kind of libcue.so hashing that doesn't suck
 
    [27: Wed Feb 10 03:38:32 2021
 
+   [29: Mon Feb 15 09:51:36 2021 Well, now we 'install' them by making
+   a copy in /home/t2/physics/SLOT/installed-libcue.so, but I just
+   realized that's not good enough since the install process replaces
+   the whole installed tree.  Let's put them in
+   /cdm/physics/SLOT-libcue.so, I guess, instead..:29]
  - Actually install physics' libcue.so files somewhere, instead of
    running them out of their Makefile $(DESTPATH), so that recompiling
    a physics doesn't immediately crash the local mfmt2
