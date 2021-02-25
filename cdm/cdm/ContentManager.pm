@@ -19,7 +19,7 @@ use Digest::SHA;
 
 use DP qw(:all);
 use Constants qw(:all);
-use T2Utils qw(:math :fileops);
+use T2Utils qw(:math :fileops :dirs);
 use MFZUtils qw(:all);
 use CDMap;
 use PacketCDM_F;
@@ -212,7 +212,17 @@ sub updateMFZModelAvailability {
     $model->updateServableLength($fpkt->getDir8(), $fpkt->{mAvailableLength});
 
     # And tell Urgency about what they have
-    $self->getUrgencyManager()->iNowThinkTheyKnow($slot, $fpkt->getDir8(), $stamp, $fpkt->{mAvailableLength});
+    {
+        my $urg = $self->getUrgencyManager();
+        my ($ourts,$ourlen,$ourwhen) = @{$urg->whatIKnow($slot)};
+
+        $urg->iNowThinkTheyKnow($slot, $fpkt->getDir8(), $stamp, $fpkt->{mAvailableLength});
+        DPDBG(sprintf("URGUPD %02x<-%s %06x %d (%06x %d) nurg %d",
+                      $slot, getDir8Name($fpkt->getDir8()), $stamp,
+                      $fpkt->{mAvailableLength},
+                      $ourts, $ourlen,
+                      $urg->getUrgency($slot,$fpkt->getDir8())));
+    }
 }
 
 sub makeDirPath {
@@ -317,7 +327,7 @@ sub new {
     $self->{mUrgencyManager} = Urgency->new($cdm); 
 
     $self->{mCDM}->getTQ()->schedule($self);
-    $self->defaultInterval(-10); # Run about every 5 seconds if nothing happening
+    $self->defaultInterval(-16); # Run about every 8 seconds if nothing happening
 
     return $self;
 }
@@ -446,8 +456,8 @@ sub maybeReloadCommon {
 sub update {
     my __PACKAGE__ $self = shift || die;
     $self->maybeReloadCommon();
-#    $self->maybeAnnounceSomething();
-    $self->{mUrgencyManager}->maybeAnnounceSomeThings($self);
+    $self->maybeAnnounceSomething()  # Fall back to the olden ways
+        unless $self->{mUrgencyManager}->maybeAnnounceSomeThings($self);
     $self->maybeRequestSomething();
     $self->garbageCollect();
 }

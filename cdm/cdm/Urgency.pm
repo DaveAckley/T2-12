@@ -66,10 +66,14 @@ sub iNowThinkTheyKnow {
     my $len = shift || 0; # ?? possible?
 
     my $tr = $self->whatIThinkTheyKnow($slot,$dir8);
+    $tr->[2] = now();  # Same or different, I know it as of now
     if ($tr->[0] != $ts || $tr->[1] != $len) {
+        DPDBG(sprintf("URGCHG %02x~%s %06x->%06x %d->%d",
+                      $slot, getDir8Name($dir8),
+                      $tr->[0],$ts,
+                      $tr->[1],$len));
         $tr->[0] = $ts;
         $tr->[1] = $len;
-        $tr->[2] = now();
         return 1;  # If anybody cares
     }
     return 0; # ditto
@@ -120,7 +124,7 @@ sub getUrgency {
     ($theylen, $theywhen) = (0, 0)
         if $ourts != $theyts;   # Diff TS -> when is irrelevant
     my $timepressure = $self->logtime(now() - $theywhen);
-    my $sizepressure = max(1, $ourlen - $theylen);
+    my $sizepressure = max(0, $ourlen - $theylen);
     return int($sizepressure * $timepressure);
 }
 
@@ -174,9 +178,11 @@ sub maybeAnnounceSomeThings {
     my __PACKAGE__ $self = shift || die;
     my ContentManager $cm = shift || die;
     my $TRIES = 3;
-    for (my $try = 0; $try < $TRIES; ++$try) {
+    my $try = 0;
+    for (; $try < $TRIES; ++$try) {
         last unless $self->maybeAnnounceSomething($cm);
     }
+    return $try; # 0 if no announcements
 }
 
 sub update {

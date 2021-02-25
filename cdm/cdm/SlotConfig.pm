@@ -35,7 +35,7 @@ sub INIT_ALL_SLOTS {
     mSC(0x90,"TEST 90 ~/TEST90","/home/t2/TEST90",      [SC_CHKTAG, SC_UNZIPCD, SC_SETTAG],[]);
 
     for my $sn (0xa0..0xef) {
-        mSC($sn,"Physics ".hex($sn),"/home/t2/physics",     [PROG_SC_TAR], [])
+        mSC($sn,"Physics ".hex($sn),"/home/t2/physics", [PROG_SC_INSTALL], [])
     }
 }
 
