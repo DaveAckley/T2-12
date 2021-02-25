@@ -1,4 +1,4 @@
-{23}  -*- text -*- 
+{24}  -*- text -*- 
 [0:
 
 Tue Feb  9 00:31:34 2021 OK so we've gotten aggravated enough by the
@@ -494,7 +494,16 @@ moment? [22:
 Sun Feb 14 07:02:55 2021 Well that seems to be working-ish also.
 
 About time to commit this and try it on the grid?
+[23:
 
+Mon Feb 15 09:42:01 2021 OK well it's been on the grid for a day or so
+and it all seems plausible enough.  Still can have issues restarting
+the flow if a supplying CDM glitches on slot 02 (T2-12) or 07 (T2/cdm)
+install.  But vastly better than it was!
+
+Going to leave it there for now.
+
+:23]
 :22]
 
 :21]
