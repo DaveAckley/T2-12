@@ -5,7 +5,7 @@ use File::Path qw(make_path);
 
 use POSIX; # For strftime
 
-my ($slot,$lang,$undef) = @ARGV;
+my ($slot,$lang,$optoverwrite,$undef) = @ARGV;
 die "Usage: $0 SLOT LANG\n"
     unless defined $slot and defined $lang;
 $lang = lc($lang);
@@ -13,9 +13,19 @@ die "Usage: $0 HEXSLOT SPLAT|ulam\n"
     unless $slot =~ /^[[:xdigit:]]{2}$/ and $lang =~ /^splat|ulam$/;
 my $slotnum = hex($slot);
 die "Usage: $0 a0..ef\n" unless $slotnum >= 0xa0 && $slotnum <= 0xef;
+if (defined($optoverwrite)) {
+    die "Usage: $0 SLOT LANG [overwrite]\n"
+        if lc($optoverwrite) ne "overwrite";
+    $optoverwrite = 1
+} else {
+    $optoverwrite = 0;
+}
+        
+die "Usage: $0 SLOT LANG [YES]\n"
+    if defined $undef;
 
 my $destpath = File::Spec->rel2abs("./$slot");
-die "'$destpath' already exists\n" if -e $destpath;
+die "'$destpath' already exists\n" if -e $destpath and not $optoverwrite;
 my @subdirs = qw(code notes);
 for my $sub (@subdirs) {
     my $subpath = "$destpath/$sub";
@@ -33,23 +43,31 @@ exit;
 sub genTopMakefile {
     my $dir = shift;
     my $file = "$dir/Makefile";
-    die if -e $file;
+    die if -e $file and not $optoverwrite;
     open FH, ">", $file or die "Can't write $file: $!";
     print FH <<'EOF';
 ##STANDARD TOP-LEVEL MAKEFILE FOR PHYSICS SLOTS
 SHELL:=/bin/bash
+REGNUM:=0
+SLOTNUM:=$(lastword $(subst /, ,$(dir $(realpath $(firstword $(MAKEFILE_LIST))))))
 
 all:	t2
+
+UNINSTALLED_LIBCUE_DIR:=$(abspath .)
+UNINSTALLED_LIBCUE_FILE:=libcue.so
+INSTALLED_LIBCUE_DIR:=/cdm/physics
+INSTALLED_LIBCUE_FILE:=slot$(SLOTNUM)-installed-libcue.so
+UNINSTALLED_LIBCUE_PATH:=$(UNINSTALLED_LIBCUE_DIR)/$(UNINSTALLED_LIBCUE_FILE)
+INSTALLED_LIBCUE_PATH:=$(INSTALLED_LIBCUE_DIR)/$(INSTALLED_LIBCUE_FILE)
 
 TAR_SWITCHES+=--exclude=*~ --exclude=.git --exclude-backups
 TAR_SWITCHES+=--exclude=.gen
 TAR_SWITCHES+=--exclude=*.mfz
+TAR_SWITCHES+=--exclude=$(INSTALLED_LIBCUE_FILE)
 
 TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
 TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 
 
-REGNUM:=0
-SLOTNUM:=$(lastword $(subst /, ,$(dir $(realpath $(firstword $(MAKEFILE_LIST))))))
 DESTDIR:=$(abspath ..)
 TAG_PATH:=$(DESTDIR)/slot$(SLOTNUM)-install-tag.dat
 
@@ -74,11 +92,14 @@ cdmd:	t2 $(TAR_PATH)
 	fi; \
 	popd
 
-install:	FORCE
-	@echo "Make install not yet implemented for physics"
-	@echo "We don't know what it should do"
-	@echo "So doing nothing seems like a success for now"
+install:	$(INSTALLED_LIBCUE_PATH)
 
+$(INSTALLED_LIBCUE_PATH):	$(UNINSTALLED_LIBCUE_PATH)
+	mkdir -p $(INSTALLED_LIBCUE_DIR)
+	cp $^ $@
+
+$(UNINSTALLED_LIBCUE_PATH):	FORCE
+	touch $@
 
 code:	FORCE
 	make -C code
@@ -120,7 +141,7 @@ sub genSPLATCodeFiles {
 sub genCodeSPLATFile {
     my $dir = shift;
     my $file = "$dir/Makefile";
-    die if -e $file;
+    die if -e $file and not $optoverwrite;
     open FH, ">", $file or die "Can't write $file: $!";
     print FH <<'EOF';
 ##STANDARD TOP-LEVEL MAKEFILE FOR PHYSICS SLOTS
@@ -193,7 +214,7 @@ EOF
 sub genCodeMakefile {
     my $dir = shift;
     my $file = "$dir/Makefile";
-    die if -e $file;
+    die if -e $file and not $optoverwrite;
     open FH, ">", $file or die "Can't write $file: $!";
     print FH <<'EOF';
 # Customize ULAM_BIN_DIR, MFM_BIN_DIR, and SPLAT_BIN_DIR if necessary
@@ -260,7 +281,7 @@ EOF
 sub genDemoElementUlam {
     my $dir = shift;
     my $file = "$dir/MyElement.ulam";
-    die if -e $file;
+    die if -e $file and not $optoverwrite;
     open FH, ">", $file or die "Can't write $file: $!";
     print FH <<'EOF';
 /** An element of mine.  To be hacked/copied/renamed/etc.
@@ -282,7 +303,7 @@ EOF
 sub genSeedUlam {
     my $dir = shift;
     my $file = "$dir/S.ulam";
-    die if -e $file;
+    die if -e $file and not $optoverwrite;
     open FH, ">", $file or die "Can't write $file: $!";
     my $year = strftime("%Y", localtime());
     print FH <<"EOF";
@@ -307,7 +328,7 @@ EOF
 sub genSeedSPLAT {
     my $dir = shift;
     my $file = "$dir/S.splat";
-    die if -e $file;
+    die if -e $file and not $optoverwrite;
     open FH, ">", $file or die "Can't write $file: $!";
     my $year = strftime("%Y", localtime());
     print FH <<"EOF";
@@ -332,7 +353,7 @@ EOF
 sub genDemoElementSPLAT {
     my $dir = shift;
     my $file = "$dir/MyElement.splat";
-    die if -e $file;
+    die if -e $file and not $optoverwrite;
     open FH, ">", $file or die "Can't write $file: $!";
     print FH <<'EOF';
 # (This is just a renaming of SwapLine, described in http://doi.org/cshp)
