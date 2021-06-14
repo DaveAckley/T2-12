@@ -27,7 +27,7 @@ sub INIT_ALL_SLOTS {
     mSC(0x04,"CONFIGT2        ","/home/t2/CONFIG-T2",   [PROG_SC_TAR],[]);
 
     mSC(0x05,"T2/base         ","/home/t2/T2-12",       [PROG_SC_INSTALL],[]);
-    mSC(0x06,"T2/low          ","/home/t2/T2-12",       [PROG_SC_INSTALL],[]);  
+    mSC(0x06,"T2/low          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_REBOOT],[]);  
 #    mSC(0x06,"T2/low          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_REBOOT],[]);    # NYI
     mSC(0x07,"T2/cdm          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_RESTART],[]);  
     mSC(0x08,"T2/mfm          ","/home/t2/T2-12",       [PROG_SC_INSTALL, SC_RESTART],[]);  
