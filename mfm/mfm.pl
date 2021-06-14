@@ -46,6 +46,7 @@ sub runMFMT2 {
 }
 
 sub main {
+    print "ENTERED $0\n";
     while (1) {
         my ($slot,$ep,$stamp) = oneTry();
         if (defined $ep) {
