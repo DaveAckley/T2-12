@@ -246,5 +246,5 @@ in the NOTES buffer"
   "once per quarry file"
   (interactive)
   (goto-char 1)
-  (insert "{0}  -*- text -*- \n")
+  (insert "{0}  -*-  mode: text; fill-column: 50;  -*-\n")
   (text-mode))
