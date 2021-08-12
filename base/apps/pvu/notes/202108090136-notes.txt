@@ -1,0 +1,137 @@
+{11}  -*-  mode: text; fill-column: 50;  -*-
+[0:
+
+Mon Aug  9 01:36:23 2021 OK, as a way to get back
+into the tiles, I want some kind of little 'packet
+viewer' to show us what's going on in terms of
+packet counts and rates, buffer sizes perhaps,
+lost packets certainly, and so on.  It ought to
+summarize as much as we can get our hands on about
+what's going on with packets moving in and out of
+the tile.
+
+And perhaps hopefully we'll let this 'pvu' serve
+as a driver for changes at LKM and perhaps PRU to
+improve transparency on where packets could be
+getting lost. 
+
+:0]
+[1:
+
+Mon Aug  9 01:54:22 2021 OK, well, I installed
+libcurses-ui-perl and followed the tutorial and
+now I have pvu.pl with a menu and a text widget
+and keyboard accelerators and so on.  So we are
+already kind of at
+
+ WHAT INFORMATION CAN WE GATHER AND SHOW?
+
+[2:
+
+Mon Aug  9 01:56:06 2021 To start, let's head for
+this: Ingesting /sys/class/itc_pkt/statistics at
+regular intervals, and producing per-ITC and
+tile-wide packet traffic rates. 
+
+How do we do timer-based stuff in Curses::UI?[3:
+
+Mon Aug  9 03:19:58 2021 Stop the clock.  1:56 to
+~3:20, so 1.5 hr just burned on 'timer-based stuff
+in Curses::UI'. 
+
+Why?
+
+Because Curses::UI uses the standard time()
+function so it can do timers with anything better
+than a one-second resolution, and that is dog
+slow.
+
+And our chosen workaround ended up being this:
+
+    #### vvvv HACK TO GET Curses::UI to use fractional seconds!
+    package Curses::UI;    
+    use subs qw ( time );  # Predeclare time as a sub in Curses::UI
+    package main;          # Back to us
+    use Curses::UI;
+    sub Curses::UI::time { return Time::HiRes::time(); }
+    #### ^^^^ HACK TO GET Curses::UI to use fractional seconds!
+
+which doesn't modify /usr/share/perl5/Curses/UI.pm
+at all, at least not directly, and is only seven
+lines long, and will probably come bite us on the
+butt at some extremely inconvenient future time.
+
+[4:
+
+Mon Aug  9 03:31:47 2021 So that's where the time
+goes..
+
+Back to ingesting stats: We want packet totals,
+and relatively long-term rates and relatively
+short-term rates.[5:
+
+Mon Aug  9 03:44:24 2021 Aaand can we be a little
+more specific please?  Well I guess we'll just do
+backwards averaging of rates with different
+alphas, as usual, and hope for the best.
+
+Show total traffic bytes/sec out and in, mfm
+traffic ditto, bulk traffic ditto.[6:
+
+Mon Aug  9 12:55:37 2021 Well a first extremely
+lame cut, showing KB/s and packets/s for mfm and
+blk vs directions -- at just one selected
+backwards averaging rate.
+
+Not at all clear this Curses::UI is worth its
+aggravations, though.
+
+:6]
+
+:5]
+
+:4]
+
+:3]
+
+:2]
+
+:1]
+[7:
+
+Mon Aug  9 13:56:12 2021 Thinking we should ditch
+Curses::UI before we get any further here:
+
+ - It demands nasty hacks out of the box
+
+ - How much do we need it?
+
+ - We'd have to figure out how to push the
+   libcurses-ui-perl to the whole damn grid.
+[8:
+
+Mon Aug  9 23:41:22 2021 OK so we tore Curses::UI
+out of our little pvu.pl stub and now we're going
+in pure Curses and we feel a lot better.
+
+Pushing this stub out to our little Ring One on
+the desk here.[9:
+
+Mon Aug  9 23:48:40 2021 But argh we're still
+going to need to push libcurses-perl out to the
+grid somehow, because it's not one of the
+packages
+
+:9]
+
+:8]
+:7]
+[10:
+
+Thu Aug 12 11:42:05 2021 OK committing all this
+stuff ahead of moving the flag.  Won't be able to
+use pvu.pl on the grid without installing
+libcurses-perl by hand via sz/rz, but if I'm into
+the middle of the grid via serial anyway..
+
+:10]
