@@ -39,7 +39,7 @@ sub runMFMT2 {
     my ($slot,$ep,$stamp) = @_;
     my $id = $slot;
     $id .= "-$stamp" if defined($stamp);
-    my $cmd = "/home/t2/MFM/bin/mfmt2 -w /home/t2/MFM/res/mfmt2/wconfig.txt -z $id -e$ep";
+    my $cmd = "/home/t2/MFM/bin/mfmt2 -t=1 -w /home/t2/MFM/res/mfmt2/wconfig.txt -z $id -e$ep";
     print "RUNNING $cmd\n";
     my $status = `$cmd`;
     print "EXIT STATUS $status\n";
