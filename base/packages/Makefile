@@ -40,6 +40,9 @@ PACKAGES+=libproc-daemon-perl
 # For time parsing if we still end up needing that
 PACKAGES+=libdatetime-format-strptime-perl 
 
+# For pvu.pl if nothing else
+PACKAGES+=libcurses-perl
+
 # For FUSE if we end up using it
 #PACKAGES+=fuse libfuse-dev
 
