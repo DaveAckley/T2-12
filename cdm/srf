@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 
 use strict;
-use lib "/home/t2/T2-12/apps/cdm/cdm";
+use lib "/home/t2/T2-12/cdm/cdm";
 
 use IO::Socket::UNIX;
 use File::Basename;
