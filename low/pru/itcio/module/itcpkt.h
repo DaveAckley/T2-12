@@ -205,6 +205,7 @@ typedef struct tracepointprogram {
 typedef struct itcpacketbuffer {
   ITCPacketFIFO     mFIFO;   /* a packet fifo for some purpose */
   u32 mPacketsDropped;       /* due to mFIFO full since last success */
+  u32 mTotalPacketsDropped;  /* due to mFIFO full since boot (or wrap/reset?) */
   wait_queue_head_t mReaderQ;/* for readers waiting for fifo non-empty */
   wait_queue_head_t mWriterQ;/* for writers waiting for fifo non-full */
   struct mutex      mLock;   /* lock for modifying this struct */

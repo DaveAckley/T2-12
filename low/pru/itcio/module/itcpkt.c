@@ -267,7 +267,7 @@ static inline int bulkOutboundBytesToPRUDev(ITCPRUDeviceState * prudev) {
 static u32 reportITCPacketFIFOStatus(char * buf, size_t size, ITCPacketFIFO * ipf) {
   if (!ipf) return 0;
   return (u32)
-    scnprintf(buf, size, "%p %9d/%-9d %4d/%-4d %4dl %3da",
+    scnprintf(buf, size, "%p %10d/%-10d %4d/%-4d %4dl %3da",
               ipf,
               ipf->kfifo.in, ipf->kfifo.out,
               (ipf->kfifo.in & ipf->kfifo.mask), (ipf->kfifo.out & ipf->kfifo.mask),
@@ -304,14 +304,60 @@ static void printkITCPRUDeviceStateStatus(ITCPRUDeviceState * ipd) {
   printkITCPacketBufferStatus(&ipd->mBulkOB,name);
 }
 
+
+static int sysfsITCPacketBufferStatus(char * buf, ITCPacketBuffer * ipb, char * name) {
+  int len = 0;
+  ITCPacketFIFO * ipf;
+  if (!ipb) return 0;
+
+  // "name bin bout min mout len avail cdrops tdrops\n"
+  len += sprintf(&buf[len],"%s-%s", ipb->mName, name);
+  ipf = &ipb->mFIFO;
+  len += sprintf(&buf[len]," %d %d", ipf->kfifo.in, ipf->kfifo.out);
+  len += sprintf(&buf[len]," %d %d",
+                 (ipf->kfifo.in & ipf->kfifo.mask),
+                 (ipf->kfifo.out & ipf->kfifo.mask));
+  len += sprintf(&buf[len]," %d %d",kfifo_len(ipf),kfifo_avail(ipf));
+  len += sprintf(&buf[len]," %d",ipb->mPacketsDropped);
+  len += sprintf(&buf[len]," %d",ipb->mTotalPacketsDropped);
+  len += sprintf(&buf[len],"\n");
+  return len;
+}
+
+static int sysfsITCPRUDeviceStateStatus(char * buf, ITCPRUDeviceState * ipd) {
+  char * name;
+  int len = 0;
+  if (!ipd) return 0;
+  name = ipd->mCDevState.mName;
+  len += sysfsITCPacketBufferStatus(&buf[len],&ipd->mLocalIB,name);
+  len += sysfsITCPacketBufferStatus(&buf[len],&ipd->mPriorityOB,name);
+  len += sysfsITCPacketBufferStatus(&buf[len],&ipd->mKernelOB,name);
+  len += sysfsITCPacketBufferStatus(&buf[len],&ipd->mBulkOB,name);
+  return len;
+}
+
 static void printkITCPktDeviceStateStatus(ITCPktDeviceState * ipk) {
   char * name = ipk->mCDevState.mName;
   printkITCPacketBufferStatus(&ipk->mUserIB,name);
 }
 
+static int sysfsITCPktDeviceStateStatus(char * buf, ITCPktDeviceState * ipk) {
+  char * name;
+  if (!ipk) return 0;
+  name = ipk->mCDevState.mName;
+  return sysfsITCPacketBufferStatus(&buf[0], &ipk->mUserIB, name);
+}
+
 static void printkITCMFMDeviceStateStatus(ITCMFMDeviceState * ipm) {
   printkITCPacketBufferStatus(&ipm->mPktDevState.mUserIB,
                               ipm->mPktDevState.mCDevState.mName);
+}
+
+static int sysfsITCMFMDeviceStateStatus(char * buf, ITCMFMDeviceState * ipm) {
+  if (!ipm) return 0;
+  return sysfsITCPacketBufferStatus(&buf[0],
+                                    &ipm->mPktDevState.mUserIB,
+                                    ipm->mPktDevState.mCDevState.mName);
 }
 
 static void printk_ITCStatus(void) {
@@ -573,6 +619,30 @@ static ssize_t statistics_show(struct class *c,
   return len;
 }
 CLASS_ATTR_RO(statistics);
+
+static ssize_t fifos_show(struct class *c,
+                          struct class_attribute *attr,
+                          char *buf)
+{
+
+  /* We have a PAGE_SIZE (== 4096) in buf, but we won't get near that.
+     Max size presently is like 47 + 16*(23+11+11+5+5+5+4+11+11+1) ==
+     1439 bytes
+   */
+  int len = 0;
+  int i;
+
+  len += sprintf(&buf[len], "name bin bout min mout len avail cdrops tdrops\n");
+  for (i = 0; i < PRU_MINORS; ++i) 
+    if (S.mPRUDeviceState[i]) len += sysfsITCPRUDeviceStateStatus(&buf[len],S.mPRUDeviceState[i]);
+  for (i = 0; i < PKT_MINORS; ++i) 
+    if (S.mPktDeviceState[i]) len += sysfsITCPktDeviceStateStatus(&buf[len],S.mPktDeviceState[i]);
+  for (i = 0; i < MFM_MINORS; ++i) 
+    if (S.mMFMDeviceState[i]) len += sysfsITCMFMDeviceStateStatus(&buf[len],S.mMFMDeviceState[i]);
+  return len;
+}
+CLASS_ATTR_RO(fifos);
+
 
 static ssize_t trace_start_time_show(struct class *c,
 				     struct class_attribute *attr,
@@ -1372,6 +1442,7 @@ static struct attribute * class_itc_pkt_attrs[] = {
   &class_attr_dump.attr,
   &class_attr_status.attr,
   &class_attr_statistics.attr,
+  &class_attr_fifos.attr,
   &class_attr_trace_start_time.attr,
   &class_attr_itc_trace_start_time.attr,
   &class_attr_shift.attr,
@@ -1657,8 +1728,13 @@ FOR_XX_IN_ITC_ALL_DIR
 }
 
 static bool roomInPacketFIFO(ITCPacketBuffer * ipb, u32 countNeeded, const char * source, const char * action) {
-  if (kfifo_avail(&ipb->mFIFO) < countNeeded) { /*kfifo_avail returns room for next packet only*/
+  if (kfifo_avail(&ipb->mFIFO) < countNeeded) {    /*kfifo_avail returns room for next packet only*/
     /*No room*/
+    if (++ipb->mTotalPacketsDropped == 0) 
+      DBGPRINTK(DBG_PKT_DROPS,
+                KERN_ERR "%s %s kfifo total packets dropped count wrapped to 0\n",
+                source,
+                ipb->mName);
     if (ipb->mPacketsDropped++ == 0) 
       DBGPRINTK(DBG_PKT_DROPS,
                 KERN_ERR "%s %s kfifo full, starting to %s\n",
@@ -2436,6 +2512,7 @@ static void initITCPacketBuffer(ITCPacketBuffer * ipb, const char * ipbname, boo
   init_waitqueue_head(&ipb->mWriterQ);
   INIT_XKFIFO(ipbname, ipb->mFIFO);
   ipb->mPacketsDropped = 0;
+  ipb->mTotalPacketsDropped = 0;
 }
 
 static ITCPktDeviceState * makeITCPktDeviceState(struct device * dev,
