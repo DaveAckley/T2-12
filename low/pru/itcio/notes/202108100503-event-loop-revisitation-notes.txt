@@ -1,0 +1,423 @@
+{29}  -*-  mode: text; fill-column: 50;  -*-
+[0:
+
+Tue Aug 10 05:03:50 2021
+
+    Tue Aug 10 04:55:28 2021 Where does LKM itc_pkt
+    drop an inbound MFM packet, and what counter gets
+    incremented, and where does that count get exposed
+    in sysfs?[:
+
+    Tue Aug 10 05:00:00 2021 Well, it appears that in
+    roomInPacketFIFO, ipb->mPacketsDropped gets
+    incremented when there's no room, but that also
+    gets reset as soon as a packet is successfully
+    delivered to the same destination.  And it gets
+    exposed in sysfs precisely nowhere -- it only gets
+    log messages when it starts counting and when it
+    resets.
+    :]
+
+[1:
+
+Tue Aug 10 05:05:37 2021 So we should do something
+about that, right?  Should we deliver a 'lost
+packets' message or something to the user stream?
+How would that even work?[3:
+
+Tue Aug 10 05:39:01 2021 There is not a lot of
+room for new lkm->mfm packet types.  There could
+be extra bytes stuck on the end of the existing
+types if that helped somehow.  I guess there could
+be acks for previous packets included there huh.
+
+Ring request includes say a one byte seqno?  That
+sets the base active seqno, and asserts no more
+than that plus 127 (or whatever deadband) will
+ever occur in this exchange.
+
+Each subsequent message includes two extra bytes,
+the first acking the last seen seqno from the
+receiver, and the second being the current seqno
+of this packet from the sender.
+
+The kernel could hold on to all the unacked
+outbound packets of all the ews (wtf), and drop
+them as they are acked.  Then it times out to
+retransmit them?  I guess.  And receiver ignores
+already acked packets.[4:
+
+Tue Aug 10 05:54:01 2021 But eventually and
+inevitably we get to some hard timeout limit.  If
+we've retransmitted.. wait, does the receiver need
+to re-ack packets?  [5:
+
+Tue Aug 10 05:56:45 2021 Do we even really need a
+sequence #?  We know what packet goes when in most
+cases.  Passive side has a ACK|NAK choice, and
+active side has a 1|2 cache update packets choice,
+and that's about it.[6:
+
+Tue Aug 10 06:10:21 2021 Not all event packets are
+equally retransmittable though.  If a passive side
+says NAK it doesn't currently remember that it
+sent that.
+
+For each CN there could be a 'active packets sent'
+and 'passive packets sent' counter and we allow
+only one unacked packet in flight, so we only have
+to have a single outbound packet buffered (per CN
+ahem).
+
+:6]
+
+:5]
+
+
+:4]
+
+
+:3][2:
+
+Tue Aug 10 05:30:51 2021 Who knows.  But we should
+have a durable counter of packet drops.  Maybe
+
+  u64 mTotalPacketsDropped;
+
+in struct itcpacketbuffer.
+
+And we should present it in a new sysfs file?
+[7:
+
+Wed Aug 11 00:41:38 2021 Let's do this.  It's high
+time to be building the LKM again..[8:
+
+Wed Aug 11 01:33:43 2021 Man we've got a ton of
+ITCPacketBuffers in the damn LKM!  I'm assuming
+we're going to report packet drops in all of them,
+so we're making the inventory.
+[9:
+
+Wed Aug 11 01:48:29 2021 I guess the list is
+implied by the syslog output from like:
+
+    # echo "DEMO DUMP" > /sys/class/itc_pkt/dump
+
+which produces like
+
+ kernel: [129308.956958] XDUMP!!!DEMO DUMP
+ kernel: [129308.956958] !!!
+ kernel: [129308.970862] DUMPITCSTATUS DUMPITCSTATUS DUMPITCSTATUS
+ kernel: [129308.994203] kfifoptr---kfifoin/out------mskin/out----len-avail-mnrflg name----------------
+ kernel: [129309.019322] 943f6cdc         0/0            0/0       0l 255a   0   mLocalIB-itc!pru!0
+ kernel: [129309.038762] c4e75c04 1844083542/1844083542 2902/2902    0l 255a   0rp mPriorityOB-itc!pru!0
+ kernel: [129309.061288] 53f29a4a    160856/160856    1112/1112    0l 255a   0rp mKernelOB-itc!pru!0
+ kernel: [129309.073081] 1e2776e0   5160367/5160367   3503/3503    0l 255a   0r  mBulkOB-itc!pru!0
+ kernel: [129309.091616] a8a69e5c         0/0            0/0       0l 255a   1   mLocalIB-itc!pru!1
+ kernel: [129309.127760] cbf59d15 1821288213/1821288213 1813/1813    0l 255a   1rp mPriorityOB-itc!pru!1
+ kernel: [129309.150774] 9030e822     68570/68570     3034/3034    0l 255a   1rp mKernelOB-itc!pru!1
+ kernel: [129309.189621] b892ba35   2221062/2221062   1030/1030    0l 255a   1r  mBulkOB-itc!pru!1
+ kernel: [129309.211999] d5f7004e  12120180/12120180   116/116     0l 255a   2   mUserIB-itc!bulk
+ kernel: [129309.224156] e60fe2b7       949/949        949/949     0l 255a   3   mUserIB-itc!flash
+ kernel: [129309.242320] 474b54cb 758776455/758776455  647/647     0l 255a   6   mUserIB-itc!mfm!ET
+ kernel: [129309.270699] 9eb7a212 712604235/712603683 2635/2083  552l 255a   7   mUserIB-itc!mfm!SE
+ kernel: [129309.284465] 7dd75305 699880513/699879125 1089/3797 1388l 255a   8   mUserIB-itc!mfm!SW
+ kernel: [129309.295054] 9906f6f0 665523080/665521436  904/3356 1644l 255a   9   mUserIB-itc!mfm!WT
+ kernel: [129309.314971] 2f7257d0 682332733/682332733  573/573     0l 255a   a   mUserIB-itc!mfm!NW
+ kernel: [129309.340257] a2136b71 708808337/708808319 3729/3711   18l 255a   b   mUserIB-itc!mfm!NE
+[11:
+
+Wed Aug 11 03:04:35 2021 So can we estimate our
+max length, here, to just make sure sure we're
+okay on the 4KB sysfs limit?
+
+We're outputing:
+
+name bin bout min mout len avail cdrops tdrops = 47
+
+plus 16 rows:
+
+'name '  biggest name is 22, + 1 = 23
+'bin '   u32 is 10, + 1 = 11
+'bout '  u32 is 10, + 1 = 11
+'min '   biggest kfifo is 4KB so 4, + 1 = 5
+'mout '  biggest kfifo is 4KB so 4, + 1 = 5
+'len '   biggest kfifo is 4KB so 4, + 1 = 5
+'avail ' max 255 so 3, + 1 = 4
+'cdrops ' u32 is 10, + 1 = 11
+'tdrops ' u32 is 10, + 1 = 11
+'\n'     = 1
+
+So we're at
+ 47 + 16*(23+11+11+5+5+5+4+11+11+1)
+ 47 + 16*87
+ 47 + 1392
+ 1439 bytes
+
+worst-case, so we're still way safe
+
+:11]
+[10:
+
+Wed Aug 11 01:54:13 2021 And we could put similar 
+information in our new sysfs and just call it long
+overdue.
+
+(We note that mPriorityOB-itc!pru!0 and
+mPriorityOB-itc!pru!1 are each about halfway to
+u32 overflow in this sample -- for all I know
+they've already wrapped.  Even if they haven't
+that's like 1.8GB traffic through each of them.
+
+Shot Noo Tabby.
+
+1,844,083,542
+
+:10]
+:9]
+
+
+{PRU0,PRU1}:
+  ITCPacketBuffer mLocalIB;    /* for non-standard packet replies from PRU */
+  ITCPacketBuffer mPriorityOB; /* urgent pkts from userspace awaiting rpmsg to PRU */
+  ITCPacketBuffer mKernelOB;   /* intermediate priority pkts from LKM/KITC awaiting rpmsg to PRU */
+  ITCPacketBuffer mBulkOB;     /* background pkts from userspace awaiting rpmsg to PRU */
+
+/dev/itc/{packets,mfm}:  ## Wait, neither of those
+                         ## devs exist anymore..
+  ITCPacketBuffer mUserIB;  /* pkts from PRU awaiting delivery to userspace */
+
+
+
+:8]
+
+:7]
+:2]
+
+:1]
+:0]
+[12:
+
+Wed Aug 11 03:50:12 2021 Well, it kind of seems
+like we're approaching time-to-try-it, here, once
+again after all this time.  How do we preserve our
+state before rebooting, again?  How does that
+'BITS OFF' and all go again?
+
+[13:
+
+Wed Aug 11 03:57:46 2021 Looks like it might be
+
+/data/ackley/PART4/hardware/T2-Tile-Project/CDM-TGZS-BACKUP/scripts/PullT2HomeDir T2IPADDR
+
+to update 
+
+/data/ackley/PART4/hardware/T2-Tile-Project/homeT2-BACKUP
+
+which seems plausible.
+[14:
+
+Wed Aug 11 03:59:29 2021
+
+BITS OFF
+
+:14]
+:13]
+
+:12]
+[15:
+
+Wed Aug 11 04:07:49 2021 Doing 'make install' in
+/home/t2/T2-12/low/pru/itcio/module/ 
+
+[16:
+
+Wed Aug 11 04:11:09 2021 Yikes had kernel panics
+DURING the make install, beginning with like:
+
+    root@beaglebone:/home/t2/T2-12/low/pru/itcio/module# make install
+    make[1]: Entering directory '/usr/src/linux-headers-4.19.79-ti-r30'
+    Aug 11 04:09:54 beaglebone kernel: [183491.495609] cc1: page allocation failure: order:0, mode:0x480020(GFP_ATOMIC), nodemask=(null)
+    Aug 11 04:09:54 beaglebone kernel: [183491.504286] cc1 cpuset=/ mems_allowed=0
+    Aug 11 04:09:54 beaglebone kernel: [183491.508251] CPU: 0 PID: 809 Comm: cc1 Tainted: G         C O      4.19.79-ti-r30 #1buster
+    Aug 11 04:09:54 beaglebone kernel: [183491.516550] Hardware name: Generic AM33XX (Flattened Device Tree)
+    Aug 11 04:09:54 beaglebone kernel: [183491.522800] [<c011458c>] (unwind_backtrace) from [<c010e47c>] (show_stack+0x20/0x24)
+    Aug 11 04:09:54 beaglebone kernel: [183491.530674] [<c010e47c>] (show_stack) from [<c0d5d288>] (dump_stack+0x80/0x94)
+    Aug 11 04:09:54 beaglebone kernel: [183491.538034] [<c0d5d288>] (dump_stack) from [<c02a8278>] (warn_alloc+0xd0/0x174)
+    Aug 11 04:09:54 beaglebone kernel: [183491.545472] [<c02a8278>] (warn_alloc) from [<c02a9400>] (__alloc_pages_nodemask+0x1034/0x11a8)
+    Aug 11 04:09:54 beaglebone kernel: [183491.554216] [<c02a9400>] (__alloc_pages_nodemask) from [<c02a9764>] (page_frag_alloc+0x14c/0x15c
+
+[17:
+
+Wed Aug 11 04:14:17 2021 Which from googling
+suggests I ran out of memory during 'cc1'.  So I
+don't think I should trust the install.  Can we
+kill off mfmt2 and such and try again maybe?
+[18:
+
+Wed Aug 11 04:17:12 2021 OK, killed mfm.sh and
+down, and then did make clean / make / make
+install in /home/t2/T2-12/low/pru/itcio/module,
+and all seemed to be well.
+
+Time to reboot?  Oh let's move our serial cable
+back here first..[19:
+
+Wed Aug 11 04:18:34 2021 OK here we go.
+[20:
+
+Wed Aug 11 04:23:17 2021 And we seem to be back up
+successfully; nothing looked weird as the boot
+stuff flashed by.
+
+And now we have this:
+
+    t2@beaglebone:~/T2-12/low/pru/itcio/notes$ cat /sys/class/itc_pkt/fifos 
+    name bin bout min mout len avail cdrops tdrops
+    mLocalIB-itc!pru!0 0 0 0 0 0 255 0 0
+    mPriorityOB-itc!pru!0 2154507 2154507 11 11 0 255 0 0
+    mKernelOB-itc!pru!0 270 270 270 270 0 255 0 0
+    mBulkOB-itc!pru!0 432 432 432 432 0 255 0 0
+    mLocalIB-itc!pru!1 0 0 0 0 0 255 0 0
+    mPriorityOB-itc!pru!1 1093582 1093582 4046 4046 0 255 0 0
+    mKernelOB-itc!pru!1 155 155 155 155 0 255 0 0
+    mBulkOB-itc!pru!1 344 344 344 344 0 255 0 0
+    mUserIB-itc!bulk 1322 1322 1322 1322 0 255 0 0
+    mUserIB-itc!flash 0 0 0 0 0 255 0 0
+    mUserIB-itc!mfm!ET 910744 910485 1432 1173 259 255 0 0
+    mUserIB-itc!mfm!SE 1173386 1173386 1930 1930 0 255 0 0
+    mUserIB-itc!mfm!SW 0 0 0 0 0 255 0 0
+    mUserIB-itc!mfm!WT 0 0 0 0 0 255 0 0
+    mUserIB-itc!mfm!NW 0 0 0 0 0 255 0 0
+    mUserIB-itc!mfm!NE 1224842 1224839 138 135 3 255 0 0
+    t2@beaglebone:~/T2-12/low/pru/itcio/notes$ 
+
+:20]
+:19]
+
+:18]
+:17]
+
+:16]
+
+:15]
+[21:
+
+Wed Aug 11 05:16:53 2021 I guess it's time to try
+shipping low/?  That's slot 06 I see.
+
+:21]
+[22:
+
+Wed Aug 11 12:27:13 2021 OK so where are we here?
+We've got /sys/class/itc_pkt/fifos looking
+plausible, and it's pushed out to our desktop ring
+here, and running.
+
+No sign of any dropped packets.  So what's next?
+
+I wonder if we can make our cache update maximizer
+more worst-case than it is.  I'm suspecting that
+maybe a mix of big and little cache updates might
+stress the system more, though I'm a little hazy
+on why that might be.[23:
+
+Wed Aug 11 13:01:35 2021 Well, now it's making 50%
+radius 1 and 50% radius 4 changes, FWIW.  (Looks
+like the center tile is doing right on 100 mAER in
+this setup.  Peripheral tiles doing 150-180
+mAER.)[24:
+
+Wed Aug 11 16:44:37 2021 (Doesn't seem to make any 
+immediate difference in causing failures, but the
+mfm KB/s and pkt/s numbers are down a bit in
+pvu.pl) 
+
+:24]
+
+:23]
+
+:22]
+[25:
+
+Wed Aug 11 16:45:59 2021 So, I'm wondering about
+user-visible notification of geometry or
+reliability changes.  Like some additional UrSelf
+method, perhaps.  Something for the engine to do
+to kind of apologize for a failure of event
+determinism.
+
+But then, since delivering that sort of message
+can't be deterministic either, kind of what's the
+point?
+
+Seems like the only (vaguely) 'safe' thing to do
+is close the ITC when any event using that ITC
+blows up.  From one point of view that's just a
+"now you've got a bigger problem" response, and
+you'll having ews blowing up that overlapped with
+the visible regions around the ITC.  Or will you?
+
+So WTF is going to be the semantics of ITC
+closure?  There's at least two main questions:
+
+ - What happens to ews holding locks when the ITC
+   fails?
+
+ - What happens when the ITC reopens?
+
+Now if we just follow the initial ITC opening
+sequence, we get a full cache exchange, which, at
+least in principle, means all the atoms that had
+been seeing inaccessible sites in some direction
+now suddenly see accessible sites filled with god
+knows what.
+
+But the scary case is when it isn't 'god knows
+what', but it's something that looks ALMOST
+completely normal, but it's got something slightly
+wrong about it -- like a missing or doubled
+Tecton, for example, to zoom to the sort of thing
+I'm worried about.
+
+Is there some principle that you should "stay
+within your redundancy" on each event?  Suppose Tc
+also maintained next/prev links, so there'd be
+some extra information to help decide how to
+resolve inconsistencies.
+
+[26:
+
+Wed Aug 11 17:49:43 2021 But the bigger point I
+think is I have been living in a slightly too nice
+slightly too friendly slightly too deterministic
+la-la land all along here, and we've got to break
+out of it.
+
+Yes there will be, say, dropped/doubled Tectons.
+They'll be rare but they'll be there.  Deal with
+it.
+
+Because they'll be rare, the right thing to do,
+probably, is blow up the whole plate the tecton is
+working on.  Nuke it from orbit.
+
+:26]
+
+:25]
+[27:
+
+Thu Aug 12 01:37:53 2021 So jeez, what do we
+actually do here?[28:
+
+Thu Aug 12 04:05:40 2021 Well so I messed around
+spiffing up pvu.pl, for no huge gain, mostly just
+to be doing something.
+
+Could we capture /sys/class/itc_pkt/fifos as part
+of our mfmt2 crash sequence?  That could
+potentially be useful..
+
+:28]
+
+:27]
