@@ -109,6 +109,15 @@ sub init {
     DPSTD(__PACKAGE__. " init called via ".$self->getTag());
 }
 
+sub checkForEth0Inet {
+    my __PACKAGE__ $self = shift or die;
+    my $cmd = "ifconfig eth0";
+    my $output = `$cmd`;
+    my $addr;
+    $addr = "[$1]" if $output =~ /inet\s+([.0-9]+)\s+netmask/s;
+    return $addr;
+}
+
 sub writeBulkIOStats {
     my __PACKAGE__ $self = shift or die;
     my $uptime = $self->{mLastSampleTime} - $self->{mInitTime};
@@ -116,7 +125,8 @@ sub writeBulkIOStats {
     my $hoodmgr = $self->{mCDM}->{mNeighborhoodManager} or die;
     my $path = "$basedir/${\PATH_BASEDIR_REPORT_IOSTATS}";
     open HDL, ">", $path or die "Can't write $path: $!";
-    print HDL "CDM UPTIME ".formatSeconds($uptime,1)."\n";
+    my $hdr = $self->checkForEth0Inet() || "CDM UPTIME"; # Tell us yo damn addr if you got one.
+    print HDL $hdr." ".formatSeconds($uptime,1)."\n";
 
     my $cmgr = $self->{mCDM}->{mContentManager};
     my @progress = $cmgr->reportMFZStats();
