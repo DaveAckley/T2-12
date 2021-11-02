@@ -1,4 +1,4 @@
-{29}  -*-  mode: text; fill-column: 50;  -*-
+{30}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Tue Aug 10 05:03:50 2021
@@ -416,7 +416,12 @@ to be doing something.
 
 Could we capture /sys/class/itc_pkt/fifos as part
 of our mfmt2 crash sequence?  That could
-potentially be useful..
+potentially be useful..[29:
+
+Thu Aug 12 11:50:40 2021 OK that's working;
+already committed.  Time to move the flag.
+
+:29]
 
 :28]
 
