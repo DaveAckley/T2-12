@@ -14,12 +14,30 @@ static void exitImmediately(int sig)
 
 int main(int argc, char **argv)
 {
+  int sec = 5;
+  const char * path;
   {
     const char * prg = argv[0];
     --argc; ++argv;
     if (argc <= 0) {
-      fprintf(stderr,"Usage: %s FILE..\n",prg);      
+      fprintf(stderr,"Usage: %s FILE [SEC=5]\n",prg);      
       return 99;
+    }
+    path = argv[0];
+
+    const char * numa = "5";
+    --argc; ++argv;
+
+    if (argc > 0) {
+      numa = argv[0];
+      --argc; ++argv;
+    }
+
+    char * endptr;
+    sec = strtol(numa, &endptr, 10);
+    if (*numa == 0 || *endptr != 0 || sec < 0) {
+      fprintf(stderr,"Usage: %s FILE SEC (%d/%s)\n", prg, sec,numa);      
+      return 97;
     }
   }
 
@@ -64,7 +82,6 @@ int main(int argc, char **argv)
 
   SDL_Surface* imgsurf = 0;
   {
-    const char * path = argv[0];
     imgsurf = IMG_Load(path);
     if (!imgsurf) {
       fprintf(stderr,"IMG_Load(%s) failed: %s\n",
@@ -83,7 +100,8 @@ int main(int argc, char **argv)
     SDL_BlitSurface(imgsurf, 0, screen, &rcdest);
     SDL_UpdateRect(screen, 0, 0, swidth, sheight);
     unsigned ms = 0;
-    while ( ++ms < 5000 ) // five second splash
+    const unsigned goalms = 1000u*(unsigned) sec;
+    while ( ++ms < goalms ) // default five second splash
       SDL_Delay(1);
   }
 
