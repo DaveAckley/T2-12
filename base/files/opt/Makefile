@@ -6,6 +6,8 @@ SERVICE_FILES:=$(wildcard *.service)
 SERVICE_DIR:=/lib/systemd/system
 SERVICE_OUTPUTS:=$(patsubst %,$(SERVICE_DIR)/%,$(SERVICE_FILES))
 SERVICE_PATH:=$(SERVICE_DIR)/$(SERVICE_FILE)
+TEST_PATTERN_PNG_IN:=t2-test-pattern-10.png
+TEST_PATTERN_PNG_OUT:=$(OUTPUT_DIR)/t2-test-pattern.png
 SPLASH_PNG_IN:=MFM-T2-10.png
 SPLASH_PNG_OUT:=$(OUTPUT_DIR)/t2-splash.png
 SPLASHI_PNG_IN:=MFM-T2-10-inverted.png
@@ -24,11 +26,14 @@ clean:	FORCE
 
 realclean:	clean touch
 
-install:	$(OUTPUT_DIR) $(OUTPUTS) $(SERVICE_OUTPUTS) $(SPLASH_PNG_OUT) $(SPLASHI_PNG_OUT) $(CLOBBERED_STARTUP_SCRIPT_OUT)
+install:	$(OUTPUT_DIR) $(OUTPUTS) $(SERVICE_OUTPUTS) $(TEST_PATTERN_PNG_OUT) $(SPLASH_PNG_OUT) $(SPLASHI_PNG_OUT) $(CLOBBERED_STARTUP_SCRIPT_OUT)
 
 $(OUTPUT_DIR)/%:	%
 	mkdir -p $(OUTPUT_DIR) || (echo Must be root ; exit 2)
 	cp $^ $@ || (echo Must be root ; exit 2)
+
+$(TEST_PATTERN_PNG_OUT):	$(TEST_PATTERN_PNG_IN) $(OUTPUT_DIR)
+	cp $< $@ || (echo Must be root ; exit 2)
 
 $(SPLASH_PNG_OUT):	$(SPLASH_PNG_IN) $(OUTPUT_DIR)
 	cp $< $@ || (echo Must be root ; exit 2)

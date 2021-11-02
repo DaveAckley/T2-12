@@ -14,6 +14,7 @@ done
 
 # Run splash screen
 export SDL_NOMOUSE=1
-/opt/scripts/t2/sdlsplash /opt/scripts/t2/t2-splash.png
+/opt/scripts/t2/sdlsplash /opt/scripts/t2/t2-test-pattern.png 18
+/opt/scripts/t2/sdlsplash /opt/scripts/t2/t2-splash.png 7
 
 exit 0
