@@ -1,0 +1,259 @@
+{30}  -*- text -*- 
+[0:
+
+Fri Jan 22 21:27:41 2021 A place to pull together all kinds of
+whatever-level tasks to get the grid to the impact I think it could
+have.
+
+TODO
+  [22: Thu Feb  4 13:11:24 2021
+  [23: Tue Feb  9 00:28:49 2021
+DONE :23] - Get an ssh key going for github
+ 
+  :22]
+  [8: Thu Jan 28 00:03:00 2021 well took a ridiculout amount of time but
+DONE :8] - A presentation screen that describes the physics for, say, five
+   seconds every time mfmt2 starts up.  Technical stuff in small font,
+   plus title, release date, author name, and license.
+   = Take the 'human' info from the element S metadata
+
+  [7: Mon Jan 25 12:34:46 2021 Now at least sometimes working, say
+DONE :7] - Also try to fix the crash screen.  How come it doesn't show up any
+   more? 
+
+ - A when-you-get-this-cdmd-do-this-thing-once slot.  Allowing me to
+   release a thing telling the whole grid to, say, shut down ten
+   minutes after receiving this.  We build on the existing cdm
+   SlotConfig stuff, and 'do-the-thing' as part of the install.  Once
+   the installed tag matches (or exceeds) the content, we don't
+   'do-the-thing' again.
+
+   [24: Tue Feb  9 00:29:27 2021 At least a solid first cut,
+DONE :24] - Reorganize T2-12 so that it makes multiple cdmds, not just one, so
+   that we don't have to reboot when we just changed mfm.sh, or
+   whatever. Have separate ss for:
+   = pru/ -> install + reboot
+   = apps/cdm -> install + kill cdm
+   = apps/mfm -> install + kill mfmt2
+   = passive/ (everything else pushed down?) -> just install
+   (but that all sounds like a pain considering the rickety image
+   maker scripting)
+
+ - Set up a separate T2 physics repo.
+
+   [25: Tue Feb  9 00:29:53 2021 Also a pretty good start here, say
+DONE :25] - Clean up the physics Makefile stuff
+
+   [28: Sun Feb 14 07:06:55 2021 Pretty good cut at this, it seems!
+DONE :28] - Have cdm do a better job announcing freshly 'improved' cdmds.
+   We're already spending too much time waiting for random
+   announcements and that's going to get much worse when we're
+   circulating lots of physics files.
+   = Keep track of when a cdmd 'improved' (== extended, finished) so
+     we can do that.
+   = Ensure we reply whenever someone announces something that we can
+     top. 
+  [1: Sat Jan 23 07:07:38 2021
+
+ - Display MFMT2 uptime somewhere.
+   = Also mention an IP address if eth0 is up.
+
+ - Refresh the image maker workflow to ensure it still works.
+
+  [2: Sat Jan 23 11:18:56 2021
+
+ - Consider starting a separate channel for T2 demoscenes
+   = Consider vimeo (since youtube's getting so trashy)?
+
+ - Check how to actually suppress in-memory logging to see if that
+   affects 'slow tile metastability'.  It seems like omitting -t does
+   not stop the logging.
+
+ - Review status of the trace menu and get it to actually somehow help
+   with consolidating trace files.
+
+ - Review status of srf support.
+
+  [3:Sun Jan 24 06:29:42 2021
+
+  [9: Thu Jan 28 01:49:33 2021 Got /dev/itc/flash closed also, day
+DONE :9] - Close device files before execing to sdlsplash
+  [4: Sun Jan 24 08:02:49 2021
+
+  [11: Thu Jan 28 10:59:36 2021 Colors are hard in a TextPanel but names
+DONE :11] - Display element names and colors on Tile histo
+  [5: Mon Jan 25 10:49:27 2021 
+
+  [6: Mon Jan 25 10:50:02 2021 Hacked a t2lib/SHA256ish
+DONE :6] - Come up with some kind of libcue.so hashing that doesn't suck
+ 
+  [10: Thu Jan 28 02:53:24 2021
+
+ - Make a DisplayUtils.ulam/tcc that exposes the back/middle/front
+   graphics configuration to programmatic control.
+
+ - Consider extending the metadata to allow specifying that graphics
+   configuration 
+
+   [26: Wed Feb 10 01:16:15 2021
+
+ - Get rid of Seed#1 and Seed#2 in the Physics menu
+
+   [27: Wed Feb 10 03:38:32 2021
+
+   [29: Mon Feb 15 09:51:36 2021 Well, now we 'install' them by making
+   a copy in /home/t2/physics/SLOT/installed-libcue.so, but I just
+   realized that's not good enough since the install process replaces
+   the whole installed tree.  Let's put them in
+   /cdm/physics/SLOT-libcue.so, I guess, instead..:29]
+ - Actually install physics' libcue.so files somewhere, instead of
+   running them out of their Makefile $(DESTPATH), so that recompiling
+   a physics doesn't immediately crash the local mfmt2
+
+  :27]
+
+  :26]
+:10]:5]
+
+:4]
+:3]
+
+:2]
+
+:1]
+
+:0]
+[12:
+
+Wed Feb  3 16:43:21 2021 OOOOoooh.  I've got a possible line on the
+bug triggered by Jacobs Ladder: It looks like there's cases where no
+SPLAT rule matches.
+
+Now, the required semantics there is that SPLATInstance.ulam
+deliberately FAILs to kill the offending atom, but we've never watched
+what happens in the native engine in that case.
+
+I could totally believe it might fail to clean up its in-progress
+active event window, which would leave the passive side hanging in
+PWCACHE, which is what we observe in the failure.
+
+[13:
+
+Thu Feb  4 02:08:40 2021 OK let's just review the code with this idea
+in mind, see what we see..[14:
+
+Thu Feb  4 02:10:33 2021 Well, look at this in
+UlamEventSystem::doUlamEvent(T2ActiveEventWindow & aew):
+
+ ..
+    bool okay = true;
+    unwind_protect(
+    {
+      // Backtrace already written to trace file
+      okay = false;
+    },
+    {
+      elt->Behavior(mOurEventWindow);
+    });
+    if (okay) 
+      saveOurEventWindow(aew);
+ ..
+
+So, when Behavior(..) fails, as in our hypothesis, we DON'T call
+saveOurEventWindow(..).  Hmmmmmmm.
+[15:
+
+Thu Feb  4 02:14:01 2021 Buuut, saveOurEventWindow looks pretty
+innocent.  It just copies atoms from the traditional event window back
+to the aew.  It doesn't generate any packet traffic.
+
+(But that does raise a question: If the event failed at the
+traditional event window level, isn't ew[0] (supposed to be) cleared
+back to empty?  But if we don't call saveOurEventWindow, that won't
+happen, right?  We'll leave it same way that failed.)
+
+Could it be possible that an unchanged event window is improperly
+handled??
+
+[16:
+
+Thu Feb  4 02:19:36 2021 Anyway, in this case, doUlamEvent will return
+false to T2ActiveEventWindow::doBehavior which will then return false
+too.
+
+[17:
+
+Thu Feb  4 02:20:50 2021 And T2ActiveEventWindow::doBehavior was
+called by T2ActiveEventWindow::executeEvent, which ALSO had set up an
+unwind_protect.  And executeEvent eventually returns false as well.
+
+[18:
+
+Thu Feb  4 02:24:00 2021 Which brings us to this, umm, smoking gun:
+
+  void T2EWStateOps_ABEHAVE::timeout(T2ActiveEventWindow & ew, T2PacketBuffer & pb, TimeQueue& tq) {
+    T2ActiveEventWindow * aew = ew.asActiveEW();
+ ..
+    if (aew->executeEvent()) {
+      if (aew->hasAnyLocks()) {
+        ew.setEWSN(EWSN_ASCACHE);
+        ew.scheduleWait(WC_NOW);
+      } else
+        aew->commitAndReleaseActive();
+    } else {
+      aew->justKillCenterAndCommitThat();
+    }
+  }
+
+where that false return means 'justKillCenterAndCommitThat' is called,
+without even asking 'hasAnyLocks'?
+
+[19:
+
+Thu Feb  4 02:27:58 2021 Aaand justKillCenterAndCommitThat reloads
+the sites (which seems unnecessary given the flow we're watching
+here), then sets ew[0] empty, then goes to commitAndReleaseActive().
+
+Which, umm excuse me, does saveSites(), then unhogs the sites
+(releasing control of them) and then frees the aew -- ALL WITHOUT EVER
+DOING ITC TRAFFIC OR EVEN CHECKING FOR FOGGEN LOCKS.
+
+[20:
+
+Thu Feb  4 02:41:03 2021 So, it seems like the
+
+    if (aew->executeEvent()) {
+
+is just wrong, and we should be continuing to
+
+      if (aew->hasAnyLocks()) {
+
+whether the event blew up or not.
+[21:
+
+Thu Feb  4 12:26:38 2021 Yep that fixed it.  Reincarnated
+justKillCenterAndCommitThat as T2ActiveEventWindow::emptyCenterAtom
+and calling that instead, if Element::Behavior fails for any reason.
+
+That'll go in the next MFM commit.
+
+At the moment, getting T2-12 committed ahead of trying to refactor it
+to make finer granularity cdmss files.
+
+:21]
+:20]
+:19]
+
+:18]
+
+:17]
+
+:16]
+
+:15]
+
+
+:14]
+
+:13]
+:12]

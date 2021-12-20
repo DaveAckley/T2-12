@@ -1,0 +1,212 @@
+{24}  -*- text -*-
+[0:
+
+Wed Feb  3 15:53:22 2021 OK, trying to reorg T2-12 for finer grain
+cdmss and therefore lower-overhead updating.  Goals:
+
+ - Don't reboot the tile unless pru or lkm stuff is affected
+ - Move toward automated cdmss construction, if not release
+
+[1:
+
+Wed Feb  3 15:55:28 2021 First step is commit all this stuff we've had
+hanging around for the last two weeks.. [5: DONE  :5][2:
+
+Thu Feb  4 13:16:51 2021 OK, trying out ssh access to github.  Let's
+see if this commit goes smoothly (from a shell that doesn't have
+ssh-agent running, I think).
+
+[3:
+
+Thu Feb  4 13:18:10 2021 So that gives us
+
+    Warning: Permanently added 'github.com,140.82.112.4' (RSA) to the list of known hosts.
+    git@github.com: Permission denied (publickey).
+    fatal: Could not read from remote repository.
+
+so I guess we're committed to ssh-agent?  Or some args to git push?[4:
+
+Thu Feb  4 14:07:07 2021 Well, so like:
+
+    $ eval `ssh-agent`
+    $ ssh-add  /home/t2/.ssh/id_githack
+    Enter passphrase for /home/t2/.ssh/id_githack:
+    Identity added: /home/t2/.ssh/id_githack (ackley@ackleyshack.com)
+    $ git push
+
+:4]
+
+
+:3]
+
+:2]
+
+:1]
+
+:0]
+[6:
+
+Thu Feb  4 14:35:25 2021 So okay, what's the plan here?
+
+Slot New dirs: Action       Containing old dirs and files:     Containing new dirs and files:
+
+02   T2-12/    install      everything                          everything
+
+05    base/    install      LICENSE Makefile README.md          LICENSE README.md Makefile base/
+                            doc/ extra/ files/ notes/
+                            packages/ pkgconfig/ services/
+                            apps/sdlsplash apps/t2 apps/t2adm
+                            apps/tnv
+06     low/    reboot       pru/ lkms/                          lkms/ pru/
+07     cdm/    restart      apps/cdm                            cdm.pl cdmctl cdm.sh cdm/ Makefile ..
+08     mfm/    restart      apps/mfm                            mfm.pl mfm.sh Makefile RUN_SDL ..
+[8:
+
+Thu Feb  4 16:12:39 2021 So, cshould we start a T2-13 for this,
+perhaps?[9:
+
+Thu Feb  4 16:50:37 2021 Maybe let's do it in place, and consider
+renaming the repo to T2-13 separately later.  But maybe let's do it
+from a clean clone..
+
+:9]
+
+:8]
+no: 04     cfg/    install      /home/t2/CONFIG-T2/
+[7:
+
+Thu Feb  4 16:01:26 2021 So T2-12 remains a single repo, but cdmss-02
+will exclude everything that requires special handling -- low/ cdm/
+mfm/ -- as well as our extremely lightweight cfg/.  Do we really want
+cfg/ even in there?  Want to be committing every physics change, even
+in principle?  Perhaps it's enough if mfm.pl can handle lack of
+/home/t2/CONFIG-T2/ sensibly, and then we can leave /home/t2/CONFIG-T2
+as is?
+
+(All this is going to really have to be revisited when we REDO THE
+DISK IMAGE GENERATION WORKFLOW RSN.)
+
+:7]
+
+:6]
+[10:
+
+Fri Feb  5 01:55:42 2021 OK, so we'd like to automate cdmss generation
+enough to avoid generating a new ss if it looks like the directory is
+up to date.  So how are we going to do that?  Should we have some
+persistent intermediate output file that plain 'make' builds, and
+'make cdmd' relies upon?  It wants to interact with stamp generation
+probably?
+
+:10]
+[11:
+
+Fri Feb  5 06:12:17 2021 So now I'm thinking I should keep slot 02 --
+for now anyway -- as meaning 'the whole T2-12 repo', so that we might
+have a hope of distributing the new T2-12 scheme using the existing
+cdm setup.
+
+:11]
+[12:   
+
+Fri Feb  5 12:42:30 2021 Well I've got to get the keymaste to a state
+we can reboot in.. So I think I'm going to try to get back to branch
+develop for now..
+
+Committing.
+
+:12]
+[13:
+
+Sat Feb  6 01:00:22 2021 OK back on branch T2-13.  What are some next
+steps here?
+
+   [16: Sat Feb  6 12:43:39 2021 Got 'Got cdmss-06-5205ec.mfz for low, tag = 5205ec, size = 1246421'
+DONE :16] - Demo 'make' and 'make cdmd' in say low/, end up  with
+   low/../cdmss-06-FFFFFF.mfz
+   
+   [17:
+DONE :17] - Do NOT try to have cdmd construction be automatic on dependencies.
+   Just do it when told as in existing flows, and blow up on repeated
+   tag as in existing flows
+
+   [18: Sat Feb  6 12:45:17 2021 OK, can we now
+
+ - Make some SlotConfig hack to understand the low cdmss
+
+ - Checking an appropriate tag, and not install/rebooting if set.
+
+  :18]
+:13][14:
+
+Sat Feb  6 02:28:59 2021 Going back to develop to play with a1 a
+little bit.
+
+Committing
+
+:14]
+[15:
+
+Sat Feb  6 12:34:56 2021 OK come on let's go T2-13.
+
+Noting the '-f' in:
+
+    root@beaglebone:/home/t2/T2-12# git checkout -f T2-13
+    Checking out files: 100% (590/590), done.
+    Switched to branch 'T2-13'
+    Your branch is up to date with 'origin/T2-13'.
+    root@beaglebone:/home/t2/T2-12# 
+
+to stomp on base/ and so forth in local branch.
+
+:15]
+[19:
+
+Mon Feb  8 21:10:25 2021 Well, getting close to needing to test some
+of this new layout, so we should think about committing first..
+
+Basic ideas of new design:
+
+ - '/home/t2/T2-12$ make cdmd' does nothing
+
+ - '/home/t2/T2-12/(base|low|cdm|mfm)$ make cdmd' builds the
+   corresponding cdmss (05..08) in /home/t2/T2-12
+
+ - '/home/t2/T2-12$ make -f Makefile.slot02.mk cdmd' builds the
+   old-style cdmss-02, intended for use only to transition the
+   existing tiles.
+
+ - '/home/t2/T2-12/mfm/CreatePhysicsSlot.pl' exists to initialize
+   physics demos
+
+:19]
+[20:
+
+Mon Feb  8 21:22:10 2021 OK committed and pushed where we are so far.
+Trying '/home/t2/T2-12$ make install', since that's going to need to
+continue to work if cdmss-02 is to survive.[21:
+
+Mon Feb  8 21:51:29 2021 Well, 'T2-12# make install' seemed to work.
+Have to try a reboot I guess.
+
+Committing.
+[22:
+
+Mon Feb  8 22:01:50 2021 OK had a few typoes but now coming up clean
+after 'T2-12# make install'
+
+I guess, let's try building and releasing a transitional cdmss-02 and
+hooking up a neighbor?
+[23:
+
+Thu Feb 11 14:42:06 2021 (Well that actually seemed to all go fine.
+And it seems we could actually release new cdmss-02s any time we
+wanted -- SO LONG AS THERE'S NO cdmss-05..08s STILL MOVING -- if it
+seemed more useful to do all of T2-12 for some reason, and we were
+happy with its reboot action.)
+
+:23]
+:22]
+:21]
+
+:20]

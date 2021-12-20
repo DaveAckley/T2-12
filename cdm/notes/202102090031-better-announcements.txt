@@ -1,0 +1,539 @@
+{24}  -*- text -*- 
+[0:
+
+Tue Feb  9 00:31:34 2021 OK so we've gotten aggravated enough by the
+failings of current cdm announcements scheme that we're going to try
+revisiting it now.  Specifically, we're going to bite the bullet of
+keeping track of when we announced what to whom, and we're going to
+come up with some kind of urgency scheme, and merge them together to
+bias what we announce to whom next.
+
+TODO
+
+ - Review existing .pm's and hashes.  What are we already tracking?
+
+ - Envision (a) new hash(es) for (slot,dir) => time
+
+ - Think about 'pull' as well as push?
+
+ - Think about urgency factors:
+   = Improvement time: When did slot last 'improve' (== grow or
+     finish)? 
+
+:0]
+[1:
+
+Tue Feb  9 00:39:47 2021 Could urgency be basically like the
+difference between improvement time and announcement time?  That has
+actual units (seconds, time) and might even support a basis for
+deciding whether to send an announcement at all.  Rather than assuming
+we'll announce with some fixed-ish frequency, without considering
+whether many or any announcements are actually urgent.
+
+Now, when somebody requests data from us, or at least when we send
+some, that should count as 'improving' somehow.
+
+So is it a combination of difference in content size and difference in
+announcement time that goes to the urgency?  We most want to be
+telling people about stuff that (1) we haven't told them about
+recently or ever, and that (2) we have much more of than they do.
+
+And note how THEIR announcements to US would also figure into (2)
+there.  Along with their data requests, both imply the amount that
+they have.
+
+[2:
+
+Tue Feb  9 01:02:26 2021 Now, how to bytes and seconds combine?  If
+we've just announced A len B to C, we don't want to announce it right
+away again no matter what the length difference is.  So maybe a
+log-ish growth in urgency on the basis of seconds delay, with some max
+like a day or something if we've never announced something.  Like
+<10sec -> time pressure 0, <100s -> 1, <1000s -> 2, otherwise 3.  Use
+it as a bonus multiplier?
+
+ urgency = lengthDiff * timePressure
+
+Then do the weighted random pick over urgencies.  Can throw in a
+"Don't Announce" placeholder with urgency of perhaps 10KB * 10s, to
+avoid announcing too often when things appear to be all caught up.
+
+We init the map by assuming neighbors have 0 length and we haven't
+announced anything for >=1000s.
+
+The whole method creates a bias for announcing big cdmss first, which
+is probably a good idea anyway.
+
+[3:
+
+Tue Feb  9 01:40:24 2021 Running out of gas a bit here, but I'm
+thinking we probably want a whole new separate .pm for this, at least
+to start, rather than getting bogged down in trying to thread it into
+the existing stuff.  So we just want a nice understandable API for
+this.
+
+  weHave(ss,length,asof)
+   - called during init (asof == 0), and after we reach a new
+     checkpoint (asof == now())
+
+  theyHave(ss,length,itc,asof)
+   - called when they request data or announce to us (asof == now())
+
+  weAnnounced(ss,itc,asof)
+   - called when we announced ss to itc and when we sent data for ss
+     to itc
+
+  ($ss,$itc) = pickAnnouncement()
+   - called to select an announcement to make, $ss undef for none
+
+Somehow we have to deal with non-open itc connections and such.
+
+  itcStatusChange(openp,asof)
+    - called when itc opens or closes.  When closed we won't pick them
+      for announcements; on opening we'll discard all our info about
+      them (as if by weAnnounced(*,itc,0) for all ss)
+
+[4:
+
+Tue Feb  9 02:06:00 2021 Well really going to stop now.  But just to
+say: Can't and shouldn't we also use this to determine who we should
+request data from?  I guess the problem we had with that before was
+the initiative stuff about when to ping-pong requests and replies vs
+when to start a new request.  But MAYBE something like:
+
+  ($ss,$itc) = pickDataSource()
+   - called to select something to request, and someone to request it
+     from, $ss undef if nothing seems to need attention.
+
+if we can deal with the initiative issues.
+     
+[5:
+
+Tue Feb  9 07:44:56 2021 Well, have been looking at ContentManager.pm
+and it sure is scary just trying to figure out how its mSSMap works.
+
+I think its: mSSMap->{SLOTNUM}->{TIMESTAMP}->MFZModel
+
+[6:
+
+Tue Feb  9 09:18:20 2021 And all of that seems important enough,
+taking care of cdmss dominance and so forth.  So I'm wondering if we
+can't leave that alone and do a whole separate thing for the urgency
+scoring.  Something like
+
+XXNO  mUrgencyMap->{SLOT}->{ITC}->[[THEIRTIMESTAMP THEIRLEN] [OURTS OURLEN]]
+
+where I suppose it's possible that THEIRTS > OURTS so we could answer
+urgency-to-request as well as urgency-to-announce queries.  Wait, we
+need the announcement time (and request time?) as well.
+
+More like:
+
+  mUrgencyMap->{SLOT}->{ITC}->[[THEIRTS THEIRLEN LASTANNOUNCETOTIME]
+                               [OURTS OURLEN LASTREQUESTFROMTIME]]
+
+from which we'd compute
+
+  urgencyToAnnounce(SLOT,ITC) {
+    if (THEIRTS > OURTS) return 0;  # No announce if we're outdated
+    time = now();
+    delay = time - LASTANNOUNCETIME;
+    pressure = timeLog(delay);
+    theirLen = THEIRLEN;  
+    if (THEIRTS < OURTS) theirLen = 0; # Ignore their len if outdated
+    lengthDiff = OURLEN-theirLen;
+    if (lengthDiff < 0) return 0;  # No announce if they're longer
+    return lengthDiff * pressure;
+
+and
+
+  urgencyToRequest(SLOT,ITC) {
+    if (OURTS > THEIRTS) return 0;  # No request if they're outdated
+    time = now();
+    delay = time - LASTREQUESTTIME;
+    pressure = timeLog(delay);
+    ourLen = OURLEN;  
+    if (OURTS < THEIRTS) ourLen = 0; # Ignore our len we're outdated
+    lengthDiff = ourLen-THEIRLEN;
+    if (lengthDiff < 0) return 0;  # No request if we're longer
+    return lengthDiff * pressure;
+    
+And they seem mighty symmetrical so like
+
+   urgencyToAnnounce(SLOT,ITC)
+     ary = mUrgencyMap->{SLOT}->{ITC}
+     return computeUrgency(ary[0],ary[1])
+
+   urgencyToRequest(SLOT,ITC)
+     ary = mUrgencyMap->{SLOT}->{ITC}
+     return computeUrgency(ary[1],ary[0])
+
+   computeUrgency(DST,SRC)
+    if (DST.TS > SRC.TS) return 0;  # No urgency if DST is newer
+    time = now();
+    delay = time - DST.LASTTIME;
+    pressure = timeLog(delay);
+    dstLen = DST.LEN;
+    if (DST.TS < SRC.TS) dstLen = 0; # Ignore DST len if they're outdated
+    lengthDiff = SRC.LEN - dstLen;
+    if (lengthDiff < 0) return 0;  # No urgency if DST is longer
+    return lengthDiff * pressure;
+
+and I guess
+
+    iJustAnnouncedTo(SLOT,ITC)
+      ary = mUrgencyMap->{SLOT}->{ITC}
+      ary->[0]->[2] = now();
+
+    iJustRequestedFrom(SLOT,ITC)
+      ary = mUrgencyMap->{SLOT}->{ITC}
+      ary->[1]->[2] = now();
+
+    iJustHeardFrom(SLOT,ITC,LEN)
+      ary = mUrgencyMap->{SLOT}->{ITC}
+      ary->[0]->[1] = LEN;
+      ary->[1]->[2] = now(); # ?? no pressure since heard?
+
+    iJustGrewTo(SLOT,TS,LEN)
+      foreach ITC (@ITCS) {
+        ary = mUrgencyMap->{SLOT}->{ITC}
+        if (ary->[1]->[0] != TS) {
+          ary->[1]->[0] = TS;
+          ary->[0]->[2] = 0; # ?? never announced this TS 
+        }
+        ary->[1]->[1] = LEN
+      }
+
+[7:
+
+Wed Feb 10 02:16:12 2021 OK well let's just try to implement this and
+see how far we can get.  Call it Urgency.pm I guess.
+[8:
+
+Wed Feb 10 03:02:43 2021 Well, getting into it..  Wondering if we
+could suppress the timestamps from the Urgency.pm map entirely.
+Make it somebody else's responsibility to call reset or something when
+a timestamp changes.  Problem I'm looking at is the API for the
+'iJust' methods: Above they're shown taking (SLOT,ITC), and not also
+TIMESTAMP.  But does that make sense?  How do timestamps make it into
+the mUrgencyMap (now called mUMap in Urgency.pm)?
+[9:
+
+Wed Feb 10 15:55:34 2021 Well, could try to pull OURTS and OURLEN out
+of mUMap and put it somewhere else, on the argument that the OUR
+values are the same for all our connections.  Buut no that's not the
+way to think about it -- we need to be aware of what TS/LEN we've told
+to a particular neighbor.  The urgency to announce to different ITCs
+will often be different since it depends on what we last said to each
+one.
+
+So we should think about passing TS to the relevant methods, then?
+Retry the API here?
+
+  mUrgencyMap->{SLOT}->{ITC}->[[THEIRTS THEIRLEN LASTANNOUNCETOTIME]
+                               [OURTS OURLEN LASTREQUESTFROMTIME]]
+
+    iJustAnnouncedTo(SLOT,TS,LEN,ITC)
+      ary = mUrgencyMap->{SLOT}->{ITC}
+      ary->[0]->[2] = now();
+      ary->[1]->[0] = TS
+      ary->[1]->[1] = LEN
+
+    iJustRequestedFrom(SLOT,TS,LEN,ITC)
+      ary = mUrgencyMap->{SLOT}->{ITC}
+      ary->[1]->[2] = now();
+      ary->[1]->[0] = TS
+      ary->[1]->[1] = LEN
+
+    iJustHeardFrom(SLOT,TS,LEN,ITC,LEN)
+      ary = mUrgencyMap->{SLOT}->{ITC}
+      ary->[0]->[0] = TS;
+      ary->[0]->[1] = LEN;
+      ary->[1]->[2] = now(); # ?? no pressure since heard?
+
+    iJustGrewTo(SLOT,TS,LEN)
+
+[10:
+
+Wed Feb 10 16:06:31 2021 OK so we're muddling announcing and
+requesting here and it's getting confusing again.  If we're going to
+keep it down to two symmetric times it should be LASTANNOUNCEUSTOTHEM
+and LASTANNOUNCETHEMTOUS, and there's nothing about requesting in it.
+
+And as long as we default everybody to big urgency when we've never
+announced something, announcements-only ought to be 'good enough' with
+no requesting at all.  Because we'll assume we need to announce
+everything to them, and they'll assume they need to announce to us,
+and the differences will fill in that way.
+
+But how do we prioritise newer cdmss in that start-up situation?  We
+want younger cdmss to have higher urgency.  So we need to distinguish
+between never-announced and ever-announced, and do different urgency
+computations?  But we can't even say 'which cdmss is newer' without
+comparing timestamps across slots, which we've been trying hard to
+avoid doing.
+
+Comparing timestamps across slots, though, is better than comparing a
+timestamp to the local tile's clock -- because at least we know that
+both timestamps were generated by a tile that was in possession of a
+signing key.  Of which, at the moment, there's only one, and that
+would be the basis for comparability.
+
+But even if we accept comparing stamps across slots, we then have to
+track the newest TS across slots, is that the idea?  Then everything
+else LOSES urgency when a new biggest TS appears?  Or it goes the
+other way?  We track the OLDEST TS, and by default, everything else
+GAINS urgency to the degree that it's newer?
+
+Or we take the oldest UNANNOUNCED TS as the base for urgency across
+all other unannounceds?  Trying to get a smooth crossover from
+unannounced to announced-but-older/younger.
+
+[11:
+
+Wed Feb 10 17:11:30 2021 Is another issue that once we send an
+announcement for an old unchanged cdmss, the far side will lose
+interest in announcing it back to us, because it will know our TS and
+their TS match, so there will be no urgency regardless of the length.
+
+But maybe that doesn't matter, because once we've announced it to
+them, it's no longer 'unannounced', and our urgency to announce it
+will go way down.
+
+So can we sum up the view here?
+
+ - Default the announcement times to 0, and announced lengths to 0
+
+ - So every unannounced package will have a huge timediff, that will
+   vary slightly among the different packages.
+
+ - But we'll do our 'log capped timediff', so all those unannounced
+   cdmss will have a time urgency of like 3, and they will compete
+   among each other based on their length differences.
+
+ - So cdmss-03/MFMS will usually be announced first, so be it, at
+   which point its urgency will crash.  It'll also likely be the first
+   thing the far side announces to us, at which point we'll know we
+   have a 0 length diff so that will be done.
+
+ - We could find the oldest cdmss at load time, and default the map to
+   (oldest - an hour) or whatever, rather than using 0.  That would
+   allow the more recents among the unannounced to get some time
+   urgency rather than swamping the differences against 0.
+ 
+[12:
+
+Sat Feb 13 00:14:25 2021 OK let's go again here.  Absolutely need to
+switch to other stuff in a day or so and I WANT TO SEE THIS WORK
+before then.
+
+Fo now let's just focus on choosing announcements, and recording
+changes to our content, and ignore making and handling requests.
+
+So, simplifying the idea:
+
+ - their content mTCMap and our content mOCMap
+  mTCMap->{SLOT}->{ITC}->[WESAIDTS WESAIDLEN LASTTIMEWESAID]
+  mOCMap->{SLOT}->[OURTS OURLEN LASTTSORLENCHANGETIME]
+
+    iJustAnnouncedTo(SLOT,ITC)
+      (TS,LEN) = @{whatIKnow(SLOT)}
+      iNowThinkTheyKnow(SLOT,ITC,TS,LEN)
+
+    theyJustRequested(SLOT,ITC,TS,LEN)
+      iNowThinkTheyKnow(SLOT,ITC,TS,LEN)
+
+    iNowThinkTheyKnow(SLOT,ITC,TS,LEN)
+      a = whatIThinkTheyKnow(SLOT,ITC)
+      a->[0] = TS
+      a->[1] = LEN
+      a->[2] = now();
+      
+    iJustGrewTo(SLOT,TS,LEN)
+      c = whatIKnow(SLOT)
+      if (c->[0] != TS || c->[1] != LEN) {
+        c->[0] = TS;
+        c->[1] = LEN;
+        c->[2] = now();
+      }
+
+     whatIKnow(SLOT)
+       mOCMap->{SLOT} = [0, 0, 0] unless defined mOCMap->{SLOT}
+       return mOCMap->{SLOT}
+
+     whatIThinkTheyKnow(SLOT, ITC)
+       mTCMap->{SLOT} = { } unless defined mTCMap->{SLOT}
+       mTCMap->{SLOT}->{ITC} = [0, 0, 0] unless defined mTCMap->{SLOT}->{ITC}
+       return mTCMap->{SLOT}->{ITC}
+
+     getUrgency(SLOT,ITC)
+       (OURTS,OURLEN,OURCHANGETIME) = @{whatIKnow(SLOT)}
+       return 0 if OURTS == 0; # No urgency: We don't have anything in SLOT
+       (SAIDTS,SAIDLEN,SAIDTIME) = @{whatIThinkTheyKnow(SLOT,ITC)}
+       (SAIDTIME, SAIDLEN) = (0, 0) if OURTS != SAIDTS;  # different TS is irrelevant
+       TIMEPRESSURE = logtime(now() - SAIDTS); # Time since announce -> pressure
+       SIZEPRESSURE = min(1,OURLEN - SAIDLEN); # Growth since announce -> pressure
+       return int(SIZEPRESSURE * TIMEPRESSURE)
+
+     logtime(TIMEDIFF)
+       return 0 if TIMEDIFF < 6
+       return 1 if TIMEDIFF < 60
+       return 2 if TIMEDIFF < 3600
+       return 3
+
+     allMySlots()
+       return keys %mOCMap;
+       
+[13:
+
+Sat Feb 13 02:45:58 2021 OK well that was a pretty substantial
+'simplification'.. but it seems plausible.  To make an announcement,
+client would do something like:
+
+  my $URG_BASELINE = 100; # MIN 1! Units of bytes*logtime 
+  my $toturg = $URG_BASELINE;
+  my ($pickslot,$pickitc);
+  for my $slot (allMySlots())
+    for my $itc (OPEN_ITCS)
+      my $thisurg = getUrgency($slot, $itc);
+      $toturg += thisurg;
+      ($pickslot,$pickitc) = ($slot,$itc)
+         if oddsOf($thisurg,$toturg)
+  if (defined($pickslot)) {
+    ANNOUNCE($pickslot,$pickitc);
+    iJustAnnouncedTo($pickslot,$pickitc)
+    return 1;
+  }
+  return 0; # Not moved to speak
+  
+[14:
+
+Sat Feb 13 03:17:45 2021 Well let's try taking this all the way to
+code GO GO GO
+[15:
+
+Sat Feb 13 04:36:06 2021 OK, well did a bunch of vaguely plausible
+stuff.  Got as far as actually wanting to send an urgently-chosen
+announcement, but that requires interfacing with CDM at large.  And it
+seems like we probably want to make an Urgency be a data member of
+ContentManager, since that's the thing currently sending announcements
+and the thing that knows about models and such.  But running out of
+gas for now so leaving Urgency.pm killed at the 'have something to
+announce' step.[16:
+
+Sun Feb 14 00:05:39 2021 OK GO GO GO come on.[17:
+
+Sun Feb 14 01:54:43 2021 OK so we got as far as actually debugging
+here so that's progress.  Currently Urgency::maybeAnnounceSomething is
+never finding anything to announce, because the rest of CDM is not yet
+telling Urgency when stuff exists or grows.  So we need to find some
+tasty places to inject some Urgency API calls..[18:
+
+Sun Feb 14 04:32:17 2021 OK so a bunch of debugging and fixing stuff
+and stating to get some plausibility in recording growth of our cdmss
+and deriving an urgency from that.
+
+I'd been trying to work in ./cdmDEBUG to avoid polluting things, but
+now we've gotten this far:
+
+ ..
+      DB<138> c
+    MFZModel::reportFileGrowth(/home/t2/T2-12/cdm/cdm/MFZModel.pm:103):
+    103:	    my $urg = $self->{mCDM}->getUrgencyManager();
+      DB<138> B *
+    Deleting all breakpoints...
+      DB<139> c
+    513.23:cdmss-a2-5207ca.mfz#21: cdmss-a2-5207ca.mfz#21 reset transfer
+ ..
+    518.51:cdmss-04-520dcd.mfz#18: cdmss-04-520dcd.mfz#18 reset transfer
+    518.84: cdmss-04-520dcd.mfz#18 complete. 2.9KB loaded in 7m 23s, 6.5BPS
+    518.84:   [BEGIN SLOT CONFIGURATION: cdmss-04-520dcd.mfz#18]
+    518.84: cdmss-04-520dcd.mfz#18 1.1.1. SC_CHKTAG
+    518.84: cdmss-04-520dcd.mfz#18 -Checking for ./cdmDEBUG/tags/slot04-install-tag.dat
+    518.84: cdmss-04-520dcd.mfz#18 -Tag update needed: PROCEEDING
+
+Ooops
+ ..
+    518.84: cdmss-04-520dcd.mfz#18 1.1.5. SC_TARTAR
+    518.84: cdmss-04-520dcd.mfz#18 -Found /home/t2/CONFIG-T2/04
+    518.84: cdmss-04-520dcd.mfz#18 -Deleting /home/t2/CONFIG-T2/04-prev-install
+    518.84: cdmss-04-520dcd.mfz#18 -Removed 6 files
+    518.84: cdmss-04-520dcd.mfz#18 -Renamed /home/t2/CONFIG-T2/04 -> /home/t2/CONFIG-T2/04-prev-install
+    518.84: cdmss-04-520dcd.mfz#18 -Moving /tmp/slot04-Gl5f1/tar/04 to /home/t2/CONFIG-T2
+
+Just stomped our (real, actual, keymaster's) /home/t2/CONFIG-T2,
+there..  Because we didn't have our defensive /cdm/tags set up..
+Because we were working in ./cdmDEBUG.. 
+
+ ..
+    518.84: cdmss-04-520dcd.mfz#18 Updated ./cdmDEBUG/tags/slot04-install-tag.dat to 520dcd
+    518.84:   [END SLOT CONFIGURATION (0): cdmss-04-520dcd.mfz#18]
+    521.83:cdmss-a0-5207c7.mfz#19: cdmss-a0-5207c7.mfz#19 reset transfer
+    522.07:cdmss-ef-51fff2.mfz#16: cdmss-ef-51fff2.mfz#16 reset transfer
+      C-c C-cMFZModel::maybeSendNewRequests(/home/t2/T2-12/cdm/cdm/MFZModel.pm:499):
+    499:	        last unless defined $d8;                      # Nobody's got what we need
+      DB<139> 
+
+[19:
+
+Sun Feb 14 04:39:46 2021 So anyway.  This is looking encouraging.
+There must be more places we need Urgency API calls -- like for
+discarding stuff when a connection closes? -- but the main one is
+calling iNowThinkTheyKnow when we respond to a data chunk request.
+Let's try to find that.
+[20:
+
+Sun Feb 14 05:25:28 2021 OK, that might be looking plausible.  What
+about calling iNowThinkTheyKnow when we receive their announcement?
+[21:
+
+Sun Feb 14 06:13:59 2021 OK that may be working.  Wondering about
+tossing our knowledge of them when an ITC closes.  How clean is that
+moment? [22:
+
+Sun Feb 14 07:02:55 2021 Well that seems to be working-ish also.
+
+About time to commit this and try it on the grid?
+[23:
+
+Mon Feb 15 09:42:01 2021 OK well it's been on the grid for a day or so
+and it all seems plausible enough.  Still can have issues restarting
+the flow if a supplying CDM glitches on slot 02 (T2-12) or 07 (T2/cdm)
+install.  But vastly better than it was!
+
+Going to leave it there for now.
+
+:23]
+:22]
+
+:21]
+:20]
+:19]
+
+:18]
+
+:17]
+
+:16]
+
+:15]
+:14]
+:13]
+
+:12]
+:11]
+
+:10]
+:9]
+:8]
+:7]
+:6]
+
+:5]
+:4]
+
+:3]
+
+:2]
+
+:1]
