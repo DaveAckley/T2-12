@@ -17,145 +17,15 @@
  */
 
 #include "itc.h"
-#include "ruleset.h"
-#include "RULES.h"
 
 #define  DEVICE_NAME0 "itc!locks"  ///< The device will appear at /dev/itc/locks/
 #define  DEVICE_NAME1 "itc!lockevents"  ///< The device will appear at /dev/itc/lockevents
 #define  CLASS_NAME  "itccls"     ///< The device class -- this is a character device driver
 
-void setState(ITCInfo * itc, ITCState newState) ; // FORWARD
-void updateState(ITCInfo * itc, bool timeout) ;   // FORWARD
-
 bool isActiveWithin(ITCInfo * itc, int jiffyCount)
 {
   return time_after(itc->lastActive + jiffyCount, jiffies);
 }
-
-/* GENERATE CURRENT DIRS IN STATE TABLE */
-u8 dirsInState[STATE_COUNT] = {
-#define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
-#define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
-#define RS(forState,ef,output,settlement,...) 0,
-  ALLRULESMACRO()
-};
-#undef RS
-#undef RSE
-#undef RSN
-
-/* GENERATE SETTLEMENT ACCESSORS */
-#define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
-#define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
-#define RS(forState,ef,output,settlement,...) (((settlement)==YY()) ? dirsInState[forState] : 0)|
-u32 getSettlementValue(SettlementState ss) {
-  switch(ss) {
-#define YY() LOCK_UNREADY
-  case LOCK_UNREADY: return ALLRULESMACRO() 0;
-#undef YY
-#define YY() LOCK_AVAILABLE
-  case LOCK_AVAILABLE: return ALLRULESMACRO() 0;
-#undef YY
-#define YY() LOCK_UNSETTLED
-  case LOCK_UNSETTLED: return ALLRULESMACRO() 0;
-#undef YY
-#define YY() LOCK_SETTLED
-  case LOCK_SETTLED: return ALLRULESMACRO() 0;
-#undef YY
-  default: return 0;
-  }
-}
-#undef RS
-#undef RSE
-#undef RSN
-
-
-/* GENERATE STATE ENTRY COUNTERS */
-#define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
-#define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
-#define RS(forState,ef,output,settlement,...) 0,
-u32 timesStateEntered[STATE_COUNT] = {
-  ALLRULESMACRO()
-};
-#undef RS
-#undef RSE
-#undef RSN
-
-
-/* GENERATE STATE NAMES */
-#define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
-#define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
-#define RS(forState,ef,output,settlement,...) #forState,
-const char * stateNames[STATE_COUNT] = { 
-  ALLRULESMACRO()
-};
-#undef RS
-#undef RSE
-#undef RSN
-
-const char * getStateName(ITCState s) {
-  if (s >= STATE_COUNT) return "<INVALID>";
-  return stateNames[s];
- }
-
-/* GENERATE STATE->output table */
-#define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
-#define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
-#define RS(forState,ef,output,settlement,...) OUTPUT_VALUE_##output,
-const u8 outputsForState[STATE_COUNT] = {
-  ALLRULESMACRO()
-};
-#undef RS
-#undef RSE
-#undef RSN
-
-/* GENERATE STATE->settlement table */
-#define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
-#define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
-#define RS(forState,ef,output,settlement,...) settlement,
-const u8 settlementOfState[STATE_COUNT] = {
-  ALLRULESMACRO()
-};
-#undef RS
-#undef RSE
-#undef RSN
-
-typedef ITCState ITCEntryFunction(struct itcInfo*,unsigned stateInput);
-
-/* GENERATE ENTRY FUNCTION DECLARATIONS */
-#define RSE(forState,output,...) extern ITCEntryFunction entryFunction_##forState;
-#define RSN(forState,output,...) 
-  ALLRULESMACRO()
-#undef RSE
-#undef RSN
-
-/* GENERATE STATE->entry function pointers */
-#define RSE(forState,output,...) entryFunction_##forState,
-#define RSN(forState,output,...) NULL,
-ITCEntryFunction *(entryFuncsForState[STATE_COUNT]) = {
-  ALLRULESMACRO()
-};
-#undef RSE
-#undef RSN
-
-/* GENERATE PER-STATE RULESETS */
-#define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
-#define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
-#define RS(forState,ef,output,settlement,...) const Rule ruleSet_##forState[] = { __VA_ARGS__ };
-  ALLRULESMACRO()
-#undef RS
-#undef RSE
-#undef RSN
-
-/* GENERATE STATE->RULESET DISPATCH TABLE */
-#define RSE(forState,output,settlement,...) RS(forState,forState,output,settlement,__VA_ARGS__)
-#define RSN(forState,output,settlement,...) RS(forState,_,output,settlement,__VA_ARGS__)
-#define RS(forState,ef,output,...) ruleSet_##forState,
-const Rule *(ruleSetDispatchTable[STATE_COUNT]) = {
-  ALLRULESMACRO()
-};
-#undef RS
-#undef RSE
-#undef RSN
 
 #define XX(DC,fr,p1,p2,p3,p4) {  	                           \
     { p1, GPIOF_IN|GPIOF_EXPORT_DIR_FIXED,          #DC "_IRQLK"}, \
@@ -248,35 +118,6 @@ const char * itcDirName(ITCDir d)
   return dirnames[d];
 }
   
-#if 0 /*Moved to itc_iterator.h for wider use*/
-void itcIteratorShuffle(ITCIterator * itr) {
-  ITCDir i;
-  BUG_ON(!itr);
-  itr->m_usesRemaining = 
-    prandom_u32_max(itr->m_averageUsesPerShuffle<<1) + 1; /* max is double avg, given uniform random */
-
-  for (i = DIR6_MAX; i > 0; --i) {
-    int j = prandom_u32_max(i+1); /* generates 0..DIR6_MAX down to 0..1 */
-    if (i != j) {
-      ITCDir tmp = itr->m_indices[i];
-      itr->m_indices[i] = itr->m_indices[j];
-      itr->m_indices[j] = tmp;
-    }
-  }
-
-  printk(KERN_DEBUG "ITC %p iterator order is %d%d%d%d%d%d for next %d uses\n",
-         itr,
-         itr->m_indices[0],
-         itr->m_indices[1],
-         itr->m_indices[2],
-         itr->m_indices[3],
-         itr->m_indices[4],
-         itr->m_indices[5],
-         itr->m_usesRemaining
-         );
-}
-#endif
-
 static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned value, unsigned int irq)
 {
   itc->interruptsTaken++;
@@ -287,7 +128,7 @@ static irq_handler_t itc_irq_edge_handler(ITCInfo * itc, unsigned pin, unsigned 
     itc->pinStates[pin] = value;
     ADD_LOCK_EVENT(makePinLockEvent(itc->direction,pin,value));
   }
-  updateState(itc,false);
+  // XXXXX  updateState(itc,false);
   return (irq_handler_t) IRQ_HANDLED;
 }
 
@@ -319,7 +160,7 @@ static void itcInitITC(ITCInfo * itc)
   itc->pinStates[PIN_IGRLK] = !gpio_get_value(itc->pins[PIN_IGRLK].gpio);
 
   // Set up initial state
-  setState(itc,sFAILED);
+  //XXXX  setState(itc,sFAILED);
 
   // Clear state counters after setting initial state
   for (i = 0; i < STATE_COUNT; ++i)
@@ -428,41 +269,6 @@ static void itcExitGPIOInterrupts(void) {
   }
 }
 
-static void addEventCurrentLockState(unsigned ofState) {
-  if (ofState <= 0xF) {
-    unsigned long flags;
-    local_irq_save(flags);
-    if (kfifo_avail(&S.mLockEventState.mEvents) < 3*sizeof(ITCLockEvent))  
-      ADD_LOCK_EVENT(makeSpecLockEvent(LET_SPEC_QGAP));
-    else {
-      ADD_LOCK_EVENT(makeSpecLockEvent(LET_SPEC_CLS0 + ofState));
-      ADD_LOCK_EVENT(makeCurrentLockEvent(dirsInState[ofState]));
-    }
-    local_irq_restore(flags);
-  }
-}
-
-static void updateEnabling(unsigned bareLockset) {
-  unsigned long flags;
-  spin_lock_irqsave(&S.mdLock, flags);    // Grab mdLock
-
-  for (itcIteratorStart(&S.userContextIterator); // CRITICAL SECTION: mdLock
-       itcIteratorHasNext(&S.userContextIterator);// CRITICAL SECTION: mdLock
-       ) {
-    ITCDir idx = itcIteratorGetNext(&S.userContextIterator); // CRITICAL SECTION: mdLock
-    ITCInfo * itc = &S.itcInfo[idx];        // CRITICAL SECTION: mdLock
-    unsigned itcbit = 1<<idx;               // CRITICAL SECTION: mdLock
-    bool enable = bareLockset & itcbit;     // CRITICAL SECTION: mdLock
-    if (enable) {                           // CRITICAL SECTION: mdLock
-      if (dirsInState[sDISABLED] & itcbit)    // (enable only affects disabled itcs)
-        setState(itc, sRESET);              // CRITICAL SECTION: mdLock
-    } else {                                // CRITICAL SECTION: mdLock
-      setState(itc,sDISABLED);               // (but disable nukes all states)
-    }                                       // CRITICAL SECTION: mdLock
-  }                                         // CRITICAL SECTION: mdLock
-  spin_unlock_irqrestore(&S.mdLock, flags); // Free mdLock
-}
-
 // itcInterpretCommandByte
 // Returns:
 //
@@ -478,125 +284,8 @@ static void updateEnabling(unsigned bareLockset) {
 //    others that we may have been holding
 static ssize_t itcInterpretCommandByte(u8 cmd, bool waitForIt)
 {
-  unsigned long flags;
-  unsigned startState, destState, untouchedState;
-  unsigned locksetCmd = (cmd & LOCKSET_CMD_MASK);
-  unsigned bareLockset = (cmd & ~LOCKSET_CMD_MASK);
-
-  if (locksetCmd == LOCKSET_CMD_VALUE_TRY) {
-
-    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_UTRY));  // Next user lock req is uTRY
-    startState = sIDLE;                                    // We should be coming from sIDLE
-    destState = sTAKEN;                                    // and settling on sTAKEN
-    untouchedState = sGIVEN;                               // And sGIVEN should be untouched
-
-  } else if (locksetCmd == LOCKSET_CMD_VALUE_FREE) {
-
-    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_UFRE));  // Next user lock req is uFREE
-    startState = sGIVEN;                                   // We should be coming from sGIVEN
-    destState = sIDLE;                                     // and settling on sIDLE
-    untouchedState = sTAKEN;                               // And sTAKEN should be untouched
-
-  } else if (locksetCmd == LOCKSET_CMD_VALUE_DROP) {
-
-    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_UDRP));  // Next user lock req is uDROP
-    startState = sTAKEN;                                   // We should be coming from sTAKEN
-    destState = sIDLE;                                     // and settling on sIDLE
-    untouchedState = sGIVEN;                               // And sGIVEN should be untouched
-
-  } else if (locksetCmd == LOCKSET_CMD_VALUE_ENABLE) {
-
-    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_UENB));  // Next user lock req is 'uENABLE'
-    addEventCurrentLockState(sDISABLED);                   // We'll be affecting this
-    updateEnabling(bareLockset);                           // Go do it
-    addEventCurrentLockState(sDISABLED);                   // There's the result
-    return 0;                                              // Enabling always succeeds
-
-  } else                 // (Can't happen since all locksetCmds now defined)
-    return -EINVAL;
-
-  ADD_LOCK_EVENT_IRQ(makeUserLockEvent(bareLockset)); // Next user locks req
-
-  if (getSettlementValue(LOCK_UNREADY) & bareLockset)
-    return -ENXIO;
-  
-  if (dirsInState[untouchedState] & bareLockset)      // Check for conflicts
-    return -EBUSY;   // Can't take what is given or free what is taken
-
-  addEventCurrentLockState(startState);
-
-  if ((bareLockset & dirsInState[destState]) == bareLockset) // If already have all asked for
-    return 0;                                                // You're welcome
-
-  // First set up our request
-  spin_lock_irqsave(&S.mdLock, flags);    // Grab mdLock
-  S.userRequestTime = jiffies;            // CRITICAL SECTION: mdLock
-  S.moduleLastActive = jiffies-100;       // CRITICAL SECTION: mdLock
-  S.userLockset = cmd;                    // CRITICAL SECTION: mdLock
-  S.userRequestActive = 1;                // CRITICAL SECTION: mdLock
-  S.userRequestStatus = 0;                // CRITICAL SECTION: mdLock
-  // Hold mdlock for whole loop gah.
-  for (itcIteratorStart(&S.userContextIterator); // CRITICAL SECTION: mdLock
-       itcIteratorHasNext(&S.userContextIterator);// CRITICAL SECTION: mdLock
-       ) {
-    ITCDir idx = itcIteratorGetNext(&S.userContextIterator); // CRITICAL SECTION: mdLock
-    ITCInfo * itc = &S.itcInfo[idx];        // CRITICAL SECTION: mdLock
-    
-    updateState(itc,false);                 // CRITICAL SECTION: mdLock
-  }
-  spin_unlock_irqrestore(&S.mdLock, flags); // Free mdLock
-
-  // Now kick the kthread since this is our initiative
-  if (S.itcThreadRunnerTask)
-    wake_up_process(S.itcThreadRunnerTask);
-
-  // Now wait until our request has been handled
-
-  if (waitForIt) {
-    while (S.userRequestActive) {
-      wait_event_interruptible(S.userWaitQ, !S.userRequestActive);
-    }
-  }
-
-  addEventCurrentLockState(destState);
-
   return 0;      // 'Operation Worked'..
 }
-
-#if 0
-static int itcGetCurrentLockInfo(u8 * buffer, int len)
-{
-  int i;
-
-  if (len < 0) return -EINVAL;
-  if (len == 0) return 0;
-
-  if (len > 6) len = 6;
-
-  for (i = 0; i < len; ++i) buffer[i] = 0;
-  
-  for (i = 0; i < 6; ++i) {  /*Note: Not using ITCIterator*/
-    ITCDir idx = i;
-    ITCInfo * itc = &S.itcInfo[idx];
-    u8 bit = 1<<idx;
-    switch (len) {
-    default:
-    case 6: if (itc->state == sRESET) buffer[5] |= bit;
-    case 5: if (itc->state == sFAILED) buffer[4] |= bit;
-    case 4: if (itc->state == sIDLE) buffer[3] |= bit;
-    case 3: if (itc->state == sGIVEN) buffer[2] |= bit;
-    case 2: if (itc->state == sTAKE ||
-                itc->state == sRACE ||
-                itc->state == sSYNC01) buffer[1] |= bit;
-    case 1: if (itc->state == sTAKEN) buffer[0] |= bit;
-    case 0: break;
-    }
-  }
-
-  return len;
-}
-#endif
-
 
 void make_reports(void)
 {
@@ -633,119 +322,6 @@ static inline void userRequestDone(s32 status) {
     S.userRequestActive = 0;
     S.userRequestStatus = status;
     wake_up_interruptible(&S.userWaitQ);
-  }
-}
-
-void setState(ITCInfo * itc, ITCState newState) {
-  if (itc->state != newState) {
-
-    dirsInState[itc->state] &= ~(1<<itc->direction); /*clear previous state*/
-    itc->state = newState;
-    dirsInState[itc->state] |= 1<<itc->direction; /*set current state*/
-    ++itc->enteredCount[newState];
-
-    ADD_LOCK_EVENT(makeStateLockEvent(itc->direction,newState));
-
-    {
-      const BitValue newval = (outputsForState[newState]>>1)&1;
-      if (itc->pinStates[PIN_ORQLK] != newval) {
-        itc->pinStates[PIN_ORQLK] = newval;
-        ADD_LOCK_EVENT(makePinLockEvent(itc->direction,PIN_ORQLK,newval));
-      }
-    }
-    {
-      const BitValue newval = (outputsForState[newState]>>0)&1;
-      if (itc->pinStates[PIN_OGRLK] != newval) {
-        itc->pinStates[PIN_OGRLK] = newval;
-        ADD_LOCK_EVENT(makePinLockEvent(itc->direction,PIN_OGRLK,newval));
-      }
-    }
-
-    itc->lastActive = S.moduleLastActive = jiffies;
-
-    if (0==getSettlementValue(LOCK_UNSETTLED)) {
-      ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_ALST));
-      userRequestDone(S.userLockset);
-    } else
-      wake_up_process(S.itcThreadRunnerTask); // Look for more consequences?
-  }
-  gpio_set_value(itc->pins[PIN_ORQLK].gpio,itc->pinStates[PIN_ORQLK]);
-  gpio_set_value(itc->pins[PIN_OGRLK].gpio,itc->pinStates[PIN_OGRLK]);
-}
-
-void updateState(ITCInfo * itc,bool istimeout) {
-  unsigned stateInput;
-  ITCState nextState = sFAILED;
-  const Rule * rulep;
-  unsigned activeTry = 0;
-  unsigned activeFree = 0;
-
-  if (S.userRequestActive) {
-    unsigned locksetCmd = S.userLockset & LOCKSET_CMD_MASK;
-    unsigned affected = (S.userLockset>>itc->direction)&1;
-    if (locksetCmd == LOCKSET_CMD_VALUE_TRY)
-      activeTry = affected;
-    else if (locksetCmd == LOCKSET_CMD_VALUE_FREE
-             || locksetCmd == LOCKSET_CMD_VALUE_DROP)
-      activeFree = affected;
-  }
-
-  stateInput =
-    RULE_BITS(
-	      itc->pinStates[PIN_IRQLK],
-	      itc->pinStates[PIN_IGRLK],
-	      itc->isFred,
-	      activeTry,
-	      activeFree,
-              istimeout
-	      );
-
-  rulep = ruleSetDispatchTable[itc->state];
-  while (1) {
-    if ((stateInput & rulep->mask) == rulep->bits) {
-      nextState = rulep->newstate;
-
-      if (entryFuncsForState[nextState]) /* Have a custom state entry function? */
-        /* We do. Let it maybe update our destination */
-        nextState = (*entryFuncsForState[nextState])(itc,stateInput); 
-
-      break;
-    }
-    if (rulep->endmarker) break;
-    ++rulep;
-  }
-
-  setState(itc,nextState);
-}
-
-void refreshInputs(ITCInfo* itc)
-{
-  unsigned irq = gpio_get_value(itc->pins[PIN_IRQLK].gpio);
-  unsigned igr = gpio_get_value(itc->pins[PIN_IGRLK].gpio);
-  BUG_ON(!itc);
-  if (irq != itc->pinStates[PIN_IRQLK] ||
-      igr != itc->pinStates[PIN_IGRLK]) {
-
-    ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_RFIC));
-    printk(KERN_INFO "ITC %s i%d%d -> i%d%d\n",
-           itcDirName(itc->direction),
-           itc->pinStates[PIN_IRQLK],
-           itc->pinStates[PIN_IGRLK],
-           irq,
-           igr
-           );
-
-    itc->pinStates[PIN_IRQLK] = irq;
-    itc->pinStates[PIN_IGRLK] = igr;
-  }
-}
-
-void updateStates(ITCIterator * itr, bool istimeout) {
-  for (itcIteratorStart(itr); itcIteratorHasNext(itr);) {
-    ITCDir idx = itcIteratorGetNext(itr);
-    ITCInfo * itc = &S.itcInfo[idx];
-    refreshInputs(itc);
-    updateState(itc,istimeout);
   }
 }
 
@@ -823,23 +399,6 @@ static int itcThreadRunner(void *arg) {
       userRequestDone(-ETIME);
    }
 
-    {
-      unsigned long flags;
-      bool timeout = time_before(S.moduleLastActive + jiffyTimeout, jiffies);
-      spin_lock_irqsave(&S.mdLock, flags);         // Grab mdLock
-      updateStates(&idxItr,timeout);               // CRITICAL SECTION: mdLock
-      if (timeout) S.moduleLastActive = jiffies;   // CRITICAL SECTION: mdLock
-      spin_unlock_irqrestore(&S.mdLock, flags);    // Free mdLock
-    }
-    
-#if 0
-    if (time_before(S.moduleLastActive + jiffyTimeout, jiffies)) {
-      /* NOPE WAY TOO MANY OF THESE      addLockEventIRQ(makeSpecLockEvent(LET_SPEC_ACTO)); internal timeout*/
-      updateStates(&idxItr,true);
-      S.moduleLastActive = jiffies;
-    }
-#endif
-
     make_reports();
     set_current_state(TASK_INTERRUPTIBLE);
     schedule_timeout(jiffyTimeout/2);   /* in TASK_RUNNING again upon return */
@@ -895,27 +454,7 @@ static int dev_open(struct inode *inodep, struct file *filep) {
 
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
   enum { MAX_BUF = 256 };
-  int error;
-  bool waitForIt = !(filep->f_flags & O_NONBLOCK);
-
-  ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(waitForIt ? LET_SPEC_RBKU : LET_SPEC_RNBU));
-
-  if (len > STATE_COUNT) len = STATE_COUNT;
-
-  // Get the mutex (returns 0 unless interrupted)
-  if ((error = mutex_lock_interruptible(&S.itc_mutex))) return error;
-
-  error = copy_to_user(buffer, dirsInState, len); // ITC_MUTEX HELD
-
-  mutex_unlock(&S.itc_mutex);
-  if (len > 1) {
-    addEventCurrentLockState(sTAKEN);
-    if (len > 2) {
-      addEventCurrentLockState(sGIVEN);
-    }
-  }
-
-  ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(error < 0 ? LET_SPEC_RRTE : LET_SPEC_RRTS));  /*returning to user*/
+  int error = 0;
 
   if (error < 0)
     return error;
@@ -1065,12 +604,7 @@ static ssize_t status_show(struct class *c,
 			   struct class_attribute *attr,
 			   char *buf)
 {
-  sprintf(buf,"%02x%02x%02x%02x\n"
-          ,getSettlementValue(LOCK_UNREADY)
-          ,getSettlementValue(LOCK_AVAILABLE)
-          ,getSettlementValue(LOCK_UNSETTLED)
-          ,getSettlementValue(LOCK_SETTLED)
-          );
+  sprintf(buf,"ZONGSTATUS_SHOW\n");
   return strlen(buf);
 }
 CLASS_ATTR_RO(status);
@@ -1111,21 +645,8 @@ static ssize_t statistics_show(struct class *c,
 			       struct class_attribute *attr,
 			       char *buf)
 {
-  int dir, state, len = 0;
+  int /*dir, state,*/ len = 0;
   len += sprintf(&buf[len],"DIR");
-  for (state = 0; state < STATE_COUNT; ++state)
-    len += sprintf(&buf[len]," %s",stateNames[state]);
-  len += sprintf(&buf[len],"\n");
-  
-  for (dir = 0; dir < DIR6_COUNT; ++dir) {
-    ITCInfo * iti = &S.itcInfo[dir];
-    len += sprintf(&buf[len],"%s ",itcDirName(dir));
-
-    for (state = 0; state < STATE_COUNT; ++state) 
-      len += sprintf(&buf[len]," %lu",iti->enteredCount[state]);
-    len += sprintf(&buf[len],"\n");
-  }
-
   return strlen(buf);
 }
 
@@ -1152,22 +673,6 @@ static ssize_t statistics_store(struct class *c,
 CLASS_ATTR_RW(statistics);
 
 ////////////////BEGIN CLASS ATTRIBUTE STUFF
-#if 0
-static struct class_attribute itc_class_attrs[] = {
-  __ATTR(status, 0444, itc_class_read_status, NULL), /*just picking one to have something*/
-  __ATTR(trace_start_time, 0444, itc_class_read_trace_start_time, NULL), 
-  __ATTR(shift, 0644, itc_class_read_shift, itc_class_store_shift),
-  __ATTR(statistics, 0644, itc_class_read_statistics, itc_class_store_statistics),
-#if 0
-  __ATTR(poke, 0200, NULL, itc_pkt_class_store_poke),
-  __ATTR(trace, 0644, itc_pkt_class_read_trace, itc_pkt_class_store_trace),
-  __ATTR(statistics, 0444, itc_pkt_class_read_statistics, NULL),
-  __ATTR(pru_bufs, 0444, itc_pkt_class_read_pru_bufs, NULL),
-  __ATTR(pkt_bufs, 0444, itc_pkt_class_read_pkt_bufs, NULL),
-#endif
-  __ATTR_NULL,
-};
-#else
 static struct attribute * class_itc_attrs[] = {
   &class_attr_status.attr,
   &class_attr_trace_start_time.attr,
@@ -1176,7 +681,6 @@ static struct attribute * class_itc_attrs[] = {
   NULL,
 };
 ATTRIBUTE_GROUPS(class_itc);
-#endif
 
 static struct attribute *itc_attrs[] = {
   NULL,
@@ -1391,9 +895,10 @@ module_init(itc_init);
 module_exit(itc_exit);
 
 MODULE_LICENSE("GPL");            ///< All MFM code is LGPL or GPL licensed
-MODULE_AUTHOR("Dave Ackley");     ///< Email: ackley@ackleyshack.com
+MODULE_AUTHOR("Dave Ackley");     ///< Email: ackley@livingcomputation.com
 MODULE_DESCRIPTION("T2 intertile lock manager");  ///< modinfo description
-MODULE_VERSION("2.0");            ///< 2.0 201909211534 first cut at sGIVEN-uFREE->sRELEASE
+MODULE_VERSION("3.0");            ///< 3.0 202201070049 strip down for possible GRDO dynamics
+//MODULE_VERSION("2.0");            ///< 2.0 201909211534 first cut at sGIVEN-uFREE->sRELEASE
 //MODULE_VERSION("1.1");            ///< 1.1 201907260159 statistics, extended write status
 //MODULE_VERSION("1.0");            ///< 1.0 201907250852 sRELEASE allowing fast blocking I/O
 //MODULE_VERSION("0.9");            ///< 0.9 201907250406 online lock settlement info
