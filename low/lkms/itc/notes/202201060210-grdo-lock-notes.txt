@@ -1,0 +1,624 @@
+{39}  -*-  mode: text; fill-column: 50;  -*-
+[0:
+
+Thu Jan  6 02:10:48 2022 OK, so part of our goal
+for our 2022 clean-screen MFMT2 event engine is to
+see if we can redo the ITC locking semantics into
+something that we could actually use.  So, this
+file for exploring that.
+
+:0]
+[1:
+
+Thu Jan  6 02:23:22 2022 So, some initial TODO:
+
+ - [PREDONE] Create new T2-12 branch
+   ('grdo-lock-test')
+
+ - [PREDONE] Create new notes file (this)
+
+[7: Thu Jan  6 10:07:24 2022 first cut anyway
+DONE :7] - Review existing lock system, focusing on
+   LKM-created devices
+
+[8: Thu Jan  6 10:07:47 2022
+DONE :8] - Rough sketch of GRDO mapping and names to
+   existing pin names
+
+ - Rough sketch of possible userspace interface(s)
+   to the GRDO locking system.
+
+
+:1]
+[2:
+
+Thu Jan  6 02:27:02 2022 Notes on existing setup:
+
+ - LKM module is 'itc'.
+
+ - /dev/itc/locks provides current lock states in
+   a single byte, as long as you care to read it?
+
+ - /dev/itc/lockevents is our packed tracing
+   stuff?
+
+ - Locking LKM code is in itc.c/.h (plus it looks
+   like itclockevent.h for trace formats, with no
+   associated .c)
+
+ - testitc.c appears to be rotted test code.
+
+[3:
+
+Thu Jan  6 02:54:21 2022
+
+ - itc appears to be unused..
+
+    root@beaglebone:~# modprobe -r itc
+    Jan  6 02:54:44 beaglebone kernel: [ 4871.986623] ITC exit start
+    Jan  6 02:54:44 beaglebone kernel: [ 4871.992571] ITC exit ET
+    Jan  6 02:54:44 beaglebone kernel: [ 4872.003224] ITC exit SE
+    Jan  6 02:54:44 beaglebone kernel: [ 4872.011415] ITC exit SW
+    Jan  6 02:54:44 beaglebone kernel: [ 4872.019723] ITC exit WT
+    Jan  6 02:54:44 beaglebone kernel: [ 4872.027616] ITC exit NW
+    Jan  6 02:54:44 beaglebone kernel: [ 4872.036898] ITC exit NE
+    Jan  6 02:54:44 beaglebone kernel: [ 4872.044631] itcThreadRunner: Stopping by request
+    Jan  6 02:54:44 beaglebone kernel: [ 4872.067448] ITC freed 24 pins
+    Jan  6 02:54:44 beaglebone kernel: [ 4872.079958] ITC: EXIT DONE
+    root@beaglebone:~#
+
+   doesn't seem to hurt anything..
+
+:3]
+
+:2]
+[4:
+
+Thu Jan  6 03:30:05 2022 Let's sketch the idea as
+far as we can:
+
+ - Use ORQLK -> IRQLK as the ringo circuit wire in
+   both directions
+
+ - Let's play against type and have Fred (NE, ET,
+   SE) be the downstream empath, and Ginger (NW,
+   WT, SW) be the upstream jerk.
+
+ GINGER        FRED
+   ORQLK   ->    IRQLK  downstream wire
+   IRQLK   <-    ORQLK  upstream wire
+
+wait we only need two pins per side?  We could use
+the other pair for something else?
+
+When either side has a transition opportunity,
+that means "they have the lock", and they can
+delay making their transition, for a limited
+period of time, while they do an intertile event
+somehow.  Or initiate it, or something.
+
+That's a two-stroke story, rather than saying,
+"when either side has a 0->1 transition
+opportunity", which would be a four-stroke story.
+
+[5:
+
+Thu Jan  6 04:02:38 2022 (We could use the other
+pair as a redundant circuit.  Switch both pairs in
+unison, and use that as a sanity check on the
+input side.  Might be better to keep them out of
+phase rather than in unison, actually, for
+detecting live connections.
+
+I think that might be a good idea, even just for
+debouncing/settling reasons.)
+
+:5]
+:4]
+[6:
+
+Thu Jan  6 04:05:38 2022 We're thinking of NOT
+using interrupts on these lines, but just having a
+kernel thread, running at 100Hz or whatever, that
+samples the lines, and does whatever when it sees
+valid transitions.  Using the paired wires means
+we'll need to see two changes to move between
+valid states, which should cut down our metastable
+states a lot.  On invalid states we have some
+forgiveness counter that will let us go around a
+couple times waiting for a valid state before
+trashing the ITC.
+
+And I guess "when we hold the lock", one of the
+things we can do is send a reset packet, telling
+the far side that we closed them for whatever
+reason and now we need to set up again.  Whatever
+setting up again ends up meaning.
+
+All for now.  Not much, but well it's a start.
+
+:6]
+[9:
+
+Thu Jan  6 10:07:58 2022 So how might this (say,
+redundant paired line) mapping present to
+userspace?
+
+Well, main issue in all of this is:
+
+  HOW DOES 'REAL TIME' LOCKING INTERACT
+  WITH HEAVILY BUFFERED PACKET DELIVERY?
+
+Let's have some straw people perhaps.
+
+STORY 1: SINGLE EW PER ITC, NO PIPELINING
+
+  In this story we have one event window data
+  structure available for hidden centers, plus six
+  more -- one for each ITC.  We pick random
+  centers as in mfms, and see what ITCs, if any,
+  are involved.  Hidden EW runs immediately.
+
+  For all involved ITCs simultaneously, atomically
+  check-and-take their locks via [NEW LKM CALL].
+
+  End event if locks not taken; otherwise, we are
+  now stretching our lock transition on all
+  affected locks.
+
+  We run the EW, ship the results -- including the
+  event center, which we didn't (?) send ahead of
+  time -- and wait for an ack.  [COULD THE ACK BE
+  IN THE LOCKS INSTEAD OF THE PACKETS, USING A
+  FOUR-STROKE ENGINE?]
+
+[10:
+
+Thu Jan  6 10:24:44 2022
+
+         PRE   POST
+          UD    UD
+  EDGE 0: 00 -> 10  U
+  EDGE 1: 10 -> 11  D
+  EDGE 2: 11 -> 01  U
+  EDGE 3: 01 -> 00  D
+
+Up   has initiative 00 & 11
+Down has initiative 01 & 10
+
+On edge 0:
+  UP inits event, sends ew or explicit pass
+
+On edge 1:
+  DOWN waits for ew or explicit pass, and applies
+
+On edge 2:
+  DOWN inits event, sends ew or explicit pass
+
+On edge 3:
+  UP waits for ew or explicit pass, and applies
+
+[11:
+
+Thu Jan  6 10:51:15 2022 Things could go a lot
+faster if we did the 'explicit pass' via the
+second line, instead of waiting for a 'pass
+packet'.
+
+But that edge story can't be right because it has
+UDDU initiative when GRDO says UDUD.
+
+I feel like I'd rather define things in terms of
+the destination of the edge rather than the
+source?
+
+but then the cycle is 0 -> 2 -> 3 -> 1 -> 0?
+
+[13: Thu Jan  6 11:05:51 2022 Maybe ditch numbers  :13]
+
+           PRE   POST
+            UD    UD
+  EDGE USS: 00 -> 10  Up send start
+  EDGE DRF: 10 -> 11  Down recv finish
+  EDGE URS: 11 -> 01  Up recv start
+  EDGE DSF: 01 -> 00  Down send finish
+
+[14:
+
+Thu Jan  6 11:13:07 2022 So that approach breaks
+symmetry by switching send and recv on the phase
+pairs.  Which might be okay?
+
+How does U know when it can send start?
+
+It sees 'pass' on the second line, or has received
+a cache update end from the packet buffer?  (Or
+some kind of initialization condition that I
+surely don't understand yet.)
+
+When U knows it can send start, it waits for (up
+to) a brief period of time for userspace to
+initiate an event, or else it sets PASS.  Either
+way it advances the combined machine to DRF.
+
+         UP                            DOWN
+ USS   see PASS, send upd^PASS       wait for ITC timeout
+ DRF   wait for ITC timeout          see upd^PASS, send upd^PASS
+ URS   see upd|PASS, send PASS       wait for ITC timeout
+ DSF   wait for ITC timeout          see PASS, send PASS
+
+[16:
+
+Thu Jan  6 12:11:03 2022 That seems like a
+temporal isotropy violation though, as far as it
+goes.  U always goes first, with a roundtrip delay
+after D.
+
+[17:
+
+Thu Jan  6 15:35:16 2022 I guess one of my
+concerns is: If we've got to wait for packet
+buffers to flush anyway, how are we winning with
+the unbuffered GRDO timing?
+[18:
+
+Thu Jan  6 15:40:26 2022 I guess the answer is
+we're supposed to be winning by not having to do
+the lock races -- and by not taking any packet
+bandwidth to do the lock grabbing.
+
+
+
+:18]
+Also I keep wanting to let the tile run an EW
+prospectively, and just have to 'commit' /
+propagate it while in the appropriate GRDO state,
+but I think I need to fight that thinking, unless
+we have some way of knowing the far side can't
+change anything the EW sees as input.
+
+:17]
+
+:16]
+
+[15:
+
+Thu Jan  6 11:15:01 2022 What if instead of
+'passing' when there's no event going, the
+initiative side sends a few random atoms for
+redundancy instead?  Like a pass is equivalent to
+an event window that didn't change anything, using
+the random redundancy check stuff like mfms does.
+
+:15]
+
+:14]
+[12: Thu Jan  6 11:01:10 2022 This is just
+confusing I think.  Go back to UD instead.  :12]
+         PRE   POST
+          DU    DU
+  EDGE 0: 10 -> 00  D
+  EDGE 1: 00 -> 01  U
+  EDGE 3: 01 -> 11  D
+  EDGE 2: 11 -> 10  U
+
+it's grey code so we shouldn't expect binary
+counting either way we slice it.
+
+:11]
+
+:10]:9]
+[19:
+
+Thu Jan  6 15:59:11 2022 I'm tiring of going in
+circles at this level of vagueness.  Can we come
+up with a spike to help move towards a little bit
+of concreteness?
+
+ - I guess, let's try hacking itc.c in place.
+   First, let's strip it down to its
+   initialization and finalization code and see if
+   we can get that working.
+
+I guess maybe copy off to a dir-hold, so we can
+nuke pretty hard here..
+[20:
+
+Fri Jan  7 00:42:09 2022 Well it's a #if 0ed
+nightmare of a mess but it's building again.
+
+I think I go strip out the #if 0 stuff and look
+again before I even get close to trying this.
+[21:
+
+Fri Jan  7 00:50:23 2022 OK well, let's
+provisionally commit this to get it off the tile,
+then see what happens if we try to install it..
+[22:
+
+Fri Jan  7 01:09:37 2022 OK, committed and pushed
+itc.c, and backed up /home/t2 and /cdm/common.
+
+Let's see what happens if we install this
+  sucker..[23:
+
+Fri Jan  7 01:11:12 2022 Well, 'make install'
+didn't die.  But then, it didn't install the
+module either.  Here we go.[24:
+
+Fri Jan  7 01:11:51 2022 We're still.. alive?
+Seems like it.[25:
+
+Fri Jan  7 01:25:13 2022 Can we remove and reload
+it?
+
+Seems like maybe we can.
+[26:
+
+Fri Jan  7 02:36:18 2022 We could probably rename
+the pins if we really wanted to.. there's a bunch
+of hits across ~/T2-12, but mostly in macroed code
+or notes..
+
+If we did want to rename them, what names?
+
+IRQLK  ICLOCK    'upwire' on Ginger, 'downwire' on Fred
+ORQLK  OCLOCK    'downwire' on Ginger, 'upwire' on Fred
+IGRLK  IEVENT
+OGRLK  OEVENT
+
+[27:
+
+Fri Jan  7 03:46:01 2022 But I certainly don't
+want to rename them until I have more of a clue
+what I want their functions actually to be.
+
+:27]
+
+:26]
+
+:25]
+
+:24]
+
+:23]
+
+:22]
+
+:21]
+:20]
+
+:19]
+[28:
+
+Fri Jan  7 05:14:42 2022 Needs to hold the token
+long enough to be sure the other side sees your
+packet start so they don't think that you passed.
+
+Explicit pass.
+
+[29:
+
+
+Fri Jan  7 05:18:45 2022
+
+to reset, set a mandatoryPassesCount value > 0
+
+which is decremented when the token arrives, and a
+pass given until == 0.
+
+At == 0, you have participated in some count of
+cycles without a timeout, so you believe the other
+side is alive.
+
+what if the side bit follows the 1 state? whenever
+you're in state 1 you propagate the side bit
+(whether that means up or down or across depending
+on geometry).  Or whenever your loop input is 1
+you propagate your side input to your side
+output.  if your loop input is 0 you propagate
+your upper level decision to your side output
+[30:
+
+Fri Jan  7 06:17:10 2022 Really seems like you
+could have corner loops circulating among three
+tiles, and edge loops circulating between two
+tiles, all at once, in the available ITC pins.
+
+                      ||             |
+             T13     E##W   T10     E#
+                      ||             |
+                  SE  || SW      SE  |
+               ---##-----##------##---
+               |--##-----##--||--##---
+                  NW     NE  ||  NW
+                            E##W
+                  T11        ##      T12
+                             ||
+
+
+
+                      T11 NE O1 -> T10 SW I1:SE O1 -> T12 NW I1:WT O1 -> T11 ET I1:NE O1
+   T12 WT O2 -> T11 ET I2:NE O2 -> T10 SW I2:SE O2 -> T12 NW I2:WT 02
+
+   T11 NW O1 -> T13 SE I1:ET O1 -> T10 WT I1:SW O1 -> T11 NE I1:NW O1
+
+   T13 ET O2 -> T10 WT I2:SW O2 -> T11 NE I2:NW O2 -> T13 SE I2:ET 02
+
+[31:
+
+Fri Jan  7 06:46:57 2022 So it seems like
+'clockwise around each tile corner', plus
+'pairwise across each tile edge', would take at
+most three pairs? So we could 'know immediately'
+if we could have a corner event, 'like
+atomically'.
+
+If we hold the relevant corner button, we just go
+ahead and run the event, and ship the packets off
+to both destinations, and pass the button.
+
+I still don't see how we can 'accept' the button
+until we see some cache end on the packet line.
+And in the corner case we're obviously and
+explicitly imposing a rotational anisotropy, which
+once upon a time we'd never have dreamed of
+accepting.
+
+Unless there was some way of having the token
+switch tracks randomly.  Or reverse direction or
+something, though that starts to feel like a
+random walk, which has its own colors.
+
+:31]
+
+:30]
+
+:29]
+
+:28]
+[32:
+
+Fri Jan  7 13:33:39 2022 Still pushing on the
+three-tile corner loop possibility.  Can we name
+them wrt the direction to the corner they rotate
+around?
+
+CW - Clockwise Corner (around the tile from the ITC)
+AC - Anticlockwise Corner ( ditto )
+
+ET_CW_O - East Clockwise Corner Output
+WT_AC_I - West Anticlockwise Corner Input
+
+ET_EG_O - East Edge Output
+WT_EG_I - West Edge Input
+
+ET_CW_O -> WT_AC_I   ORQLK -> IRQLK
+ET_AC_I <- WT_CW_O   IRQLK <- ORQLK
+ET_EG_O -> WT_EG_I   OGRLK -> IGRLK
+ET_EG_I <- WT_EG_O   IGRLK <- OGRLK
+
+NE_CW_O -> SW_AC_I   ORQLK -> IRQLK
+NE_AC_I <- SW_CW_O   IRQLK <- ORQLK
+NE_EG_O -> SW_EG_I   OGRLK -> IGRLK
+NE_EG_I <- SW_EG_O   IGRLK <- OGRLK
+
+NW_CW_O -> SE_AC_I   ORQLK -> IRQLK
+NW_AC_I <- SE_CW_O   IRQLK <- ORQLK
+NW_EG_O -> SE_EG_I   OGRLK -> IGRLK
+NW_EG_I <- SE_EG_O   IGRLK <- OGRLK
+
+WT_CW_O -> ET_AC_I   ORQLK -> IRQLK
+WT_AC_I <- ET_CW_O   IRQLK <- ORQLK
+WT_EG_O -> ET_EG_I   OGRLK -> IGRLK
+WT_EG_I <- ET_EG_O   IGRLK <- OGRLK
+
+SW_CW_O -> NE_AC_I   ORQLK -> IRQLK
+SW_AC_I <- NE_CW_O   IRQLK <- ORQLK
+SW_EG_O -> NE_EG_I   OGRLK -> IGRLK
+SW_EG_I <- NE_EG_O   IGRLK <- OGRLK
+
+SE_CW_O -> NW_AC_I   ORQLK -> IRQLK
+SE_AC_I <- NW_CW_O   IRQLK <- ORQLK
+SE_EG_O -> NW_EG_I   OGRLK -> IGRLK
+SE_EG_I <- NW_EG_O   IGRLK <- OGRLK
+
+[33:
+
+Fri Jan  7 16:57:50 2022 So that all looks pretty
+plausible, really.  Hunh.
+[34:
+
+Fri Jan  7 17:06:08 2022 So it's confusing because
+ALL circuits go clockwise, but the clock
+directions in the naming use both CW and AC
+because they're about the position of the corner
+and not the direction of the rotation.
+
+We also have the question of "Who's The Jerk?"
+with respect to each of these circuits.  In the
+pairwise edge cases (_EG_) we can say "Ginger is
+the jerk" and be done, but in the corner cases?
+
+The most anticlockwise Ginger?  Let's take a look.
+
+FRED (NE, ET, SE)   GINGER (NW, WT, SW)
+
+FR         GN      GN         FR      GN         FR      FR
+ET_CW_O -> WT_AC_I:SW_CW_O -> NE_AC_I:NW_CW_O -> SE_AC_I:ET_CW_O
+
+The most anticlockwise Ginger OUTPUT there (among
+SW, NW) is SW 
+
+Does that help?  Need more cases.
+
+GN         FR      FR         GN      FR         GN
+WT_CW_O -> ET_AC_I:NE_CW_O -> SW_AC_I:SE_CW_O -> NW_AC_I:WT_CW_O
+
+The most (only) anticlockwise Ginger OUTPUT there
+is WT.
+
+[35:
+
+Fri Jan  7 22:24:35 2022 Um. Are those the only
+two three-tile loops?
+
+That's six _I's and six _O's per tile.
+
+Plus another six _I's and six _O's for the
+two-tile loops.. That's 24 _I's and _O's per
+tile.. Which is all we have..
+
+Could we say like ET_CW_O and WT_CW_O are the
+three-tile jerks? And Ginger _O is always the
+two-tile jerk?
+
+[36:
+
+Sat Jan  8 02:07:35 2022 OK, so, how can we take
+this to a spike?  Still don't know if or how this
+can all be made to work with cache updates, but it
+seems close enough to workable on its GDRO own
+that we have to see something like it running.
+
+ - Reconsider 3Loop naming schemes given there's
+   so few of them
+
+ - Pound out the mapping to existing names
+
+ - Make some little struct for each loop, with
+   source pin and dest pin and stuff to be added
+   later like a skip count.
+
+ - Actually, make the source and dest pins be in a
+   macro, and expand them into some little
+   compile-time const array.  Include a JERK_P
+   bool.
+
+ - Get a kernel thread going
+
+ - Have an update routine that iterates over the
+   loops, advancing each one
+
+ - See it doing something with printk's.  Counting
+   100s of cycles or something.
+
+:36]
+
+:35]
+
+:34]
+
+:33]
+
+:32]
+[37:
+
+Sat Jan  8 02:19:51 2022 Let's go for the macro.
+
+:37]
+[38:
+
+Sat Jan  8 15:13:23 2022 Committing and moving the flag.
+
+:38]
