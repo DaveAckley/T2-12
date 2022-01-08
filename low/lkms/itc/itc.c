@@ -22,10 +22,19 @@
 #define  DEVICE_NAME1 "itc!lockevents"  ///< The device will appear at /dev/itc/lockevents
 #define  CLASS_NAME  "itccls"     ///< The device class -- this is a character device driver
 
-bool isActiveWithin(ITCInfo * itc, int jiffyCount)
-{
-  return time_after(itc->lastActive + jiffyCount, jiffies);
-}
+///// GDRO TABLES
+
+#define XX(NM,JK,IITC,OITC,IOPIN) { #NM, JK, DIR6_##IITC, PIN_I##IOPIN, DIR6_##OITC, PIN_O##IOPIN },
+static const GDRODriverInfo gdroDriverInfo[GDRO_COUNT] = {
+ GDRODRIVERMACRO()
+};
+#undef XX
+
+#define XX(NM,JK,IITC,OITC,IOPIN) { GDRO_##NM, 5, 0, 0, 0 },
+static GDRODriverState gdroDriverState[GDRO_COUNT] = {
+ GDRODRIVERMACRO()
+};
+#undef XX
 
 #define XX(DC,fr,p1,p2,p3,p4) {  	                           \
     { p1, GPIOF_IN|GPIOF_EXPORT_DIR_FIXED,          #DC "_IRQLK"}, \
@@ -34,6 +43,39 @@ bool isActiveWithin(ITCInfo * itc, int jiffyCount)
     { p4, GPIOF_OUT_INIT_LOW|GPIOF_EXPORT_DIR_FIXED,#DC "_OGRLK"}, },
 static struct gpio pins[DIR6_COUNT][4] = { DIRDATAMACRO() };
 #undef XX
+
+static void update_gdro(GDRODriverState * gs) {
+  const GDRODriverInfo * gd = &gdroDriverInfo[gs->gdroNumber];
+  struct gpio * ipin = &pins[gd->inITC][gd->inPin];
+  struct gpio * opin = &pins[gd->outITC][gd->outPin];
+  const bool isjerk = gd->isJerk;
+  bool ivalue = gpio_get_value(ipin->gpio) > 0;
+  if (isjerk) ivalue = !ivalue;
+  if (ivalue != gs->output) {
+    if (gs->skipCount == 0) {
+      gs->skipCount = 100;
+      printk("UPDATE_GDRO(%s,%d)\n",gd->driverName,gs->output);
+    } else --gs->skipCount;
+    gs->lastEdge = jiffies;
+    gs->output = ivalue;
+  }
+  gpio_set_value(opin->gpio,gs->output ? 1 : 0);
+}
+
+static void update_gdros(void) {
+  static int i = 0;
+  if (i++ % 1000 == 0) printk(KERN_INFO "UPDATE_GDROS %d\n", i);
+  {
+    unsigned d;
+    for (d = 0; d < GDRO_COUNT; ++d)
+      update_gdro(&gdroDriverState[d]);
+  }
+}
+
+bool isActiveWithin(ITCInfo * itc, int jiffyCount)
+{
+  return time_after(itc->lastActive + jiffyCount, jiffies);
+}
 
 static ITCModuleState S = {
   .moduleLastActive = 0,
@@ -378,7 +420,7 @@ ITCState entryFunction_sFAILED(ITCInfo * itc,unsigned stateInput) {
 }
 
 static int itcThreadRunner(void *arg) {
-  const int jiffyTimeout = HZ/10;
+  const int jiffyTimeout = HZ/25; //==10 on CONFIG_HZ=250
 
   ITCIterator idxItr;
   itcIteratorInitialize(&idxItr,5000); // init with rare shuffling
@@ -387,6 +429,7 @@ static int itcThreadRunner(void *arg) {
   set_current_state(TASK_RUNNING);
   while(!kthread_should_stop()) {    // Returns true when kthread_stop() is called
 
+#if 0
     if (S.userRequestActive && time_before(S.userRequestTime + jiffyTimeout/10, jiffies)) {
       ADD_LOCK_EVENT_IRQ(makeSpecLockEvent(LET_SPEC_URTO)); /*timeout*/
 #ifdef REPORT_LOCK_STATE_CHANGES
@@ -398,7 +441,9 @@ static int itcThreadRunner(void *arg) {
       printk(KERN_INFO "ITR CLR USREQ mShiftDistance=(%d)\n",S.mLockEventState.mShiftDistance);
       userRequestDone(-ETIME);
    }
+#endif    
 
+    update_gdros();
     make_reports();
     set_current_state(TASK_INTERRUPTIBLE);
     schedule_timeout(jiffyTimeout/2);   /* in TASK_RUNNING again upon return */
@@ -896,7 +941,7 @@ module_exit(itc_exit);
 
 MODULE_LICENSE("GPL");            ///< All MFM code is LGPL or GPL licensed
 MODULE_AUTHOR("Dave Ackley");     ///< Email: ackley@livingcomputation.com
-MODULE_DESCRIPTION("T2 intertile lock manager");  ///< modinfo description
+MODULE_DESCRIPTION("T2 intertile GDRO shared clock");  ///< modinfo description
 MODULE_VERSION("3.0");            ///< 3.0 202201070049 strip down for possible GRDO dynamics
 //MODULE_VERSION("2.0");            ///< 2.0 201909211534 first cut at sGIVEN-uFREE->sRELEASE
 //MODULE_VERSION("1.1");            ///< 1.1 201907260159 statistics, extended write status

@@ -23,6 +23,7 @@
 #endif /* NO_LINUX_HEADERS */
 
 #include "dirdatamacro.h"          /* Get itc pin info and basic enums */ 
+#include "gdrodrivermacro.h"       /* Get GDRO mappings */ 
 #include "itclockevent.h"          /* Get lock event struct */
 #include "itc_iterator.h"          /* Get randomized itc iteratros */
 #include "ruleset.h"               /* Get rule macros and constants, LockSettlements */
@@ -32,6 +33,28 @@ typedef unsigned long ITCCounter;
 typedef unsigned char ITCState;
 typedef unsigned int BitValue;
 typedef int IRQNumber;
+
+typedef unsigned char Dir6;
+typedef unsigned char ITCPin;
+typedef unsigned char GDRONumber;
+
+////////GDRO INFO STRUCT
+typedef struct gdrodriverinfo {
+  const char * driverName;
+  const bool isJerk;
+  const Dir6 inITC;
+  const ITCPin inPin;
+  const Dir6 outITC;
+  const ITCPin outPin;
+} GDRODriverInfo;
+
+typedef struct gdrodriverstate {
+  const GDRONumber gdroNumber;
+  unsigned char skipCount;
+  bool ringing;
+  bool output;
+  JiffyUnit lastEdge;
+} GDRODriverState;
 
 /////////TRACING SUPPORT
 
