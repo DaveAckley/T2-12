@@ -334,7 +334,7 @@ sub GetLegalHandle {
 }
 
 my %unrevokedRegnumHandles = (
-    0 => "t2-keymaster-release-10"
+    0 => "gold-keymaster-release-10"
     );
 
 # Return list of valid/unrevoked regnums
