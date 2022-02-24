@@ -37,7 +37,7 @@ sub updateBaseDir {
 }
 updateBaseDir("/cdm");
 
-my $CDM_INTERNAL_HANDLE = "gold-keymaster-release-10";
+my $CDM_INTERNAL_HANDLE = "t2-keymaster-release-10";
 my $CDM_INTERNAL_REGNUM = "0";
 my $DELETEDS_MFZ_NAME = undef; # DELETE ME
 my $MFZRUN_PROGRAM = "/home/t2/MFM/bin/mfzrun";
