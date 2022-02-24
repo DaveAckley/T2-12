@@ -33,7 +33,7 @@ TAR_SWITCHES+=--exclude=--exclude=*~ --exclude=.git --exclude-backups
 TAR_SWITCHES+=--mtime="2008-01-02 12:34:56"
 TAR_SWITCHES+=--owner=0 --group=0 --numeric-owner 
 
-REGNUM:=0
+REGNUM:=1
 SLOTNUM:=08
 DESTDIR:=$(abspath ..)
 TAG_PATH:=$(DESTDIR)/slot$(SLOTNUM)-install-tag.dat

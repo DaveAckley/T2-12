@@ -135,7 +135,8 @@ sub seekVerificationInfoForPath {
     }
     my $handle = $1;
 
-    if ($handle ne "gold-keymaster-release-10") { # Note that mfzrun verifies handle against local pubkeys
+    if ($handle ne "t2-keymaster-release-10" &&
+        $handle ne "gold-keymaster-release-10") { # Note that mfzrun verifies handle against local pubkeys
         return DPSTD("Handle '$handle' of $mfzpath is unappealing");
     }
 
