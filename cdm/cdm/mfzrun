@@ -198,8 +198,8 @@ sub GetLegalRegnum {
     UDie("Illegal regnum $num")
         unless $regnum >= 0 && $regnum < (1<<16);
     my @regnumHandles = (
-        "t2-keymaster-release-10",  # 0
-        "gold-keymaster-release-10" # 1
+        "t2-keymaster-release-10",    # 0
+        "gold-keymaster-release-10"   # 1
         );
     my $handle = $regnumHandles[$num];
     UDie("Invalid regnum $num")
