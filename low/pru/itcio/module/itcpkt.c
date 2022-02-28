@@ -2943,11 +2943,20 @@ static struct rpmsg_driver itc_pkt_driver = {
   .remove	= itc_pkt_remove,
 };
 
+extern int itcgdro_init(void) ;
+
 static int __init itc_pkt_init (void)
 {
   int ret;
 
   printk(KERN_INFO "ZORG itc_pkt_init\n");
+
+  ///PRELIMINARY: INIT GDRO SUBSYSTEM
+  ret = itcgdro_init();
+  if (ret) {
+    pr_err("Failed to init gdro subsystem\n");
+    goto fail_gdro_init;
+  }
 
   initITCModuleState(&S);
 
@@ -2989,9 +2998,11 @@ static int __init itc_pkt_init (void)
  fail_alloc_chrdev_region:
   class_unregister(&itc_pkt_class_instance);
  fail_class_register:
+ fail_gdro_init:
   return ret;
 }
 
+extern void itcgdro_exit(void) ;
 
 static void __exit itc_pkt_exit (void)
 {
@@ -2999,6 +3010,7 @@ static void __exit itc_pkt_exit (void)
   class_unregister(&itc_pkt_class_instance);
   unregister_chrdev_region(S.mMajorDevt,
                            MINOR_DEVICES);
+  itcgdro_exit();
 }
 
 module_init(itc_pkt_init);
@@ -3006,9 +3018,10 @@ module_exit(itc_pkt_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Dave Ackley <ackley@ackleyshack.com>");
-MODULE_DESCRIPTION("T2 intertile packet communications subsystem");  ///< modinfo description
+MODULE_DESCRIPTION("T2 intertile packet communications and event sequencing subsystem");  ///< modinfo description
 
-MODULE_VERSION("0.9");            ///< 0.9 for /sys/class/itc_pkt/dump etc
+MODULE_VERSION("2.0");            ///< 2.0 for gdro integration
+/// 0.9 for /sys/class/itc_pkt/dump etc
 /// 0.8 for /dev/itc/itcevents
 /// 0.7 for KITCs
 /// 0.6 for /dev/itc/pktevents
