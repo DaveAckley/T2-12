@@ -1,4 +1,74 @@
-{39}  -*-  mode: text; fill-column: 50;  -*-
+{55}  -*-  mode: text; fill-column: 50;  -*-
+[48:
+
+Mon Feb 28 02:38:24 2022 OK, so, we have a first
+untested cut and combining the lkms "lock"/gdro
+code together with the itc_pkt code. We need to
+commit and push it somewhere before even dreaming
+of trying to install it.
+
+Actually, TODO:
+
+ - Review how the lkms module gets loaded at boot
+
+ - Figure out how to defeat that
+
+ - Do that
+
+ - Commit and push everything
+
+ - Back up whole /home/t2 somewhere for good
+   measure
+
+ - Come back here for further instructions.
+
+
+:48]
+[39:
+
+Sun Feb 27 09:54:58 2022 OK dammit I would like
+one specific thing to be accomplished today:
+
+TODO
+
+ - Merge the lock pins handling code from
+     T2-12/low/lkms/itc into 
+     T2-12/low/pru/itcio/module
+
+and that is all. 
+
+How to do that?
+
+ - Examine structure of lkms/itc code
+
+[41: Sun Feb 27 15:38:22 2022 Build failures due
+to duplicate init_module etc stuff, but otherwise
+DONE  :41] - Copy-with-rename relevant code into pru/itcio
+
+[44: Mon Feb 28 00:58:01 2022
+DONE :44] - Get it to build, utterly unused, over there
+
+[45: Mon Feb 28 01:00:04 2022 Idea would be to
+call gdro init from itc_pkt_init and call gdro
+exit from itc_pkt_exit, right? Also need to modify
+build/deploy stuff to not [46: Mon Feb 28 02:21:32
+2022 Uh oh, that's now actually implemented and
+built. Not installed or tested though. But still,
+DONE :46]:45] - Consider possible ways to integrate but do not
+   actually do so.
+
+[47: Mon Feb 28 02:22:18 2022
+DONE :47] - Come back and claim victory here.
+
+[40:
+
+Sun Feb 27 09:59:59 2022
+
+Comparing lkms/itc/Makefile and
+pru/itcio/module/Makefile
+
+:40]
+:39]
 [0:
 
 Thu Jan  6 02:10:48 2022 OK, so part of our goal
@@ -622,3 +692,118 @@ Sat Jan  8 02:19:51 2022 Let's go for the macro.
 Sat Jan  8 15:13:23 2022 Committing and moving the flag.
 
 :38]
+[42:
+
+Sun Feb 27 15:39:54 2022 Dupes:
+
+init_module
+cleanup_module
+class_attr_statistics
+class_attr_shift
+class_attr_trace_start_time
+class_attr_status
+
+[43:
+
+Mon Feb 28 00:57:15 2022 OK, all 'fixed',
+apparently, by adding 'gdro_' prefix mostly.
+
+:43]
+
+:42]
+[49:
+
+Mon Feb 28 04:22:05 2022 OK, I see
+
+    # modules required by the T2-12 tile
+    itc
+    itc_pkt
+
+in /etc/modules-load.d/t2_12_modules.conf
+
+being made in part by
+
+ ..
+    ETC_MODULES_FILE:=/etc/modules-load.d/t2_12_modules.conf
+ ..
+    install_files:	all
+            make INSTALL_MOD_DIR=itc -C $(MODULES_BUILD_DIR) M=$(CURDIR) modules_install
+            @test -f $(ETC_MODULES_FILE) || \
+              echo "# modules required by the T2-12 tile" > $(ETC_MODULES_FILE)
+            grep itc $(ETC_MODULES_FILE) || echo itc >> $(ETC_MODULES_FILE)
+            depmod
+
+in ~/T2-12/low/lkms/itc/Makefile
+
+[50:
+
+Mon Feb 28 04:28:22 2022 So we don't want to build
+anything in T2-12/low/lkms, I think. Not itc, not
+fbtft, not t2lock. Does t2lock even get made at
+the moment? I don't immediately see how we avoid
+it. [51:
+
+Mon Feb 28 04:30:33 2022 It is getting made but
+not doing anything:
+
+ ..
+    root@beaglebone:/home/t2/T2-12/low/lkms# make
+    make -C t2lock 
+    make[1]: Entering directory '/home/t2/T2-12/low/lkms/t2lock'
+    make[1]: Nothing to be done for 'all'.
+    make[1]: Leaving directory '/home/t2/T2-12/low/lkms/t2lock'
+    make -C fbtft 
+    echo NOT MAKING make -C drivers/staging/fbtft -f Makefile-T2 all
+    NOT MAKING make -C drivers/staging/fbtft -f Makefile-T2 all
+ ..
+
+So can we just default lkms/Makefile completely?
+[52:
+
+Mon Feb 28 04:33:00 2022 OK, now we have like:
+
+    root@beaglebone:/home/t2/T2-12/low/lkms# make
+    NOT RUNNING make -C t2lock  BECAUSE WE DO NOT USE IT RIGHT
+    NOT RUNNING make -C fbtft  BECAUSE WE DO NOT USE IT RIGHT
+    NOT RUNNING make -C itc  BECAUSE WE DO NOT USE IT RIGHT
+    root@beaglebone:/home/t2/T2-12/low/lkms# make install
+    NOT RUNNING make -C t2lock install BECAUSE WE DO NOT USE IT RIGHT
+    NOT RUNNING make -C fbtft install BECAUSE WE DO NOT USE IT RIGHT
+    NOT RUNNING make -C itc install BECAUSE WE DO NOT USE IT RIGHT
+    root@beaglebone:/home/t2/T2-12/low/lkms# 
+
+So that ought to kill lkms/itc generation.
+
+Then we cut the 'itc' line out of
+/etc/modules-load.d/t2_12_modules.conf , aaand
+what else?[53:
+
+Mon Feb 28 04:35:28 2022 Now have /etc/modules-load.d/t2_12_modules.conf :
+
+    # modules required by the T2-12 tile
+    itc_pkt
+
+Do we need to delete itc.ko from somewhere? Where
+does it actually install to? Feel like nuking it
+with it currently installed though might be a poor
+choice.
+[54:
+
+Mon Feb 28 04:37:43 2022 I think it may end up in
+
+/lib/modules/4.19.79-ti-r30/itc/itc.ko.xz
+
+but I'm not going to touch it, there.
+
+I think we need to commit this stuff.
+
+:54]
+
+:53]
+
+:52]
+:51]
+
+:50]
+
+:49]
