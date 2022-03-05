@@ -1,5 +1,7 @@
 #!/usr/bin/perl -w
 
+$| = 1; # Autoflush (we sleep in loops)
+
 # Load physics config or hang waiting for it.
 my $CONFIG_FILE = '/home/t2/CONFIG-T2/04/CONFIG-PHYSICS.dat';
 
