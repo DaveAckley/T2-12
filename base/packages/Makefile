@@ -90,11 +90,15 @@ REMOVE_PACKAGES+=libbluray2
 
 UNHOLD_PACKAGES+=c9-core-installer
 
+KILL_DIRS_SILENTLY+=/var/lib/cloud9
+KILL_DIRS_SILENTLY+=/usr/share/ti/cgt-c6x
+
 build:	FORCE
 	@echo "PACKAGES: $(PACKAGES)"
 	@echo "NOTE: Not doing 'apt-get update' -- do it yourself if you dare"
 
 install:	build preremove
+	@rm -rf $(KILL_DIRS_SILENTLY)
 	@if [ -f $(FLAG_FILE) ] ; then \
 	  echo "NOTE: '$(FLAG_FILE)' detected; installation skipped" ; \
 	else \
