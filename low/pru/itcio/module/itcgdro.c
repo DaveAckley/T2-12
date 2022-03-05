@@ -45,16 +45,23 @@ static struct gpio pins[DIR6_COUNT][4] = { DIRDATAMACRO() };
 #undef XX
 
 static void update_gdro(GDRODriverState * gs) {
+
   const GDRODriverInfo * gd = &gdroDriverInfo[gs->gdroNumber];
   struct gpio * ipin = &pins[gd->inITC][gd->inPin];
   struct gpio * opin = &pins[gd->outITC][gd->outPin];
   const bool isjerk = gd->isJerk;
   bool ivalue = gpio_get_value(ipin->gpio) > 0;
+  
+  static unsigned int updateCount = 0;
+  if ((++updateCount % 1234) == 0) {
+    printk(KERN_INFO "UPDATE_GDRO/1234 %d\n",updateCount/1234);
+  }
+
   if (isjerk) ivalue = !ivalue;
   if (ivalue != gs->output) {
     if (gs->skipCount == 0) {
       gs->skipCount = 100;
-      printk("UPDATE_GDRO(%s,%d)\n",gd->driverName,gs->output);
+      printk(KERN_INFO "UPDATE_GDRO(%s,%d)\n",gd->driverName,gs->output);
     } else --gs->skipCount;
     gs->lastEdge = jiffies;
     gs->output = ivalue;
@@ -62,9 +69,31 @@ static void update_gdro(GDRODriverState * gs) {
   gpio_set_value(opin->gpio,gs->output ? 1 : 0);
 }
 
+static void print_gdro(GDRODriverState * gs) {
+  const GDRODriverInfo * gd = &gdroDriverInfo[gs->gdroNumber];
+  struct gpio * ipin = &pins[gd->inITC][gd->inPin];
+  struct gpio * opin = &pins[gd->outITC][gd->outPin];
+  const bool isjerk = gd->isJerk;
+  bool ivalue = gpio_get_value(ipin->gpio) > 0;
+  printk(KERN_INFO "GDRO[%s=%d] (ip=%s,op=%s,ij=%d,iv=%d,op=%d,le=%ld,rg=%d,sc=%d)\n",
+         gd->driverName,
+         gs->gdroNumber,
+         ipin->label,
+         opin->label,
+         isjerk,
+         ivalue,
+         gs->output,
+         gs->lastEdge,
+         gs->ringing,
+         gs->skipCount);
+}
+
 static void update_gdros(void) {
   static int i = 0;
-  if (i++ % 1000 == 0) printk(KERN_INFO "UPDATE_GDROS %d\n", i);
+  if (i++ % 1000 == 0) {
+    printk(KERN_INFO "UPDATE_GDROS %d\n", i);
+    print_gdro(&gdroDriverState[5/*==NW2 (i/1000)%GDRO_COUNT*/]);
+  }
   {
     unsigned d;
     for (d = 0; d < GDRO_COUNT; ++d)
@@ -649,8 +678,15 @@ static ssize_t gdro_status_show(struct class *c,
 			   struct class_attribute *attr,
 			   char *buf)
 {
-  sprintf(buf,"ZONGSTATUS_SHOW\n");
-  return strlen(buf);
+  unsigned i;
+  char * p = buf;
+  for (i = 0; i < GDRO_COUNT; ++i) {
+    const GDRODriverState * gds = &gdroDriverState[i];
+    if (gds->ringing) *p++ = gds->output ? '1' : '0';
+    else *p++ = '2';
+  }
+  *p = 0;
+  return p - buf;
 }
 CLASS_ATTR_RO(gdro_status);
 

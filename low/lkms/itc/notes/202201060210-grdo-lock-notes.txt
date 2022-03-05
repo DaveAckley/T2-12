@@ -1,4 +1,4 @@
-{55}  -*-  mode: text; fill-column: 50;  -*-
+{76}  -*-  mode: text; fill-column: 50;  -*-
 [48:
 
 Mon Feb 28 02:38:24 2022 OK, so, we have a first
@@ -9,18 +9,18 @@ of trying to install it.
 
 Actually, TODO:
 
- - Review how the lkms module gets loaded at boot
+[61: DONE  :61] - Review how the lkms module gets loaded at boot
 
- - Figure out how to defeat that
+[62: DONE  :62] - Figure out how to defeat that
 
- - Do that
+[63: DONE  :63] - Do that
 
- - Commit and push everything
+[64: DONE  :64] - Commit and push everything
 
- - Back up whole /home/t2 somewhere for good
+[65: DONE  :65] - Back up whole /home/t2 somewhere for good
    measure
 
- - Come back here for further instructions.
+[66: DONE  :66] - Come back here for further instructions.
 
 
 :48]
@@ -31,7 +31,7 @@ one specific thing to be accomplished today:
 
 TODO
 
- - Merge the lock pins handling code from
+[67: DONE  :67] - Merge the lock pins handling code from
      T2-12/low/lkms/itc into 
      T2-12/low/pru/itcio/module
 
@@ -39,7 +39,7 @@ and that is all.
 
 How to do that?
 
- - Examine structure of lkms/itc code
+[68: DONE  :68] - Examine structure of lkms/itc code
 
 [41: Sun Feb 27 15:38:22 2022 Build failures due
 to duplicate init_module etc stuff, but otherwise
@@ -795,7 +795,85 @@ Mon Feb 28 04:37:43 2022 I think it may end up in
 
 but I'm not going to touch it, there.
 
-I think we need to commit this stuff.
+I think we need to commit this stuff.[55:
+
+Mon Feb 28 14:25:37 2022 Well okay, all this stuff
+is committed and pushed..
+
+Do we dare try a make install, and a reboot?
+[56:
+
+Mon Feb 28 16:33:55 2022 Well, trying make
+  install.[57:
+
+Mon Feb 28 16:36:11 2022 Well, not dead
+yet.. Let's remember to copy off /home/t2 though,
+here.. OK, make install finished. But have not yet
+rebooted..
+[58:
+
+Mon Feb 28 16:47:15 2022 OK, copied all of
+/home/t2 off to
+/data/ackley/GOLD-KEYMASTER-T2-BACKUP.
+
+Time to reboot.
+[59:
+
+Mon Feb 28 16:51:14 2022 We're still alive! And we
+even appear to have gotten the vestigial gdro
+stuff going:
+
+    root@beaglebone:~# lsmod | grep itc
+    itc_pkt               122880  16
+    root@beaglebone:~# 
+
+..no 'itc' module there.
+
+    root@beaglebone:~# ls /sys/class/itc
+     gdro_shift	   gdro_status		  'itc!lockevents'
+     gdro_statistics   gdro_trace_start_time  'itc!locks'
+    root@beaglebone:~# 
+
+yet we have 'gdro-ified' sysfs entries in
+/sys/class/itc
+
+ ..
+    Feb 28 16:52:46 beaglebone kernel: [  266.417080] UPDATE_GDROS 10001
+    Feb 28 16:53:10 beaglebone kernel: [  290.446086] UPDATE_GDROS 11001
+ ..
+
+and the gdros loop appears to be running.
+
+Well then. Could be worse!
+[60:
+
+Mon Feb 28 17:13:16 2022 So did we claim all our to-do?
+[69:
+
+Mon Feb 28 17:15:08 2022 Well now we did. Don't
+really have time to get further into stuff, but
+for after #3117, some more TODO
+
+ - Research how LKM can signal userspace (that an
+   intertile ew is available)
+
+ - Create a device to read current ITEW status
+
+ - Demo such signaling: Have mfmt2 log ITEW
+   opportunities (but not use any of them).
+
+ - Come back here and claim victory.
+
+:69]
+:60]
+
+:59]
+:58]
+:57]
+
+:56]
+
+:55]
 
 :54]
 
@@ -807,3 +885,90 @@ I think we need to commit this stuff.
 :50]
 
 :49]
+[70:
+
+Fri Mar  4 00:58:18 2022 OK, we're well past
+#3117, and it's time to up the investment
+significantly here.
+
+So last night we had the c/$ idea about explicitly
+trying to implement 'digital phase lock loops'
+using the GDRO pins. Like, self-tuning timer
+delays so that we tend to wake up just after an
+edge has gotten to us. Now, exactly how we do that
+without using GPIO interrupts too seems a little
+challenging -- or at least one-sided and slow.
+
+But we could use level interrupts rather than edge
+interrupts, if we wanted, and switch the sense
+in the handler.
+
+[71:
+
+Fri Mar  4 01:10:03 2022 Anyway, that's one
+dimension of thinking. On the specific to-dos from
+monday, we did see some signaling examples --
+kernel -> userspace signals need to get a pid
+somehow, and send the signal to the pid.
+[72:
+
+Fri Mar  4 01:58:17 2022 Also from last night. The
+prompt was: HOW TO FAIL UPWARDS?
+
+and one long line of thought was a new method like
+
+ Void UrSelf.realityChange(Bits(41) prev, Bits(41) curr) ;
+
+or something, that the engine would call to notify
+atoms that the liveness status of sites they can
+see has changed.
+
+And that was (somehow) going to go with turning
+other kinds of failure (like packet drops) into
+(temporary) site deadness.
+
+
+
+:72]
+:71]
+
+:70]
+[73:
+
+Fri Mar  4 13:42:23 2022 Let's try to create a
+device to read gdro status. Just to have something
+to get us going here.
+
+There are six 2-rings and six 3-rings, is that
+right? At a minimum, we'd want to know if each is
+ringing, and if so, what its state is. That's 24
+bits if we wanted to pack them.
+
+Let's just be minimal to start. Get something
+working. So we probably ought to be talking /sys
+rather than /dev, right?
+
+Like, say, /sys/class/itc/gdro_status , which
+already exists?[74:
+
+Fri Mar  4 14:50:05 2022 OK, we have gdronumber,
+so let's do bit pairs 0..11 taking 24 bits?
+
+Buut we're supposed to use ASCII for sysfs. So 12
+bytes,
+ 0 not ringing
+ 1 ringing, value 1
+ 2 ringing, value 0
+[75:
+
+Fri Mar  4 15:01:37 2022 Went with
+
+  0 ringing, value 0
+  1 ringing, value 1
+  2 not ringing
+
+:75]
+
+:74]
+
+:73]

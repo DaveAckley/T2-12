@@ -2951,8 +2951,14 @@ static int __init itc_pkt_init (void)
 
   printk(KERN_INFO "ZORG itc_pkt_init\n");
 
+#if 1
   ///PRELIMINARY: INIT GDRO SUBSYSTEM
+  printk(KERN_INFO "GDRO_init DISH\n");
   ret = itcgdro_init();
+#else
+  ret = 0;
+#endif
+
   if (ret) {
     pr_err("Failed to init gdro subsystem\n");
     goto fail_gdro_init;
@@ -3010,7 +3016,11 @@ static void __exit itc_pkt_exit (void)
   class_unregister(&itc_pkt_class_instance);
   unregister_chrdev_region(S.mMajorDevt,
                            MINOR_DEVICES);
+
+#if 1
+  printk(KERN_INFO "GDRO_exit DISH\n");
   itcgdro_exit();
+#endif
 }
 
 module_init(itc_pkt_init);
