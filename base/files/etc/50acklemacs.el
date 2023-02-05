@@ -14,6 +14,10 @@
 
 (setq text-mode-hook '(lambda () (auto-fill-mode 1))) ; fill text files by default
 
+;;; Don't copy minibuffer font info to shell prompts gah
+(load "comint.el")  ;; Need comint in before vv can work?
+(set-face-attribute 'comint-highlight-prompt nil :inherit nil)
+
 
 ;;;;;;;
 ;;; dired-sort-map.el --- in Dired: press s then s, x, t or n to sort by Size, eXtension, Time or Name
