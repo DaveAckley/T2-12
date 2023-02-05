@@ -4,26 +4,34 @@ $| = 1; # Autoflush (we sleep in loops)
 
 # Load physics config or hang waiting for it.
 my $CONFIG_FILE = '/home/t2/CONFIG-T2/04/CONFIG-PHYSICS.dat';
+my $MFM_SLOT = "03";
+my $MFM_TAG_FILE = "/cdm/tags/slot$MFM_SLOT-install-tag.dat";
 
-sub oneTry {
+sub readFile {
+    my $file = shift;
     my $wait = 0;
-    while (!-r $CONFIG_FILE) {
-        printf("WAITING FOR $CONFIG_FILE (%dmin)\n",$wait/60)
+    while (!-r $file) {
+        printf("WAITING FOR $file (%dmin)\n",$wait/60)
             unless $wait % 60;
         sleep 10;
         $wait += 10;
     }
-
-    open CFG, "<", $CONFIG_FILE or die "$!";
-    my $rec = <CFG>;
+    open FILE, "<", $file or die "$!";
+    my $rec = <FILE>;
     chomp $rec;
-    my $slot = 'ef'; # default
-    if ($rec =~ /^([[:xdigit:]]{2})$/) {
-        $slot = $1;
-    } else {
-        print "'$rec' ignored: Not recognized as slot\n";
-    }
-    print "SLOT PHYSICS $slot\n";
+    close FILE or die "$!";
+    return $rec;
+}
+
+sub oneTry {
+    my $mfmTag = readFile($MFM_TAG_FILE);
+    $mfmTag =~ s/[^0-9a-f]//g;
+
+    my $slot = readFile($CONFIG_FILE);
+    $slot =~ s/[^0-9a-f]//g;
+
+    print "MFM:$mfmTag SLOT PHYSICS:$slot\n";
+
     my $libcue = "/cdm/physics/slot$slot-installed-libcue.so";
     return undef
         unless -r $libcue; # Hmm?
@@ -32,15 +40,21 @@ sub oneTry {
     if (open(FH,"<",$tagfile)) {
         $stamp = <FH>;
         chomp $stamp;
+        $stamp =~ s/[^0-9a-f]//g;
         close(FH);
     }
-    return ($slot,$libcue,$stamp);
+    return ($mfmTag,$slot,$libcue,$stamp);
 }
 
 sub runMFMT2 {
-    my ($slot,$ep,$stamp) = @_;
-    my $id = $slot;
-    $id .= "-$stamp" if defined($stamp);
+    my ($mfmTag,$slot,$ep,$stamp) = @_;
+    return undef
+        unless
+        defined $mfmTag and
+        defined $slot and
+        defined $ep and
+        defined $stamp;
+    my $id = "$MFM_SLOT-$mfmTag-$slot-$stamp"; # Sun Feb  5 10:38:31 2023 match mfm tags or NOT COMPATIBLE
     my $cmd = "/home/t2/MFM/bin/mfmt2 -t=1 -w /home/t2/MFM/res/mfmt2/wconfig.txt -z $id -e$ep";
     print "RUNNING $cmd\n";
     my $status = `$cmd`;
@@ -50,9 +64,10 @@ sub runMFMT2 {
 sub main {
     print "ENTERED $0\n";
     while (1) {
-        my ($slot,$ep,$stamp) = oneTry();
-        if (defined $ep) {
-            runMFMT2($slot,$ep,$stamp);
+        my @args = oneTry();
+        if (defined $args[0]) {
+            runMFMT2(@args);
+            sleep 5;
         } else {
             print "INIT FAILURE, WAITING\n";
             sleep 60;
