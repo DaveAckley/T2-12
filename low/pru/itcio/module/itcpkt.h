@@ -140,7 +140,10 @@ extern void addPktEvent(ITCPktEventState* pes, u32 event, u32 gapevent) ;
 #define RPMSG_MAX_PACKET_SIZE (RPMSG_BUF_SIZE-sizeof(struct rpmsg_hdr))
 #define ITC_MAX_PACKET_SIZE 255
 
-#define KFIFO_SIZE (1<<12)   /* ITC packets are max 255.  Guarantee space for 16 (256*16 == 4,096 == 2**12) */
+/* ITC packets are max 255.  Guarantee space for 64 (256*64 == 16,384 == 2**14)
+   See itcio/notes/202209080129-maybe-bloat-buffers-notes.txt for discussion FWIW
+ */
+#define KFIFO_SIZE (1<<14) /** 16KB per buffer */
 
 /* PRU special packets are expected to be smaller and rarer.  Give them 1KB each */
 #define SPECIAL_KFIFO_SIZE (1<<10)
