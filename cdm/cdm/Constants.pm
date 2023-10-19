@@ -103,9 +103,11 @@ use constant SUBDIR_PUBKEY => "public_keys";
 use constant SUBDIR_PRIVKEY => "private_keys";
 use constant SUBDIR_SOCKETS => "sockets";
 
+use constant PATH_MFM_TMPFS => "/mnt/T2TMP";
+
 use constant PATH_PROG_MFZRUN => "${\PATH_CDM_SOURCE_DIRECTORY}/mfzrun"; # Our captive version
 use constant PATH_DATA_IOSTATS => "/sys/class/itc_pkt/statistics";
-use constant PATH_BASEDIR_REPORT_IOSTATS => "log/status.txt";
+use constant PATH_REPORT_IOSTATS => "${\PATH_MFM_TMPFS}/cdmStatus.txt";
 use constant PATH_SOCKETDIR_XFERSOCK => "xfer.sock";
 
 use constant HOOK_TYPE_LOAD => "LOAD";
@@ -206,7 +208,7 @@ my @paths = qw(
     PATH_CDM_SOURCE_DIRECTORY
     PATH_PROG_MFZRUN
     PATH_DATA_IOSTATS
-    PATH_BASEDIR_REPORT_IOSTATS
+    PATH_REPORT_IOSTATS
     PATH_SOCKETDIR_XFERSOCK
     );
 
