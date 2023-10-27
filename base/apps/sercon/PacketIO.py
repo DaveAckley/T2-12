@@ -36,6 +36,7 @@ class PacketIO:
 
     def writePacket(self,packet):
         self.bytesout += self.escape(packet)
+        self.bytesout += b'\n'
 
     def acceptBytes(self,bytes):
         self.bytesin += bytearray(bytes)
@@ -47,6 +48,7 @@ class PacketIO:
             packet = self.bytesin[:pos]   # not including \n
             self.bytesin[pos+1:]          # also not including \n
             packet = self.deescape(packet)
+            print("ACCBYTFOUND",packet)
             self.pendingin.append(packet)
 
     def escape(self,packet):
