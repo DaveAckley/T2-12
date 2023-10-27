@@ -21,9 +21,10 @@ class PacketIO:
 
     def updateRead(self):
         bytes = self.ser.read(256)
-        if (bytes > 0):
+        nbytes = len(bytes)
+        if (nbytes > 0):
             self.acceptBytes(bytes)
-        return bytes
+        return nbytes
 
     def updateWrite(self):
         wrote = 0
@@ -38,7 +39,7 @@ class PacketIO:
 
     def acceptBytes(self,bytes):
         self.bytesin += bytearray(bytes)
-
+        print("ACCBYT",self.bytesin)
         while True:
             pos = self.bytesin.find(b'\n')
             if pos < 0:
