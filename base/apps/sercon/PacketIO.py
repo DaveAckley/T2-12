@@ -45,8 +45,8 @@ class PacketIO:
             pos = self.bytesin.find(b'\n')
             if pos < 0:
                 break
-            packet = self.bytesin[:pos]   # not including \n
-            self.bytesin[pos+1:]          # also not including \n
+            packet = self.bytesin[:pos]         # not including \n
+            self.bytesin = self.bytesin[pos+1:] # also not including \n
             packet = self.deescape(packet)
             print("ACCBYTFOUND",packet)
             self.pendingin.append(packet)
