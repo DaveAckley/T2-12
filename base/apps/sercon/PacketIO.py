@@ -51,6 +51,13 @@ class PacketIO:
             print("ACCBYTFOUND",packet)
             self.pendingin.append(packet)
 
+    def pendingPacket(self):
+        if len(self.pendingin) == 0:
+            return None
+        packet = self.pendingin[0]
+        self.pendingin = self.pendinging[1:]
+        return packet
+
     def escape(self,packet):
         """ Escape ESC and \n bytes (as \033e and \033n) in packet """
         def escapeByte(byte):

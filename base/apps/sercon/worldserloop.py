@@ -9,6 +9,11 @@ pio = PacketIO.PacketIO('/dev/ttyUSB0')
 print(pio)
 while True:
     pio.update()
+    while True:
+        inpacket = pio.pendingPacket()
+        if inpacket == None:
+            break
+        print("WHANDLED",inpacket)
     sleep(.1)
 pio.close();
 
