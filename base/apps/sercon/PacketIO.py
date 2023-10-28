@@ -2,6 +2,8 @@ import time
 import serial
 import re
 
+from binascii import crc_hqx
+
 class PacketIO:
     def __init__(self,serdev):
         self.serdev = serdev
@@ -59,7 +61,14 @@ class PacketIO:
         return packet
 
     def escape(self,packet):
-        """ Escape ESC and \n bytes (as \033e and \033n) in packet """
+        """
+        Append a two-byte checksum, then
+        escape ESC and \n bytes (as \033e and \033n) 
+        in the resulting bytes.  
+        """
+
+        packet += self.crcBytes(packet)
+        
         def escapeByte(byte):
             if byte == b'\033':
                 return b'\033e'
@@ -70,7 +79,10 @@ class PacketIO:
         return esc
 
     def deescape(self,packet):
-        """ Deescape previously escape'd bytes in packet """
+        """ 
+        Deescape previously escape'd bytes in packet,
+        then check and strip the checksum of the result.
+        """
         def deescapeByte(byte):
             if byte == b'e':
                 return b'\033'
@@ -78,4 +90,13 @@ class PacketIO:
                 return b'\n'
             raise ValueError(f"Invalid escape byte {byte}")
         des =re.sub(b'(\033(.))', lambda m: deescapeByte(m.group(2)), packet)
-        return des
+
+        if len(des) < 2:
+            raise ValueError(f"Packet too short for checksum")
+        if crc_hqx(des,0) != 0:
+            raise ValueError(f"Checksum failure in {des}")
+        return des[:-2]
+
+    def crcBytes(self,bytes):
+        crc = crc_hqx(bytes,0)
+        return b"%c%c" % ((crc>>8)&0xff,crc&0xff)
