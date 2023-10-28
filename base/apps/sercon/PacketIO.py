@@ -57,7 +57,7 @@ class PacketIO:
         if len(self.pendingin) == 0:
             return None
         packet = self.pendingin[0]
-        self.pendingin = self.pendinging[1:]
+        self.pendingin = self.pendingin[1:]
         return packet
 
     def escape(self,packet):
