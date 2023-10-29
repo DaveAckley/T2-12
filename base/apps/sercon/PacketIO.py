@@ -42,7 +42,7 @@ class PacketIO:
 
     def acceptBytes(self,bytes):
         self.bytesin += bytearray(bytes)
-        print("ACCBYT",self.bytesin)
+        #print("ACCBYT",self.bytesin)
         while True:
             pos = self.bytesin.find(b'\n')
             if pos < 0:

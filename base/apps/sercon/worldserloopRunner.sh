@@ -4,6 +4,6 @@
 
 while [ 1 ] ; do
     date '+STARTING WORLD SERLOOP %Y-%m-%d %H:%M:%S'
-    ./worldserloop.py
+    ./worldserloop.py ./spikeconfig11.dat
     sleep 1
 done
