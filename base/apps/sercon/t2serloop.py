@@ -20,9 +20,18 @@ while True:
         inpacket = pio.pendingPacket()
         if inpacket == None:
             break
-        print("HANDLED",inpacket)
+        #print("GOT",inpacket)
+        if len(inpacket) < 2:
+            break
+        if inpacket[0] == ord(b'-'):
+            if inpacket[1] > 0:
+                inpacket[1] -= 1
+                print("FWD",inpacket)
+                pio.writePacket(inpacket)
+            else:
+                print("DROP")
     count += 1
-    if count % 100 == 0:
+    if count == 100:
         print("SENDOOO")
         bcount = str(count).encode()
         pio.writePacket(bcount+b'HEWO big packet \n\n\n more more want serial to not be able to take the whole thing in one buffer or something like that you know test test zongHEWO big packet \n\n\n more more want serial to not be able to take the whole thing in one buffer or something like that you know test test zongHEWO big packet \n\n\n more more want serial to not be able to take the whole thing in one buffer or something like that you know test test zongHEWO big packet \n\n\n more more want serial to not be able to take the whole thing in one buffer or something like that you know test test zong')

@@ -95,7 +95,7 @@ class PacketIO:
             raise ValueError(f"Packet too short for checksum")
         if crc_hqx(des,0) != 0:
             raise ValueError(f"Checksum failure in {des}")
-        return des[:-2]
+        return bytearray(des[:-2])
 
     def crcBytes(self,bytes):
         crc = crc_hqx(bytes,0)
