@@ -1,4 +1,4 @@
-{52}  -*-  mode: text; fill-column: 50;  -*-
+{55}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -601,6 +601,30 @@ Tue Dec 12 01:00:22 2023 OK I guess we're back,
 here. I'm wondering if we should get these notes
 and such pushed off the keymaster somewhere just
 on general safety grounds, before developing too
-much further.
+much further.[52:
+
+Tue Dec 12 01:05:00 2023 OK, pushed.
+
+:52]
 
 :51]
+[53:
+
+Tue Dec 12 01:05:13 2023
+
+TODO
+
+ - review ../base/apps/sercon stuff
+ - brainstorm on packet designs
+ - identify something close to minimal minimal
+ - make to-do leading to packet demo
+
+[54:
+
+Tue Dec 12 12:18:57 2023 And let's put a foggen
+clock on this: PACKET DEMO RUNNING ACROSS AT LEAST
+TWO TILES BY FRIDAY DEC 15.
+
+:54]
+
+:53]
