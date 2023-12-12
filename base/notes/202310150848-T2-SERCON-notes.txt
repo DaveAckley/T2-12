@@ -1,4 +1,4 @@
-{51}  -*-  mode: text; fill-column: 50;  -*-
+{52}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -595,3 +595,12 @@ Fri Oct 20 12:32:31 2023 Current status:
    currently nowhere else
 
 :50]
+[51:
+
+Tue Dec 12 01:00:22 2023 OK I guess we're back,
+here. I'm wondering if we should get these notes
+and such pushed off the keymaster somewhere just
+on general safety grounds, before developing too
+much further.
+
+:51]
