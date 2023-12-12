@@ -61,3 +61,6 @@ dkms.conf
 # Flag files
 .flagfile_*
 .FLAG_*
+
+# PYC
+__pycache__
