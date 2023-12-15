@@ -124,7 +124,13 @@ sub writeBulkIOStats {
     my $basedir = $self->{mCDM}->getBaseDirectory();
     my $hoodmgr = $self->{mCDM}->{mNeighborhoodManager} or die;
     my $path = "$basedir/${\PATH_BASEDIR_REPORT_IOSTATS}";
-    open HDL, ">", $path or die "Can't write $path: $!";
+
+    # Don't die if we can't write $path
+    unless (open HDL, ">", $path) {
+        print "writeBulkIOStats: Can't write $path: $!";
+        return;
+    }
+
     my $hdr = $self->checkForEth0Inet() || "CDM UPTIME"; # Tell us yo damn addr if you got one.
     print HDL $hdr." ".formatSeconds($uptime,1)."\n";
 
