@@ -123,8 +123,8 @@ sub writeBulkIOStats {
     my $uptime = $self->{mLastSampleTime} - $self->{mInitTime};
     my $basedir = $self->{mCDM}->getBaseDirectory();
     my $hoodmgr = $self->{mCDM}->{mNeighborhoodManager} or die;
-    my $path = "$basedir/${\PATH_BASEDIR_REPORT_IOSTATS}";
-
+    my $path = ${\PATH_REPORT_IOSTATS};
+    
     # Don't die if we can't write $path
     unless (open HDL, ">", $path) {
         print "writeBulkIOStats: Can't write $path: $!";
