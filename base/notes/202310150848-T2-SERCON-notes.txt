@@ -1,0 +1,630 @@
+{55}  -*-  mode: text; fill-column: 50;  -*-
+[0:
+
+Sun Oct 15 08:48:55 2023 OK, starting this file,
+202310150848-T2-SERCON-notes.txt, in
+(T2-SERCON/)T2-12/base/notes, for work on the
+SERIAL CONCENTRATOR portion of the T2 MATRIX BRAIN
+CHALLENGE.
+
+[1:
+
+Sun Oct 15 08:54:04 2023 First point to notice is
+that we expect that ultimately the BBG SERCON
+board software will be incompatible with the T2
+tile because (at the very least) of differing pin
+assignments.
+
+So we don't expect this to be a 'pure install'
+whatever that might mean.
+
+:1]
+
+:0]
+[2:
+
+Sun Oct 15 09:06:28 2023 So okay; starting into
+stuff. First up,
+
+base/doc/T2-12-BBG-Pinout-225-10.pdf
+
+where (we believe) we have the current pin
+assignments for a T2 tile. All full of ITC pins
+that we won't use for SERCON and some of which
+will conflict with UART pins for sure..[3:
+
+Sun Oct 15 09:10:51 2023 (Not sure where to find
+the source for that PDF, though.. that's
+aggravating.)
+
+:3]
+
+
+:2]
+[4:
+
+Sun Oct 15 16:05:22 2023
+
+P9_24 UART1_TXD
+P9_26 UART1_RXD
+
+P9_21 UART2_TXD
+P9_22 UART2_RXD
+
+P9_11 UART4_RXD
+P9_13 UART4_TXD
+
+P8_37 UART5_TXD
+P8_38 UART5_RXD
+
+:4]
+[5:
+
+Sun Oct 15 23:14:31 2023 HEY WAIT A MINUTE.
+
+What about doing daisy chain loops through
+multiple tile UARTs? If we're really claiming low
+speed is fine due to timelapse, what about:
+
+(1) Packetize everything, and
+(2) Include a hop count in every packet, and
+(3) Link a bunch of tiles in a TX->RX loop, 
+(4) With a single 'terminal' node in each loop
+
+Could have the controller poll the loop in fact,
+since it will be both upstream and downstream of
+the loop. Inject a sequence 'HOP-n SPEAK NOW'
+packets for cyclic n, and enumerate the loop
+that way.
+
+Can be 'full duplex' by making SPEAK NOW actually
+be 'RECEIVE AND SEND NOW'.
+
+GAH then we could even maybe have the western edge
+T2 tiles be the 'terminals', routing traffic from
+ethernet to the serial loop it controls. And then
+- aside from some extra load on the west tiles -
+we don't even need any more BeagleBones. Just a 10
+or 16 port ethernet switch, or whatever.
+
+Or we could add a few 'loose' T2 tiles anywhere
+around the periphery, and have them be just the
+loop terminals, and connect to ethernet, so the
+main load is shifted off the matrix entirely.
+
+And then we only need a single UTP pair to run
+around the loop? And we could make a little PCB
+that would plug into the T2 serial port and accept
+the passing pair. GND for everybody, plus an
+upstream RX that becomes the downstream TX.
+
+We could also have the loop provide an FTDI style
+header so we could go straight to USB and byass
+ethernet as well. If we trust say even a
+half-dozen FTDI cables to coexist through a USB
+hub.
+[6:
+
+Mon Oct 16 01:43:46 2023 Apparently the BBG
+default baud rate is 115,200. So we imagine that's
+about 10KB/s. If we said like 250 byte packet max,
+and one packet per tile per poll, that's 4 packets
+per KB so 40 packets per 10KB so we could in
+principle update 40 tiles per second with a single
+loop. Two loops could cover the whole existing
+matrix.
+
+We might be able to standardize the wire length
+between the tiles - with some slack built in - and
+then just daisy-chain a single pair soldered down
+onto an incredibly simple PCB.
+
+Or even, I suppose, crimped directly into 6
+position 0.1" female headers.
+
+[7:
+
+Mon Oct 16 01:55:59 2023 FTDI USB-serial cable
+pinout is:
+
+  PIN 1 GND (black)
+  PIN 2 CTS (brown)
+  PIN 3 VCC (red)
+  PIN 4 TXD (orange)
+  PIN 5 RXD (yellow)
+  PIN 6 RTS (green)
+
+and with our single pair (say blue and white)
+we'd do
+
+ WHITE to PIN 1
+ BLUE UPSTREAM to PIN 5
+ BLUE DOWNSTREAM to PIN 4
+
+and that's freaking it.
+
+[8:
+
+Mon Oct 16 02:10:56 2023 And if we wanted to go
+with two pairs we could have a return line so it
+didn't actually have to loop.
+
+We could also just have a little jumper so if we
+needed more cable on a particular hop we could
+jumper PIN 5 to PIN 4 and then leave that PCB
+unplugged-in.
+
+:8]
+
+:7]
+
+:6]
+:5]
+[9:
+
+Tue Oct 17 01:46:14 2023 (From 202310150204-fresh,
+also now in sched11:TODO10
+
+TODO:
+ - Test circuit with 2 tiles + FTDI
+ - Find out how to take over /dev/ttyO0 from getty
+ - Get some right angle 6-pos 0.1" sockets
+ - Make three drops out of perfboard
+ - wire up
+ - connect two to tiles and one to ftdi
+ - write router script for tiles
+ - write controller script for laptop
+ - demo packet communication
+
+
+:9]
+[10:
+
+Tue Oct 17 01:47:21 2023 So we see this:
+
+    I found the answer here;
+    http://stackoverflow.com/questions/21596384/cannot-disable-systemd-serial-getty-service
+
+    My port is at ttyO0. so in my case I entered
+    "systemctl mask serial-getty@ttyO0.service"
+
+    I was able to confirm the device name by
+    typing “systemctl --full”. My device was in
+    the list.
+
+    Once I typed the command above and rebooted, I
+    could use the serial port in my program.
+
+
+:10]
+[11:
+
+Tue Oct 17 09:05:16 2023 But there's that whole
+business with 'somebody' renaming /dev/ttyO0 to
+/dev/ttyS0 during boot so now I'm trying both
+
+    systemctl mask serial-getty@ttyO0.service
+    systemctl mask serial-getty@ttyS0.service
+
+..rebooting..
+
+[12:
+
+Tue Oct 17 09:40:32 2023 OK so that kinda seems to
+work. I guess maybe could start an actual little
+script? 
+
+Can we claim any to-dos in sched11 first?
+[13:
+
+Tue Oct 17 09:52:51 2023 Well took a couple, and
+reorged the sheet a bit. There's a lot that we
+don't think we're going to do now; have to ditch
+them at some point.[14:
+
+Tue Oct 17 09:54:09 2023 Making
+T2-12/base/apps/sercon/spike10.pl
+[15:
+
+Tue Oct 17 10:19:18 2023 Geez. Trying python.
+Perl's Device::Serial seems an awful mess.
+
+# apt install python-serial
+
+[16:
+
+Tue Oct 17 10:27:52 2023 aaand a first serial
+non-blocking read / write demo in python is now
+working. Bad show perl; I'm sad.
+
+(In python 2.7.16.. to be exact. [17:
+
+Tue Oct 17 10:36:02 2023 OK now with
+
+    # apt install python3-serial
+
+we're in python 3.7.3 and that'll have to do. Say
+I.
+
+[18:
+
+Tue Oct 17 10:36:57 2023 OK. So how are we going
+to delimit our packets this time?
+
+(1) \n delimited and escape \n and escape
+(2) null delimited and escape null and escape
+(3) p255 counted with no escaping
+
+[19:
+
+Tue Oct 17 10:48:58 2023 Just as a reminder, the
+ITC packet protocol uses 0x7e == 0b01111110 as the
+packet delimiter and bit-stuffs a 0 after a 5th
+consecutive 1 bit otherwise. 
+
+There is no length encoded on the wire, but
+packets are limited to 255 bytes and are mostly
+queued and transferred in p255 format internally.
+
+The ITC protocol self-synchronizes to byte
+boundaries, but the UARTs will do that for us so
+we don't need that here.
+
+[20:
+
+Tue Oct 17 10:56:35 2023 Suppose we go with option
+(1) as simple and ample? (Plus p255.)
+
+What do we use for escape? NUL? Actual ESC (033)?
+
+Let's go with ESC for now.
+
+So. Packet reading and writing in python?
+
+Now, let's think about this just a minute. We're
+ultimately going to need the content of these
+packets to affect mfmt2 processing. How are we
+going to do that? Via the filesystem? Pipe? Shmem?
+
+Or do we want to byte (hoho) the bullet and switch
+to C/C++ now?
+
+[21:
+
+Tue Oct 17 13:07:10 2023 Well, now I'm thinking
+about making a little RAM disk for python and
+mfmt2 to communicate through. I looked at unix
+pipes but I don't really want to screw around with
+streams and draining pipes and so on. For this
+application I just want python to be able to
+update 'sensor' readings asynchronously, and mfmt2
+be able to update 'motor' commands asynchronously,
+and each just takes the latest available at the
+time they want them.
+[22:
+
+Tue Oct 17 15:33:43 2023 I really like that idea.
+Fuck shared memory, use a ramdisk.[23:
+
+Tue Oct 17 15:37:04 2023 Or, hmm, maybe 'ramfs' -
+which is not the same thing - is better.[24:
+
+Tue Oct 17 15:38:53 2023 And, hmm, maybe 'tmpfs'
+is better still.. So how do we create [25:
+
+Tue Oct 17 15:42:06 2023 Hmm, it's just
+
+    $ mkdir /dev/shm/MYTMPFS
+    $ echo foo >/dev/shm/MYTMPFS/file.txt
+    $ ls -al /dev/shm/MYTMPFS
+    total 4
+    drwxrwxr-x 2 ackley ackley 60 Oct 17 15:43 .
+    drwxrwxrwt 3 root   root   60 Oct 17 15:42 ..
+    -rw-rw-r-- 1 ackley ackley  4 Oct 17 15:43 file.txt
+    $
+
+But how do we impose a size limit on that? I
+thought the advantage of tmpfs was it supported
+like a quota somehow?
+[26:
+
+Tue Oct 17 16:06:48 2023 Well, if we make our own
+tmpfs we can enforce a quota, anyway. This works:
+
+    # mkdir /mnt/T2TMP
+    # mount -t tmpfs -o size=1M tmpfs /mnt/T2TMP/
+    # yes >/mnt/T2TMP/yes.dat
+    yes: standard output: No space left on device
+    # df /mnt/T2TMP/
+    Filesystem     1K-blocks  Used Available Use% Mounted on
+    tmpfs               1024  1024         0 100% /mnt/T2TMP
+    # rm /mnt/T2TMP/yes.dat 
+    # df /mnt/T2TMP/
+    Filesystem     1K-blocks  Used Available Use% Mounted on
+    tmpfs               1024     0      1024   0% /mnt/T2TMP
+    # 
+[27:
+
+Tue Oct 17 16:31:09 2023 And sticking
+
+    none /mnt/T2TMP tmpfs size=1M,mode=1777 0 0
+
+at the end of /etc/fstab seemed to work fine
+across a reboot. But I guess somebody has to 
+
+    # mkdir /mnt/T2TMP
+
+once first..
+
+[28:
+
+Tue Oct 17 16:35:39 2023 So, anyway: I really like
+this! We should move /cdm/log/status.txt there,
+for one thing.
+
+And if we had, sey
+
+  /mnt/T2TMP/SERCON/sense.dat  # inbound sense data
+
+that was written just by say python, and
+
+  /mnt/T2TMP/SERCON/motor.dat  # outbound motor commands
+  
+that was written just by mfmt2, then all that
+should happen lickety-split and without touching
+eMMC except in the dire situation of swapping.
+
+And we could write sense.new and then rename it
+onto sense.dat, to ensure mfmt2 will never read
+half-old half-new data?[29:
+
+Wed Oct 18 10:04:28 2023 Actually I wonder if we
+could just do that much, as a helpful step for
+later and now, and actually push it to production?
+[30:
+
+Wed Oct 18 11:32:46 2023 TODO
+[35: Thu Oct 19 08:58:07 2023 in base/files/etc
+DONE :35] - Figure out where to set up /etc/fstab in cdm
+[36: Thu Oct 19 13:23:53 2023 cdmss-05 -> /etc/fstab, so
+DONE :36] - Create /mnt/T2TMP on boot if needed
+[37: Thu Oct 19 13:25:18 2023 /mnt/T2TMP/cdmStatus.txt
+DONE :37] - Move /cdm/log/status.txt to like
+           /mnt/T2TMP/cdm/log/status.txt
+[38:
+DONE :38] - Test it
+[39:
+DONE :39] - Make cdmds
+[40:
+DONE :40] - Deploy
+[41: Thu Oct 19 13:31:02 2023
+DONE :41] - Commit
+
+[31:
+
+Wed Oct 18 11:46:31 2023 OK it appears that
+systemd is supposed to create missing mount points
+at boot, for stuff that's in /etc/fstab. I wonder
+what the owner and permissions are?[32:
+
+Wed Oct 18 11:55:54 2023 Looks like
+
+(1) That works, and
+(2) It's owned by root, and
+(3) It has the permissions specified in
+    /etc/fstab..
+
+
+:32]
+
+:31]
+:30]
+:29]
+
+
+:28]
+
+:27]
+
+
+:26]
+:25]
+
+:24]
+
+:23]
+
+:22]
+:21]
+
+:20]
+
+:19]
+
+:18]
+
+:17]
+
+:16]
+
+:15]
+
+:14]
+
+:13]
+
+:12]
+
+:11]
+[33:
+
+Thu Oct 19 07:46:57 2023 Evaluating header samples
+I got in from Mouser:
+
+SERLOOP J1 T FA (CES10602TSRA) ->
+ Pretty short sockets
+ But tight
+
+SERLOOP J1 F RA (SSW10602FSRA) ->
+ Longer sockets, seem plausible
+ Gold flash on contact
+ Tin tails
+ Maybe
+
+SERLOOP J1 G RA (SSW10602GSRA) ->
+ Same plausible socket length
+ Square tails
+ Gold 0.51um on contact
+ Gold flash on tail
+ $$
+
+[34:
+
+Thu Oct 19 08:27:30 2023 So I think if we can find
+a way to cut this bakelite at all cleanly, and
+find or make a couple pieces of UTP to string up,
+we could make like a three tab loop connecting two
+tiles and an FTDI.
+
+[42:
+
+Thu Oct 19 13:50:47 2023 So, scoring and snapping
+the bakelite works pretty well, so I now have
+several pieces of a vaguely suitable size. What do
+we do for UTP around here?
+
+[43:
+
+Thu Oct 19 14:15:28 2023 OK, cutting into an old
+Cat5e cable. 24AWG; got to be vast overkill for my
+purposes.. [44:
+
+Thu Oct 19 14:17:48 2023 The blue/white pair seems
+to have the tightest twist.
+
+[45:
+
+Thu Oct 19 14:21:38 2023 Aand how much length do
+we want between tabs?
+[46:
+
+Thu Oct 19 14:30:39 2023 So like 4.5" would be
+about the minimum for horizontal tile-to-tile, and
+about the same for a NE<->SW diagonal shot.
+
+Except: Both those horizontal and diago shots
+would obscure the screen.
+
+I think we'd be talking more like 8" for a safe
+horizontal shot, considering termination and
+routing costs.[47:
+
+Thu Oct 19 15:16:08 2023 OK let's say 8". And what
+exactly is our schematic here?
+
+UG - upstream ground (WHITE)
+US - upstream signal (COLOR)
+DG - downstream ground (WHITE)
+DS - downstream signal (COLOR)
+
+J1
+
+PIN1  GND
+PIN2  NC
+PIN3  NC
+PIN4  TX
+PIN5  RX
+PIN6  NC
+
+NETS
+
+UG - PIN1 - DG
+US - PIN5
+DS - PIN4
+
+and that's it, right?
+
+[48:
+
+Thu Oct 19 15:55:17 2023 And PIN1 is on the bottom
+pin of the T2 tile serial port.
+
+:48]
+
+:47]
+
+:46]
+
+:45]
+
+:44]
+
+:43]
+:42]
+
+:34]
+:33]
+[49:
+
+Fri Oct 20 12:25:07 2023 OK so how do we get going
+here? Need more
+
+TODO
+ - Document status
+ - Make spike that handles two packets like S, M
+ - Make a second serial loop tab
+ - Make a serial controller tab
+ - Make a controller spike that enumerates the
+   loop using S&M packets
+ - Demo two tile + controller
+ - Commit
+ - Make more to-do
+
+:49]
+[50:
+
+Fri Oct 20 12:32:31 2023 Current status:
+
+ - Have /mnt/T2TMP tmps and loving it
+ - Have one 'serial loop tab', untested.
+ - Noting for the record: We installed
+   python3-serial and that will need to get to all
+   the tiles somehow. Probably need to figure out
+   how to do a local installation maybe?
+ - We have 'spike11.py' on the 'naked BBG' and
+   currently nowhere else
+
+:50]
+[51:
+
+Tue Dec 12 01:00:22 2023 OK I guess we're back,
+here. I'm wondering if we should get these notes
+and such pushed off the keymaster somewhere just
+on general safety grounds, before developing too
+much further.[52:
+
+Tue Dec 12 01:05:00 2023 OK, pushed.
+
+:52]
+
+:51]
+[53:
+
+Tue Dec 12 01:05:13 2023
+
+TODO
+
+ - review ../base/apps/sercon stuff
+ - brainstorm on packet designs
+ - identify something close to minimal minimal
+ - make to-do leading to packet demo
+
+[54:
+
+Tue Dec 12 12:18:57 2023 And let's put a foggen
+clock on this: PACKET DEMO RUNNING ACROSS AT LEAST
+TWO TILES BY FRIDAY DEC 15.
+
+:54]
+
+:53]

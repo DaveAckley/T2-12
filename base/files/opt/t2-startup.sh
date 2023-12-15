@@ -36,6 +36,14 @@ echo start > /sys/class/remoteproc/remoteproc2/state
 #echo "Defaulting to 720MHz for heat management"
 #cpufreq-set -f 720MHz
 
+logger T2 FINAL BOOT CONFIG PENULTIMATE CONFIGURATION 
+
+logger MASKING /dev/ttyO0 FROM FOGGEN SYSTEMD
+systemctl mask serial-getty@ttyO0
+
+logger ALSO MASKING /dev/ttyS0 FROM FOGGEN SYSTEMD
+systemctl mask serial-getty@ttyS0
+
 logger T2 FINAL BOOT CONFIG FINISHED
 
 exit 0
