@@ -23,13 +23,17 @@ while True:
         #print("GOT",inpacket)
         if len(inpacket) < 2:
             break
-        if inpacket[0] == ord(b'-'):
-            if inpacket[1] > 0:
-                inpacket[1] -= 1
-                print("FWD",inpacket)
-                pio.writePacket(inpacket)
-            else:
-                print("DROP")
+        hops = pio.getHops(inpacket)
+        if hops <= -126 or hops >= 127:
+            print("TOST",inpacket) # discard underflows and reserved crap
+        elif hops == 0:
+            print("HANDLE LOCAL!",inpacket)
+        elif hops == 126:
+            print("HANDLE BCAST!",inpacket)
+        else:                   # cmd or reply heading downstream
+            pio.setHops(inpacket,hops-1)
+            print("FWD",inpacket)
+            pio.writePacket(inpacket)
     count += 1
     if count == 100:
         print("SENDOOO")

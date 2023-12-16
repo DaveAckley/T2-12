@@ -1,6 +1,12 @@
+## GET ACCESS TO OUR OWN PRIVATE SERIAL
+import sys
+sys.path.append('/home/t2/T2-12/base/files/misc/root/.local/lib/python3.7/site-packages/')
+
 import time
 import serial
 import re
+
+from Utils import *
 
 from binascii import crc_hqx
 
@@ -100,3 +106,13 @@ class PacketIO:
     def crcBytes(self,bytes):
         crc = crc_hqx(bytes,0)
         return b"%c%c" % ((crc>>8)&0xff,crc&0xff)
+
+    def getHops(self,packet):
+        if len(packet) == 0:
+            raise ValueError(f"Packet too short for hops")
+        return signedByteToInt(packet[0])
+
+    def setHops(self,packet,hops):
+        if len(packet) == 0:
+            raise ValueError(f"Packet too short for hops")
+        packet[0] = intToSignedByte(hops)

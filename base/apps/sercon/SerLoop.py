@@ -1,7 +1,3 @@
-import time
-import serial
-import re
-
 import PacketIO
 
 class SerLoop:
