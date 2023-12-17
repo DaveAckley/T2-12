@@ -1,4 +1,4 @@
-{55}  -*-  mode: text; fill-column: 50;  -*-
+{72}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -595,6 +595,201 @@ Fri Oct 20 12:32:31 2023 Current status:
    currently nowhere else
 
 :50]
+[69: (Sun Dec 17 10:31:05 2023 There's a bunch of
+notes in a different copy of this files that got
+lost starting here. Sticking them all into the
+next entry (:70:), while deleting their original 
+numbering..) :69] 
+[70:
+
+Sat Oct 28 01:21:50 2023
+
+p'ing'
+
+p + 0xff
+
+our received
+cpu + ram
+architecture
+is a symphony
+of premature
+optimisation
+and the
+consequences of
+not dealing with
+that all too common
+bug
+
+the computational universe
+
+'-' + TTL
+
+tile configuration files
+ expected loopsize
+ represented as list
+ of unified coordinates
+
+packet to send
+assigned coordinate
+ and perhaps some
+ kind of type
+to a tile
+
+Sat Oct 28 11:27:04 2023 OK, so now we're adding
+and checking a two-byte checksum based on
+binascii.crc_hqx.
+
+Sat Oct 28 11:47:07 2023 So OK. Claimed some
+to-dos. Let's load a tomli(key) file on the world
+side and see about sending configurations.
+
+Or just structured lines?
+
+LOOPPOS XPOS YPOS RESERVEDIGNORED..
+
+Let's try that. Thinking of including the LOOPPOS
+rather than enumerating the lines; we'll see.
+
+Sun Oct 29 00:22:41 2023 Let's think a bit about
+the ways we're going to use space in this thing.
+In particular, we think there's going to be
+separate 'brain space' and 'body space', with a
+mapping between them - that we want to represent,
+at least in part, by this configuration file.
+
+Do tiles really need to 'know where they are'?
+Beyond whatever information we call 'the senses'?
+
+Let's riff about how this might really all go.
+Braitenberg on up.
+
+Mon Oct 30 02:14:11 2023 Notes from yesterday:
+
+    PROMPT: BRAIN-BODY INTERFACES
+
+     - brightness signals as atoms
+       carried from sim to sensory tile base layer
+     - desired motor signals as atoms
+       carried from motor tile base layer to sim
+
+     - programmable matrix transforms and connects
+       signals to motors
+
+     - router gradients/clouds float
+
+     - what if it was event counts rather
+       than distance that got propagated?
+       = then the decision about how to
+         update is the focus.
+
+     -> and event count isn't a time
+        proxy anyway.
+
+    several overlay networks intertwined
+    various reductions offered while routing
+    add/sub/max/min
+    max/min/sample incr/decr/copy
+
+      nw  ne
+        ct
+      sw  se
+
+
+    when something goes wrong
+    what happens
+    what does it look like
+
+
+    self-evidencing
+    also data
+    running the code
+
+Mon Oct 30 02:19:03 2023 and the main takeaway
+from that is the idea that we'll spread the
+'Braitenberg API' out in space, and put a
+programmable router between the components.
+
+So rather than 'decide what to do then do it', it
+will be more like 'decide what to do, then program
+the lower-level (e.g., closer, better-connected,
+more central) hardware to do it, then let that
+programmed machine do its thing.
+
+                   cont
+                   roll
+                   er
+
+                nw     ne
+        cont       rou       cont
+        roll       ter       roll
+        er      sw     se    er
+
+                 here be
+                 dragons
+
+Mon Oct 30 09:36:32 2023 We want to be aware of
+
+(1) Inhibition as well as excitation
+(2) Which may be canceling or non-canceling in the
+    fabric (?)
+
+Mon Oct 30 11:02:37 2023 So how might we go?
+
+Mon Oct 30 11:12:39 2023 I see
+https://github.com/ankiitgupta7/Simulations-of-Braitenberg-Vehicles
+has apparently a Processing-based simulator. That
+might be a good start.
+
+Mon Oct 30 14:10:39 2023 Well, after running into
+this:
+
+    java.lang.UnsatisfiedLinkError: Can't load library: /data/ackley/PART4/code/processing-4.3/natives/linux-amd64/libgluegen_rt.so
+            at java.base/java.lang.ClassLoader.loadLibrary(ClassLoader.java:2398)
+            at java.base/java.lang.Runtime.load0(Runtime.java:755)
+
+despite the existence of this
+
+    /data/ackley/PART4/code/processing-4.3/core/library/linux-amd64/libgluegen_rt.so
+
+plus the non-existence of this
+
+    /data/ackley/PART4/code/processing-4.3/natives
+
+makes me think maybe I don't want to be screwing
+around with processing, let alone java, let alone
+python somehow laid on top of processing on top of
+java, to be using that repo code directly.
+
+If I'm going to go that low-level - e.g.,
+implementating all the physics myself - I might as
+well start with some cleaner base.
+
+Could I conceivably want to deliver via WASM? So
+other 'agents' could use the framework? But still
+that's low-level
+
+Mon Oct 30 16:15:38 2023 Well I cloned and built
+'box2d' and ran ./build/bin/testbed successfully.
+
+Sun Nov  5 00:30:48 2023 Well, have now also
+explored - to varying degrees - blender, pybullet,
+and mujoco. So far mujoco has the inside
+track. I've modified the included car.xml demo to
+add a light that casts shadows, and demonstrated a
+touch sensor, but have not as yet figured out how
+to do a light sensor successfully. A challenge is
+much documentation is for mujoco-py, which is now
+apparently not being maintained, and the official
+replacement python package 'mujoco', is
+lower-level and has fewer tutorials and so forth.
+
+But that's going to have to be it for the T2 brain
+challenge for a while. It's November and time to
+produce the collected works of Vaughn Joy Mannon.
+
+[71: (Sun Dec 17 10:34:21 2023 End of inserted
+  stuff) :71]
+  :70]
 [51:
 
 Tue Dec 12 01:00:22 2023 OK I guess we're back,
@@ -614,9 +809,11 @@ Tue Dec 12 01:05:13 2023
 
 TODO
 
- - review ../base/apps/sercon stuff
- - brainstorm on packet designs
- - identify something close to minimal minimal
+[55: Fri Dec 15 09:12:43 2023
+DONE :55] - review ../base/apps/sercon stuff
+[65: Sun Dec 17 01:44:52 2023
+DONE :65] - brainstorm on packet designs
+[66: DONE  :66] - identify something close to minimal minimal
  - make to-do leading to packet demo
 
 [54:
@@ -628,3 +825,162 @@ TWO TILES BY FRIDAY DEC 15.
 :54]
 
 :53]
+[56:
+
+Fri Dec 15 09:12:51 2023 So, current status
+includes:
+
+ - base/apps/sercon committed and pushed on branch
+   SERCON
+ - sercon/worldserloop.py runs on workstation
+ - sercon/t2serloop.py runs on keymaster
+ - they exchange packets
+ - the packets are currently content-free
+
+[57:
+
+Fri Dec 15 09:29:15 2023 So I guess we're super
+overdue to brainstorm packet designs.
+
+BRAAAAINSTOOOOORMM PACKET DESIGNS
+
+ - first byte always 'relative loop hops'
+ - treat as signed byte?
+   = 0x00 -> you are the recipient of this command (no hops)
+   = 0x01..0x3f -> recipient of command is this many hops downstream
+     1..127
+   = 0x10..0xfe -> reply has returned -this many hops
+     -1..-127
+   = ==0xff -> all tiles are recipient of this command
+
+ - or maybe like +-1..125 for few more special codes
+   = -126 -> return underflow, discard
+   = +126 -> broadcast
+   = +127 -> reserved, discard
+   = -127 -> reserved, discard
+   = -128 -> reserved, discard
+
+[58:
+
+Fri Dec 15 10:02:13 2023 Well suppose we believe
+the '125' format for now.
+
+[59:
+
+Fri Dec 15 10:14:10 2023 How about some little
+specific spikies to go for?
+
+Actually, let's saber first.
+
+:59]
+
+:58]
+:57]
+:56]
+[60:
+
+Fri Dec 15 15:24:47 2023 Tasks for the loop:
+
+ - Count the loop (not counting host)
+   METHOD:
+   1. host sends Ho=-1 packet with random data
+   2. wait for matching random data return with Hi
+   3. loop length is -Hi-1 or None if timeout
+
+ - 'Synchronous' loop update
+   METHOD:
+   1. Buffer sensory data from world for all tiles
+      on the current world tick
+   2. Send out sensory data for each tile in 'downstream
+      first' order: Ho==LEN-1, LEN-2, .., 0
+   3. Tiles accept delivery of sense data and
+      replace it with motor data
+   4. Buffer motor data from all tiles as it
+      arrives    
+   5. Deliver all motor data to world on the
+      current world tick
+   6. Tick the world
+   7. Sleep until time to do it again.
+
+[61:
+
+Fri Dec 15 16:48:19 2023 spikeHost:
+
+1. Count the loop
+2. Do 'synchronous loop update'
+3. Bomb out on any problem
+
+and wrap that in a spikeHostRunner.
+
+And what do we do for a spike 'world'?
+
+???
+
+:61]
+
+:60]
+[62:
+
+Sat Dec 16 09:07:56 2023 OK, so trying to get
+worldserloop.py to do its two 'loop tasks'.
+Wondering how we want to do state machine-ish
+stuff and timeout stuff in this context.
+
+I guess minimal minimal says just brute force it
+for the next spike. Which I guess means just
+straight line blocking code and we'll see what we
+see. 
+
+:62]
+[63:
+
+Sat Dec 16 23:50:55 2023 OK, so worldserloop.py
+successfully counted the loop and got 1:
+
+    root@lcf5820://data/ackley/PART4/code/D/T2-12/base/apps/sercon# ./worldserloop.py spikeconfig11.dat 
+    3 CONFIG
+     (0, '1', '2', ['more stuff bing bang'])
+     (1, '2', '3', ['# bong'])
+     (2, '33', '8', [])
+    ACCBYTFOUND bytearray(b'\xfeCOUNT')
+>>  LOOP LENGTH IS 1
+    SENDDDD
+    ACCBYTFOUND bytearray(b',\xff')
+    WHANDLED bytearray(b',\xff')
+
+
+[64:
+
+Sun Dec 17 01:03:31 2023 But to go beyond that I'm
+really feeling the pressure of needing a
+functional world to ground this code.
+
+How close are we to what we wanted for this past
+Friday? 
+[67:
+
+Sun Dec 17 01:45:11 2023 OK we were supposed to
+have a demo running on two tiles but at the moment
+it's only on one tile plus the host. I'm actually
+okay with leaving it that way for now, because the
+main bits of getting onto two tiles are cdm stuff
+and getting the t2serlooprunner installed and
+started on boot.
+
+:67]
+:64]
+
+:63]
+[68:
+
+Sun Dec 17 10:06:54 2023 Well, I feel like we have
+to subgoal to fish or cut bait on mujoco. I'm
+feeling anxious about python version hell, though,
+and wondering if I should try to do this
+exploration in a VM. Like perhaps in the ubuntu
+22.04 VM I already have running for latex..
+
+Let's try to find whatever notes we had from the
+first attempt..
+
+:68]
