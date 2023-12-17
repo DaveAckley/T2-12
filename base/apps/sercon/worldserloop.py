@@ -16,6 +16,34 @@ configfile = sys.argv[1]
 
 sl = SerLoop.SerLoop('/dev/ttyUSB0',configfile)
 
+## COUNT THE LOOP
+
+loopLen = None
+if True:
+    tries = 0
+    nonce = sl.pio.randomAlphaNum(8)
+    p = sl.pio.makePacket(-1,b'LOOPCOUNT/',nonce)
+    sl.pio.writePacket(p)
+    while tries < 250:
+        tries += 1
+        sl.pio.update()
+        inpacket = sl.pio.pendingPacket()
+        if inpacket == None:
+            sleep(.1)
+            continue
+        m = sl.pio.matchPacket(b'(.)LOOPCOUNT/'+nonce,inpacket) 
+        if m:
+            count = sl.pio.getHops(inpacket)
+            loopLen = -count-1
+            break
+        print("DISCARDING UNMATCHED: ",inpacket)
+
+if loopLen == None:
+    print("LOOP COUNTING FAILED")
+    exit(1)
+
+print("LOOP LENGTH IS",loopLen)
+            
 count = 0
 while True:
     sl.update();

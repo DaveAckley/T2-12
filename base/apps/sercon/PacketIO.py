@@ -5,6 +5,8 @@ sys.path.append('/home/t2/T2-12/base/files/misc/root/.local/lib/python3.7/site-p
 import time
 import serial
 import re
+import random
+from string import ascii_letters, digits
 
 from Utils import *
 
@@ -116,3 +118,21 @@ class PacketIO:
         if len(packet) == 0:
             raise ValueError(f"Packet too short for hops")
         packet[0] = intToSignedByte(hops)
+
+    def makePacket(self,hops,*args):
+        packet = bytearray(1)
+        self.setHops(packet,hops)
+        for a in args:
+            packet += a
+        return packet
+
+    def matchPacket(self,pattern,packet):
+        return re.search(pattern,packet)
+
+    alphanum = ascii_letters + digits
+    def randomAlphaNum(self,bytecount):
+        return self.randomBytesFromString(PacketIO.alphanum,bytecount)
+
+    def randomBytesFromString(self,string,bytecount):
+        return b''.join([bytes(random.choice(string),'utf-8') for i in range(bytecount)])
+        
