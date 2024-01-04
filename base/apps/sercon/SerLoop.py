@@ -27,11 +27,14 @@ class SerLoop:
 
     def update(self):
         self.pio.update()
+        count = 0
         while True:
             inpacket = self.pio.pendingPacket()
             if inpacket == None:
                 break
             print("WHANDLED",inpacket)
+            count = count + 1
+        return count
 
     def close(self):
         self.pio.close()

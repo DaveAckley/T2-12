@@ -46,12 +46,14 @@ print("LOOP LENGTH IS",loopLen)
             
 count = 0
 while True:
-    sl.update();
-    sleep(.1)
+    if sl.update() == 0:
+        sleep(.05)
     count += 1
     if count % 100 == 0:
         print("SENDDDD")
-        sl.pio.writePacket(b'-\xff')
+        nonce = sl.pio.randomAlphaNum(3)
+        p = sl.pio.makePacket(loopLen,b'stuff/',nonce)
+        sl.pio.writePacket(p)
 
 sl.close();
 
