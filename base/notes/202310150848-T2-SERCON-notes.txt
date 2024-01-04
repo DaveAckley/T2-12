@@ -1,4 +1,4 @@
-{84}  -*-  mode: text; fill-column: 50;  -*-
+{93}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -167,14 +167,19 @@ also now in sched11:TODO10
 
 TODO:
  - Test circuit with 2 tiles + FTDI
- - Find out how to take over /dev/ttyO0 from getty
- - Get some right angle 6-pos 0.1" sockets
- - Make three drops out of perfboard
- - wire up
+[85: Sat Oct 28 11:30:01 2023
+DONE  :85] - Find out how to take over /dev/ttyO0 from getty
+[86:
+DONE :86] - Get some right angle 6-pos 0.1" sockets
+[87:
+DONE :87] - Make three drops out of perfboard
+[88:
+DONE :88] - wire up
  - connect two to tiles and one to ftdi
  - write router script for tiles
  - write controller script for laptop
- - demo packet communication
+[89:
+DONE :89] - demo packet communication
 
 
 :9]
@@ -570,9 +575,11 @@ Fri Oct 20 12:25:07 2023 OK so how do we get going
 here? Need more
 
 TODO
- - Document status
+[90: Sat Oct 28 11:27:43 2023 Long ago, but notes file reverted :(
+ :90] - Document status
  - Make spike that handles two packets like S, M
- - Make a second serial loop tab
+[91: Sat Oct 28 11:29:14 2023
+DONE :91] - Make a second serial loop tab
  - Make a serial controller tab
  - Make a controller spike that enumerates the
    loop using S&M packets
@@ -1137,3 +1144,19 @@ OSHPark. It'll be 2024 before they show up, I
 expect; we'll see.
 
 :83]
+[84:
+
+Thu Jan  4 09:08:19 2024 OK, merging more changes
+from skewed versions of this file, using new note
+numbers but anachronistically old dats, gah..
+[92:
+
+Thu Jan  4 09:11:52 2024 OK, end, I think of new
+note numbers with old dates.
+
+Ugh. What I get for initially pulling a separate
+work repo for the sercon stuff, instead of just
+branching as god intended.
+
+:92]
+:84]
