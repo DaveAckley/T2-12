@@ -61,7 +61,7 @@ class PacketIO:
                 packet = self.deescape(packet) # exception on bad pkt/chksum
                 print("ACCBYTFND",packet)
                 self.pendingin.append(packet)
-            except ValueError v:
+            except ValueError as v:
                 print("Packet discarded:",v)
 
     def pendingPacket(self):
