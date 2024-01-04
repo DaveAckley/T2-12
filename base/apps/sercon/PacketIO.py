@@ -57,9 +57,12 @@ class PacketIO:
                 break
             packet = self.bytesin[:pos]         # not including \n
             self.bytesin = self.bytesin[pos+1:] # also not including \n
-            packet = self.deescape(packet)
-            print("ACCBYTFOUND",packet)
-            self.pendingin.append(packet)
+            try:
+                packet = self.deescape(packet) # exception on bad pkt/chksum
+                print("ACCBYTFND",packet)
+                self.pendingin.append(packet)
+            except ValueError v:
+                print("Packet discarded:",v)
 
     def pendingPacket(self):
         if len(self.pendingin) == 0:
