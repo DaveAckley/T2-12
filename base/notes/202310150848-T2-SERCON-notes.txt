@@ -1,4 +1,4 @@
-{93}  -*-  mode: text; fill-column: 50;  -*-
+{105}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -175,7 +175,8 @@ DONE :86] - Get some right angle 6-pos 0.1" sockets
 DONE :87] - Make three drops out of perfboard
 [88:
 DONE :88] - wire up
- - connect two to tiles and one to ftdi
+[99: Thu Jan  4 12:09:09 2024
+DONE :99] - connect two to tiles and one to ftdi
  - write router script for tiles
  - write controller script for laptop
 [89:
@@ -580,11 +581,15 @@ TODO
  - Make spike that handles two packets like S, M
 [91: Sat Oct 28 11:29:14 2023
 DONE :91] - Make a second serial loop tab
- - Make a serial controller tab
- - Make a controller spike that enumerates the
+[94: Thu Jan  4 12:07:36 2024
+DONE :94] - Make a serial controller tab
+[95:
+DONE :95] - Make a controller spike that enumerates the
    loop using S&M packets
- - Demo two tile + controller
- - Commit
+[96:
+DONE :96] - Demo two tile + controller
+[97: Thu Jan  4 12:07:56 2024 
+DONE :97] - Commit
  - Make more to-do
 
 :49]
@@ -1160,3 +1165,85 @@ branching as god intended.
 
 :92]
 :84]
+[93:
+
+Thu Jan  4 12:07:02 2024 So okay.[98:
+
+Thu Jan  4 12:08:32 2024 Claimed some to-do. Are
+we at making up more?
+[100:
+
+Thu Jan  4 12:09:57 2024 Looks like maybe.[101:
+
+Thu Jan  4 12:45:00 2024 I really thought we
+already had some text leading to serloop talking
+to a sim.. but I can't find it?[102:
+
+Thu Jan  4 12:58:41 2024 OK, I think I was
+thinking about this note (24) from
+/data/ackley/PART4/code/D/PyBulletTime/notes/202312251028-notes.txt:
+
+    So if we imagine a simulated reaction time of
+    perhaps 100ms through the T2 brain. That's pretty
+    damn fast in human terms but let's say.
+
+    Now, apparently bullet physics is based on 60fps
+    or 16.6ms / step, so we'd be talking 6 steps per
+    sensorimotor loop. Something like:
+
+    WORLD
+     forever
+       wait til 0%5 seconds o'clock
+       recv current forces from spine
+       read current senses from sim
+       send current senses to spine
+       write current forces to sim
+       for six times
+         capture frame for 60fps movie
+         step sim
+
+    SPINE
+     forever
+       wait til 1%5 seconds o'clock
+       recv senses from world
+       send forces to world
+       send senses to brainstem while
+       recv forces from brainstem
+
+    BRAINSTEM
+     forever
+       wait for spinal packet
+       recv senses from packet
+       read forces from brain
+       send forces to brainstem
+       write senses to brain
+
+[103:
+
+Thu Jan  4 13:16:12 2024 So can we turn that into
+some items? Maybe do some minutes first.[104:
+
+Thu Jan  4 14:47:39 2024 OK
+
+TODO
+ - Checkpoint commit. Sub branch possibly
+ - Spike out World.py from scratch
+ - Spike out Spine.py from scratch
+ - Settle on to-be-RAM-disk naming scheme
+ - Draft some kind of representation (lines with
+   space separated float?) for World<->Spine comm
+ - Demo World and Spine communicating
+ - Come make more to-do
+
+:104]
+
+:103]
+:102]
+
+:101]
+
+:100]
+:98]
+
+:93]
+
