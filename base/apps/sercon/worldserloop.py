@@ -50,8 +50,8 @@ while True:
         sleep(.05)
     count += 1
     if count % 100 == 0:
-        print("SENDDDD")
         nonce = sl.pio.randomAlphaNum(3)
+        print("SENDDDD",nonce)
         p = sl.pio.makePacket(loopLen,b'stuff/',nonce)
         sl.pio.writePacket(p)
 
