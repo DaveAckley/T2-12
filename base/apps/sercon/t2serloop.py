@@ -27,7 +27,10 @@ while True:
         if hops <= -126 or hops >= 127:
             print("TOST",inpacket) # discard underflows and reserved crap
         elif hops == 0:
-            print("HANDLE LOCAL!",inpacket)
+            if len(inpacket) >= 6 and inpacket[1] == b'W':
+                print("GOT W",inpacket)
+            else:
+                print("HANDLE LOCAL!",inpacket)
         elif hops == 126:
             print("HANDLE BCAST!",inpacket)
         else:                   # cmd or reply heading downstream
