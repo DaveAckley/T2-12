@@ -1,4 +1,4 @@
-{105}  -*-  mode: text; fill-column: 50;  -*-
+{140}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -1226,7 +1226,8 @@ some items? Maybe do some minutes first.[104:
 Thu Jan  4 14:47:39 2024 OK
 
 TODO
- - Checkpoint commit. Sub branch possibly
+[105: Fri Jan  5 10:43:02 2024 
+DONE :105] - Checkpoint commit. Sub branch possibly
  - Spike out World.py from scratch
  - Spike out Spine.py from scratch
  - Settle on to-be-RAM-disk naming scheme
@@ -1246,4 +1247,418 @@ TODO
 :98]
 
 :93]
+[106:
 
+Fri Jan  5 10:49:55 2024 OK trying to spike out
+World.py from scratch. Do we do a state machine or
+blocking threads or coroutines or what?
+
+We'd like to be able to say things like "Go
+reenumerate the loop" and
+
+ - be able to time out if we don't get our
+   response
+ - be able to ignore packets not meant for us
+   while allowing other states to consider them?
+
+I'm imagining some kind of dispatch loop where
+processes can post a regex of packets they're
+waiting for, and inbound traffic is automatically
+dished to the first matching receiver.
+
+And we'd want to post a timeout too.. So, like..
+an event queue? Which we kind of just recently
+implemented for StreamDack.py ??
+
+:106]
+[107:
+
+Sat Jan  6 16:07:07 2024 OK so we lifted the event
+stuff from StreamDack and got it initted in
+World.py. Now we're wondering how to unite this
+stuff (here in T2-12/base) with the PyBulletTime
+repo. Issues
+
+ - T2-12 shouldn't know about PyBulletTime
+ - t2serloop will likely want to know about the
+   Event stuff
+ - The PyBulletTime stuff will likely want to know
+   about the Event stuff
+
+All of which points at putting the event stuff in
+its own separate repo and sucking that from both
+T2-12 and PyBulletTime?
+
+[108:
+
+Sat Jan  6 16:33:47 2024 Well let's give it a try. 
+[109:
+
+Mon Jan  8 09:29:56 2024 So we now have a MrState
+repo. A MrState is a base class for some kind of
+wallclock-time-based engine based on a priority
+queue.
+
+And PyBulletTime/WorldRunner.py now inherits from
+MrState and has Josh's SIMULATION as a data
+member.
+
+Let's try to get them stepping together, not just
+sitting together..
+
+:109]
+:108]
+:107]
+[110:
+
+Mon Jan  8 11:16:51 2024 OK, we have pybullet
+plausibly stepping under the control of MrState.
+Now we need to get serious about exchanging
+sensorimotor data with the spine.
+
+Kind of wondering why we couldn't just do that in
+this codebase rather than thinking of another RAM
+disk or whatever?
+
+We tried to add ourselves to group 'dialout' so we
+don't have to be root to get to /dev/ttyUSB0.. Why
+not just do it all here?[111:
+
+Mon Jan  8 12:51:25 2024 Well, because we were
+saying we wanted to keep the spine in the T2-12
+repo? But how about importing a module from there
+say, or, again, splitting one out?
+
+:111]
+
+(We also want to go to scheduled, ongoing movie
+generations, rather than waiting until the 'end'
+of a simulation.)
+
+:110]
+[112:
+
+Tue Jan  9 12:01:44 2024 OK come on come on we're
+blocked on this 'stupid' code organization
+question.. Let's try to split out the packet stuff
+plus the tty stuff, and just leave the t2|world
+Runner stuff in T2-12|PyBullet.
+[113:
+
+Tue Jan  9 15:07:44 2024 OK we have minimal viable
+PacketSpine repo now and we're thinking about
+redoing its config file format to be tomlikey
+instead of space-delimited lines. For starters, we
+want to move the serial device name into the
+configfile. [114:
+
+Wed Jan 10 12:01:23 2024 And what else goes in
+that file? PacketSpine should maybe not have a
+configfile at all, and just get told the device?
+Seems like configuration should be a higher level
+task.
+
+Let's go that way. MrState already has Config.py
+[115:
+
+Wed Jan 10 12:17:24 2024 OK we tore configfile
+notions out of PacketSpine.
+
+But PacketSpine is going to want to know about
+MrState, right?, so it can schedule events at its
+level? Like perhaps to reenumerate the loop every
+so often?[116:
+
+Wed Jan 10 14:26:46 2024 So how often are we going
+to poll the serdev? Does python serial have any
+option for interrupts or select?[117:
+
+Wed Jan 10 14:42:07 2024 Well, it appears to have
+some kind of usable select, but I think I'm not
+going to use it, for now. We'll just go ahead and
+schedule the PacketSpine for frequent updates,
+like 10Hz or something, and see how it all plays
+out.. [118:
+
+Wed Jan 10 15:05:32 2024 So okay. Now we have
+WorldRunner.py that runs a pybullet simulation at
+0.2 Hz while polling for packets at 10Hz. We need
+to get PacketSpine having some kind of mechanisms
+for dispatching on packet types, or regexes, or
+something.
+
+And our first use case is enumerating the loop.
+And our second use case is sensorimotor update.
+And all of that packet traffic is, I think, meant
+to be arbitrarily interleavable.
+
+So let's imagine regexes to dispatch.
+At the moment enumerate is just a single packet
+containing a count, b'LOOPCOUNT/', and a 8 byte
+nonce. So if we had a 'PacketProcess' abstraction
+that EnumerateLoop would inherit from, it could
+catch that packet (or whatever we change it to)
+and check the nonce afterward.
+
+For the sensorimotor update, we'll send like
+b'SENSE/' and whatever data we have for the
+destination, and expect back a b'MOTOR/' from each
+destination. Maybe we could send a final b'DONE'
+afterwards? (Which could reenumerate the loop if
+we wanted..)
+
+Or maybe we enumerate the loop at the beginning of
+each SM transaction? Chicken and egg I guess.
+
+And we have no clue what we're going to do about
+timeouts and error handling generally.
+
+If we redundantly encoded the destination in each
+packet, we could enumerate the loop as part of
+every SM exchange. Hmm.
+
+So an SM transaction could be like:
+ - based on the current loop enumeration,
+   send an S packet to each tile, starting with
+   the highest index (==farthest from host)
+ - handle incoming M packets from each tile,
+   applying M data wherever it's supposed to go
+   based on the tile returning it.
+ - if we get an S packet coming back it means the
+   loop count is too high
+
+[119:
+
+Wed Jan 10 16:59:23 2024 Maybe we could just keep
+growing the count until an S comes back, and then
+keep it there to confirm loop count each SM
+transaction. We start out thinking the loop is
+empty, so we send one S packet.
+
+Then there's no separate enumeration step at all.
+If we get two or more S packets back, the loop
+count has shrunk.
+[120:
+
+Wed Jan 10 23:20:14 2024 OK come on let's take a
+crack at this. Let's make one of those
+'PacketProcess' things to provide a location for
+this. In PyBullet/ itself, now, I'd think.
+[121:
+
+Wed Jan 10 23:21:42 2024 But where does the packet
+dispatcher go? PacketSpine, you'd kind of think..
+We want to register callbacks into PacketSpine?
+[122:
+
+Wed Jan 10 23:23:13 2024 OK, SerLoop.py:36 in,
+update(), is where we're 'handling' packets,
+currently meaning:
+
+            print("WHANDLED",inpacket)
+
+So we'll make a PacketProcessor abstraction in
+PacketSpine
+
+[123:
+
+Wed Jan 10 23:56:00 2024 OK so SerLoop now has a
+self.dispatcher that's a PacketDispatcher, and it
+dishes incoming packets to it. At the moment we
+have no processors though..[124:
+
+Thu Jan 11 13:03:31 2024 OK now we have a
+WorldPacketProc getting dispatched to in
+WorldRunner.py. 
+
+:124]
+
+:123]
+
+:122]
+:121]
+:120]
+:119]
+
+:118]
+
+:117]
+
+:116]
+
+:115]
+:114]
+
+:113]
+
+:112]
+[125:
+
+Fri Jan 12 03:29:28 2024 Next up is the combined
+sensory/motor/enumeration packet, which will
+require a functioning state machine in the
+WorldPacketProc object, I'd think..[126:
+
+Fri Jan 12 08:26:10 2024 OK come on. Packet
+design.
+
+ <hops>W<dest><nonce>[S<data>|M<data>]
+
+maybe?
+ - 'W'orld packet
+ - redundant dest a la :118: above
+ - one byte random init spinner nonce
+ - four byte 'W' header overall
+ - 'S'ense and 'M'otor payloads
+
+or maybe 'WP' or whatever if hanging the whole
+type off one byte feels too thin.
+ 
+[127:
+
+Fri Jan 12 15:16:58 2024 OK after each simulation
+step, so we're sending around a(n empty) W/S packet,
+and it's getting forwarded and 'handled' by my
+two-t2 tile loop, returning a(n empty) W/M packet
+back.
+
+We're getting awfully close to needing a data
+format for sensorimotor stuff..
+
+About the only way I can think of to delay it now
+is to get a whole train of W packets shipping, one
+for each tile we believe exists. And then to
+perhaps update our notion of how many tiles we
+believe exist based on responses.
+[128:
+
+Sat Jan 13 02:40:24 2024 OK we're at the old same
+thing: How do we want to integrate time-based
+events with handling input packets?
+[129:
+
+Sat Jan 13 13:54:36 2024 Let's just try to do most
+stuff while handling packets, and see how it
+shakes out. We're currently polling on the EQ to
+do that, so we don't have to worry about literal
+races between an event running and packet handling
+- the former are serialized, and the latter will
+always happen during the former..
+
+So right now we're starting an SM update - and
+sending the first outbound packet - during
+WorldEvents.SecondsStep.
+
+Since we'll want to send a bunch of packets in
+general, maybe we should just do a state change
+there? And start sending the packets during
+WorldEvents.PacketSpineStep maybe?
+
+[130:
+
+Sat Jan 13 14:01:21 2024 Right now
+PacketSpineStep.run(..) is just handling input
+packets. Would it be gross to also check for PS
+state changes there?
+
+[131:
+
+Sat Jan 13 14:03:29 2024 As I think about this, we
+could cowardishly avoid the sequencing on output
+packets, and just buffer them all up atomically,
+since that's what PacketIO.writePacket(..) does
+anyway. Then they'll ship automatically during 
+
+PacketSpineStep.run(..) ->
+ PacketSpine.update() ->
+  SerLoop.update() ->
+   PacketIO.update() ->
+    PacketIO.updateWrite()
+
+with the existing code.
+
+Let's try that urgh.
+
+[132:
+
+Sun Jan 14 02:19:44 2024 OK we did that, and we
+got it to automatically grow the loop based on
+return packets. It never shrinks the loop yet, but
+that "shouldn't" matter if things are stable.
+buuut checking in now it appears to think the loop
+is like 33 tiles or something.
+
+Let's get that squared away..[133:
+
+Sun Jan 14 02:33:22 2024 Not clear what's going
+wrong, actually.. A lost S packet could do it, but
+that should get rarer and rarer as the imagined
+loop len grows beyond the actual loop size. A
+giant time delay could do it too - something that
+lets the host burn up all of five seconds without
+seeing the S packet it is expecting..
+
+(All this is because our various 'planned'
+robustification remain unimplemented so far..)
+[134:
+
+Sun Jan 14 02:45:56 2024 Argh it's because the
+regex won't match when the nonce value is b'\n'? I
+bet that's what it is. Argh.[135:
+
+Sun Jan 14 02:47:23 2024 I see there's a re.M
+'multiline mode'? Will that save us?[136:
+
+Sun Jan 14 03:19:19 2024 It didn't.. but it looks
+like re.DOTALL ought to.. Running now.. [137:
+
+Sun Jan 14 03:23:42 2024 Yeah looks like that did
+it. Past nonce= 10 with no loop len increase.
+
+:137]
+
+:136]
+
+:135]
+
+:134]
+:133]
+
+:132]
+
+:131]
+
+:130]
+
+:129]
+
+:128]
+:127]
+:126]
+
+:125]
+[138:
+
+Sun Jan 14 03:39:54 2024 So okay. Here we are: We
+need new
+
+TODO
+ - Make up a sensorimotor data format
+ - Extend t2serloop.py to route it via RAM disk
+ - Make a new ulam library with native code to
+   access and update the RAM disk data
+   = Including deciding how we present it at the
+     ulam level.
+ - Make a test element of some kind that does
+   something with the data.
+ - Make the modifications performed by that test
+   element somehow visible in the world
+
+[139:
+
+Sun Jan 14 03:44:25 2024 Hmm, some of those items
+overlap with unclaimed stuff in :104: above, so be
+it. But first, checkpoint commit, all around..
+
+:139]
+:138]
