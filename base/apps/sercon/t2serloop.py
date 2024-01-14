@@ -27,8 +27,14 @@ while True:
         if hops <= -126 or hops >= 127:
             print("TOST",inpacket) # discard underflows and reserved crap
         elif hops == 0:
-            if len(inpacket) >= 6 and inpacket[1] == b'W':
+            if (len(inpacket) >= 6 and
+                inpacket[1] == ord(b'W') and
+                inpacket[4] == ord(b'S')):
                 print("GOT W",inpacket)
+                pio.setHops(inpacket,hops-1)
+                inpacket[4] = ord(b'M')
+                print("FWD",inpacket)
+                pio.writePacket(inpacket)
             else:
                 print("HANDLE LOCAL!",inpacket)
         elif hops == 126:
