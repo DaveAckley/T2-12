@@ -1,4 +1,4 @@
-{140}  -*-  mode: text; fill-column: 50;  -*-
+{153}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -1228,8 +1228,10 @@ Thu Jan  4 14:47:39 2024 OK
 TODO
 [105: Fri Jan  5 10:43:02 2024 
 DONE :105] - Checkpoint commit. Sub branch possibly
- - Spike out World.py from scratch
- - Spike out Spine.py from scratch
+[150: Thu Jan 18 14:01:32 2024 I guess we did this
+DONE :150] - Spike out World.py from scratch
+[151: Thu Jan 18 14:01:57 2024 PacketSpine repo
+DONE :151] - Spike out Spine.py from scratch
  - Settle on to-be-RAM-disk naming scheme
  - Draft some kind of representation (lines with
    space separated float?) for World<->Spine comm
@@ -1662,3 +1664,152 @@ it. But first, checkpoint commit, all around..
 
 :139]
 :138]
+[140:
+
+Mon Jan 15 02:30:00 2024
+
+SENSORIMOTOR FORMAT
+
+ compact key + value format
+ like maybe three byte key and one byte value?
+ one and one would be obvious.
+ is ~200 signals enough for the experiments we
+ want?
+ two and two would be obvious. but it's hard to
+ imagine really needing 16 bits of value.
+
+I want to do 3+1. Room to even do 3D indexing for
+keys if we wanted.
+
+So okay. We'll need a config file that defines
+these tags into a dict presumably. Then SIMULATION
+will push and pull values from that dict, and
+SPINE will push and pull values from that dict as
+well.
+
+We'd like to be loading that config file on the
+tiles too, I'd think.
+
+Maybe we('ll) even want a little directory of
+config files and some kind of 'world setup'
+command that selects which config to use.
+
+We could just include an appropriate file in the
+physics, though, right?
+
+But we could be imagining changing the world
+and/or the sensorimotor interface without changing
+the physics, also right?
+
+But maybe we could just have a special K-V that
+represents which world we're talking about, and
+arrange to distribute that to all the brainstem
+tiles somehow.
+
+:140]
+[141:
+
+Wed Jan 17 01:32:54 2024 OK format for
+sensorimotor.toml (and tiles.toml? separately?)
+
+Have a combined name for sensors and motors? Since
+they act pretty symmetrically modulo which end of
+the spine?
+
+Nodes? Terminals? Channels? IOs?
+
+Could we even want to think of a bidirectional
+such thing?? (snap out of it! minimal minimal)
+
+[142:
+
+Wed Jan 17 14:53:48 2024 Well I confess I'm not
+too excited to head down the road of specific link
+and joint names while we're still based on the
+car/racecar.urdf file.[143:
+
+Wed Jan 17 15:15:06 2024 Well, found some
+tutorials for simple braitenbergish vehicles, and
+suspect I might be able to glom onto some usable
+code, so going into them for a bit.
+
+Let's start the minute shooter in case we need
+some such material..[144:
+
+Wed Jan 17 15:16:55 2024 OK, it's running, I think..
+
+:144]
+
+:143]
+
+:142]
+
+:141]
+[145:
+
+Wed Jan 17 15:36:19 2024 So, gag, xacro is part of
+the robot operating system 'ROS', which is
+actually 'ROS2' now (I think) which is a giant
+system of packages and ductwork that I really
+don't want to get all into if I can possibly avoid
+it. 
+[146:
+
+Wed Jan 17 15:52:36 2024 OK, tried to build xacro
+from github source - without drinking a full ros
+koolaid - but the dependencies just start
+spreading.. cmake, okay. But then 'catkin'?
+
+gag. gaaaaaaag.
+
+[147:
+
+Wed Jan 17 15:58:58 2024 Now I don't know which
+way to go.
+
+[148:
+
+Wed Jan 17 16:07:35 2024 I don't think getting
+xacro is worth installing ros. Josh did his own
+generate.py stuff and we used that and it was
+close to all we needed 'except' for foggen
+cylinders.
+
+Let's go back and try to make a 'generate
+cylinder' pyrosim thing, using what little
+additional bits of stuff we've learned along the
+way..
+[149:
+
+Thu Jan 18 13:55:03 2024 OK, so everything takes
+forever but we've got some progress:
+
+ - Have a 'Braitenbergish' two-wheel differential
+   drive 'vehicle' moving
+
+ - Well, that's mostly it, really. We have that.
+
+It's far enough along that I'm now, finally,
+increasingly thinking about ulamish stuff and how
+we might implement some 'Braitenberg connections'
+in a coolish way.
+
+Main thing now on the 3D side is we need the
+'light sensors' that we hope to do with little
+in-scene camera renderings and
+histogram/reductions.
+
+:149]
+
+:148]
+
+:147]
+
+:146]
+:145]
+[152:
+
+Thu Jan 18 14:02:27 2024 Well, better checkpoint
+commit everything, I think.
+
+:152]
