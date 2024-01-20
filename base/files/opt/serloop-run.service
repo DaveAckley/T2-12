@@ -1,0 +1,12 @@
+[Unit]
+Description=Boot time serial loop processing
+Requires=mfm-run.service
+After=mfm-run.service
+
+[Service]
+Type=simple
+#t2serloopRunner.sh installed by ../../apps/sercon/
+ExecStart=/opt/scripts/t2/t2serloopRunner.sh
+
+[Install]
+WantedBy=multi-user.target
