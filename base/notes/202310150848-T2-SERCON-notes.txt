@@ -1,4 +1,4 @@
-{153}  -*-  mode: text; fill-column: 50;  -*-
+{166}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -1811,5 +1811,143 @@ histogram/reductions.
 
 Thu Jan 18 14:02:27 2024 Well, better checkpoint
 commit everything, I think.
+[153:
+
+Thu Jan 18 14:12:24 2024 Committed T2-12,
+PyBulletTime, MrState, and PacketSpine.. That's
+it, right? Sheesh.
+
+:153]
 
 :152]
+[154:
+
+Sat Jan 20 01:37:17 2024 OK, I just got nubiga set
+up with a python venv to get all this going and
+I'm wondering if we should think about that for
+the t2s actually as well.[155:
+
+Sat Jan 20 11:35:26 2024 So OK. Let's figure out a
+way to get the tiles booting all the way up to
+handling serial loop packets. Do we want to screw
+with a systemd unit for that or can we drive
+around that? How do cdm and mfmt2 get booted?[156:
+
+Sat Jan 20 11:39:33 2024 Well, I see
+
+T2-12/base/files/opt/cdm-run.service and
+T2-12/base/files/opt/mfm-run.service
+
+:156]
+
+:155]
+
+:154]
+[157:
+
+Sat Jan 20 16:31:22 2024 Well then: I just
+rebooted the keymaster, and then saw essentially
+the entire boot output get discarded by
+WorldRunner.py on the host, and then, eventually
+finally, the loop started operating again, once
+the boot-time serloop-run.service kicked in.
+
+Could be worse![158:
+
+Sat Jan 20 17:23:29 2024 OK now, well now we're
+seeing 
+
+  LOOPLENGTH UPDATE: 0 -> 4
+
+and that's kind of the length we were aiming for
+as a first step. Long enough for each Braitenberg
+signal to go do a different tile.
+
+:158]
+
+:157]
+[159:
+
+Sun Jan 21 00:13:35 2024 OK so now it really
+really seems like it's time to connect sim to
+spine and get real about wire formats and
+spine<->brain formats, if they differ.
+
+So we have sm1.toml getting loaded, and it's
+(intended to be) defining names and tiles and
+formats for sensorimotor interfaces.
+
+I've been thinking in the back of my mind that
+maybe we should just use indices of some sort to
+identify signals on the wire, and expect the same
+config file will be available on both ends to
+interpret the indices.
+
+But hmm them we need tomlikey on the tiles, which
+we currently don't.. and we'd been hoping to
+minimize custom python dependencies on the
+tiles.. 
+[160:
+
+Sun Jan 21 00:52:03 2024 Well, tomlikey or not
+tomlikey?
+
+I guess one intermediate position would be to have
+an outbound packet (or packets) to define the
+key-value mapping. I'd also been thinking about
+some kind of simulation id packet; that could
+carry the KV stuff.
+
+With the idea, I guess, that all those keys and
+key info (e.g., S|M) will get passed to ulam via
+the native interface somehow.
+
+Hell why don't we implement something? We've got
+/mnt/T2TMP available; let's stick something in
+there.
+
+[161:
+
+Sun Jan 21 01:15:02 2024 I guess we really don't
+want or need the brain interface serloop stuff to
+be in ulam/stdlib though, right? We just need to
+put it in the physics library. What say we get a
+fucking physics library set up for the t2 matrix
+brain challenge how about that now?
+[162:
+
+Sun Jan 21 01:18:35 2024 Are we really sure we can
+include .cpp/.so or whatever in a physics file?
+Maybe we should confirm that up front.
+[163:
+
+Sun Jan 21 01:44:36 2024 Well, we've initted
+MatrixBrain10, and so far it appears that adding
+_native.tcc files to an ulam physics is no
+problem. Question is what does cdmd think of it?
+
+Let's get our stub pushed to T2Demos and maybe see
+what the keymaster thinks of it..[164:
+
+Sun Jan 21 02:10:08 2024 Well now I'm wishing
+MatrixBrain was a separate repo instead of under
+T2Demos. Want to be able to clone it separately on
+keymaster and so on. Let's move it before we go
+farther. [165:
+
+Sun Jan 21 02:24:05 2024 OK, created T2MatrixBrain
+repo. Continuing notes (hopefully all or mostly)
+there, in
+
+    T2MatrixBrain/notes/202401210220-notes.txt
+
+:165]
+
+:164]
+
+:163]
+:162]
+:161]
+
+:160]
+:159]
