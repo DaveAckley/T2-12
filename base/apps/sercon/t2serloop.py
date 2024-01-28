@@ -29,10 +29,10 @@ while True:
         elif hops == 0:
             if (len(inpacket) >= 6 and
                 inpacket[1] == ord(b'W') and
-                inpacket[4] == ord(b'S')):
+                inpacket[4] == ord(b'I')):
                 print("GOT W",inpacket)
                 pio.setHops(inpacket,hops-1)
-                inpacket[4] = ord(b'M')
+                inpacket[4] = ord(b'O')
                 print("FWD",inpacket)
                 pio.writePacket(inpacket)
             else:
