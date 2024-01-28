@@ -1,4 +1,4 @@
-{153}  -*-  mode: text; fill-column: 50;  -*-
+{168}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -1799,6 +1799,162 @@ Main thing now on the 3D side is we need the
 in-scene camera renderings and
 histogram/reductions.
 
+[167:
+
+Sun Jan 28 02:15:44 2024 argh
+
+[BEGIN VERSION SKEW INSERTIONS]
+[:
+
+Sun Jan 28 00:11:40 2024 Well we have that now too
+- although I just randomly sample instead of
+histogramming.
+
+And now I want to send some actual signals around
+the serloop. Even if the T2 doesn't do anything
+with it yet.
+
+But I had some thoughts over the last several
+days, about how the interface to the matrix could
+go. The idea is to make elements 'pull' the
+signals from the underlying tile whenever they
+want to.
+
+The native code collects the signals that arrive
+at the tile and just holds them in private state,
+overwriting with newer signals as they arrive.
+
+Ulam atoms can then use the native code to query
+the tile in which they reside, to find out what SM
+terminals are available, query S vals, and set M
+vals. The native code might mark S vals as 'read'
+and M vals as 'set' when an atom accesses them,
+and clear those flags when a spinal SM transaction
+happens, so atoms can 'consume' the input-output
+capabilities if they want to, by respecting the
+corresponding flags.
+
+[:
+
+Sun Jan 28 00:33:19 2024 So, one good thing about
+this is the native code doesn't have to worry
+about where or how to deliver sensory data. It
+doesn't have to decide to send it to the middle of
+the tile, or how to pick up motor commands from
+the event layer, or any of that.
+
+Ulam atoms just pull and push on the brain stem as
+they want, from anywhere they want within the
+given tile. This 'ought' to allow signal paths to
+optimize themselves like straightening ant trails
+as useful routings are established.
+
+[:
+
+Sun Jan 28 00:36:45 2024 For now I'm thinking that
+the spine will still control which terminals are
+assigned to which tiles, but down the road we
+could think of extended protocol messages allowing
+tiles to alter that configuration.
+
+[:
+
+Sun Jan 28 01:07:55 2024 So okay. We have actual
+signals with numbers and stuff that we are using
+right now in the python code. Could we literally
+lift those variables into terminal names?
+[:
+
+Sun Jan 28 01:09:53 2024 So okay, we have a
+tomlikey configuration file 'sm1.toml' that is
+supposed to be relevant here. We're loading that
+but we're not yet using it.
+
+It has stuff in it like:
+
+    [term.SRFL]
+      type=sensor
+      name='Right Front Light'
+      tile=2
+
+    [term.MRR]
+      type=motor
+      joint=base_to_rwheel
+      name='Right Rear Motor'
+      tile=1
+
+and we'd like to make the hash produced by that
+somehow be canonical for terminal definitions and
+values.
+
+Could we specify a .py file in the .toml, whose
+job it is to do whatever sim-specific stuff is
+needed to produce and consume terminal values?
+
+[:
+
+Sun Jan 28 01:15:14 2024 Now when I wrote sm1.toml
+I didn't yet have the yellow sensors implemented;
+now I do. But they're really just unstructured
+python code - there's no official joint or link
+that represents the sensors. There ought to be,
+for visual legibility at least.. but even if there
+was, it'll still be raw python creating the sensor
+values.
+
+[:
+
+Sun Jan 28 01:24:47 2024 Right now we're computing
+the 'yellow' values in simulation -> Step() ->
+ComputeCarView(..), and storing them in
+simulation.self.lastLeftYellow and .lastRightYellow
+
+Then motor.py reads those values and 'conditions
+them' to set the motor values.
+
+So. TODO:
+ - Have ComputeCarView calls stash results in the
+   hash produced by (eg) sm1.toml. Like, in
+    WorldRunner.Config.hash['term']['SLFL'].value
+   or something along those lines.
+ - Have WorldEvent.py -> SecondsStep -> run(..) ->
+   PacketSpine -> initSM() do work like:
+    = determine from WR.Config.hash what SM
+      terminals go to what tiles
+    = populate the tile-bound I packets with the
+      specified terminals ..in some format.
+      maybe 4 bytes tag (eg 'SLFL', 'MRR ') and
+      one byte value?[161: Sun Jan 28 01:57:06
+      2024  Maybe just 1 byte sm index and 1 byte
+      value. Come on. Maybe sort the SMs by name
+      and number them from say 1 that way. :161]
+ - Have WorldEvents.py -> WorldPacketProc.handle(..) 
+   process spine-bound O packets and set joint
+   targets as specified using the joint names from
+   the toml, like
+   
+    [term.MRR]
+      type=motor
+      joint=base_to_rwheel
+      name='Right Rear Motor'
+      tile=1
+ - Hardcode the existing SM routing into
+   T2-12/base/apps/sercon/t2serloop.py
+ - See yellow ball joy happening via the
+   keymaster.
+ - Take big payoff for that.
+
+:]
+
+    [term.SRFL]
+      type=sensor
+      name='Right Front Light'
+      tile=2
+
+:] :] :] :] :] :]
+[END VERSION SKEW INSERTIONS]
+
+:167]
 :149]
 
 :148]
@@ -1811,5 +1967,154 @@ histogram/reductions.
 
 Thu Jan 18 14:02:27 2024 Well, better checkpoint
 commit everything, I think.
+[153:
+
+Thu Jan 18 14:12:24 2024 Committed T2-12,
+PyBulletTime, MrState, and PacketSpine.. That's
+it, right? Sheesh.
+
+:153]
 
 :152]
+[154:
+
+Sat Jan 20 01:37:17 2024 OK, I just got nubiga set
+up with a python venv to get all this going and
+I'm wondering if we should think about that for
+the t2s actually as well.[155:
+
+Sat Jan 20 11:35:26 2024 So OK. Let's figure out a
+way to get the tiles booting all the way up to
+handling serial loop packets. Do we want to screw
+with a systemd unit for that or can we drive
+around that? How do cdm and mfmt2 get booted?[156:
+
+Sat Jan 20 11:39:33 2024 Well, I see
+
+T2-12/base/files/opt/cdm-run.service and
+T2-12/base/files/opt/mfm-run.service
+
+:156]
+
+:155]
+
+:154]
+[157:
+
+Sat Jan 20 16:31:22 2024 Well then: I just
+rebooted the keymaster, and then saw essentially
+the entire boot output get discarded by
+WorldRunner.py on the host, and then, eventually
+finally, the loop started operating again, once
+the boot-time serloop-run.service kicked in.
+
+Could be worse![158:
+
+Sat Jan 20 17:23:29 2024 OK now, well now we're
+seeing 
+
+  LOOPLENGTH UPDATE: 0 -> 4
+
+and that's kind of the length we were aiming for
+as a first step. Long enough for each Braitenberg
+signal to go do a different tile.
+
+:158]
+
+:157]
+[159:
+
+Sun Jan 21 00:13:35 2024 OK so now it really
+really seems like it's time to connect sim to
+spine and get real about wire formats and
+spine<->brain formats, if they differ.
+
+So we have sm1.toml getting loaded, and it's
+(intended to be) defining names and tiles and
+formats for sensorimotor interfaces.
+
+I've been thinking in the back of my mind that
+maybe we should just use indices of some sort to
+identify signals on the wire, and expect the same
+config file will be available on both ends to
+interpret the indices.
+
+But hmm them we need tomlikey on the tiles, which
+we currently don't.. and we'd been hoping to
+minimize custom python dependencies on the
+tiles.. 
+[160:
+
+Sun Jan 21 00:52:03 2024 Well, tomlikey or not
+tomlikey?
+
+I guess one intermediate position would be to have
+an outbound packet (or packets) to define the
+key-value mapping. I'd also been thinking about
+some kind of simulation id packet; that could
+carry the KV stuff.
+
+With the idea, I guess, that all those keys and
+key info (e.g., S|M) will get passed to ulam via
+the native interface somehow.
+
+Hell why don't we implement something? We've got
+/mnt/T2TMP available; let's stick something in
+there.
+
+[161:
+
+Sun Jan 21 01:15:02 2024 I guess we really don't
+want or need the brain interface serloop stuff to
+be in ulam/stdlib though, right? We just need to
+put it in the physics library. What say we get a
+fucking physics library set up for the t2 matrix
+brain challenge how about that now?
+[162:
+
+Sun Jan 21 01:18:35 2024 Are we really sure we can
+include .cpp/.so or whatever in a physics file?
+Maybe we should confirm that up front.
+[163:
+
+Sun Jan 21 01:44:36 2024 Well, we've initted
+MatrixBrain10, and so far it appears that adding
+_native.tcc files to an ulam physics is no
+problem. Question is what does cdmd think of it?
+
+Let's get our stub pushed to T2Demos and maybe see
+what the keymaster thinks of it..[164:
+
+Sun Jan 21 02:10:08 2024 Well now I'm wishing
+MatrixBrain was a separate repo instead of under
+T2Demos. Want to be able to clone it separately on
+keymaster and so on. Let's move it before we go
+farther. [165:
+
+Sun Jan 21 02:24:05 2024 OK, created T2MatrixBrain
+repo. Continuing notes (hopefully all or mostly)
+there, in
+
+    T2MatrixBrain/notes/202401210220-notes.txt
+
+:165]
+
+:164]
+
+:163]
+:162]
+:161]
+
+:160]
+:159]
+[166:
+
+Sun Jan 28 02:12:02 2024 ARGH we have collisions
+in this NOTES file again argh. Argh. So,
+streamlining a bunch of notes from the other
+version in here, with crippled notes numbers
+again.
+
+Argh. See :167: above
+
+:166]
