@@ -6,12 +6,24 @@ import PacketIO
 from time import sleep
 
 pio = PacketIO.PacketIO('/dev/ttyO0')
-print(pio)
-raw = b"I'm a little packet (\xf1) made of tape\nHere is my null byte:\0\nHere's my escape\033!"
-print("ZBNG",raw)
-esc = pio.escape(raw)
-print("BONB",esc)
-print("HONG",pio.deescape(esc))
+print("HAWO",pio)
+#raw = b"I'm a little packet (\xf1) made of tape\nHere is my null byte:\0\nHere's my escape\033!"
+#print("ZBNG",raw)
+#esc = pio.escape(raw)
+#print("BONB",esc)
+#print("HONG",pio.deescape(esc))
+
+def performPacketIO(packet):
+    ####BEGIN DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
+    if len(packet)==13:
+        # ASSUMING ALL TERMINALS ARE ASSIGNED TO ONE TILE
+        # MLR 0, MRR 1, SLFL 2, SRFL 3, so
+        # mlr 5 6, mrr 7 8, slfl 9 10, srfl 11 12
+        # want slfl -> mrr and srfl -> mlr
+        packet[8] = packet[10] # slfl -> mrr
+        packet[6] = packet[12] # srfl -> mlr
+        print("ROUTONGO",packet)
+    ####END DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
 
 count = 0
 while True:
@@ -27,10 +39,11 @@ while True:
         if hops <= -126 or hops >= 127:
             print("TOST",inpacket) # discard underflows and reserved crap
         elif hops == 0:
-            if (len(inpacket) >= 6 and
+            if (len(inpacket) >= 5 and  # W pkt reqd: hops,'W',dest,nonce,type
                 inpacket[1] == ord(b'W') and
                 inpacket[4] == ord(b'I')):
-                print("GOT W",inpacket)
+                print("GOT WI",inpacket)
+                performPacketIO(inpacket)  # Modifies inpacket in place!
                 pio.setHops(inpacket,hops-1)
                 inpacket[4] = ord(b'O')
                 print("FWD",inpacket)
