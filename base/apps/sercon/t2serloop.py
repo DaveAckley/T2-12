@@ -61,9 +61,9 @@ def handleBroadcast(p):
     else:
         if p[2] < 125:
             p[2] += 1         # increment broadcast hops
-        if p[3] == ord(b'f'): # full file attached
+        if p[3] == ord(b'f'): # 'f'ull file attached
             recvFullConfig(p[4:])
-        elif p[3] == ord(b'c'): # file checksum attached
+        elif p[3] == ord(b's'): # file check's'um attached
             checkConfigChecksum(p)
         else:
             print("UNREGBRCP",p)
