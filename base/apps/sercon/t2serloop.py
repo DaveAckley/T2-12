@@ -4,8 +4,13 @@
 
 import PacketIO
 from time import sleep
+#from Utils import *
 
 import tomlikey as toml
+import hashlib
+
+confdir = "/mnt/T2TMP"
+configfile = confdir+"/world.toml"
 
 pio = PacketIO.PacketIO('/dev/ttyO0')
 print("HAWO",pio)
@@ -27,6 +32,42 @@ def performPacketIO(packet):
         print("ROUTONGO",packet)
     ####END DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
 
+def recvFullConfig(fbytes):
+    with open(configfile,"wb") as file:
+        file.write(fbytes)
+
+def checkConfigChecksum(p):
+    hit = False
+    try:
+        with open(configfile,"rb") as file:
+            raw = file.read()
+        h = hashlib.sha256()
+        h.update(raw)
+        fcs = h.digest()
+        csbytes = p[5:]
+        hit = fcs == csbytes
+    except Exception as e:
+        print("NOCSFILE",e)
+    if not hit:
+        p[4] += 1
+        print("CNFCHKMIS")
+    
+
+def handleBroadcast(p):
+    if len(p) < 6:
+        print("SHORTVOARD",p)
+    elif p[1] != ord(b'C'):     # Config packet only bcast so far
+        print("UNREGBORAD",p)
+    else:
+        if p[2] < 125:
+            p[2] += 1         # increment broadcast hops
+        if p[3] == ord(b'f'): # full file attached
+            recvFullConfig(p[4:])
+        elif p[3] == ord(b'c'): # file checksum attached
+            checkConfigChecksum(p)
+        else:
+            print("UNREGBRCP",p)
+
 count = 0
 while True:
     pio.update()
@@ -40,6 +81,10 @@ while True:
         hops = pio.getHops(inpacket)
         if hops <= -126 or hops >= 127:
             print("TOST",inpacket) # discard underflows and reserved crap
+        elif hops == 126:   # Broadcast!
+            handleBroadcast(inpacket)  # Modifies inpacket in place!
+            print("FWD",inpacket)
+            pio.writePacket(inpacket)
         elif hops == 0:
             if (len(inpacket) >= 5 and  # W pkt reqd: hops,'W',dest,nonce,type
                 inpacket[1] == ord(b'W') and
