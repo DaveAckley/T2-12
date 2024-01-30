@@ -5,6 +5,8 @@
 import PacketIO
 from time import sleep
 
+import tomlikey as toml
+
 pio = PacketIO.PacketIO('/dev/ttyO0')
 print("HAWO",pio)
 #raw = b"I'm a little packet (\xf1) made of tape\nHere is my null byte:\0\nHere's my escape\033!"
