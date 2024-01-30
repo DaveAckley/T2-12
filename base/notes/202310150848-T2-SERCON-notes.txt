@@ -1,4 +1,4 @@
-{168}  -*-  mode: text; fill-column: 50;  -*-
+{187}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -1913,13 +1913,15 @@ Then motor.py reads those values and 'conditions
 them' to set the motor values.
 
 So. TODO:
- - Have ComputeCarView calls stash results in the
+[174: Mon Jan 29 03:39:56 2024
+DONE :174] - Have ComputeCarView calls stash results in the
    hash produced by (eg) sm1.toml. Like, in
     WorldRunner.Config.hash['term']['SLFL'].value
    or something along those lines.
  - Have WorldEvent.py -> SecondsStep -> run(..) ->
    PacketSpine -> initSM() do work like:
-    = determine from WR.Config.hash what SM
+[170: Sun Jan 28 10:17:53 2024
+DONE :170]    = determine from WR.Config.hash what SM
       terminals go to what tiles
     = populate the tile-bound I packets with the
       specified terminals ..in some format.
@@ -1927,7 +1929,8 @@ So. TODO:
       one byte value?[161: Sun Jan 28 01:57:06
       2024  Maybe just 1 byte sm index and 1 byte
       value. Come on. Maybe sort the SMs by name
-      and number them from say 1 that way. :161]
+[169: Sun Jan 28 03:34:48 2024 numbering from 0..
+DONE :169]      and number them from say 1 that way. :161]
  - Have WorldEvents.py -> WorldPacketProc.handle(..) 
    process spine-bound O packets and set joint
    targets as specified using the joint names from
@@ -2118,3 +2121,220 @@ again.
 Argh. See :167: above
 
 :166]
+[168:
+
+Sun Jan 28 02:34:13 2024 So okay. LET'S GOOOOOOO
+
+First up: sort and index SMs..
+
+:168]
+[171:
+
+Sun Jan 28 23:40:46 2024 OK, so we were a little
+sidetracked by sim 20240127-042228, which ended up
+performing a fun little story so we kept letting
+it run longer.. but that's done and stashed in
+T2sday/episodes/3147-20240206/sources/braiten now.
+
+So where we are next is needing to map from (the
+internal equivalent of)
+
+    [term.SRFL]
+      type=sensor
+      name='Right Front Light'
+      tile=2
+
+to some code like
+
+   self.EvaluateSensor(term)
+
+somewhere. And in there, I guess, we'll just do
+the moral equivalent of a switch on 'SRFL' and so
+on..
+
+Could we have ComputeCarView stash it in the
+'right place'? At least for
+nearly-everything-hardcoded now?
+
+[172:
+
+Sun Jan 28 23:58:28 2024 Couple items there:
+ - We're already passing in 'viewl' and 'viewr'
+   which are used for .png file names in the
+   simdir. We were unhappy with the image
+   directory layout so this would be an
+   opportunity to fix that if we wanted:
+   = Capture real dates in filenames
+   = Put different image streams in different dirs?
+   = Stash values in the config hash
+
+[173:
+
+
+Mon Jan 29 00:26:29 2024
+
+data/SIMTAG/imgs/view/202401290027123.png
+                /SRFL/202401290027123.png
+                /SLFL/202401290027123.png
+
+:173]
+
+
+:172]
+
+:171]
+[175:
+
+Mon Jan 29 10:25:28 2024 We are now very very
+close to seeing a braitenberg type 2b vehicle
+operating with the signal routing being performed
+on the keymaster.
+
+All that's left is to propagate the motor signals
+which are now incoming to their working positions.
+[176:
+
+Mon Jan 29 10:51:51 2024 OK so right now
+WorldRunner.IndexTerminals() stores in _tiles_ a
+hash of tilenums -> [terminalindices].
+
+But when we're processing a O packet at the spine,
+we are given a tilenum and some terminalindices,
+and we'd like to know (just for local sanity) if
+that tile is entitled to talk about that terminal.
+Which would normally mean we'd expect something
+like stuff[tilenum]->{terminalindices:True} or
+whatever.
+
+Is anybody using _tiles_ ?[177:
+
+Mon Jan 29 11:13:57 2024 Yes,
+WorldRunner.GetPayloadForTile is iterating over
+the appropriate terminindices, as one might have
+expected were one to have had a clue. So
+officially we'd want a list and a hash?
+[178:
+
+Mon Jan 29 11:36:58 2024 (Just used 'in list' fog
+it.)
+
+So now I think we're pushing the returned moto
+values into the term hash. And we need to dig them
+out of there in the motor stuff "and then we're
+done".
+
+:178]
+
+:177]
+
+
+:176]
+:175]
+[179:
+
+Tue Jan 30 01:00:18 2024 Aaaaaand, we're "done".
+Sim tag 20240129-164557 is the first good looking
+run (with a 'full story') where code running on
+the keymaster was doing all the signal routing.
+
+So yay there.
+
+[180:
+
+Tue Jan 30 01:15:08 2024 Now I'd like to add state
+to the keymaster so it could switch from type 2b
+to type 2a (and back, presumably) under some kind
+of circumstances.
+
+Jeez what about if I had it switch when I pressed
+the user button on the keymaster?
+
+Let's make a few more terminals.. in sm1.toml,
+say. [181:
+
+Tue Jan 30 01:20:46 2024 Actually, can we bring
+the T2 code up enough to parse the toml file and
+figure out the signal indices on its own? Don't
+want to be rehacking the hardcode that's doing 2b
+at the moment.
+
+[182:
+
+Tue Jan 30 07:46:01 2024 Well I pushed tomlikey
+into the base/files/misc zone and got it
+importable on the KM, although I haven't actually
+tried to parse anything with it yet.
+
+Now I'm wondering if I c/should deliver the host
+config file over the serloop, in one packet or
+many, on demand or intermittently, or figure out
+some other delivery method..
+
+We could do a hash of the tomli file and
+distribute that as a broadcast every few minutes
+or whatever, and let any tiles with a miss request
+a rebroadcast of the entire file.
+
+Could we do it in a single packet? Is that too
+gross? It'll eat memory and wire latency, but so
+rarely..
+
+[183:
+
+Tue Jan 30 07:52:48 2024 Our debug tests still
+show sending a 600+ byte packet...
+
+Let's look at making a new packet (or two) for
+config distribution..
+
+[184:
+
+Tue Jan 30 07:56:20 2024 We're using the 'W'
+command for 'world I/O'.. Should we use something
+else for config? 'C'? 'P'hysics? 'B'iology?
+[185:
+
+Tue Jan 30 09:02:09 2024 Let's just say 'C'. So a
+packet might look like:
+
+\x7eC[PAYLOAD]
+
+with subtypes like:
+
+\x7eCf[FULL CONFIG FILE]
+\x7eCs[CONFIG FILE CHECKSUM]
+
+or maybe we'd like to get some return info on
+broadcasts as well
+
+\x7eC[BCHOPS:1b]f[FULL CONFIG FILE]
+\x7eC[BCHOPS:1b]s[NEEDFULL:1b][CONFIG FILE CHECKSUM]
+
+where we increment BCHOPS ('broadcast hops', which
+is not packet hops) on forwarding, and increment
+NEEDFULL if we have a checksum miss
+
+Since all broadcasts (at least so far) are going
+to return to the host eventually..
+[186:
+
+Tue Jan 30 09:19:49 2024 Well, seems like
+hashlib.sha256() is included out of the box? That
+ought to be fiiiiine for our purposes..
+
+..and the KM already has too. OK.
+
+:186]
+
+:185]
+:184]
+
+:183]
+
+:182]
+
+:181]
+
+:180]
+
+:179]
