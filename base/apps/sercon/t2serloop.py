@@ -97,8 +97,6 @@ while True:
                 pio.writePacket(inpacket)
             else:
                 print("HANDLE LOCAL!",inpacket)
-        elif hops == 126:
-            print("HANDLE BCAST!",inpacket)
         else:                   # cmd or reply heading downstream
             pio.setHops(inpacket,hops-1)
             print("FWD",inpacket)
