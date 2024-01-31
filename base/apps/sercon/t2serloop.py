@@ -61,6 +61,14 @@ def writeTagsDatFile(terms):
     with open(tagsfile,"wb") as file:
         file.write(ba)
 
+def needTags():
+    tf = pathlib.Path(tagsfile)
+    wf = pathlib.Path(configfile)
+    if not tf.exists() or not wf.exists():
+        return True
+    # Also need tags if tags file older than world file
+    return tf.stat().st_mtime_ns <= wf.stat().st_mtime_ns
+
 def recvFullConfig(fbytes):
     with open(configfile,"wb") as file:
         file.write(fbytes)
@@ -82,7 +90,7 @@ def checkConfigChecksum(p):
         hit = fcs == csbytes
     except Exception as e:
         print("NOCSFILE",e)
-    if not hit:
+    if not hit or needTags():
         p[4] += 1
         print("CNFCHKMIS")
     
