@@ -9,10 +9,13 @@ from time import sleep
 import tomlikey as toml
 import hashlib
 
+import Config
+import Spine
+
 confdir = "/mnt/T2TMP"
 configfile = confdir+"/world.toml"
 
-import Config
+
 config = Config.Config("t2cfg",configfile)
 print("OHCNSOIKFG",config)
 
@@ -39,6 +42,9 @@ def performPacketIO(packet):
 def recvFullConfig(fbytes):
     with open(configfile,"wb") as file:
         file.write(fbytes)
+    config.reset()
+    config.load()
+    Spine.IndexTerminals(config.getInitializedSection('term',{}))
 
 def checkConfigChecksum(p):
     hit = False

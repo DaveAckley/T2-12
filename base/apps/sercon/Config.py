@@ -5,10 +5,13 @@ class Config:
     def __init__(self, name, path):
         self.name = name
         self.path = path
+        self.reset()
+
+    def reset(self):
         self.hash = None
         self.rawfile = None
         self.rawfileCS = None
-
+        
     def __str__(self):
         return f"C:{self.name}"
 

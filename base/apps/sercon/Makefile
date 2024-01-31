@@ -1,7 +1,7 @@
 APP_NAME:=t2serloop.py
 DRIVER_NAME:=t2serloopRunner.sh
 EXE_NAMES:=$(APP_NAME) $(DRIVER_NAME)
-PKG_NAMES:=PacketIO.py Utils.py
+PKG_NAMES:=PacketIO.py Utils.py Config.py
 SRCS:=$(EXE_NAMES) $(PKG_NAMES)
 
 CMDS:=build touch install clean realclean
