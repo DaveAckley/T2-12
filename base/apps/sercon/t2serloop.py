@@ -15,6 +15,9 @@ import Spine
 confdir = "/mnt/T2TMP"
 configfile = confdir+"/world.toml"
 
+tagsfile = confdir+"/tags.dat"
+inputfile = confdir+"/input.dat"
+outputfile = confdir+"/output.dat"
 
 config = Config.Config("t2cfg",configfile)
 print("OHCNSOIKFG",config)
@@ -40,7 +43,23 @@ def performPacketIO(packet):
     ####END DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
 
 def writeTagsDatFile(terms):
-    print("WRFTGFL",terms)
+    ba = bytearray()
+    for tag in terms['_indices_']:
+        term = terms.get(tag)
+        if term == None:
+            print("MISGTRM",tag)
+            continue
+        type = term['type']
+        if type == 'sensor':
+            code = b'>'
+        elif type == 'motor':
+            code = b'<'
+        else:
+            code = b'?'
+        ba += code+tag.encode()+b'\n'
+
+    with open(tagsfile,"wb") as file:
+        file.write(ba)
 
 def recvFullConfig(fbytes):
     with open(configfile,"wb") as file:
