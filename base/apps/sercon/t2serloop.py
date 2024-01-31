@@ -31,6 +31,9 @@ print("HAWO",pio)
 #print("HONG",pio.deescape(esc))
 
 def performPacketIO(packet):
+    with open(inputfile,"wb") as file:
+        file.write(packet[5:])
+        
     ####BEGIN DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
     if len(packet)==13:
         # ASSUMING ALL TERMINALS ARE ASSIGNED TO ONE TILE
