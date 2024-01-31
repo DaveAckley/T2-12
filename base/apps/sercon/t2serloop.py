@@ -39,12 +39,17 @@ def performPacketIO(packet):
         print("ROUTONGO",packet)
     ####END DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
 
+def writeTagsDatFile(terms):
+    print("WRFTGFL",terms)
+
 def recvFullConfig(fbytes):
     with open(configfile,"wb") as file:
         file.write(fbytes)
     config.reset()
     config.load()
-    Spine.IndexTerminals(config.getInitializedSection('term',{}))
+    terms = config.getInitializedSection('term',{})
+    Spine.IndexTerminals(terms)
+    writeTagsDatFile(terms)
 
 def checkConfigChecksum(p):
     hit = False
