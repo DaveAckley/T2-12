@@ -22,19 +22,6 @@ inputfile = confdir+"/input.dat"
 outputfile = confdir+"/output.dat"
 
 config = None
-if pathlib.Path(configfile).is_file(): # preload existing config
-    config = Config.Config("t2cfg",configfile)
-    indexConfig()
-    print("OHCNSOIKFG",config)
-    
-
-pio = PacketIO.PacketIO('/dev/ttyO0')
-print("HAWO",pio)
-#raw = b"I'm a little packet (\xf1) made of tape\nHere is my null byte:\0\nHere's my escape\033!"
-#print("ZBNG",raw)
-#esc = pio.escape(raw)
-#print("BONB",esc)
-#print("HONG",pio.deescape(esc))
 
 def performPacketIO(packet):
     with open(inputfile,"wb") as file:
@@ -134,6 +121,20 @@ def handleBroadcast(p):
             checkConfigChecksum(p)
         else:
             print("UNREGBRCP",p)
+
+if pathlib.Path(configfile).is_file(): # preload existing config
+    config = Config.Config("t2cfg",configfile)
+    indexConfig()
+    print("OHCNSOIKFG",config)
+    
+
+pio = PacketIO.PacketIO('/dev/ttyO0')
+print("HAWO",pio)
+#raw = b"I'm a little packet (\xf1) made of tape\nHere is my null byte:\0\nHere's my escape\033!"
+#print("ZBNG",raw)
+#esc = pio.escape(raw)
+#print("BONB",esc)
+#print("HONG",pio.deescape(esc))
 
 count = 0
 while True:
