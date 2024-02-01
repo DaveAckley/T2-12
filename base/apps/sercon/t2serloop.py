@@ -30,6 +30,7 @@ def performPacketIO(packet):
         newpacket = b''
         with open(outputfile,"rb") as file:
             newpacket = file.read()
+        #print("PPIONP",newpacket,packet)
     except Exception as e:
         print("PPIOEX",e)
     if len(newpacket)+5 != len(packet): # discard mismatches
@@ -43,7 +44,7 @@ def performPacketIO(packet):
         (idx,val) = (newpacket[i],newpacket[i+1])
         if idx != packet[i+5] or types[idx] != 'motor':
             continue
-        packet[idx+6] = val
+        packet[i+6] = val
         
     ####BEGIN DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
     # if len(packet)==13:
