@@ -1,5 +1,6 @@
 def IndexTerminals(terms):
     indices = []     # terms[_indices_] -> [ tname tname .. ]
+    types = []       # terms[_types_] -> [ 'motor' 'sensor' .. ]
     tiles = {}       # terms[_tiles_] -> { tile# : [indices] }
     joints = {}      # terms[_joints_] -> { jointname : termindex }
     for tname in sorted(terms.keys()):
@@ -17,9 +18,11 @@ def IndexTerminals(terms):
                 tiles[opttile] = []
             tiles[opttile].append(index)
             indices.append(tname)
+            types.append(optile.get('type'))
     terms['_indices_'] = indices
     terms['_tiles_'] = tiles
     terms['_joints_'] = joints
-    print("INDSL",indices)
+    terms['_types_'] = types
+    print("INDSL",indices,types)
     
 

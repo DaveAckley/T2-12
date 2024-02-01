@@ -35,26 +35,36 @@ print("HAWO",pio)
 def performPacketIO(packet):
     with open(inputfile,"wb") as file:
         file.write(packet[5:])
+    try:
+        with open(outputfile,"rb") as file:
+            newpacket = file.read()
+        if len(newpacket)+5 != len(packet): # discard mismatches
+            return      
+        # collect matching motor values from newpacket
+        terms = config.getRequiredSection('term')
+        types = terms['types']
+        for i in range(0,len(newpacket)-1,2):
+            (idx,val) = (newpacket[i],newpacket[i+1])
+            if idx != packet[i+5] or types[idx] != 'motor':
+                continue
+            packet[idx+6] = val
+    except Exception as e:
+        print("PPIOEX",e)
         
     ####BEGIN DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
-    if len(packet)==13:
-        # ASSUMING ALL TERMINALS ARE ASSIGNED TO ONE TILE
-        # MLR 0, MRR 1, SLFL 2, SRFL 3, so
-        # mlr 5 6, mrr 7 8, slfl 9 10, srfl 11 12
-        # want slfl -> mrr and srfl -> mlr
-        packet[8] = packet[10] # slfl -> mrr
-        packet[6] = packet[12] # srfl -> mlr
-        print("ROUTONGO",packet)
+    # if len(packet)==13:
+    #     # ASSUMING ALL TERMINALS ARE ASSIGNED TO ONE TILE
+    #     # MLR 0, MRR 1, SLFL 2, SRFL 3, so
+    #     # mlr 5 6, mrr 7 8, slfl 9 10, srfl 11 12
+    #     # want slfl -> mrr and srfl -> mlr
+    #     packet[8] = packet[10] # slfl -> mrr
+    #     packet[6] = packet[12] # srfl -> mlr
+    #     print("ROUTONGO",packet)
     ####END DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
 
 def writeTagsDatFile(terms):
     ba = bytearray()
-    for tag in terms['_indices_']:
-        term = terms.get(tag)
-        if term == None:
-            print("MISGTRM",tag)
-            continue
-        type = term['type']
+    for (tag,type) in zip(terms['_indices_'],terms['_types_']):
         if type == 'sensor':
             code = b'>'
         elif type == 'motor':
