@@ -22,6 +22,7 @@ inputfile = confdir+"/input.dat"
 outputfile = confdir+"/output.dat"
 
 config = Config.Config("t2cfg",configfile)
+config.load()
 print("OHCNSOIKFG",config)
 
 pio = PacketIO.PacketIO('/dev/ttyO0')
