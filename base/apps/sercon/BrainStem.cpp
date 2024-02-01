@@ -19,6 +19,8 @@
 #define MAXTAGNAMELEN 15
 #define MAXTAGCOUNT 256
 
+#define INHIBITIONBASE 100
+
 class BrainStem {
 public:
   BrainStem()
@@ -126,8 +128,16 @@ public:
     return -1;
   }
 
+  unsigned char inhibition(unsigned char inhibitor) {
+    if (inhibitor >= INHIBITIONBASE) return 0u;
+    return (unsigned char) (INHIBITIONBASE - inhibitor);
+  }
+
   void tryRouting() {
     bool routed = false;
+    int bvcode = getTagIndex("BVCODE");
+    if (bvcode < 0) bvcode = 0; // default to bv 2b
+
     int mlr = getTagIndex("MLR");
     int mrr = getTagIndex("MRR");
     int slfl = getTagIndex("SLFL");
@@ -136,18 +146,43 @@ public:
 
     int imlr = bufferPosOfTagIndex(mlr);
     int isrfl = bufferPosOfTagIndex(srfl);
-    if (isrfl >= 0 && imlr >= 0) {
-      _buffer[imlr+1] = _buffer[isrfl+1]; // srfl -> mlr
-      routed = true;
-    }
-
     int imrr = bufferPosOfTagIndex(mrr);
     int islfl = bufferPosOfTagIndex(slfl);
-    if (islfl >= 0 && imrr >= 0) {
-      _buffer[imrr+1] = _buffer[islfl+1]; // srfl -> mlr
+
+    if (imlr < 0 || imrr < 0 || islfl < 0 || isrfl < 0) return;
+
+    switch (bvcode) {
+    case 0: {                   // BV 2A
+      _buffer[imlr+1] = _buffer[islfl+1]; // slfl -> +mlr
+      _buffer[imrr+1] = _buffer[isrfl+1]; // srfl -> +mrr
       routed = true;
+      break;
     }
 
+    case 1: {                   // BV 2b
+      _buffer[imlr+1] = _buffer[isrfl+1]; // srfl -> +mlr
+      _buffer[imrr+1] = _buffer[islfl+1]; // srfl -> +mrr
+      routed = true;
+      break;
+    }
+
+    case 2: {                   // BV 3a
+      _buffer[imlr+1] = inhibition(_buffer[islfl+1]); // slfl -> -mlr
+      _buffer[imrr+1] = inhibition(_buffer[isrfl+1]); // srfl -> -mrr
+      routed = true;
+      break;
+    }
+
+    case 3: {                   // BV 3b
+      _buffer[imlr+1] = inhibition(_buffer[isrfl+1]); // srfl -> -mlr
+      _buffer[imrr+1] = inhibition(_buffer[islfl+1]); // slfl -> -mrr
+      routed = true;
+      break;
+    }
+
+    default:
+      break;
+    }
     if (routed) ++_routed;
   }
 
