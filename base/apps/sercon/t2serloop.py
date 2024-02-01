@@ -46,7 +46,7 @@ def performPacketIO(packet):
         return      
     # collect matching motor values from newpacket
     terms = config.getRequiredSection('term')
-    types = terms['types']
+    types = terms['_types_']
     for i in range(0,len(newpacket)-1,2):
         (idx,val) = (newpacket[i],newpacket[i+1])
         if idx != packet[i+5] or types[idx] != 'motor':
