@@ -21,9 +21,12 @@ tagsfile = confdir+"/tags.dat"
 inputfile = confdir+"/input.dat"
 outputfile = confdir+"/output.dat"
 
-config = Config.Config("t2cfg",configfile)
-config.load()
-print("OHCNSOIKFG",config)
+config = None
+if pathlib.Path(configfile).is_file(): # preload existing config
+    config = Config.Config("t2cfg",configfile)
+    indexConfig()
+    print("OHCNSOIKFG",config)
+    
 
 pio = PacketIO.PacketIO('/dev/ttyO0')
 print("HAWO",pio)
@@ -45,6 +48,8 @@ def performPacketIO(packet):
     if len(newpacket)+5 != len(packet): # discard mismatches
         return      
     # collect matching motor values from newpacket
+    if config == None:
+        return
     terms = config.getRequiredSection('term')
     types = terms['_types_']
     for i in range(0,len(newpacket)-1,2):
@@ -89,6 +94,9 @@ def needTags():
 def recvFullConfig(fbytes):
     with open(configfile,"wb") as file:
         file.write(fbytes)
+    indexConfig()
+
+def indexConfig():
     config.reset()
     config.load()
     terms = config.getInitializedSection('term',{})
