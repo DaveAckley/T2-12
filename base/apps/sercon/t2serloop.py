@@ -36,20 +36,21 @@ def performPacketIO(packet):
     with open(inputfile,"wb") as file:
         file.write(packet[5:])
     try:
+        newpacket = b''
         with open(outputfile,"rb") as file:
             newpacket = file.read()
-        if len(newpacket)+5 != len(packet): # discard mismatches
-            return      
-        # collect matching motor values from newpacket
-        terms = config.getRequiredSection('term')
-        types = terms['types']
-        for i in range(0,len(newpacket)-1,2):
-            (idx,val) = (newpacket[i],newpacket[i+1])
-            if idx != packet[i+5] or types[idx] != 'motor':
-                continue
-            packet[idx+6] = val
     except Exception as e:
         print("PPIOEX",e)
+    if len(newpacket)+5 != len(packet): # discard mismatches
+        return      
+    # collect matching motor values from newpacket
+    terms = config.getRequiredSection('term')
+    types = terms['types']
+    for i in range(0,len(newpacket)-1,2):
+        (idx,val) = (newpacket[i],newpacket[i+1])
+        if idx != packet[i+5] or types[idx] != 'motor':
+            continue
+        packet[idx+6] = val
         
     ####BEGIN DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
     # if len(packet)==13:
