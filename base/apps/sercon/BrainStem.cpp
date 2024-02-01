@@ -28,7 +28,7 @@ public:
     , _updates(0u)
     , _routed(0u)
     , _tagCount(0u)
-    , _bvcode(-1)
+    , _bvcodeVal(0u)
   {
     if (fstat(0,&_istat) < 0) fdie("stating","stdin"); // just to have something
     _rstat = _istat;
@@ -136,8 +136,12 @@ public:
 
   void tryRouting() {
     bool routed = false;
-    _bvcode = getTagIndex("BVCODE");
-    if (_bvcode < 0) _bvcode = 0; // default to bv 2b
+
+    int bvcodeIdx = getTagIndex("BVCODE");
+    if (bvcodeIdx < 0) return;
+    int bvcodePos = bufferPosOfTagIndex(bvcodeIdx);
+    if (bvcodePos  < 0) return;
+    _bvcodeVal = _buffer[bvcodePos+1];
 
     int mlr = getTagIndex("MLR");
     int mrr = getTagIndex("MRR");
@@ -152,29 +156,29 @@ public:
 
     if (imlr < 0 || imrr < 0 || islfl < 0 || isrfl < 0) return;
 
-    switch (_bvcode) {
-    case 0: {                   // BV 2A
+    switch (_bvcodeVal) {
+    case 0u: {                            // BV 2A
       _buffer[imlr+1] = _buffer[islfl+1]; // slfl -> +mlr
       _buffer[imrr+1] = _buffer[isrfl+1]; // srfl -> +mrr
       routed = true;
       break;
     }
 
-    case 1: {                   // BV 2b
+    case 1u: {                            // BV 2b
       _buffer[imlr+1] = _buffer[isrfl+1]; // srfl -> +mlr
       _buffer[imrr+1] = _buffer[islfl+1]; // srfl -> +mrr
       routed = true;
       break;
     }
 
-    case 2: {                   // BV 3a
+    case 2u: {                                        // BV 3a
       _buffer[imlr+1] = inhibition(_buffer[islfl+1]); // slfl -> -mlr
       _buffer[imrr+1] = inhibition(_buffer[isrfl+1]); // srfl -> -mrr
       routed = true;
       break;
     }
 
-    case 3: {                   // BV 3b
+    case 3u: {                                        // BV 3b
       _buffer[imlr+1] = inhibition(_buffer[isrfl+1]); // srfl -> -mlr
       _buffer[imrr+1] = inhibition(_buffer[islfl+1]); // slfl -> -mrr
       routed = true;
@@ -195,7 +199,7 @@ public:
       writeOutputFile();
       usleep(USLEEPTIME);
       if (!(_updates % 1000))
-        printf("Updates %lu, %lu routed, code %d\n",_updates,_routed,_bvcode);
+        printf("Updates %lu, %lu routed, code %u\n",_updates,_routed,_bvcodeVal);
       ++_updates;
     }
     return 0;
@@ -271,7 +275,7 @@ private:
   struct stat _tstat; // last stat time of tags load
   Tag _tags[MAXTAGCOUNT];
   unsigned _tagCount;
-  int _bvcode;        // current routing code
+  unsigned char _bvcodeVal;        // current routing code
 };
 
 int main() {
