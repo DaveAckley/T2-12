@@ -42,6 +42,7 @@ def performPacketIO(packet):
     types = terms['_types_']
     for i in range(0,len(newpacket)-1,2):
         (idx,val) = (newpacket[i],newpacket[i+1])
+
         if idx != packet[i+5] or types[idx] != 'motor':
             continue
         packet[i+6] = val
@@ -85,6 +86,8 @@ def recvFullConfig(fbytes):
     indexConfig()
 
 def indexConfig():
+    if not config:
+        config = Config.Config("t2cfg",configfile)
     config.reset()
     config.load()
     terms = config.getInitializedSection('term',{})
@@ -124,7 +127,6 @@ def handleBroadcast(p):
             print("UNREGBRCP",p)
 
 if pathlib.Path(configfile).is_file(): # preload existing config
-    config = Config.Config("t2cfg",configfile)
     indexConfig()
     print("OHCNSOIKFG",config)
     
