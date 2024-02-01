@@ -86,6 +86,7 @@ def recvFullConfig(fbytes):
     indexConfig()
 
 def indexConfig():
+    global config
     if not config:
         config = Config.Config("t2cfg",configfile)
     config.reset()
