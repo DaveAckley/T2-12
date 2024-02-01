@@ -19,7 +19,7 @@
 #define MAXTAGNAMELEN 15
 #define MAXTAGCOUNT 256
 
-#define INHIBITIONBASE 100
+#define INHIBITIONBASE 127
 
 class BrainStem {
 public:
