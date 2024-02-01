@@ -7,8 +7,8 @@
 #include <cerrno>
 #include <time.h>
 
-//#define CIODIR "/mnt/T2TMP"
-#define CIODIR "."
+#define CIODIR "/mnt/T2TMP"
+//#define CIODIR "."
 #define CINPUTFILE (CIODIR "/input.dat")
 #define COUTPUTFILE (CIODIR "/output.dat")
 #define CTAGSFILE (CIODIR "/tags.dat")
