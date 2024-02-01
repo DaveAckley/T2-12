@@ -19,7 +19,8 @@
 #define MAXTAGNAMELEN 15
 #define MAXTAGCOUNT 256
 
-#define INHIBITIONBASE 127
+#define INHIBITIONBASE 102
+#define INHIBITIONMIN 2
 
 class BrainStem {
 public:
@@ -130,7 +131,7 @@ public:
   }
 
   unsigned char inhibition(unsigned char inhibitor) {
-    if (inhibitor >= INHIBITIONBASE) return 0u;
+    if (inhibitor+INHIBITIONMIN >= INHIBITIONBASE) return INHIBITIONMIN;
     return (unsigned char) (INHIBITIONBASE - inhibitor);
   }
 
