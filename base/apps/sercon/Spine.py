@@ -18,7 +18,7 @@ def IndexTerminals(terms):
                 tiles[opttile] = []
             tiles[opttile].append(index)
             indices.append(tname)
-            types.append(optile.get('type'))
+            types.append(opttile.get('type'))
     terms['_indices_'] = indices
     terms['_tiles_'] = tiles
     terms['_joints_'] = joints
