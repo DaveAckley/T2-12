@@ -19,6 +19,17 @@ class PacketIO:
         self.bytesin = bytearray()
         self.bytesout = bytearray()
         self.pendingin = []
+        self.resetStats()
+
+    def resetStats(self):
+        self.countBytesIn = 0    # updated on serial
+        self.countBytesOut = 0   # device traffic
+        self.countPacketsIn = 0  # updated on packet
+        self.countPacketsOut = 0 # dispatch and acceptance
+
+    def getStats(self):
+        return (self.countBytesIn,   self.countBytesOut,
+                self.countPacketsIn, self.countPacketsOut)
 
     def close(self):
         self.ser.close();
@@ -34,6 +45,7 @@ class PacketIO:
         nbytes = len(bytes)
         if (nbytes > 0):
             self.acceptBytes(bytes)
+            self.countBytesIn += nbytes
         return nbytes
 
     def updateWrite(self):
@@ -42,11 +54,13 @@ class PacketIO:
             wrote = self.ser.write(self.bytesout)
             if wrote > 0:
                 self.bytesout = self.bytesout[wrote:]
+                self.countBytesOut += wrote
         return wrote
 
     def writePacket(self,packet):
         self.bytesout += self.escape(packet)
         self.bytesout += b'\n'
+        self.countPacketsOut += 1
 
     def acceptBytes(self,bytes):
         self.bytesin += bytearray(bytes)
@@ -59,7 +73,7 @@ class PacketIO:
             self.bytesin = self.bytesin[pos+1:] # also not including \n
             try:
                 packet = self.deescape(packet) # exception on bad pkt/chksum
-                print("ACCBYTFND",packet)
+                #print("ACCBYTFND",packet)
                 self.pendingin.append(packet)
             except ValueError as v:
                 print("Packet discarded:",v)
@@ -69,6 +83,7 @@ class PacketIO:
             return None
         packet = self.pendingin[0]
         self.pendingin = self.pendingin[1:]
+        self.countPacketsIn += 1
         return packet
 
     def escape(self,packet):

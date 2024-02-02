@@ -8,6 +8,13 @@ class SerLoop:
         self.tiles = []
         
         self.loadConfig()
+        self.resetStats()
+
+    def resetStats(self):
+        self.pio.resetStats()
+
+    def getStats(self):
+        return self.pio.getStats()
 
     def loadConfig(self):
         idx = 0
@@ -32,7 +39,7 @@ class SerLoop:
             inpacket = self.pio.pendingPacket()
             if inpacket == None:
                 break
-            print("WHANDLED",inpacket)
+            #print("WHANDLED",inpacket)
             count = count + 1
         return count
 
