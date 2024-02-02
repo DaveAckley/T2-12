@@ -131,7 +131,7 @@ public:
   }
 
   unsigned char excitation(unsigned char exc, unsigned char upv) {
-    exc = (((unsigned int) exc) + upv > 0xff) ? 0xff : exc + upv;
+    exc = (((unsigned int) exc) + upv/4 > 0xff) ? 0xff : exc + upv/4; // HAAAAAAACK/4
     return (unsigned char) exc;
   }
 
@@ -144,11 +144,21 @@ public:
   void tryRouting() {
     bool routed = false;
 
-    int bvcodeIdx = getTagIndex("BVCODE");
+    int bvcodeIdx = getTagIndex("BVREQ");
     if (bvcodeIdx < 0) return;
     int bvcodePos = bufferPosOfTagIndex(bvcodeIdx);
     if (bvcodePos  < 0) return;
     _bvcodeVal = _buffer[bvcodePos+1];
+
+    {
+      int bvactIdx = getTagIndex("BVACT");
+      if (bvactIdx >= 0) {
+        int bvactPos = bufferPosOfTagIndex(bvactIdx);
+        if (bvactPos >= 0) {
+          _buffer[bvactPos+1] = _bvcodeVal; // For now do as requested
+        }
+      }
+    }
 
     unsigned char suplval = 0;
     {                           // Optional sensor up light
