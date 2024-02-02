@@ -34,6 +34,7 @@ def performPacketIO(packet):
     except Exception as e:
         print("PPIOEX",e)
     if len(newpacket)+5 != len(packet): # discard mismatches
+        print("PPIOBLEN",len(newpacket),len(packet),newpacket,packet)
         return      
     # collect matching motor values from newpacket
     if config == None:
