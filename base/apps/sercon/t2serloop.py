@@ -47,17 +47,6 @@ def performPacketIO(packet):
             continue
         packet[i+6] = val
         
-    ####BEGIN DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
-    # if len(packet)==13:
-    #     # ASSUMING ALL TERMINALS ARE ASSIGNED TO ONE TILE
-    #     # MLR 0, MRR 1, SLFL 2, SRFL 3, so
-    #     # mlr 5 6, mrr 7 8, slfl 9 10, srfl 11 12
-    #     # want slfl -> mrr and srfl -> mlr
-    #     packet[8] = packet[10] # slfl -> mrr
-    #     packet[6] = packet[12] # srfl -> mlr
-    #     print("ROUTONGO",packet)
-    ####END DISGUSTING HARDCODE HACK TO PERFORM CROSSOVER ROUTING
-
 def writeTagsDatFile(terms):
     ba = bytearray()
     for (tag,type) in zip(terms['_indices_'],terms['_types_']):
@@ -155,7 +144,7 @@ while True:
             print("TOST",inpacket) # discard underflows and reserved crap
         elif hops == 126:   # Broadcast!
             handleBroadcast(inpacket)  # Modifies inpacket in place!
-            print("FWD",inpacket)
+            #print("FWD",inpacket)
             pio.writePacket(inpacket)
         elif hops == 0:
             if (len(inpacket) >= 5 and  # W pkt reqd: hops,'W',dest,nonce,type
@@ -165,7 +154,7 @@ while True:
                 performPacketIO(inpacket)  # Modifies inpacket in place!
                 pio.setHops(inpacket,hops-1)
                 inpacket[4] = ord(b'O')
-                print("FWD",inpacket)
+                #print("FWD",inpacket)
                 pio.writePacket(inpacket)
             else:
                 print("HANDLE LOCAL!",inpacket)
@@ -174,6 +163,9 @@ while True:
             print("FWD",inpacket)
             pio.writePacket(inpacket)
     count += 1
+    if count % 1000 == 0:
+        stats = pio.getStats()
+        print("LOOPTRAF",count,stats)
     if count == 100:
         print("SENDOOO")
         bcount = str(count).encode()
