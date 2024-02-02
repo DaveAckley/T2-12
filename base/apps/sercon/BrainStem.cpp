@@ -130,9 +130,15 @@ public:
     return -1;
   }
 
-  unsigned char inhibition(unsigned char inhibitor) {
-    if (inhibitor+INHIBITIONMIN >= INHIBITIONBASE) return INHIBITIONMIN;
-    return (unsigned char) (INHIBITIONBASE - inhibitor);
+  unsigned char excitation(unsigned char exc, unsigned char upv) {
+    exc = (((unsigned int) exc) + upv > 0xff) ? 0xff : exc + upv;
+    return (unsigned char) exc;
+  }
+
+  unsigned char inhibition(unsigned char inh, unsigned char upv) {
+    inh = (((unsigned int) inh) + upv > 0xff) ? 0xff : inh + upv;
+    if (inh+INHIBITIONMIN >= INHIBITIONBASE) return INHIBITIONMIN;
+    return (unsigned char) (INHIBITIONBASE - inh);
   }
 
   void tryRouting() {
@@ -143,6 +149,16 @@ public:
     int bvcodePos = bufferPosOfTagIndex(bvcodeIdx);
     if (bvcodePos  < 0) return;
     _bvcodeVal = _buffer[bvcodePos+1];
+
+    unsigned char suplval = 0;
+    {                           // Optional sensor up light
+      int supl = getTagIndex("SUPL");
+      if (supl >= 0) {
+        int isupl = bufferPosOfTagIndex(supl);
+        if (isupl >= 0) 
+          suplval = _buffer[isupl+1];
+      }
+    }
 
     int mlr = getTagIndex("MLR");
     int mrr = getTagIndex("MRR");
@@ -159,29 +175,29 @@ public:
 
     switch (_bvcodeVal) {
     case 0u: {                            // BV 2A
-      _buffer[imlr+1] = _buffer[islfl+1]; // slfl -> +mlr
-      _buffer[imrr+1] = _buffer[isrfl+1]; // srfl -> +mrr
+      _buffer[imlr+1] = excitation(_buffer[islfl+1],suplval); // slfl -> +mlr
+      _buffer[imrr+1] = excitation(_buffer[isrfl+1],suplval); // srfl -> +mrr
       routed = true;
       break;
     }
 
     case 1u: {                            // BV 2b
-      _buffer[imlr+1] = _buffer[isrfl+1]; // srfl -> +mlr
-      _buffer[imrr+1] = _buffer[islfl+1]; // srfl -> +mrr
+      _buffer[imlr+1] = excitation(_buffer[isrfl+1],suplval); // srfl -> +mlr
+      _buffer[imrr+1] = excitation(_buffer[islfl+1],suplval); // srfl -> +mrr
       routed = true;
       break;
     }
 
     case 2u: {                                        // BV 3a
-      _buffer[imlr+1] = inhibition(_buffer[islfl+1]); // slfl -> -mlr
-      _buffer[imrr+1] = inhibition(_buffer[isrfl+1]); // srfl -> -mrr
+      _buffer[imlr+1] = inhibition(_buffer[islfl+1],suplval); // slfl -> -mlr
+      _buffer[imrr+1] = inhibition(_buffer[isrfl+1],suplval); // srfl -> -mrr
       routed = true;
       break;
     }
 
     case 3u: {                                        // BV 3b
-      _buffer[imlr+1] = inhibition(_buffer[isrfl+1]); // srfl -> -mlr
-      _buffer[imrr+1] = inhibition(_buffer[islfl+1]); // slfl -> -mrr
+      _buffer[imlr+1] = inhibition(_buffer[isrfl+1],suplval); // srfl -> -mlr
+      _buffer[imrr+1] = inhibition(_buffer[islfl+1],suplval); // slfl -> -mrr
       routed = true;
       break;
     }
