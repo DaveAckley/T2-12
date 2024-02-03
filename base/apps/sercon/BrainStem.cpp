@@ -131,12 +131,12 @@ public:
   }
 
   unsigned char excitation(unsigned char exc, unsigned char upv) {
-    exc = (((unsigned int) exc) + upv/4 > 0xff) ? 0xff : exc + upv/4; // HAAAAAAACK/4
+    exc = (((unsigned int) exc) + upv/4 > 0xff) ? 0xff : exc + upv/4;
     return (unsigned char) exc;
   }
 
   unsigned char inhibition(unsigned char inh, unsigned char upv) {
-    inh = (((unsigned int) inh) + upv > 0xff) ? 0xff : inh + upv;
+    inh = (((unsigned int) inh) + upv/4 > 0xff) ? 0xff : inh + upv/4;
     if (inh+INHIBITIONMIN >= INHIBITIONBASE) return INHIBITIONMIN;
     return (unsigned char) (INHIBITIONBASE - inh);
   }
