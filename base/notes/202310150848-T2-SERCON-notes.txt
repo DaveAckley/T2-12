@@ -1,4 +1,4 @@
-{187}  -*-  mode: text; fill-column: 50;  -*-
+{213}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -2306,14 +2306,20 @@ with subtypes like:
 
 or maybe we'd like to get some return info on
 broadcasts as well
-
+0   12          34..
 \x7eC[BCHOPS:1b]f[FULL CONFIG FILE]
 \x7eC[BCHOPS:1b]s[NEEDFULL:1b][CONFIG FILE CHECKSUM]
 
 where we increment BCHOPS ('broadcast hops', which
 is not packet hops) on forwarding, and increment
 NEEDFULL if we have a checksum miss
+[188:
 
+Tue Jan 30 13:14:09 2024 Hmm should we put the
+current nonce in there? Probably should but don't
+want to push t2serloop.py again right now..
+
+:188]
 Since all broadcasts (at least so far) are going
 to return to the host eventually..
 [186:
@@ -2338,3 +2344,385 @@ ought to be fiiiiine for our purposes..
 :180]
 
 :179]
+[187:
+
+Tue Jan 30 10:36:15 2024 OK so theoretically
+t2serloop.py can detect and handle Cf and Cs
+packets a la :184: above.
+
+Now we need to generate them.. maybe after
+brunch.. 
+[189:
+
+Tue Jan 30 15:23:17 2024 OK, now we have the
+keymaster successfully creating
+/mnt/T2TMP/world.toml using broadcast data from
+the loop, and successfully checking the checksum
+and requesting the data when necessary.
+
+But we need to get as far as indexing the
+terminals from that file before t2serloop.py can
+make any productive use of it.
+
+How much will that take?[190:
+
+Tue Jan 30 15:30:26 2024 OK at the moment
+IndexTerminals() is in WorldRunner.py, which
+t2serloop.py currently has no access to.
+
+That WorldRunner code depends on
+MrState.getRequiredSection(..), which t2serloop
+also has no access to.
+
+Now, the guts of IndexTerminals just needs the
+'term' hash from the configfile, and it modifies
+it in place. So we could push the mechanics lower
+somewhere, so it wouldn't drag so much into t2
+land? Where might that be?
+
+This is something about robot bodies? That and t2
+brains both, actually - it mentions joints and
+tiles. So it's spinal stuff, since that's our
+model for the link.
+
+And a main job of the toml file is indeed defining
+the stuff that flows through the spine. There's
+other stuff in there at the moment - like a
+MrState section that we're not really using hrm.
+
+We have the PacketSpine package, which has 'spine'
+right in the name.. [191:
+
+Tue Jan 30 15:38:34 2024 There's a
+getOptionalSection in the Config.py that we have
+in base/apps/sercon.. [192:
+
+Tue Jan 30 15:40:11 2024 And that Config.py has
+fallen behind MrState/src/Config.py hrrm.
+
+We could add a hook for MrState to call down to
+from Config, and get to Spine.py:IndexTerminals()
+or whatever that way, and then distribute just
+MrState/Config.py and PyBulletTime/Spine.py for
+t2serloop to use.
+
+Still pretty gross; still working around not
+having/wanting a python venv on the tiles..
+[193:
+
+Tue Jan 30 22:57:23 2024 Well, refreshed sercon's
+Config.py against MrState's. Let's see if we can
+get t2serloop to use it..
+[194:
+
+Wed Jan 31 02:06:14 2024 OK it looks like
+t2serloop is using Config and Spine to get as far
+as indexing terminals. We should be able to get
+rid of the hardcoded stuff in the next go. Tired
+now.[195:
+
+Wed Jan 31 05:53:12 2024 So okay thinking instead
+of just writing out the hardcoded routing we might
+as well head for some kind of /mnt/T2TMP format to
+use for IO between t2serloop and mfmt2 native
+code. The latter initially represented by some
+little spike, that does the disgusting hardcode
+routing.
+[196:
+
+Wed Jan 31 06:05:51 2024 And we're imagining that
+'disk' format will be like
+
+(1) A file of like 1KB arranged as like 8 x 128,
+    giving the up-to-8 byte term name for each of
+    up-to-128 indicies.
+
+(2) A file of 128 bytes giving the current values?
+
+..no we want to separate S and M so we can avoid
+write-write races on the same file.
+[197:
+
+Wed Jan 31 06:13:06 2024 So, maybe an
+'indices.dat' file containing names and types and
+indexes of the terms of this world. Maybe 4KB as
+16 x 256 with entries like
+
+   [IDX:1B][TYPE:1B][NAME:14B]
+
+and sensors.dat.. if we have sensor and motor
+files separately that could indicate the types,
+and we're back to just names in the other file.
+
+tags.dat: \n delimited name list with indices
+implied: 
+
+    MLR
+    MRR
+    SFLL
+    SFRL
+
+sensors.dat, motors.dat:
+    [INDEX:1B][VALUE:1B] x count
+
+gah no how does mfmt2 know the motors unless
+t2serloop populates motors.dat to begin with? So
+then both sides are writing motors.dat. So it
+might as well be
+
+tags.dat
+   MLR,M
+   MRR,M
+   SFLL,S
+   SFLR,S
+
+sm.dat:
+    [INDEX:1B][VALUE:1B] x count for s and m
+
+and we live with both sides writing sm.dat?
+Or it's
+sensors.dat:[INDEX:1B][VALUE:1B] x sensor count
+motors.idx[INDEX:1B] x motor count
+motors.dat:[VALUE:1B] x motor count
+?
+
+Or it's
+sensors.dat:[VALUE:1B] x 256
+motors.dat:[VALUE:1B] x 256
+
+Or fuck it it's just
+input.dat: [LATEST SM I PACKET PAYLOAD]
+output.dat: [NEXT SM O PACKET PAYLOAD, 'S' FIELDS IGNORED]
+
+plus tags.dat with I/O marked
+
+and we just write the latest packet payload
+blindly into input.dat whenever we see it,
+and brain writes output.dat whenever it wants to,
+using its last-read input.dat to determine the
+template.
+
+Because we do want to remember there's no strong
+synchronization between brain stem and brain.
+
+What is the accuracy of a file modified time? ..if
+we wanted to provide a 'new since you last looked'
+functionality.
+
+Does the modified time change if you overwrite
+with the same data? It should right?[198:
+
+Wed Jan 31 07:00:49 2024 Looks like it does:
+
+    root@beaglebone:/home/t2/T2-12/base# echo foo >/mnt/T2TMP/foo.dat;stat /mnt/T2TMP/foo.dat
+      File: /mnt/T2TMP/foo.dat
+      Size: 4               Blocks: 8          IO Block: 4096   regular file
+    Device: 25h/37d Inode: 1279157     Links: 1
+    Access: (0644/-rw-r--r--)  Uid: (    0/    root)   Gid: (    0/    root)
+    Access: 2024-01-31 07:00:17.029485139 -0700
+    Modify: 2024-01-31 07:00:38.636089076 -0700
+    Change: 2024-01-31 07:00:38.636089076 -0700
+     Birth: -
+    root@beaglebone:/home/t2/T2-12/base# echo foo >/mnt/T2TMP/foo.dat;stat /mnt/T2TMP/foo.dat
+      File: /mnt/T2TMP/foo.dat
+      Size: 4               Blocks: 8          IO Block: 4096   regular file
+    Device: 25h/37d Inode: 1279157     Links: 1
+    Access: (0644/-rw-r--r--)  Uid: (    0/    root)   Gid: (    0/    root)
+    Access: 2024-01-31 07:00:17.029485139 -0700
+    Modify: 2024-01-31 07:00:40.015999927 -0700
+    Change: 2024-01-31 07:00:40.015999927 -0700
+     Birth: -
+    root@beaglebone:/home/t2/T2-12/base# 
+
+[199:
+
+Wed Jan 31 07:29:29 2024 OK so now we're writing
+/mnt/T2TMP/tags.dat with like:
+
+    <MLR
+    <MRR
+    >SLFL
+    >SRFL
+
+whenever we get a config file delivery. Problem is
+if we get a config checksum that matches our
+existing /mnt/T2TMP/world.toml, then we don't
+request a full config even if tags.dat is outdated
+or doesn't exist.
+
+Could we go ahead and request a config file in
+those cases, using modification times to determine
+'outdated'?
+
+How does python do stat stuff?
+
+    >>> import pathlib
+    >>> f = pathlib.Path('Makefile')
+    >>> print(f.stat())
+    os.stat_result(st_mode=33204, st_ino=20713104, st_dev=2431, st_nlink=1, st_uid=1001, st_gid=1001, st_size=145, st_atime=1706627387, st_mtime=1706522074, st_ctime=1706522074)
+    >>> print(f.stat().st_mtime)
+    1706522074.5588603
+[200:
+
+Wed Jan 31 07:44:23 2024 So stat result seems to
+offer int seconds but st_mtime gives a float.
+(There's also apparently st_mtime_ns)
+
+    >>> print(f.stat().st_mtime,f.stat().st_mtime_ns)
+    1706712239.7234056 1706712239723405674
+
+which might be more precise?
+
+So anyway it seems like we could write a thing to
+check if tags.dat is non-existent or older that
+world.toml, and request a full config in that
+case, even if the world.toml checksum matches?
+
+A little lame, since we could generate tags.dat
+from world.toml anyway?
+
+:200]
+:199]
+
+:198]
+
+
+:197]
+
+:196]
+:195]
+
+:194]
+:193]
+:192]
+
+:191]
+
+:190]
+
+:189]
+:187]
+[201:
+
+Wed Jan 31 08:05:38 2024 OK so I guess now we're
+at writing input.dat, and then we'll need maybe a
+.cpp spike to start reading input.dat and writing
+output.dat?
+[202:
+
+Wed Jan 31 08:28:31 2024 OK, it seems like we are
+writing /mnt/T2TMP/input.dat with the guts of the
+WI packets. Shall we take a crack at some cpp for
+a change?
+
+We want to continually:
+ - stat tags.dat and reload if it's newer
+ - stat input.dat and reload if it's newer
+ - dispatch to some stub routing algorithm
+ - rewrite output.dat with the results
+
+:202]
+:201]
+[203:
+
+Wed Jan 31 10:56:59 2024 OK so theoretically
+BrainStem.cpp is doing 'everything' except the
+actual routing. But that's okay because
+t2serloop.py is still doing the disgusto routing
+all by itself.[204:
+
+Wed Jan 31 15:59:45 2024 Except it wasn't loading
+the tags.dat file at all.. now it is..
+
+So now theoretically we could write routing code..
+[205:
+
+Thu Feb  1 01:55:27 2024 Looks like maybe finally
+we are now routing sensorimotor data all the way
+between pybullet on the workstation, and C++ code
+on the keymaster, and back, for the first time.
+
+Hello February.
+
+:205]
+
+:204]
+
+:203]
+[206:
+
+Thu Feb  1 11:17:01 2024 So here's a little
+thinko, right: .. well maybe not. was worrying
+that BVCODE values might not be making it all the
+way to BrainStem..[207:
+
+Thu Feb  1 11:35:13 2024 Ah no the thinko is that
+BrainStem.cpp is routing based on the index of
+BVCODE instead of its value doh.
+[208:
+
+Thu Feb  1 11:44:08 2024 OK so we're thinking that
+Sim tag 20240201-110850 is going to be the first
+in history where the bv changes strategy during
+the run. We're thinking it's a 2B for the first
+about 1100 steps, at which point it's going to
+change to a 3A. We'll see if that's blatant.. we
+kind of suspect it will be?[209:
+
+Thu Feb  1 11:53:54 2024 Yeah it's pretty
+blatant:) .. in this run the balls splattered off
+far away and BV had basically given up, and then
+all of a sudden both wheels started turning madly.
+BV's looking for love!
+[210:
+
+Thu Feb  1 12:27:59 2024 Buuuut, it appears the
+last ball fell out of frame, leaving Beevee racing
+towards the edge of the universe. Would rather
+have some little bias there to curve..
+
+Going again..
+
+:210]
+:209]
+
+:208]
+:207]
+
+:206]
+[211:
+
+Thu Feb  1 14:15:56 2024 Hmm, bv 3b is kind of
+messed up the way I've implemented it. It wasn't 
+obvious to me but 3b will only work the way
+Braitenberg describes it if the sensors are
+omnidirectional, rather than mostly
+forward-facing (as I implemented them).
+
+I have no idea what we'd actually get if we tried
+a 360 FOV or near that in getCameraImage. Super
+fish-eye? Would things even work then? It would
+only be the (slightish, it seems) parallax shift
+between the sensors that would determine
+everything? 
+
+:211]
+[212:
+
+Sat Feb  3 02:15:10 2024 OK well, committing
+everything I can find ahead of rebooting lcf to
+pick up latest kernel image etc before t2sday gets
+too close.
+
+So we implemented an upward-facing 179 degree FOV
+fisheye camera called SUPL, and threaded it into
+everything. Modified BrainStem.cpp
+inhibition/excitation to include some SUPL
+influence on both sides, so ATM all Brainstem
+routers use a combination of L or R, plus UP to
+drive the motors.
+
+It does help with BV3B; seems not to
+destroy BV2B dynamics.. We shall see.
+
+:212]
