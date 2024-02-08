@@ -1,4 +1,4 @@
-{213}  -*-  mode: text; fill-column: 50;  -*-
+{214}  -*-  mode: text; fill-column: 50;  -*-
 [0:
 
 Sun Oct 15 08:48:55 2023 OK, starting this file,
@@ -2726,3 +2726,10 @@ It does help with BV3B; seems not to
 destroy BV2B dynamics.. We shall see.
 
 :212]
+[213:
+
+Thu Feb  8 16:14:14 2024 OK, past Feb T2sday and
+just today finally found (mostly friction)
+parameters that work fairly well. Committing.
+
+:213]
