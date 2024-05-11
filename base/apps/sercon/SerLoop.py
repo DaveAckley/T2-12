@@ -39,7 +39,7 @@ class SerLoop:
             inpacket = self.pio.pendingPacket()
             if inpacket == None:
                 break
-            #print("WHANDLED",inpacket)
+            print("WHANDLED",inpacket)
             count = count + 1
         return count
 

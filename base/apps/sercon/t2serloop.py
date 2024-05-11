@@ -1,6 +1,14 @@
-#!/usr/bin/python3
+#!/usr/bin/env python
 
 # T2 TILE PACKET RESPONDER
+import sys
+argc = len(sys.argv)
+serdev = '/dev/ttyO0'
+if argc > 1:
+    serdev = sys.argv[1]
+if argc > 2:
+    print("Usage:",sys.argv[0],'OPTSERDEV')
+print("SERDEV:",serdev)
 
 import PacketIO
 from time import sleep
@@ -15,15 +23,17 @@ import Config
 import Spine
 
 confdir = "/mnt/T2TMP"
-configfile = confdir+"/world.toml"
+tomlfile = confdir+"/world.toml"
 
 tagsfile = confdir+"/tags.dat"
 inputfile = confdir+"/input.dat"
 outputfile = confdir+"/output.dat"
+configfile = confdir+"/config.dat"
 
-config = None
+tomlData = None
 
 def performPacketIO(packet):
+    packetlen = len(packet)
     with open(inputfile,"wb") as file:
         file.write(packet[5:])
     try:
@@ -32,20 +42,31 @@ def performPacketIO(packet):
             newpacket = file.read()
         #print("PPIONP",newpacket,packet)
     except Exception as e:
-        print("PPIOEX",e)
-    if len(newpacket)+5 != len(packet): # discard mismatches
-        print("PPIOBLEN",len(newpacket),len(packet),newpacket,packet)
-        return      
-    # collect matching motor values from newpacket
-    if config == None:
+        print("NO MOTOR:",e)
         return
-    terms = config.getRequiredSection('term')
+    if len(newpacket)+5 != len(packet): # discard mismatches
+        print("PPIOBLENDISCARD",len(newpacket),packetlen,newpacket,packet)
+        newpacket = bytearray(packet)   # just reship old unmodified?
+    # collect matching motor values from newpacket
+    if tomlData == None:
+        return
+    terms = tomlData.getRequiredSection('term')
     types = terms['_types_']
+    
     for i in range(0,len(newpacket)-1,2):
+        if i+6 >= packetlen:    # if new terms, might not fit in old packet
+            print("GOZIZEBO",i+6,packetlen)
+            continue
         (idx,val) = (newpacket[i],newpacket[i+1])
+        if idx >= len(types):    # if new terms, might not fit in old packet
+            print("GOTIPESBO",idx,len(types))
+            continue
 
         if idx != packet[i+5] or types[idx] != 'motor':
+            if types[idx] != 'sensor':
+                print("GOMOTRBO",idx,packet[i+5],types[idx])
             continue
+        print("GOGOTS",i+6,packet[i+6],val,types[idx])
         packet[i+6] = val
         
 def writeTagsDatFile(terms):
@@ -55,6 +76,8 @@ def writeTagsDatFile(terms):
             code = b'>'
         elif type == 'motor':
             code = b'<'
+        elif type == 'control':
+            code = b'!'
         else:
             code = b'?'
         ba += code+tag.encode()+b'\n'
@@ -62,33 +85,54 @@ def writeTagsDatFile(terms):
     with open(tagsfile,"wb") as file:
         file.write(ba)
 
+def writeConfigDatFile(config):
+    ba = bytearray()
+    print("WEIFOVNFOG",config)
+    for (key,val) in config.items():
+        if isinstance(val,str):
+            ba += key.encode()+b':'+val.encode()+b'\n'
+    with open(configfile,"wb") as file:
+        file.write(ba)
+
 def needTags():
     tf = pathlib.Path(tagsfile)
-    wf = pathlib.Path(configfile)
+    wf = pathlib.Path(tomlfile)
     if not tf.exists() or not wf.exists():
         return True
     # Also need tags if tags file older than world file
     return tf.stat().st_mtime_ns <= wf.stat().st_mtime_ns
 
-def recvFullConfig(fbytes):
-    with open(configfile,"wb") as file:
+def recvFullTomlData(fbytes):
+    with open(tomlfile,"wb") as file:
         file.write(fbytes)
-    indexConfig()
+    indexTomlData()
 
-def indexConfig():
-    global config
-    if not config:
-        config = Config.Config("t2cfg",configfile)
-    config.reset()
-    config.load()
-    terms = config.getInitializedSection('term',{})
+def indexTomlData():
+    global tomlData
+    if not tomlData:
+        tomlData = Config.Config("t2cfg",tomlfile)
+    tomlData.reset()
+    tomlData.load()
+
+    # configSect = config.getOptionalSection("config")
+    # secsPerStep = 5
+    # if configSect != None:
+    #     cadence = configSect.get("cadence")
+    #     if cadence != None:
+    #         secsPerStep = int(cadence)
+    # print("CADENCE:",secsPerStep)
+
+    terms = tomlData.getInitializedSection('term',{})
     Spine.IndexTerminals(terms)
     writeTagsDatFile(terms)
+    config = tomlData.getInitializedSection('config',{})
+    writeConfigDatFile(config)
 
-def checkConfigChecksum(p):
+def checkTomlDataChecksum(p):
     hit = False
+    print("TRY checkTomlDataChecksum")
     try:
-        with open(configfile,"rb") as file:
+        with open(tomlfile,"rb") as file:
             raw = file.read()
         h = hashlib.sha256()
         h.update(raw)
@@ -100,7 +144,9 @@ def checkConfigChecksum(p):
     if not hit or needTags():
         p[4] += 1
         print("CNFCHKMIS")
-    
+    else:
+        print("CNFCHKHIT")
+        
 
 def handleBroadcast(p):
     if len(p) < 6:
@@ -111,18 +157,18 @@ def handleBroadcast(p):
         if p[2] < 125:
             p[2] += 1         # increment broadcast hops
         if p[3] == ord(b'f'): # 'f'ull file attached
-            recvFullConfig(p[4:])
+            recvFullTomlData(p[4:])
         elif p[3] == ord(b's'): # file check's'um attached
-            checkConfigChecksum(p)
+            checkTomlDataChecksum(p)
         else:
             print("UNREGBRCP",p)
 
-if pathlib.Path(configfile).is_file(): # preload existing config
-    indexConfig()
-    print("OHCNSOIKFG",config)
+if pathlib.Path(tomlfile).is_file(): # preload existing tomldata
+    indexTomlData()
+    print("OHCNSOIKFG",tomlData)
     
 
-pio = PacketIO.PacketIO('/dev/ttyO0')
+pio = PacketIO.PacketIO(serdev)
 print("HAWO",pio)
 #raw = b"I'm a little packet (\xf1) made of tape\nHere is my null byte:\0\nHere's my escape\033!"
 #print("ZBNG",raw)
@@ -137,7 +183,7 @@ while True:
         inpacket = pio.pendingPacket()
         if inpacket == None:
             break
-        #print("GOT",inpacket)
+        print("GOT",inpacket)
         if len(inpacket) < 2:
             break
         hops = pio.getHops(inpacket)
@@ -151,7 +197,7 @@ while True:
             if (len(inpacket) >= 5 and  # W pkt reqd: hops,'W',dest,nonce,type
                 inpacket[1] == ord(b'W') and
                 inpacket[4] == ord(b'I')):
-                print("GOT WI",inpacket)
+                #print("GOT WI",inpacket)
                 performPacketIO(inpacket)  # Modifies inpacket in place!
                 pio.setHops(inpacket,hops-1)
                 inpacket[4] = ord(b'O')

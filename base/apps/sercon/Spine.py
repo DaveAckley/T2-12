@@ -24,5 +24,6 @@ def IndexTerminals(terms):
     terms['_joints_'] = joints
     terms['_types_'] = types
     print("INDSL",indices,types)
+    print("TERMSINDS",terms)
     
 

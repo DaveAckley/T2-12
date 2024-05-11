@@ -46,6 +46,7 @@ class PacketIO:
         if (nbytes > 0):
             self.acceptBytes(bytes)
             self.countBytesIn += nbytes
+            #print("PIORD",nbytes,self.countBytesIn)
         return nbytes
 
     def updateWrite(self):
@@ -55,6 +56,7 @@ class PacketIO:
             if wrote > 0:
                 self.bytesout = self.bytesout[wrote:]
                 self.countBytesOut += wrote
+                #rint("PIOWR",wrote,self.countBytesOut)
         return wrote
 
     def writePacket(self,packet):
