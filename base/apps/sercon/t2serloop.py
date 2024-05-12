@@ -63,10 +63,10 @@ def performPacketIO(packet):
             continue
 
         if idx != packet[i+5] or types[idx] != 'motor':
-            if types[idx] != 'sensor':
-                print("GOMOTRBO",idx,packet[i+5],types[idx])
+            #if types[idx] != 'sensor':
+            #    print("GOMOTRBO",idx,packet[i+5],types[idx])
             continue
-        print("GOGOTS",i+6,packet[i+6],val,types[idx])
+        #print("GOGOTS",i+6,packet[i+6],val,types[idx])
         packet[i+6] = val
         
 def writeTagsDatFile(terms):
@@ -183,7 +183,7 @@ while True:
         inpacket = pio.pendingPacket()
         if inpacket == None:
             break
-        print("GOT",inpacket)
+        #print("GOT",inpacket)
         if len(inpacket) < 2:
             break
         hops = pio.getHops(inpacket)
@@ -207,7 +207,7 @@ while True:
                 print("HANDLE LOCAL!",inpacket)
         else:                   # cmd or reply heading downstream
             pio.setHops(inpacket,hops-1)
-            print("FWD",inpacket)
+            #print("FWD",inpacket)
             pio.writePacket(inpacket)
     count += 1
     if count % 1000 == 0:
